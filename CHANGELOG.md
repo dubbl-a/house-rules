@@ -6,6 +6,21 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+- **The package's own mechanisms now name the native Claude Code feature they build on.** The
+  bootstrap and revise-docs skills say what the harness's own init command and machine-local
+  memory notes already do before they say what they add. The conventions chapter records that a
+  plugin has no native component that ships rule files or instruction content as project context,
+  which is why house renders and vendors, and that session resume and harness memory carry state
+  on one machine only, which is why the carryover issue is the shared tier. The github chapter
+  states that every matching PreToolUse hook still runs and the most restrictive decision wins, so
+  the branch guard's deference to a repo-local guard is a deliberate migration choice rather than
+  something the harness requires, and that the guard family reports what is recorded, not what is
+  enforced. The checker's drift and lengths family comments name the hosted reviewer and the
+  harness's own auto-memory measurement as their floors, and the branch guard hook's fail-open
+  block now lists the sessions and tool routes where it never sees the command at all. Skill
+  prose, handbook prose, and comments only: no behavior change.
+
 ## [0.5.0] - 2026-09-02
 
 First public release. Everything below shipped in this version; earlier sections describe the private predecessor.

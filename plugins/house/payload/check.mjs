@@ -447,6 +447,11 @@ function resolveHousePluginRecord(installed) {
 
 // ── drift ────────────────────────────────────────────────────────────────
 
+// Native floor: the hosted reviewer already flags a documented claim that a
+// pull request makes outdated, at nit severity and only for a newly
+// introduced violation, so this family is the deterministic local floor that
+// resolves every anchor token in every scanned doc before the push.
+
 // ADR 0009 object forms. Both normalizers drop a malformed entry so the drift
 // family degrades gracefully; the manifest family validates the same entries
 // loudly, so the defect is reported exactly once and never hides a scan.
@@ -1402,6 +1407,11 @@ function checkShape(ctx) {
 }
 
 // ── lengths ──────────────────────────────────────────────────────────────
+
+// Native floor: the harness already measures its own auto-memory index when
+// Claude writes it and warns or errors there, so this family's memory warning
+// is a second surface for a machine-local file no repo gate can see, never
+// the primary limit.
 
 // Auto-memory index thresholds. The harness loads the first 200 lines of the
 // index, or the first 25KB, whichever comes first, and drops the rest with no

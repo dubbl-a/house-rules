@@ -9,6 +9,9 @@ disable-model-invocation: true
 Bootstrap turns an unmanaged repo into a house consumer. It probes the repo, proposes a
 `house.json`, and on `--apply` writes the vendored rules, templates, and a CLAUDE.md skeleton.
 It never edits an existing CLAUDE.md and it never runs twice over the same manifest.
+It writes only the house half of CLAUDE.md, as a separate skeleton file, and leaves the
+codebase-derived half to the harness's own init command, which generates a starting CLAUDE.md or
+suggests improvements to the one already there.
 
 This skill has side effects on disk, so it never fires on its own. Run it only when asked.
 

@@ -52,7 +52,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "940aedf537d2d627ac7e60233d2f8f42db88f7e29386635437b53ed6902c3239"
+      "bodySha256": "01d13a53605e448f53b957d5e1ab9b784335f65e7550555128a8a0bbf7a23391"
     }
   ],
   "scaffolds": [
