@@ -15,7 +15,7 @@ A branch-protection gap, a leaked key, a wrongly-closed issue, an exhausted Acti
 
 **Pre-commit scope is contested, and only the speed constraint is agreed.** One camp runs formatters and linters at commit and pushes everything else to CI; another treats a local hook as redundant with CI entirely. No source settles which is right, and the only thing every source agrees on is that a hook slower than a few seconds gets bypassed with `--no-verify` and then disabled outright (EXT-072). This package takes the first position by shipping a `pre-commit` template, and states the disagreement here so the choice reads as a call that was made rather than the only option there was.
 
-Native floor, as of 2026-09-02: hosted Code Review, whose check run posts its findings as a neutral result and never blocks a merge (https://code.claude.com/docs/en/code-review.md#check-run-output).
+Native floor, as of 2026-09-02: hosted Code Review, whose check run posts its findings as a neutral result and never blocks a merge, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#check-run-output).
 
 ## Give a workflow read-only permissions and pin every action by SHA
 
@@ -59,7 +59,7 @@ No incident recorded; the rule came in on reasoning alone, from external guidanc
 
 **What the changelog checkbox does not carry.** repo-a's own changelog rule adds a bright-line caveat the generic checkbox text cannot state: if a changelog bullet names one candidate in a race, every candidate in that race gets equivalent mention or none does. That caveat is the product's editorial promise, not a fleet convention (recorded, and dropped on purpose, as TW-191), so the vendored template's "CHANGELOG.md entry under [Unreleased] included" line stays generic rather than encoding it. A repo carrying a similar bright line appends its own sentence to that checkbox after adopting the template and records the append in its own `house.json` `deviations` array, so a later `/house-rules:sync` does not quietly overwrite the local wording back to the generic line.
 
-Native floor, as of 2026-09-02: hosted Code Review's severity levels, where stale documentation surfaces as a non-blocking nit and only on drift the pull request newly introduces (https://code.claude.com/docs/en/code-review.md#severity-levels).
+Native floor, as of 2026-09-02: hosted Code Review reads the repo CLAUDE.md and flags documentation a pull request leaves outdated, as a non-blocking nit, only on drift the pull request newly introduces, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#claudemd, https://code.claude.com/docs/en/code-review.md#severity-levels).
 
 ## Never put a closing keyword beside an issue number you do not mean to close
 
@@ -105,7 +105,7 @@ Native floor, as of 2026-09-02: worktree cleanup on session exit, which removes 
 
 **repo-c, `.claude/rules/deployment.md`.** Secrets go through `wrangler secret put` only, never into `wrangler.toml`, never into the repo, and never pasted into a Claude session.
 
-Native floor, as of 2026-09-02: deny rules on Read, which are what keep a credential file out of a session at all (https://code.claude.com/docs/en/permissions.md), and the credential helper settings that keep a key out of a config file (https://code.claude.com/docs/en/settings.md).
+Native floor, as of 2026-09-02: the sandbox's default filesystem access, which still lets a session read a credential file, and the session environment a subprocess inherits (https://code.claude.com/docs/en/sandboxing.md); the mitigations that close that gap are deny rules on Read, which are what keep a credential file out of a session at all (https://code.claude.com/docs/en/permissions.md), and the credential helper settings that keep a key out of a config file (https://code.claude.com/docs/en/settings.md).
 
 ## Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
 
@@ -141,7 +141,7 @@ Native floor, as of 2026-09-02: the plugin's PreToolUse hook is the only harness
 
 **Two hooks in the fleet encoded contradictory threat models, and only one of them can be right per repo (AG-063, survey divergence D9).** repo-b's hook documents server-side branch protection as absent, on the reasoning that a private repo on a free plan cannot have it, so the hook plus the deploy guards *are* the protection. repo-c's documents it as present, calling GitHub branch protection the actual server-side guarantee and the hook a convenience on top of it. The evidence in this chapter settles which reading applies to this account: the branch-protection API itself answers "Upgrade to GitHub Pro" (see the Actions-budget section above), so on these repos there is no server-side enforcement and the repo-b reading is the correct one. The rule that generalizes is not "the platform never protects the branch," it is: check per repo which case you are in before deciding how much the hook is carrying, because the same script means two different things in the two cases, and the plugin hook's own header now says so.
 
-The guard family reports what is recorded, not what is enforced. On the plugin-only path it emits a warning rather than a finding, and clearing that warning takes a written reason in `house.json` under ADR 0009, because a recorded plugin guard is armed only for a session that loads plugin hooks at all: a session that disables hooks, or one started without them, is a session where this guard is not there (https://code.claude.com/docs/en/hooks.md).
+The guard family reports what is recorded, not what is enforced. On the plugin-only path it emits a warning rather than a finding, and clearing that warning takes a dated written reason in `house.json` under ADR 0009, because a recorded plugin guard is armed only for a session that loads plugin hooks at all: a session that disables hooks, or one started without them, is a session where this guard is not there (https://code.claude.com/docs/en/hooks.md).
 
 ## Sources
 

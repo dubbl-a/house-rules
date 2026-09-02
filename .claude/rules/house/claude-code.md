@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.5.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=12fd7ebc65691dc24a68f6ffac1d90eada6eb3d523410d6294c88ee29368d14e DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.5.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=7cbbef0c0c8c29af3f833ded354f1443cd54b05fb83bc458c54701544a8fcbd1 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -154,7 +154,7 @@ Don't let a multi-step procedure live in a rule file.
 Don't chain a reference to another reference, because a nested file gets partially read.
 Don't leave model invocation enabled on a skill that writes, deploys, or spends.
 Don't let an agent call inherit the session's model by omitting the tier.
-Don't scope a hook with a matcher filter; match broadly and decide in the script.
+Don't lean on a hook's fine-grained filter for a hard allow or deny; match broadly and keep the decision in the script.
 Don't route around a permission block, because it is evidence of a wrong step earlier.
 Don't keep correcting the same failure past the second attempt in one context.
 Don't trust the branch you read at session start.

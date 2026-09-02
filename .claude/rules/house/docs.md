@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.5.0 module=docs source=modules/docs/rules/docs.md body-sha256=d5d7bf232023fc4f1ce72971971163c7f48d9df46ac2099909cb5714396ebe80 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.5.0 module=docs source=modules/docs/rules/docs.md body-sha256=4daf6d437f20a7351d501cc38ae1476ddcff46899cdeae4ad5da83178ed6fd58 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -24,7 +24,7 @@ Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 ## Run the docs gate before pushing and in the build
 
-Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the hook and the pull-request check be the net.
+Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the build step and the pull-request check be the net.
 A gate you only meet through a red badge after review costs a round trip per typo, and the round trip is what makes people stop running it.
 Anchor: `npm run check:docs`, wired into the build's pre-build step and run as a step in the pull-request workflow.
 Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-build`
@@ -107,7 +107,7 @@ Receipts: `docs/handbook/docs.md#dont-document-a-command-that-does-not-exist`
 ## Ship the docs and changelog edit in the same PR as the change
 
 When a change adds or renames a script, an environment variable, an endpoint behavior, or a maintenance step, its docs edit ships in the same pull request. A docs pull request opened afterward is an afterthought and drifts. Say in the body that you checked when no edit was needed, and ship every artifact a run produced in the same pass, including the ones the script's own instructions forget to name.
-A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit and only where it runs, so the docs edit ships in the same pull request and the template's binary is what holds it.
+A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit and only where it runs, so the template's binary is what holds it.
 A standalone docs pull request is fine when there is no code change at all, and skills follow the docs workflow rather than a code deploy.
 Log in the changelog only what the repo's audience would notice, by hand, under an unreleased heading in reverse-chronological dated sections; refactors, infra, and silent fixes live in git history.
 Open a change entry by saying plainly whether the substance moved, then what changed and what is still open. When a no-op refactor turns up a real bug, split it out and describe it as a correction rather than burying it in the cleanup.

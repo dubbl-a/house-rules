@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.5.0 module=github source=modules/github/rules/github.md body-sha256=c072038e9dacda493d6da896e1e1005b645b91a0e54a774da5ab68df77ad349e DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.5.0 module=github source=modules/github/rules/github.md body-sha256=a30f20c56d3b1b851f7cccc7bfb1a380e0ee5e737b3335b97d2a51b708cd7a17 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -57,7 +57,7 @@ Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-
 Ask every PR for a summary, a test plan, and a docs check.
 Make the docs check binary: either the docs edit is in this PR, or the PR says why none is needed.
 Keep the template in the platform's own directory, which is the first place it is looked for.
-Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit on newly introduced drift, so the template is what makes the answer mandatory.
+Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit on newly introduced drift, and only where it runs, so the template is what makes the answer mandatory.
 Receipts: `docs/handbook/github.md#make-the-pr-template-force-a-docs-check-answer`
 
 ## Never put a closing keyword beside an issue number you do not mean to close

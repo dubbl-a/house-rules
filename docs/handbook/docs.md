@@ -331,8 +331,8 @@ the fix is to ship every artifact the run actually produced in the same hygiene 
 including the ones the script's own documentation left out.
 
 Native floor, as of 2026-09-02: hosted Code Review, whose findings arrive as severity-graded
-comments on a check run that never blocks a merge, and only in repositories where it is
-installed (https://code.claude.com/docs/en/code-review#check-run-output).
+comments on a check run that never blocks a merge, and only where that Team and Enterprise
+preview runs (https://code.claude.com/docs/en/code-review.md#check-run-output).
 
 ## Sources
 

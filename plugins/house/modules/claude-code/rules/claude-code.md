@@ -148,7 +148,7 @@ Don't let a multi-step procedure live in a rule file.
 Don't chain a reference to another reference, because a nested file gets partially read.
 Don't leave model invocation enabled on a skill that writes, deploys, or spends.
 Don't let an agent call inherit the session's model by omitting the tier.
-Don't scope a hook with a matcher filter; match broadly and decide in the script.
+Don't lean on a hook's fine-grained filter for a hard allow or deny; match broadly and keep the decision in the script.
 Don't route around a permission block, because it is evidence of a wrong step earlier.
 Don't keep correcting the same failure past the second attempt in one context.
 Don't trust the branch you read at session start.
