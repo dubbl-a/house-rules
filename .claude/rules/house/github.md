@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.5.0 module=github source=modules/github/rules/github.md body-sha256=b94a3558e9afae487b3b7e7d8f6771dd5c72e744518018d713df90190d5fad20 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.5.0 module=github source=modules/github/rules/github.md body-sha256=c072038e9dacda493d6da896e1e1005b645b91a0e54a774da5ab68df77ad349e DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -17,7 +17,7 @@ Each rule names the thing that enforces it, or says plainly that nothing does.
 Gate on file-only checks, so the gate runs with no database, no network, and no secret to leak. Push everything stateful to a pipeline retro or a local pre-deploy step.
 Name what is deliberately not gated, and why, inside the workflow that does the gating, because an unstated gap reads as coverage.
 Run the same set from one local command before opening the PR, and fail loudly on a missing secret before any lane starts.
-Anchor: the rendered `.github/workflows/pr-checks.yml`, whose wall-time target and concurrency policy ship with the pr-checks.yml template; `npm run check:house` runs the same set locally.
+Anchor: the rendered `.github/workflows/pr-checks.yml`, whose wall-time target and concurrency policy ship with the pr-checks.yml template; `npm run check:house` runs the same set locally. A hosted agent review posts a neutral check that never blocks a merge, so it is one of the gaps to name rather than a gate to lean on.
 Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated`
 
 ## Give a workflow read-only permissions and pin every action by SHA
@@ -33,7 +33,7 @@ Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin
 Treat CI minutes as one pool shared by every repo on the account, billed per job with a per-job minimum, so the number of runs costs as much as their duration.
 Pause an expensive cron by hand, then ship a one-shot job to re-enable it, because a token cannot re-enable another repo's workflow.
 Read the check-run annotation when a run dies at startup, because a billing failure carries no logs and looks nothing like a code failure.
-Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's own spending budget is the hard stop.
+Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's own spending budget is the hard stop. An agent workflow caps nothing on its own, and its runner minutes draw on the same account pool as every other job.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
@@ -57,7 +57,7 @@ Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-
 Ask every PR for a summary, a test plan, and a docs check.
 Make the docs check binary: either the docs edit is in this PR, or the PR says why none is needed.
 Keep the template in the platform's own directory, which is the first place it is looked for.
-Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`.
+Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit on newly introduced drift, so the template is what makes the answer mandatory.
 Receipts: `docs/handbook/github.md#make-the-pr-template-force-a-docs-check-answer`
 
 ## Never put a closing keyword beside an issue number you do not mean to close
@@ -78,7 +78,7 @@ Receipts: `docs/handbook/github.md#ship-phased-work-as-commits-on-one-pr`
 ## Stage explicit paths, never everything at once
 
 Stage by path, because staging everything sweeps in untracked local-only files that were never meant to leave the machine.
-Anchor: the `pre-commit` template refuses a staged secret, which is the backstop for a wide add and not a licence to make one.
+Anchor: the `pre-commit` template refuses a staged secret, which is the backstop for a wide add and not a licence to make one. A permission rule broad enough to allow staging allows the sweep-everything form too, so the approval prompt is no filter on what one add pulls in.
 Receipts: `docs/handbook/github.md#stage-explicit-paths-never-everything-at-once`
 
 ## Classify a merged branch by its PR state, not by merge detection
@@ -86,14 +86,14 @@ Receipts: `docs/handbook/github.md#stage-explicit-paths-never-everything-at-once
 Ask the platform whether the branch's PR merged, because merge-detection flags lie under squash merging and a refusal to delete is not evidence that deleting is unsafe.
 Cross-check a branch's unique commits by their squash-title references on the protected branch.
 Read a closed-but-unmerged PR's closing comment before calling the branch dead or salvageable. When a merge looks like it failed locally, verify the PR state before retrying, because it may already have landed remotely.
-Anchor: `scripts/house/cleanup-worktree.sh`, which classifies from PR state through the platform CLI before it deletes anything.
+Anchor: `scripts/house/cleanup-worktree.sh`, which classifies from PR state through the platform CLI before it deletes anything. The harness's own worktree sweep reads local state only and never asks the platform, so it can neither confirm nor refute a squash merge.
 Receipts: `docs/handbook/github.md#classify-a-merged-branch-by-its-pr-state-not-by-merge-detection`
 
 ## Never delete the branch from the worktree being merged
 
 Do not pass a delete-branch flag from the checkout that has the branch open, because the branch is pinned there and the flag fails noisily.
 Remove the worktree first, then the local branch, then the remote branch through the API.
-Anchor: `scripts/house/cleanup-worktree.sh`, run from the main checkout after the PR merges.
+Anchor: `scripts/house/cleanup-worktree.sh`, run from the main checkout after the PR merges. The harness clears a clean worktree and its branch only as the session exits, so a deletion ordered before that is still yours to sequence.
 Receipts: `docs/handbook/github.md#never-delete-the-branch-from-the-worktree-being-merged`
 
 ## Keep credentials out of the repo, the commit, and the chat
@@ -101,7 +101,7 @@ Receipts: `docs/handbook/github.md#never-delete-the-branch-from-the-worktree-bei
 Keep env files, account ids, and API keys out of the repo, and set every secret through the platform's secret command rather than a config file.
 Load a vendor key from an env-file flag at run time, never from a committed file.
 Run a credentialed diagnostic as a workflow so the token stays with the runner and never enters an agent session.
-Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; the remote is the guard, the hook is the backstop.
+Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; the remote is the guard, the hook is the backstop. Credential files stay readable to a session, and a subprocess inherits the session environment, unless a credential setting or deny-read rule says otherwise, so nothing local keeps a key out of the chat for you.
 Receipts: `docs/handbook/github.md#keep-credentials-out-of-the-repo-the-commit-and-the-chat`
 
 ## Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
@@ -109,7 +109,7 @@ Receipts: `docs/handbook/github.md#keep-credentials-out-of-the-repo-the-commit-a
 Scrub the build environment and hide the secrets file from disk during the build, because an adapter can read that file directly and walk around the environment.
 Scan the built output anyway, and fail the build on an embedded credential or embedded personal data.
 Write obviously fake credentials before the build in CI and scan after it, so a scrub regression fails the PR instead of shipping. A scanner that has never fired is not evidence of a clean build.
-Anchor: `scripts/house/scan-dist-secrets.mjs --self-test` as a CI step after the build, with the canary written before it and removed after.
+Anchor: `scripts/house/scan-dist-secrets.mjs --self-test` as a CI step after the build, with the canary written before it and removed after. A build run from a session inherits that session's environment unless it is scrubbed, so the same scrub before scan applies off CI.
 Receipts: `docs/handbook/github.md#scan-the-built-output-after-scrubbing-the-build-and-plant-a-canary-to-prove-the-scanner-fires`
 
 ## Give a restricted key exactly one writable scope

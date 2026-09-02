@@ -6,7 +6,8 @@ These rules cover the checks a repo runs on itself: the suite, the gates that gu
 ## Give the agent a check it can run before you walk away
 
 Ship one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
-Make it exit non-zero on failure, chain the suite, the guard tests, and the repo checker behind it, and name it in the root instruction file so an agent finds it without being told; how far to escalate that check, from a prompt up to a hook, is claude-code.md's ladder.
+Make it exit non-zero on failure, and chain the suite, the guard tests, and the repo checker behind it.
+Name it in the root instruction file, which the harness loads at the start of every session as advisory context and nothing stronger, so an agent finds the command without being told; escalating it from advice to something the harness enforces is a hook, and that ladder is claude-code.md's.
 Anchor: a single `verify` script that runs the suite, the hook harness, and the checker in one pass, so one command covers the tree.
 Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you-walk-away`
 
@@ -22,14 +23,15 @@ Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-r
 
 Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
 Keep the deterministic tier in the gate and run the eval tier nightly or on demand, because a paid, nondeterministic tier that can block a merge gets switched off the first week it is wrong for a reason nobody can reproduce.
-Give the eval tier its own budget: a cost ceiling the runner enforces, an overage that exits non-zero rather than spending, and a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
+Give the eval tier its own budget using the runner's own controls rather than a promise: set the hard cost ceiling that aborts a run and reports partial results, and the per-case threshold that exits non-zero, then keep that tier out of the merge gate and on a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
 Anchor: `plugins/house/evals/`, whose cases run on demand under their own ceiling, beside `npm test` and `tests/hooks/run.sh`, which are the tiers the gate runs on every pull request.
 Receipts: `docs/handbook/testing.md#split-deterministic-tests-from-model-behavior-evals-and-give-each-its-own-budget-and-cadence`
 
 ## Test the guard itself, as its own CI step
 
 Test the hook, the gate, and the guard script that protect the workflow, because code that decides whether a change is allowed to land deserves a test more than the code it guards.
-Run it as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red; the gate's step list is github.md's.
+The harness makes a hook the thing that actually blocks, yet offers only after-the-fact inspection of one, the transcript view and a debug log, so nothing native proves a guard still fires.
+Run the guard's own test as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red; the gate's step list is github.md's.
 Ship a guard with its own test in the change that introduces it, and build the guard's literal trigger tokens inside the test instead of writing them out, so the test cannot trip the guard it is exercising.
 Anchor: `tests/hooks/run.sh`, wired as its own step beside the suite in the pr-checks template, plus the main-module guard that ships with its own test.
 Receipts: `docs/handbook/testing.md#test-the-guard-itself-as-its-own-ci-step`
@@ -37,7 +39,7 @@ Receipts: `docs/handbook/testing.md#test-the-guard-itself-as-its-own-ci-step`
 ## Feed a real payload through the real wiring, and never re-implement the logic under test
 
 Drive the test through the real entry point with a real payload, never through a helper that restates the rule, because two copies of one rule pass together whenever both are wrong.
-Assert on the contract a caller actually sees: the exit code, the bytes on the output stream, the file that appears on disk. A test that reaches past the entry point proves only that the internals agree with themselves.
+Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning is fixed per event, and stdout that counts as a decision only when it is a bare JSON object. A test that reaches past the entry point proves only that the internals agree with themselves.
 Never assert against a value the test computed the way the code computes it, and run a shipped script as a subprocess rather than importing its internals when the shipped script is what you mean to test. Authoring the hook this drives, and failing it closed, are claude-code.md's.
 Anchor: `tests/hooks/run.sh`, which pipes a real event payload into the real script and asserts its stdout and exit code without restating any of its matching logic.
 Receipts: `docs/handbook/testing.md#feed-a-real-payload-through-the-real-wiring-and-never-re-implement-the-logic-under-test`
@@ -52,10 +54,10 @@ Receipts: `docs/handbook/testing.md#ship-every-gate-with-a-positive-control-and-
 
 ## Prove an eval can fail, then grade it with the cheapest grader that can
 
-Run the eval with the rule loaded and without it and read the delta as the measurement, because a case that scores the same in both arms is measuring the model rather than the rule, and a suite of those reports a number that never moves.
+The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
 Write the cases from failures you actually watched happen, before the prose, then write only enough rule text to pass them; building a few evaluations before documenting a procedure is claude-code.md's rule.
-Climb the grader ladder from the bottom, a deterministic grader for anything a string, a file, or a tool call can settle and a model judge only above that, because a judge is noisiest on exactly the long artifacts you most want graded, and llm-output.md's deterministic backbone is the same rule one level up.
-Repeat every trial rather than trusting a single green run, and report the spread with the ratio and its sample the way engineering.md requires.
+Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded, and llm-output.md's deterministic backbone is the same rule one level up.
+Report the spread with the ratio and its sample the way engineering.md requires.
 Grade the grader too: have it flag an assertion too easy to satisfy, and read the transcripts before you trust the number, because an assertion nobody has read is not evidence that the eval can discriminate at all.
 Anchor: `plugins/house/evals/`, whose cases carry their own graders and thresholds, with the ablation pair at `plugins/house/evals/explicit-model-tier/` whose arms differ in one thing only.
 Receipts: `docs/handbook/testing.md#prove-an-eval-can-fail-then-grade-it-with-the-cheapest-grader-that-can`

@@ -31,6 +31,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
   in that filter. The same rule now also names the floor under a hook: a deny rule is evaluated
   whatever the hook returns, and a session started bare, in safe mode, or in restricted mode loads
   no project hooks at all.
+- The `engineering`, `github`, and `testing` rules now name the native Claude Code feature each
+  one builds on, so a reader arriving from the harness docs sees an extension rather than a
+  restatement. Twenty headings gained a clause naming their floor: the eval runner's no-plugin
+  baseline arm, a PreToolUse denial, hosted review's non-blocking check run, auto memory, a
+  blocking hook's verbatim stderr, plan mode, `--bare` and the locally computed cost figure, the
+  Action's opt-in cost levers, Bash permission-rule matching, worktree cleanup and the worktree
+  sweep, deny rules on Read, the sandbox's Bash-only scope, CLAUDE.md as context rather than
+  enforcement, the runner's cost ceiling and grader types, and hook debugging. The matching
+  handbook chapters gained a dated `Native floor` line per heading with its citation. No heading,
+  config slot, hook contract, or file layout changed.
 
 ## [0.5.0] - 2026-09-02
 
