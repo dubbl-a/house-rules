@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-02
+
+Rule prose names the native Claude Code feature each rule builds on, after an audit found no duplicates or conflicts with the harness; no heading, config slot, hook contract, or layout changed (minor under ADR 0011).
+
 ### Changed
 - **The package's own mechanisms now name the native Claude Code feature they build on.** The
   bootstrap and revise-docs skills say what the harness's own init command and machine-local
