@@ -18,6 +18,15 @@
 #     settings.json carrying only other events is not a branch guard and
 #     does not defer this one)
 #
+# Also fails open, silently, wherever this hook never runs or never sees the
+# command: a session started bare or in safe mode loads no project hooks,
+# restricted mode ignores project settings, and a shell command routed
+# through a Cowork workspace tool or a git operation performed by an MCP
+# server arrives as an MCP tool call rather than a Bash one, so nothing here
+# inspects it. Where that coverage matters, a deny rule naming the whole tool
+# is the only floor that still binds; an allow rule for Bash never carries
+# over to the Cowork tool.
+#
 # Fails CLOSED (deny) whenever jq is missing (cannot parse the payload, so
 # cannot tell a safe command from a dangerous one) and whenever an
 # unexpected internal failure happens after the policy has been read (see

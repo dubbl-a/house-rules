@@ -19,6 +19,11 @@ why, an `Anchor:` line, and a `Receipts:` pointer, and nothing else: `check:hous
 family fails a rule file on sight of a date-like token or a percent-like token anywhere in its
 prose.
 
+Native floor, as of 2026-09-02: a plugin has no native component that ships rule files or
+instruction content as project context (https://code.claude.com/docs/en/plugins-reference), so
+house renders its rules into the project rules directory, where the harness loads them like any
+other project rule and scopes them by their paths frontmatter.
+
 A handbook chapter lives at `docs/handbook/<module>.md`, is never vendored and never loaded into
 any consuming repo's context, and stays in this repo only. It carries what a rule file cannot:
 the dates, names, PR numbers, and measured figures the rule's claim was built from, quoted
@@ -108,6 +113,11 @@ than sessions closed them.
 This shape generalizes repo-a's own carryover chain, issues #605 through #638, where the
 fixed shape is what let each session diff state against the last one instead of re-deriving it
 from a changelog.
+
+Native floor, as of 2026-09-02: session resume and the harness's own memory carry state on one
+machine only (https://code.claude.com/docs/en/sessions), so the carryover issue is the shared
+tier. It records what a resumed session and a memory file cannot hand to another machine or
+another person, and nothing a re-run can regenerate.
 
 ## Retiring a memory entry once its rule ships
 

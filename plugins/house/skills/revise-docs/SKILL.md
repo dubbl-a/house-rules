@@ -10,7 +10,10 @@ learning by appending it to the root instruction file. That is the exact behavio
 exists to replace. A root file that only grows stops getting read to the end, and a learning
 bolted onto it is rarely the fact a future session needed at the moment it needed it. This skill
 keeps the useful half of that plugin, auditing a claim against the codebase before writing it,
-and drops the append half in favor of routing.
+and drops the append half in favor of routing. The harness's own machine-local memory notes
+already capture what a session learned and skip what the instruction files already say, so this
+skill routes the shareable, checked-in half instead: a rule to the rule file whose paths cover the
+surface it touches, an incident to the repo archive.
 
 ## Default path
 
