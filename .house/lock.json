@@ -4,13 +4,13 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "66c85c6611c142fa4a2fb7cde04a638897e92086454d6bc32455caa346d717de"
+      "bodySha256": "fda12612949c64bfd29817041d3ddcf3b47339cf5c97a4d5bcbc46947bf80799"
     },
     {
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "f497b8b02a94028727148e7763313dd441fe8b953bb9162e9972580f27955fcc"
+      "bodySha256": "1d64e89a2c74439c1da161ceb0c7ce52ac4fe90413933a0c7fb9d21f0271eb14"
     },
     {
       "path": ".claude/rules/house/engineering.md",

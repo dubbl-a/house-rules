@@ -33,6 +33,11 @@ instruction file and read its proposed trims, which target derivable content whi
 pitfalls and rationale alone (code.claude.com/docs/en/memory, item 13, EXT-013). It proposes;
 the routing call in this module's rules still decides where a trimmed fact goes.
 
+Native floor, as of 2026-09-02: the harness's own checkup proposes trims to a checked-in
+instruction file and the memory page states size guidance, both advisory
+(https://code.claude.com/docs/en/memory). The `lengths` family is what turns that advice into a
+gate.
+
 ## Keep the auto-memory index to hooks, and hold it under its cap
 
 repo-b's own auto-memory index is the incident, measured 2026-08-29: 94 lines and 20.9 KB
@@ -52,6 +57,10 @@ and why the checker warns while the index is still short enough to fix in one pa
 The index is machine-local state that no repo tracks and no CI checkout has, so the check that
 watches it warns and never fails; ADR 0008 records that boundary and the two environment
 variables it honors.
+
+Native floor, as of 2026-09-02: the MEMORY.md index and its documented load limit, which the
+harness asks Claude to shorten after a write and errors on once the index sits over the ceiling
+(https://code.claude.com/docs/en/memory).
 
 ## Give a domain rule a paths list, and never leave a rule file unscoped
 
@@ -111,6 +120,10 @@ and build a few evaluations before writing extensive skill or rule documentation
 imagined problems instead of real gaps" (platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices,
 item 11).
 
+Native floor, as of 2026-09-02: the memory page already routes a multi-step procedure to a
+skill rather than an instruction file (https://code.claude.com/docs/en/memory). What it does
+not say is what the skill then owes its caller.
+
 ## Keep a skill body short, its references one level deep, and its name equal to its directory
 
 repo-a's `.claude/skills/README.md` (about 40 lines) is the direct source of the cap:
@@ -125,6 +138,10 @@ of the multi-file pattern below" and backtick-cites one of its reference files, 
 in repo-c (`data-story` is a repo-a skill). This survived because repo-c's drift scanner
 never scans `.claude/skills/`, even though `maintaining-docs.md` lists `.claude/skills/**` in its
 own `paths:`.
+
+Native floor, as of 2026-09-02: SKILL.md frontmatter fields and the skill listing context
+budget, where a personal or project skill's `name` is a display label and the directory name is
+what invokes it (https://code.claude.com/docs/en/skills).
 
 ## Disable model invocation on a skill with side effects
 
@@ -141,6 +158,11 @@ a `/permissions` retry, or an `autoMode.allow` rule before it will run.
 Anthropic's guidance names the mechanism: set `disable-model-invocation: true` on any skill with
 side effects, because "it saves context and guarantees only you fire it" (code.claude.com/docs/en/features-overview,
 item 10).
+
+Native floor, as of 2026-09-02: the `disable-model-invocation` frontmatter flag
+(https://code.claude.com/docs/en/skills), print mode expanding a skill named in the prompt
+string before the turn starts (https://code.claude.com/docs/en/headless), and the auto
+permission mode, where a classifier reviews most actions instead of a person.
 
 ## Set the model explicitly on every subagent and workflow agent
 
@@ -161,6 +183,10 @@ happened to be in at the time.
 
 Anchor named in the rule file: an eval pair at `plugins/house/evals/explicit-model-tier/`, whose
 two arms differ only in whether each call sets a model explicitly.
+
+Native floor, as of 2026-09-02: the print-mode `--max-budget-usd` ceiling (`claude --help`) and
+the managed `availableModels` list, which is applied as given rather than merged with a
+project's own (https://code.claude.com/docs/en/settings#combine-settings-across-scopes).
 
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
@@ -188,6 +214,11 @@ rises, from prompt to condition to hook to verification subagent; and make any r
 every time a hook, because the instruction file is advisory context
 (code.claude.com/docs/en/best-practices, items 1 and 3; code.claude.com/docs/en/hooks, item 8).
 
+Native floor, as of 2026-09-02: PreToolUse hook decision mechanics
+(https://code.claude.com/docs/en/hooks), deny and ask rules evaluated whatever a hook returns
+(https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks), and the startup
+shapes that load no project hooks at all (https://code.claude.com/docs/en/headless).
+
 ## Run adversarial review in a fresh subagent with a named lens
 
 repo-e's `reviews/2026-07-24-writing-efficacy-review.md` states the hybrid protocol
@@ -206,6 +237,10 @@ gaps, "a reviewer prompted to find gaps will always find some, and chasing them 
 over-engineering"; delegate file-heavy investigation to subagents the same way, since they run in
 a separate window and return only a summary (code.claude.com/docs/en/best-practices, items 4 and
 6).
+
+Native floor, as of 2026-09-02: the bundled local review command, which already runs in its own
+subagent over the branch diff and whose background runs apply fixes outside the session's
+checkpoints (https://code.claude.com/docs/en/code-review#review-a-diff-locally).
 
 ## Plan when the approach is uncertain, and clear the context after two failed corrections
 
@@ -256,6 +291,13 @@ dead weight left over from a rename.
 repo-e's local settings show the same failure in miniature: two frozen one-off approvals,
 one of them hard-coding an expired scratchpad session UUID.
 
+Native floor, as of 2026-09-02: permission lists merging across scopes rather than overriding
+(https://code.claude.com/docs/en/settings#combine-settings-across-scopes), the allow and deny
+wildcard asymmetry on MCP tool names
+(https://code.claude.com/docs/en/permissions#tool-name-wildcards), and a print-mode run loading
+project-scoped servers with no approval prompt
+(https://code.claude.com/docs/en/mcp#project-server-approvals-and-workspace-trust).
+
 ## Read a resume file as a harness artifact, not a handoff
 
 repo-a's `.claude/RESUME.md` is the direct example: an auto-written near-limit checkpoint
@@ -288,6 +330,9 @@ open carryovers accumulated faster than sessions closed them, and the copied num
 the moment the tree moved. The revised form closes the superseded issue on supersession and drops
 anything re-derivable from the recorded SHA; what remains is exactly the state the next session
 cannot reconstruct on its own.
+
+Native floor, as of 2026-09-02: auto memory, the harness's own store for ongoing work, which is
+machine-local and shared with nobody (https://code.claude.com/docs/en/memory).
 
 ## Check for a peer session before driving shared external state
 

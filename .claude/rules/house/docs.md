@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.5.0 module=docs source=modules/docs/rules/docs.md body-sha256=a4db5d49a4d0a2a6280bed7f0e0492e3168750e45bf90a4511a17ca3fae57300 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.5.0 module=docs source=modules/docs/rules/docs.md body-sha256=d5d7bf232023fc4f1ce72971971163c7f48d9df46ac2099909cb5714396ebe80 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -24,7 +24,7 @@ Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 ## Run the docs gate before pushing and in the build
 
-Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. Local-first is the workflow; the build wiring is the safety net, not the loop you develop in.
+Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the hook and the pull-request check be the net.
 A gate you only meet through a red badge after review costs a round trip per typo, and the round trip is what makes people stop running it.
 Anchor: `npm run check:docs`, wired into the build's pre-build step and run as a step in the pull-request workflow.
 Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-build`
@@ -38,7 +38,7 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 
 ## Put a fact where its litmus test says it belongs
 
-Route each fact by its litmus test: the root file if a session would go wrong without it every time, a rule file if it binds only while a matching path is open, the README if a human landing on the repo needs it, a skill if it is a procedure with steps, the archive if it is a dated observation. Working rules, a human runbook, strategy, the changelog, deep reference, and orientation are separate roles, so give each its own document rather than another section, and restate neither the code nor the package manifest in any of them.
+The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule, and it trims what it can derive from the code. This rule carries that split out to the README, the changelog, and the archive, where nothing native reaches: the README if a human landing on the repo needs it, the archive if it is a dated observation. Working rules, a human runbook, strategy, the changelog, deep reference, and orientation are separate roles, so give each its own document rather than another section, and restate neither the code nor the package manifest in any of them.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation), because a document trying to be all four serves none of them.
 Index a set of reference docs with a start-here pointer rather than restating them, say outright when a method doc is project-agnostic and meant to be copied, and keep its original worked examples when copying it, because the moves transfer and the tables do not.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file).
@@ -62,7 +62,7 @@ Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-ru
 
 ## Keep files under budget, and raise a ceiling only with a written reason
 
-Hold every document to its configured line ceiling: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
+The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work instead of being renegotiated.
 Raising a ceiling takes an entry naming the path, the old and new limit, the reason, and the date it was decided, so the raise argues for itself in the diff rather than landing as a quiet edit.
 Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema.
@@ -71,7 +71,7 @@ Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-onl
 ## Cut, don't append, and trim on a fixed cadence
 
 When you add to a document, trade something out; a file that only grows is a file nobody reads to the end of. Cut any paragraph that exists to record that something happened rather than to change what the next session does.
-Trim on a fixed cadence and delete at least one section across the root file and the rule files each time. Finding no candidate is a valid outcome, because the prompt to look is what does the work.
+The harness proposes trims when asked and advises a periodic review, but it sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, delete at least one section across the root file and the rule files each time, and let the ratchet hold the floor. Finding no candidate is a valid outcome, because the prompt to look is what does the work.
 Know the bloat smells: a walkthrough of what a script does, a stack list with versions, a file-conventions list, nesting three levels deep, and example code that is not a workaround.
 Prune on evidence too: a rule that keeps getting ignored means the file is too long, and a question the file already answers means the phrasing is ambiguous.
 Anchor: `npm run check:house` (ratchet) tightens on every shrink, so a trimmed file cannot quietly grow back.
@@ -107,6 +107,7 @@ Receipts: `docs/handbook/docs.md#dont-document-a-command-that-does-not-exist`
 ## Ship the docs and changelog edit in the same PR as the change
 
 When a change adds or renames a script, an environment variable, an endpoint behavior, or a maintenance step, its docs edit ships in the same pull request. A docs pull request opened afterward is an afterthought and drifts. Say in the body that you checked when no edit was needed, and ship every artifact a run produced in the same pass, including the ones the script's own instructions forget to name.
+A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit and only where it runs, so the docs edit ships in the same pull request and the template's binary is what holds it.
 A standalone docs pull request is fine when there is no code change at all, and skills follow the docs workflow rather than a code deploy.
 Log in the changelog only what the repo's audience would notice, by hand, under an unreleased heading in reverse-chronological dated sections; refactors, infra, and silent fixes live in git history.
 Open a change entry by saying plainly whether the substance moved, then what changed and what is still open. When a no-op refactor turns up a real bug, split it out and describe it as a correction rather than burying it in the cleanup.

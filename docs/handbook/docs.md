@@ -57,6 +57,11 @@ No incident recorded; the reasoning is the round-trip cost. A gate only met thro
 after review costs a round trip per typo, and the round trip is what makes people stop running
 it.
 
+Native floor, as of 2026-09-02: none for the running of it. Instruction and rule files are
+delivered as context rather than enforced configuration
+(https://code.claude.com/docs/en/memory), so a hook or a build step is what makes a
+run-it-before-pushing instruction hold (https://code.claude.com/docs/en/hooks).
+
 ## Give every rule file a paths list whose first segment resolves
 
 The mechanical gate validates every rule file's `paths:` frontmatter: "every glob's first
@@ -101,6 +106,10 @@ worked examples rather than genericize them, because the moves transfer and the 
 No incident recorded for a fact landing in the wrong tier and causing a visible failure; the
 routing rule is a judgment call by design; a gate can measure a file's length, not whether a
 fact is in the right file.
+
+Native floor, as of 2026-09-02: the memory page's own routing of always-true facts to the root
+file, procedures to a skill, and path-bound facts to a path-scoped rule, plus the checkup's
+trim of what is derivable from the code (https://code.claude.com/docs/en/memory).
 
 ## State a rule as imperative, why, anchor, receipts
 
@@ -169,6 +178,10 @@ chapter, to its configured ceiling, and the ceiling tightens on its own whenever
 so a raise takes a written entry naming the path, the old and new limit, the reason, and the date
 decided, validated against the manifest schema, rather than landing as a quiet edit.
 
+Native floor, as of 2026-09-02: the root instruction file's soft size guidance and the hard
+file-size cap past which the harness skips the file entirely
+(https://code.claude.com/docs/en/memory). No other document in a repo has a native budget.
+
 ## Cut, don't append, and trim on a fixed cadence
 
 "Files should not grow monotonically." repo-a names a trim cadence, quarterly or at each
@@ -191,6 +204,10 @@ its default habit, appending session learnings to `CLAUDE.md`, is the exact appe
 failure mode this rule exists to prevent. The decision was recorded rather than silently
 declined: "revisit only with a routing convention: learnings go to the matching rule file,
 incidents to the domain's design-history doc."
+
+Native floor, as of 2026-09-02: the checkup's trim proposal and the memory page's advice to
+review instructions periodically, neither of which sets a cadence or stops a trimmed file
+growing back (https://code.claude.com/docs/en/memory).
 
 ## Split a file only when splitting narrows what loads
 
@@ -312,6 +329,10 @@ real bug should be split out and described as a correction, not buried inside th
 that found it. Second, a run's own instructions can forget to name every artifact it produced;
 the fix is to ship every artifact the run actually produced in the same hygiene pull request,
 including the ones the script's own documentation left out.
+
+Native floor, as of 2026-09-02: hosted Code Review, whose findings arrive as severity-graded
+comments on a check run that never blocks a merge, and only in repositories where it is
+installed (https://code.claude.com/docs/en/code-review#check-run-output).
 
 ## Sources
 
