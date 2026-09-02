@@ -734,7 +734,7 @@ One compact table per house-rules module, sourced from `classifications/*.json`.
 | coload family | COMPLEMENT | Path-specific rules loading on read; skill listing context budget | keep |
 | manifest family | UNIQUE | none | keep |
 | minutes family | COMPLEMENT | GitHub Action cost controls | keep |
-| guard family | CONFLICT | Multi-hook result combination; disableAllHooks and safe or bare sessions | resolve-conflict |
+| guard family | CONFLICT (refuted by the enforcement skeptic; downgraded to COMPLEMENT, see the Result paragraph) | Multi-hook result combination; disableAllHooks and safe or bare sessions | resolve-conflict |
 | render and vendor step | COMPLEMENT | Plugins cannot ship rules or CLAUDE.md as project context; .claude/rules/ with paths frontmatter | reword-to-cite-native-floor |
 | lock file | UNIQUE | none | keep |
 | deviations ledger and ratchets | UNIQUE | none | keep |
