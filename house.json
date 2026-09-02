@@ -82,7 +82,7 @@
         ],
         "lengthLimits": {
           "CLAUDE.md": 40,
-          "README.md": 120,
+          "README.md": 160,
           ".claude/rules/house/*.md": 200
         },
         "maxCoLoadLines": 400,
@@ -136,6 +136,13 @@
       "from": 60,
       "to": 120,
       "why": "the public README now has to carry positioning, prerequisites, versioning policy, and licensing for a reader who has never seen this package, which does not fit in 60 lines",
+      "decided": "2026-09-02"
+    },
+    {
+      "path": "README.md",
+      "from": 120,
+      "to": 160,
+      "why": "a public README carries positioning, prerequisites, licensing, contributing pointers, and acknowledgements that the private one did not, and 160 leaves headroom so each honest addition does not renegotiate the budget",
       "decided": "2026-09-02"
     }
   ]

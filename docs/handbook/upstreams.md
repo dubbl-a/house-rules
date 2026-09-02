@@ -3,7 +3,10 @@
 
 Every public source this package reuses or borrows from, pinned to what was
 consulted, so staying current is a deliberate, diffable act rather than a
-re-fork. Two relationships, two rules:
+re-fork. The Relationship column, in one line each: what was taken (REUSE,
+BORROW); what shaped a choice without being taken (INFORMED); what was
+evaluated and not adopted (CONSULTED, REJECTED); and what is cited as an
+authority (CITED). REUSE and BORROW are the two that carry an ongoing rule:
 
 - **REUSE (dependency):** consumed at a pinned version; staying current is a
   version bump that must pass this package's own positive and negative
@@ -36,6 +39,27 @@ re-fork. Two relationships, two rules:
 | github.com/VoxCore84/claude-code-hook-tester | 2026-08-24 | MIT | BORROW | per-event mock payloads on stdin, and the three-way outcome contract a hook test must assert (0 passes, 2 is an intentional block, anything else is a crash) rather than reading any non-zero exit as a failure | re-check on a hook-protocol change |
 | anthropic.com/engineering/demystifying-evals-for-ai-agents | 2026-08-24 | docs | BORROW (citation anchor) | grader classes; isolation; outcome-over-path; two-experts task quality; pass@k vs pass^k; two-sided case design | re-read on republication |
 | github.com/skill-bench/skill-eval-action | 2026-08-24 | MIT | BORROW (idea only) | mandatory negative trigger case; upsert-one-PR-comment reporting | none |
+| github.com/antfu/eslint-config | 2026-09-01 | MIT | INFORMED | the README's opening contract (personal opinionated config; review the diff on every update, or fork) and the loose pole of the breaking-change policy (rule changes are not breaking) | on the next README rewrite |
+| typescript-eslint.io/users/versioning | 2026-09-01 | docs | INFORMED | the strict pole ADR 0011 weighed (preset and default changes are breaking) | re-read on an ADR 0011 revisit |
+| prettier.io/docs/option-philosophy | 2026-09-01 | docs | INFORMED | why `modules.docs.config.emDash` is a small fixed surface (three modes, two lists) rather than a knob per exception | re-read on republication |
+| eslint.org/docs/latest/extend/shareable-configs | 2026-09-01 | docs | INFORMED | later-wins overrides as the model for per-repo config over package defaults | re-read on republication |
+| github.com/tsconfig/bases | 2026-09-01 | MIT | CONSULTED (not adopted) | runtime-tracking versions and automated daily publishing; this package keeps semver and manual releases | re-read on a tsconfig/bases major |
+| cruft.github.io/cruft | 2026-09-01 | MIT | INFORMED | the update, check, and skip-list trio that validated render plus checker plus deviations; already discussed in `docs/handbook/sources/prior-art.md` | re-read on a cruft major |
+| rulesync.dev | 2026-09-01 | docs | CONSULTED (not adopted) | CLI-pull distribution of rule files from a hosted source; no render or per-repo override step | re-read on republication |
+| github.com/intellectronica/ruler | 2026-09-01 | MIT | CONSULTED (not adopted) | cross-tool fan-out of one rules source; no lock, checker, or ledger | re-read on a ruler major |
+| github.com/yelmuratoff/agent_sync | 2026-09-01 | GPL-3.0-only | CONSULTED (not adopted) | a hash manifest for its own generated outputs; the comparison that kept this package from claiming hash drift as novel | re-read on its next release |
+| github.com/lirantal/agent-rules | 2026-09-01 | Apache-2.0 | CONSULTED (not adopted) | one-shot scaffolding of curated rules; no update story | re-read on its next release |
+| github.com/PatrickJS/awesome-cursorrules | 2026-09-01 | CC0-1.0 | CONSULTED (not adopted) | a copy-paste rule collection; the demand signal and the missing update story | re-read on its next release |
+| github.com/jameskomo/config-drift-checker | 2026-09-01 | FSL-1.1-ALv2 (not OSI-approved) | CONSULTED (not adopted) | a with-and-without ablation of an agent config; the comparison that kept this package from claiming evals as novel | re-read on its next release |
+| github.com/prime-radiant-inc/superpowers-evals | 2026-09-01 | none found (all rights reserved) | CONSULTED (not adopted) | a skill-behavior eval harness | re-read on its next release |
+| github.com/hesreallyhim/awesome-claude-code | 2026-09-01 | CC BY-NC-ND 4.0 | INFORMED | listing thresholds (14 days of activity or 100 stars) and form-only intake; the reason issue forms exist here | re-read if the listing thresholds change |
+| opensource.guide/starting-a-project | 2026-09-01 | CC BY 4.0 | CITED | the four baseline files at launch | re-read on republication |
+| docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/about-community-profiles-for-public-repositories | 2026-09-01 | docs | CITED | issue forms need `name` and `description` to count | re-read on republication |
+| choosealicense.com/non-software | 2026-09-01 | CC BY 3.0 | CITED | split licensing for code plus prose; code examples in docs under the code license | re-read on republication |
+| creativecommons.org/faq | 2026-09-01 | CC BY 4.0 | CITED | CC licenses for documentation, not software | re-read on republication |
+| spdx.github.io/spdx-spec/v2.3/SPDX-license-expressions | 2026-09-01 | CC BY 3.0 | CITED | the `MIT AND CC-BY-4.0` expression | re-read on an SPDX spec update |
+| linuxfoundation.org/licensebestpractices | 2026-09-01 | docs | CITED | per-content-type licensing | re-read on republication |
+| code.claude.com/docs/en/plugins-reference | 2026-09-01 | docs | CITED | no rules component; a plugin-root CLAUDE.md is not loaded (the reason render and vendor exist) | re-read if a rules component ships |
 
 Internal bases (not public, recorded for the same reason): repo-b
 `scripts/check-docs-drift.mjs` and `.claude/hooks/no-direct-master.sh` are the

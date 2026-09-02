@@ -53,3 +53,5 @@ What is deliberately absent is a gate that reads a diff and prints the bump it e
 ## More information
 
 Receipts: `docs/handbook/conventions.md`, "Versioning the package, and what a bump is promising", which enumerates the public surface this record assigns bumps to and now points here; and `docs/decisions/0001-vendor-rules-over-imports-symlinks-and-replay.md`, which chose vendoring with a refusal over silent replay and is the reason a rule rewrite is a proposal to each repo rather than a delivery.
+
+The two poles weighed above: the loose end is the README of [antfu/eslint-config](https://github.com/antfu/eslint-config), which treats a rule change as not breaking because a person reviews every diff before it lands; the strict end is [typescript-eslint's versioning policy](https://typescript-eslint.io/users/versioning/), which treats a preset or default change as breaking.

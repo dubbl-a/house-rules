@@ -110,6 +110,35 @@ upstream that contributed text, structure, or a working method.
 or raise a limit, and `npm run verify`, the local gate. `SECURITY.md` is how to report a
 vulnerability privately, and `CODE_OF_CONDUCT.md` applies wherever this project runs.
 
+## Standing on other people's work
+
+This package borrowed ideas, structure, and in a few places actual text before it wrote a line of
+its own rules. The people and projects below are named plainly rather than folded into one credits
+line, because each one shaped something specific.
+
+- [superpowers](https://github.com/obra/superpowers) (obra), for the in-session discipline this
+  package complements and for the starting text behind its worktree and finish-branch guidance.
+- [antfu's eslint-config](https://github.com/antfu/eslint-config), for the personal-config contract
+  this README opens with.
+- [typescript-eslint's versioning policy](https://typescript-eslint.io/users/versioning/), for the
+  strict pole weighed against antfu's loose one, and [Prettier's option
+  philosophy](https://prettier.io/docs/option-philosophy), for why the em dash setting is a small,
+  fixed set of options rather than a knob per exception.
+- [cruft](https://cruft.github.io/cruft/), for proving the update, check, and skip-list shape this
+  package's own checker follows.
+- [MADR](https://github.com/adr/madr), for the decision-record template this package's ADRs still
+  carry.
+- the [Contributor Covenant](https://www.contributor-covenant.org), for `CODE_OF_CONDUCT.md`.
+
+Four more names sharpened where this package chose to sit, without contributing text taken
+directly: [Ruler](https://github.com/intellectronica/ruler),
+[AgentSync](https://github.com/yelmuratoff/agent_sync),
+[awesome-cursorrules](https://github.com/PatrickJS/awesome-cursorrules), and
+[config-drift-checker](https://github.com/jameskomo/config-drift-checker).
+
+`docs/handbook/upstreams.md` is the full ledger, dated and licensed; `NOTICE` says exactly what was
+borrowed and how.
+
 ## Where to look next
 
 `docs/handbook/` for why a rule reads the way it does, `docs/decisions/` for a call this package
