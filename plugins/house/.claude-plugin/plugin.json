@@ -1,6 +1,6 @@
 {
   "name": "house-rules",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Persistent repository conventions for Claude Code: rule files vendored into your repo, a drift and tamper checker, a branch guard hook, and skills to bootstrap, sync, and revise them.",
   "author": {
     "name": "Aaron Altamura"
