@@ -162,7 +162,7 @@
 - Ship every gate with a positive control and a negative control
   Commit the case the gate must fail beside the case it must pass, and run both in the same job, because a suite of passing cases cannot tell a working check from one that always passes.
 - Prove an eval can fail, then grade it with the cheapest grader that can
-  Run the eval with the rule loaded and without it and read the delta as the measurement, because a case that scores the same in both arms is measuring the model rather than the rule, and a suite of those reports a number that never moves.
+  The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
   Read the diff a snapshot gate prints and say what changed before accepting the new snapshot, because accepting it unread turns a drift gate into a rubber stamp.
 - Quarantine a flaky test loudly, and never retry it into silence

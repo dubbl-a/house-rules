@@ -23,7 +23,7 @@ Run a case whose answer is known independently before believing a clean result, 
 Ask what a totally broken version would have printed, run the positive control first, and keep a yardstick set you run before trusting a batch.
 Turn a review finding into a mechanical check, make a real surfaced case the acceptance test, and paste the command with its output instead of asserting the result; a guard that shares the change's blind spot cannot falsify it.
 Zero false positives is necessary and never sufficient, so graduate a check only once it has been shown to catch a real case, and have it return a null rather than a false when it cannot evaluate at all.
-Anchor: `node --test tests/`, which requires a positive and a negative control per check, with the eval case `known-answer-control`
+Anchor: `node --test tests/`, which requires a positive and a negative control per check, with the eval case `known-answer-control`; the harness floor is the eval runner's no-plugin baseline arm, which compares one arm against another and never proves the check itself can fail, so the paired control is this repo's requirement.
 Receipts: `docs/handbook/engineering.md#prove-a-check-can-fail-before-trusting-that-it-passed`
 
 ## Verify the served artifact, not the source
@@ -66,6 +66,7 @@ Receipts: `docs/handbook/engineering.md#show-the-ratio-and-the-sample-because-on
 
 Seed the sampling so two initializing runs are byte-identical, because a baseline fingerprint nobody can reproduce means nothing.
 Regenerate a fixture from its source under a seed instead of curating it, treat a holdout as spent once it has been validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with the command that re-pulls it, move the baseline in the change that moves the numbers with the why in the pull request, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
+When the instrument drives an agent, pin the bare non-interactive invocation that skips ambient discovery, and record the pricing basis beside any cost the harness reports, because that figure is computed locally and a configured rate or a residency multiplier moves it without moving the bill.
 Anchor: seeded regeneration asserted byte-identical in `tests/`
 Receipts: `docs/handbook/engineering.md#make-a-measuring-instrument-reproducible`
 
@@ -80,7 +81,7 @@ Receipts: `docs/handbook/engineering.md#assert-an-invariant-where-its-state-is-c
 
 Require a reason on every escape hatch, print it, scope it to one run, and keep it deliberately awkward, because a silent override quietly becomes the normal path.
 Give a gate that protects an integrity claim no waiver at all, and short-circuit it before the waiver is even read.
-Anchor: reason-carrying environment escapes as a repo-wide convention, with the eval case `integrity-gate-no-waiver`
+Anchor: reason-carrying environment escapes as a repo-wide convention, with the eval case `integrity-gate-no-waiver`; the harness floor is a PreToolUse denial, which holds in every permission mode including bypass but demands no reason from the person overriding, so the printed reason and the one-run scope are this repo's addition.
 Receipts: `docs/handbook/engineering.md#make-every-waiver-print-its-reason-and-give-an-integrity-gate-none`
 
 ## Read a missing field as missing, because absence is not confidence
@@ -92,14 +93,14 @@ Receipts: `docs/handbook/engineering.md#read-a-missing-field-as-missing-because-
 ## Demote a gate that has been wrong before
 
 Keep a checker's false-positive tally inside the checker and demote its verdict to advisory once it has been wrong, because a gate with a known blind spot does not get to be certain.
-Anchor: the tally lives in the checker's own header and its verdict prints as advisory, asserted in `tests/`
+Anchor: the tally lives in the checker's own header and its verdict prints as advisory, asserted in `tests/`; the harness's own reviewer already reports findings without blocking a merge, and this rule extends that posture by making a checker's record of past false positives visible in the verdict it prints.
 Receipts: `docs/handbook/engineering.md#demote-a-gate-that-has-been-wrong-before`
 
 ## Record a significant decision as a numbered, immutable record
 
 Write every architecturally significant decision as a numbered record in the repo, on a short standard template so writing one stays part of normal flow.
 Never edit a decided record: supersede it by number with a visible marker, keep a ruled value canonical and an unruled one blocked from output, and reserve records for decisions with measurable architectural effect, because one per choice devalues the set.
-Anchor: numbered files under `docs/decisions/`, and `node .house/check.mjs` fails a link into that directory that does not resolve
+Anchor: numbered files under `docs/decisions/`, and `node .house/check.mjs` fails a link into that directory that does not resolve; the harness's auto memory keeps decision notes machine-local and rewritable, so a decision with measurable architectural effect belongs in a numbered record in the repo instead.
 Receipts: `docs/handbook/engineering.md#record-a-significant-decision-as-a-numbered-immutable-record`
 
 ## Land a build-time guard with the code it protects
@@ -113,6 +114,7 @@ Receipts: `docs/handbook/engineering.md#land-a-build-time-guard-with-the-code-it
 
 Look for an existing tool before writing one, and record what you evaluated and did not adopt with the case that decided it, because an unrecorded rejection gets re-litigated.
 Judge a system against its own rules first, then against current external guidance with the sources listed.
+Run the search in the harness planning phase, where edits stay blocked until a plan is approved, and hold that posture yourself in a session where the block does not apply, because the plan is not the record.
 Anchor: a record under `docs/decisions/` naming the candidates, the deciding case, and the adopt or not-adopt call
 Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-a-tool-and-record-what-you-did-not-adopt`
 
@@ -141,7 +143,7 @@ Receipts: `docs/handbook/engineering.md#normalize-against-fixed-anchors-never-ag
 
 Write a refusal that teaches the fix rather than one that reports the failure, because the reader is trying to get unstuck.
 Print the working directory, the two states that disagree, and labelled remediations; fail fast on missing config, since a silent fallback ships stale content; and record the symptom beside the fix so the next reader recognises the failure before diagnosing it.
-Anchor: every guard's refusal path is exercised in `tests/` and asserts its remediation text
+Anchor: every guard's refusal path is exercised in `tests/` and asserts its remediation text; the harness passes a blocking hook's reason or stderr through to the agent verbatim and never requires it to say anything useful, so the remediation a guard prints is what the next reader and the next agent both act on.
 Receipts: `docs/handbook/engineering.md#make-an-error-message-teach-the-fix`
 
 ## Read config from the environment, and keep build, release, and run separate

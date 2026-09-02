@@ -15,6 +15,8 @@ A branch-protection gap, a leaked key, a wrongly-closed issue, an exhausted Acti
 
 **Pre-commit scope is contested, and only the speed constraint is agreed.** One camp runs formatters and linters at commit and pushes everything else to CI; another treats a local hook as redundant with CI entirely. No source settles which is right, and the only thing every source agrees on is that a hook slower than a few seconds gets bypassed with `--no-verify` and then disabled outright (EXT-072). This package takes the first position by shipping a `pre-commit` template, and states the disagreement here so the choice reads as a call that was made rather than the only option there was.
 
+Native floor, as of 2026-09-02: hosted Code Review, whose check run posts its findings as a neutral result and never blocks a merge (https://code.claude.com/docs/en/code-review.md#check-run-output).
+
 ## Give a workflow read-only permissions and pin every action by SHA
 
 **repo-a, `.github/workflows/pr-checks.yml`.** Declares `permissions: contents: read` with the reason written beside it: "Read-only checkout; no comment/issue/PR mutation from this workflow."
@@ -32,6 +34,8 @@ What consumed the 30 days to 2026-08-23: repo-a's `results-probe` on a `*/15` cr
 Both timers were disabled by hand on 2026-08-24. Each repo now carries its own one-shot `resume-schedules.yml`, a `cron: '0 8 1 9 *'` job with `actions: write` permission that re-enables its own paused workflow on 2026-09-01, because `GITHUB_TOKEN` is repo-scoped and one repo cannot re-enable another's workflow. The maintainer confirmed the diagnosis 2026-08-24 as an exhausted monthly allowance, not a failed payment: the account is on GitHub's free plan (the branch-protection API itself returns "Upgrade to GitHub Pro"), so included minutes reset on the 1st of each calendar month UTC, and 08:00 UTC on 2026-09-01 has about 8 hours of margin. Consequence while exhausted: no CI ran in any private repo, so any PR merged in that window merged ungated (PR #642's own `pr-checks` run failed at startup).
 
 **Prior-art check.** GitHub's own native Actions spending budgets block runners on threshold and are the reuse target for enforcement; a local check is worth keeping only for what it estimates before merge, which the platform budget does not do.
+
+Native floor, as of 2026-09-02: the GitHub Action's own cost levers, `--max-turns`, workflow timeouts, and concurrency, all opt-in, with nothing capping cost at the Action level and runner minutes drawn from the same account pool as every other job (https://code.claude.com/docs/en/github-actions.md#manage-costs).
 
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
 
@@ -55,6 +59,8 @@ No incident recorded; the rule came in on reasoning alone, from external guidanc
 
 **What the changelog checkbox does not carry.** repo-a's own changelog rule adds a bright-line caveat the generic checkbox text cannot state: if a changelog bullet names one candidate in a race, every candidate in that race gets equivalent mention or none does. That caveat is the product's editorial promise, not a fleet convention (recorded, and dropped on purpose, as TW-191), so the vendored template's "CHANGELOG.md entry under [Unreleased] included" line stays generic rather than encoding it. A repo carrying a similar bright line appends its own sentence to that checkbox after adopting the template and records the append in its own `house.json` `deviations` array, so a later `/house-rules:sync` does not quietly overwrite the local wording back to the generic line.
 
+Native floor, as of 2026-09-02: hosted Code Review's severity levels, where stale documentation surfaces as a non-blocking nit and only on drift the pull request newly introduces (https://code.claude.com/docs/en/code-review.md#severity-levels).
+
 ## Never put a closing keyword beside an issue number you do not mean to close
 
 **repo-a, first on 2026-08-18 and again on the #629 merge.** GitHub's linked-issue parser matches `close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved #N` anywhere in a PR body or commit message and does not parse the words around it. The first time, a PR body reading "Does not close #623, which still decides whether the transcript can carry a quote" closed issue #623 (a council-transcript spot-check against the source video, still open) silently on merge, because the parser ignores negation before the closing keyword; it happened again on the #629 merge. The issue closed with reason COMPLETED and no comment, reading exactly as though the work had been done, a wrong state nothing else catches when the closing was unintended. The fix in practice: write "Does not address #N," "Related: #N," or "#N stays open" instead, never a closing keyword immediately before a number you mean to leave open, and check the issue's actual state after merging any PR that mentions one.
@@ -69,6 +75,8 @@ No incident recorded; the rule came in on reasoning alone, from external guidanc
 
 **repo-a, 2026-06-10, PR #350.** A `git add -A` while committing an unrelated results KV-put-throttle fix swept a 541-line, intentionally-untracked local file (`docs/tech-debt-primer.html`) into the commit and pushed it to `origin/master`. It was not site-served, since it lived under `docs/` rather than `src/pages/`, but it was meant to stay out of git entirely. It took a follow-up PR (#351) to `git rm --cached` it and add it to `.gitignore`. The repo carries other intentionally-untracked, local-only files the same way, so the fix is staging by explicit path (`git add <path1> <path2>`) and checking `git status --short` before every commit, not trusting a wide add to sort itself out.
 
+Native floor, as of 2026-09-02: Bash permission-rule matching, where a rule broad enough to allow a staging command allows the sweep-everything form of it too, so the approval prompt filters nothing about what one add pulls in (https://code.claude.com/docs/en/permissions.md).
+
 ## Classify a merged branch by its PR state, not by merge detection
 
 **repo-a squash-merges, and both of Git's local signals lie because of it.** `git branch --no-merged master` reports squash-merged branches as still unmerged, because the squash commit has a different SHA and patch-id than the branch's own granular commits; `git cherry` (which compares by patch-id) over-reports for the same reason when many granular commits map to one squash. Neither is a reliable "is this branch's work already in master" signal. The reliable check is `gh pr list --head <branch> --state all --json number,state,mergedAt`: `MERGED` means the work is in master via squash and the branch is safe to delete. A second cross-check works even for a branch with no PR of its own: its unique commits carry `(#NNN)` squash-title suffixes, and if every `#NNN` they reference appears in `git log master`, the branch is an old pre-squash accumulation and still safe. A closed-but-unmerged PR is not automatically dead work either: PR #284 was closed as a duplicate of merged PR #285, fully superseded, and the closing comment is what tells you that rather than the branch state alone. Deletion mechanics matter too: a squash-merged branch needs `git branch -D` (force), because the safe `-d` refuses it on patch-id grounds and that refusal is not evidence the branch is unsafe to delete; the remote side goes through `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` because `git push origin --delete` is blocked from the master checkout by the `no-direct-master.sh` hook.
@@ -79,11 +87,15 @@ No incident recorded; the rule came in on reasoning alone, from external guidanc
 
 **External guidance (official).** Use the `gh` CLI for all GitHub interaction from an agent; it is the most context-efficient path, and unauthenticated API calls hit rate limits fast.
 
+Native floor, as of 2026-09-02: the periodic sweep of subagent and background-session worktrees, which reads local state only and never asks the platform whether a pull request merged (https://code.claude.com/docs/en/worktrees.md#clean-up-subagent-and-background-session-worktrees).
+
 ## Never delete the branch from the worktree being merged
 
 **repo-a, CLAUDE.md contributing workflow.** "Don't pass `--delete-branch` to `gh pr merge`, the local branch is pinned by the worktree and the flag will fail noisily." `cleanup-worktree.sh` is the canonical post-merge teardown and runs in four ordered steps, from the master checkout, only after the PR has merged: find and kill only `node`, `npm`, `astro`, or `wrangler` processes whose working directory is inside the worktree (an editor or shell left open is left alone), with a one-second pause so a released file descriptor does not block removal; `git worktree remove --force` (force is required because every worktree carries untracked `node_modules/`); `git branch -D` for the local branch; and a remote delete via `gh api -X DELETE`, chosen specifically because `git push origin --delete` is blocked by the `no-direct-master.sh` hook while a `gh api` call is not a `git push` and so the hook leaves it alone. The script refuses to run against the main worktree, an unregistered path, or a detached HEAD, and treats a 422 or a missing `gh` binary as non-fatal rather than aborting the whole teardown.
 
 **Worktree mechanics that keep the fixtures alive.** Each worktree needs its own `npm install`, its own dev-server port off a ladder (master at 4321, worktrees at 4322 and up), and symlinks, never copies, for shared gitignored fixtures. `entity-gold.csv` is named explicitly as the case that bites: it accumulates hand labels over time, so a worktree that copies it instead of symlinking it loses every label written there the moment the worktree is torn down. The same repo runs the heavier version of that arrangement for a bulk artifact: a roughly 8 GB gitignored council `meeting_archive/` is homed in exactly one checkout and symlinked into every other one, because two copies of it will not fit and a second crawl to rebuild it means hours of polite fetching against a host that disallows it (MEM-073). That makes the teardown step load-bearing rather than cosmetic: `git worktree remove --force` deletes gitignored files, which is the whole reason force is required, so the check before running it is `ls -l` and not `ls`, confirming the path in this worktree is the symlink and not the real directory. `ls` cannot tell them apart, and the run that gets it wrong is not recoverable from git.
+
+Native floor, as of 2026-09-02: worktree cleanup on session exit, which removes a clean worktree and its branch as the session ends, and so sequences nothing for a deletion ordered before that (https://code.claude.com/docs/en/worktrees.md#clean-up-worktrees).
 
 ## Keep credentials out of the repo, the commit, and the chat
 
@@ -93,11 +105,15 @@ No incident recorded; the rule came in on reasoning alone, from external guidanc
 
 **repo-c, `.claude/rules/deployment.md`.** Secrets go through `wrangler secret put` only, never into `wrangler.toml`, never into the repo, and never pasted into a Claude session.
 
+Native floor, as of 2026-09-02: deny rules on Read, which are what keep a credential file out of a session at all (https://code.claude.com/docs/en/permissions.md), and the credential helper settings that keep a key out of a config file (https://code.claude.com/docs/en/settings.md).
+
 ## Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
 
 **repo-b, `.github/workflows/pr-checks.yml`.** The build sequence is: `npm ci`, `check:docs`, `typecheck`, `test`, then write a canary `.dev.vars` file with obviously-fake secrets, build the site, remove the canary, run `scan-dist-secrets.mjs --self-test`, then build the console. The canary step is what proves the secret scrub cannot regress silently: if the scanner ever stopped detecting embedded secrets, the fake credential planted before the build would still be sitting in `dist/` and the self-test would catch it, rather than the team finding out the hard way on a real key. The scrub itself runs two independent layers: the build environment is scrubbed, and the secrets file is hidden from disk entirely during the build, because the deploy adapter reads that file directly and would otherwise walk around an env-only scrub.
 
 **repo-d, `audit-bundle.mjs`.** The built single-page app is code-only; it fetches its roster at load time from an Access-gated API, so a deploy ships zero donor PII by construction, and `audit-bundle.mjs` fails the build outright on any embedded name, email, or phone number found in the bundle.
+
+Native floor, as of 2026-09-02: the sandbox, which isolates Bash subprocesses only and does not scrub the environment a build inherits, so an adapter reading the secrets file directly is outside its scope (https://code.claude.com/docs/en/sandboxing).
 
 ## Give a restricted key exactly one writable scope
 
