@@ -20,6 +20,17 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
   harness's own auto-memory measurement as their floors, and the branch guard hook's fail-open
   block now lists the sessions and tool routes where it never sees the command at all. Skill
   prose, handbook prose, and comments only: no behavior change.
+- **The `claude-code` and `docs` rules now name the native Claude Code feature each one builds
+  on.** Eleven rewords across the two rule files, with the matching handbook chapters gaining a
+  `Native floor` line per section that names the harness feature and cites its documentation, so
+  a reader arriving from the Claude Code docs sees an extension rather than a restatement.
+  Substance is unchanged: no heading, config slot, hook contract, or file layout moved.
+- **Accuracy fix in `claude-code.md`, "Make a must-hold rule a hook".** The rule said a hook's
+  matcher is best-effort, which is what the documentation says about a hook's fine-grained `if`
+  filter, not about the event matcher; it now says to keep the decision in the script rather than
+  in that filter. The same rule now also names the floor under a hook: a deny rule is evaluated
+  whatever the hook returns, and a session started bare, in safe mode, or in restricted mode loads
+  no project hooks at all.
 
 ## [0.5.0] - 2026-09-02
 

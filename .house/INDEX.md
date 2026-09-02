@@ -14,13 +14,13 @@
 - Keep a skill body short, its references one level deep, and its name equal to its directory
   Hold the body under the documented cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
 - Disable model invocation on a skill with side effects
-  Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so only a person can fire it and its body costs nothing until they do.
+  Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so nothing in the session can fire it on its own and its body costs nothing until a caller names it.
 - Set the model explicitly on every subagent and workflow agent
   Name the model on every agent call, because an omitted one silently inherits the session's and a wide fan-out then runs at whatever tier you happened to be in.
 - Make a must-hold rule a hook, fail it closed, and test it with real payloads
   Turn a rule that must hold every time into a hook, because a rule file is advisory context and only a pre-tool hook stops the action.
 - Run adversarial review in a fresh subagent with a named lens
-  Review finished work in a fresh subagent whose lens is named, and tell it to flag only correctness and requirement gaps, because a reviewer asked for problems will always return some.
+  The harness ships a review that already runs in its own subagent over the branch diff, so start there and add what it does not carry: name the lens, and tell the reviewer to flag only correctness and requirement gaps, because a reviewer asked for problems will always return some.
 - Plan when the approach is uncertain, and clear the context after two failed corrections
   Plan first when the approach is uncertain or the change spans files, and skip planning when you could describe the diff in one sentence, because planning has real overhead.
 - Treat git state as shared across sessions
@@ -40,17 +40,17 @@
 - Anchor every claim to a grep-able token
   Write every claim about the code, the interface, or a command so it names a token a reader can grep: a file path, an npm script, a component name, a section id, a class prefix, or an environment variable. Free-form prose drifts silently when the thing it describes is renamed, while an anchored claim fails the gate on the commit that renames it.
 - Run the docs gate before pushing and in the build
-  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. Local-first is the workflow; the build wiring is the safety net, not the loop you develop in.
+  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the hook and the pull-request check be the net.
 - Give every rule file a paths list whose first segment resolves
   Give every rule file a `paths:` list, and make each glob's first non-glob segment resolve on disk. A glob that resolves to nothing means the rule never loads, so it rots without one failure to warn you.
 - Put a fact where its litmus test says it belongs
-  Route each fact by its litmus test: the root file if a session would go wrong without it every time, a rule file if it binds only while a matching path is open, the README if a human landing on the repo needs it, a skill if it is a procedure with steps, the archive if it is a dated observation. Working rules, a human runbook, strategy, the changelog, deep reference, and orientation are separate roles, so give each its own document rather than another section, and restate neither the code nor the package manifest in any of them.
+  The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule, and it trims what it can derive from the code. This rule carries that split out to the README, the changelog, and the archive, where nothing native reaches: the README if a human landing on the repo needs it, the archive if it is a dated observation. Working rules, a human runbook, strategy, the changelog, deep reference, and orientation are separate roles, so give each its own document rather than another section, and restate neither the code nor the package manifest in any of them.
 - State a rule as imperative, why, anchor, receipts
   Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to the receipt that earned it. A reader who disagrees with a rule needs the why and the evidence in front of them, or the rule gets worked around instead of revised.
 - Move dates, names, and measured numbers out of rule prose
   A rule that needs a date, a person's name, or a measured number to state itself is history wearing a rule's clothes. Move the evidence to the archive and leave the rule, which is the part that has to survive the next change.
 - Keep files under budget, and raise a ceiling only with a written reason
-  Hold every document to its configured line ceiling: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
+  The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
 - Cut, don't append, and trim on a fixed cadence
   When you add to a document, trade something out; a file that only grows is a file nobody reads to the end of. Cut any paragraph that exists to record that something happened rather than to change what the next session does.
 - Split a file only when splitting narrows what loads
