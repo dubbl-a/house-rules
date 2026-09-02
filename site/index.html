@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>House Rules Explained</title>
-<meta name="description" content="A plain-language guide to keeping your conventions intact across every project you build with Claude Code.">
+<meta name="description" content="A plain-language guide to turning the advice you give Claude Code into rules that hold, with something that checks they still do.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 32 32 10l24 22v24H8z' fill='%231E4E9E'/%3E%3Cpath d='M26 56V38h12v18' fill='%23F6F7F4'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -107,7 +107,7 @@
       <li><a href="#house-analogy">Your house</a></li>
       <li><a href="#how-it-works">How it works</a></li>
       <li><a href="#whats-inside">What&#x27;s inside</a></li>
-      <li><a href="#origins">Its origins</a></li>
+      <li><a href="#origins">Why this exists</a></li>
       <li><a href="#getting-started">Getting started</a></li>
       <li><a href="#after-setup">What to expect</a></li>
       <li><a href="#glossary">Glossary of terms</a></li>
@@ -118,18 +118,19 @@
     <header class="hero" id="top">
       <p class="eyebrow">A guide for newcomers</p>
       <h1>House Rules Explained</h1>
-      <p class="tagline">A plain-language guide to keeping your conventions intact across every project you build with Claude Code.</p>
+      <p class="tagline">A plain-language guide to turning the advice you give Claude Code into rules that hold, with something that checks they still do.</p>
     </header>
     <section id="what-this-is">
       <h2>What this is</h2>
-<p>If you have been using Claude Code for a few weeks and your projects have quietly started to disagree with each other, this guide is for you. house-rules is a set of plain-English working conventions for projects built with Claude Code, delivered as an add-on that copies them into your project and checks, whenever you ask, that they are still intact.</p>
-<p>You do not need to be a programmer, only a project you care about and a terminal, the text window where you type commands. Every technical word is explained where it first appears, and a glossary follows at the end.</p>
+<p>Nearly everything you write down for Claude Code, the AI assistant that reads and edits the files in your project, is advice. It reads your instructions at the start of each session, a session being one working conversation, and mostly follows them. Nothing checks, on its own, that it did, that what you wrote is still true after you rename a file, or that the copy in your next project still says the same thing. A project, here, is the folder of files you are building something in.</p>
+<p>house-rules fills both gaps. It is a set of plain-English working conventions for a project built with Claude Code, covering how changes are made, how documents stay true, how what a session learns is kept, and more. Each rule gives its reason in the same breath, so you can argue with it. The rules are copied into your project as ordinary files, and one command, a short instruction typed into a terminal, reads your project back and reports which rules no longer hold.</p>
+<p>You do not need to be a programmer, only a project you care about and a terminal, the text window where you type commands. Every technical word is explained where it first appears, with a glossary at the end. Aaron Altamura, who wrote these rules, explains further down why he needed them.</p>
     </section>
     <section id="the-drift">
       <h2>What goes quietly wrong</h2>
-<p>The first week goes well. You tell Claude Code how you like things done, write it down in a file at the top of your project, and the sessions that follow, a session being one working conversation with the assistant, mostly do it your way. Then a few weeks pass, you have three or four projects, and small things stop lining up.</p>
+<p>The first week goes well. You write down how you like things done in a file at the top of your project, and the sessions that follow mostly do it your way. Then the file grows, the project changes underneath it, and the two stop matching. Nothing breaks, and nothing tells you. A session that quietly skipped a rule looks exactly like a session that followed one, and a rule that has become false looks exactly like a rule that is still true. One project is enough to get there, and a second multiplies it. The failures themselves are ordinary:</p>
 <ul><li>The instruction file grew. Every fix added a paragraph, and now only some of it gets followed.</li><li>A rule you wrote once now lives in three projects, because you copied it. Each copy has drifted, and none knows about the others.</li><li>A rule tells the assistant to run a small program you renamed last month, and nothing told you, because nothing checks whether what the rule says is still true, only whether the words are still there.</li><li>You are asked why a rule exists, cannot remember, and the rule gets worked around instead of revised.</li><li>What a session worked out on Tuesday is gone on Thursday, or lives only in notes on one machine nobody else sees.</li></ul>
-<p>Nothing broke. That is the problem: nothing broke, and nothing accumulated either. Each project drifted its own way, and nothing told you.</p>
+<p>Nothing broke. That is the problem: nothing broke, and nothing accumulated either. The project and its rules drifted apart, and nothing told you.</p>
     </section>
     <section id="house-analogy">
       <h2>Your house, and what the builder left you</h2>
@@ -156,9 +157,12 @@
 <p>Beside them sits <code>house.json</code>: which modules are on, a dated ledger of anything you declined, and per-file line ceilings that tighten as files shrink. Twelve paired evals, real tasks with a check of whether each rule held or should not have fired, hold a session to these rules.</p>
     </section>
     <section id="origins">
-      <h2>Where it came from</h2>
-<p>These rules were distilled from five working projects that one maintainer built with Claude Code over about five months, holding roughly 1,312 commits between them.</p>
-<p>The distillation came out of the failures. One instruction file had reached 1,512 lines, about seven times the length its own rule allowed, and was being skipped. The same rule sat in several projects and every copy had drifted. Rules with no evidence behind them got argued with, and what one session learned never reached the next person.</p>
+      <h2>Why I built this</h2>
+<p>I am Aaron Altamura. I am not a software engineer by trade. I build the tools I need with Claude Code, and this guide is written in the plain language I needed it in myself.</p>
+<p>Over about five months I built five working projects that way, roughly 1,312 commits between them, a commit being one saved snapshot of a change. The rules here are not a theory. They are what I wrote down after the same things went wrong on me more than once.</p>
+<p>One instruction file reached 1,512 lines. Its own rule said 200. Nothing objected on its own: Claude Code names a target length and will suggest cuts when you ask it to look the file over, but nothing was holding that file to a number on every run, and by then it was being skipped rather than followed. The longer the file, the less of it gets followed. A rule told the assistant to run a small program I had renamed, and it went on saying so, because nothing reads a rule back against the project it describes. Rules I could not justify got argued with and worked around, which was fair, because I had written the instruction and not the reason. What one session learned stayed in notes on my machine: Claude Code keeps its own notes between sessions, but they live on one computer, outside the project, where nobody else sees them.</p>
+<p>None of that was Claude Code failing. It gave me the places to put rules, and hooks, small programs it runs just before an action, that can stop a step outright. What I did not have was an opinion about what the rules should say, and anything that would read them back and tell me which ones had quietly stopped being true. So I wrote both. The five projects run on these rules now, and so does the package itself.</p>
+<p>You can find me on <a href="https://www.linkedin.com/in/aaron-altamura">LinkedIn</a> and <a href="https://github.com/dubbl-a">GitHub</a>.</p>
     </section>
     <section id="getting-started">
       <h2>Getting started</h2>
