@@ -448,9 +448,10 @@ function resolveHousePluginRecord(installed) {
 // ── drift ────────────────────────────────────────────────────────────────
 
 // Native floor: the hosted reviewer already flags a documented claim that a
-// pull request makes outdated, at nit severity and only for a newly
-// introduced violation, so this family is the deterministic local floor that
-// resolves every anchor token in every scanned doc before the push.
+// pull request makes outdated, at nit severity, only for a newly introduced
+// violation, and only where it runs, so this family is the deterministic
+// local floor that resolves every anchor token in every scanned doc before
+// the push.
 
 // ADR 0009 object forms. Both normalizers drop a malformed entry so the drift
 // family degrades gracefully; the manifest family validates the same entries

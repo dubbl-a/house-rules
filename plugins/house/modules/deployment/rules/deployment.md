@@ -34,7 +34,7 @@ Put the whole sequence in one script so the order cannot drift and a step cannot
 Never call the platform CLI by hand: it walks up the directory tree looking for config, so a stray file at the repo root can shadow the real one and ship an ungated service.
 Put the generators that produce what the build reads inside that script, because the build ships whatever the table already holds, not what the newest source data says.
 Name that script as the canonical runbook and have other procedures point at it instead of inventing their own step list.
-Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script, because an allow entry alone just skips a prompt while a deny rule is the layer the harness enforces regardless of what the model decides.
+Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script (`npm run deploy`), because an allow entry alone just skips a prompt while a deny rule is the layer the harness enforces regardless of what the model decides.
 Receipts: `docs/handbook/deployment.md#invoke-a-deploy-only-through-its-named-script`
 
 ## Verify the deployed URL against the built file with the cache bypassed
@@ -63,7 +63,7 @@ Receipts: `docs/handbook/deployment.md#restore-a-backup-before-calling-it-a-back
 
 ## Don't
 
-Anchor: `scripts/house/deploy-guards.mjs`, the ordered ship script, and the settings allowlist, which are what refuse these in practice.
+Anchor: `scripts/house/deploy-guards.mjs`, the ordered ship script, and the committed settings deny rule on the raw platform CLI, which are what refuse these in practice.
 
 Don't report a change as live because its pull request merged.
 Don't build before the guards have run; a refusal after the build is a build you paid for and threw away.

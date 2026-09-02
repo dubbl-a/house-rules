@@ -29,7 +29,7 @@ Budgets are what make the second tier survivable. The built-in `claude plugin ev
 
 Two eval-harness practices are worth borrowing without becoming rules. The headless probe: run `claude -p "$PROMPT" --plugin-dir … --dangerously-skip-permissions --max-turns N --output-format stream-json`, then grep the JSON trace for the `Skill` tool call plus a skill-name regex, and separately detect "premature action", a non-Skill tool firing before the Skill (superpowers `tests/explicit-skill-requests/run-test.sh`; PA-035). And per-case isolation: `claude plugin eval` scaffolds each case into a throwaway workspace with a fresh `HOME` and `CLAUDE_CONFIG_DIR`, loads only the plugin under test, and deletes credentials at the end, which matches the "each trial starts from a clean environment" line in Anthropic's evals article (PA-039). One caveat worth writing down: that isolation does not block the network, so it is not an OS sandbox and should not be described as one.
 
-Native floor, as of 2026-09-02: the plugin eval runner's `--max-cost-usd` hard ceiling, which aborts and reports partial results with exit 2, and its per-case threshold, which exits non-zero on a shortfall. No public docs page covers the runner as of that date; the flags are documented in `claude plugin eval --help`.
+Native floor, as of 2026-09-02: the plugin eval runner's `--max-cost-usd` hard ceiling, which aborts and reports partial results with exit 2, and its per-case threshold, which exits non-zero on a shortfall. No public docs page covers the runner as of that date; the flags are documented in `claude plugin eval --help`, and the budget-and-threshold practice they complement is written up in the skill-creator article (https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills).
 
 ## Test the guard itself, as its own CI step
 
@@ -67,7 +67,7 @@ Then grade the grader. skill-creator's `grader.md` agent does double duty: it gr
 
 A final grading preference from the same article, worth stating even though it did not earn its own rule: "It's often better to grade what the agent produced, not the path it took" (EXT-094). The `file_exists` grader globbing over created paths is that preference expressed as a grader type, and this fleet already grades end state in `scripts/lib/retro.mjs` invariants.
 
-Native floor, as of 2026-09-02: the plugin eval runner's ablation mode, which stands up the with and without arms and repeats each case by default, and its grader types, which separate the free deterministic graders from the paid llm and baseline ones. Documented in `claude plugin eval --help`; no public docs page covers the runner as of that date.
+Native floor, as of 2026-09-02: the plugin eval runner's ablation mode, which stands up the with and without arms and repeats each case by default, and its grader types, which separate the free deterministic graders from the paid llm and baseline ones. Documented in `claude plugin eval --help`; no public docs page covers the runner as of that date, and the grader material it complements is written up in the skill-creator article (https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills).
 
 ## Read the snapshot diff before accepting it, because a snapshot is a drift gate
 

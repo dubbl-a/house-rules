@@ -16,7 +16,9 @@
 #     own .claude/settings.json declares a non-empty .hooks.PreToolUse
 #     array (repo-local guard wins during migration onto house; a
 #     settings.json carrying only other events is not a branch guard and
-#     does not defer this one)
+#     does not defer this one). Every matching PreToolUse hook still runs
+#     and the most restrictive decision wins, so this deferral is a
+#     deliberate migration choice here, not something the harness requires.
 #
 # Also fails open, silently, wherever this hook never runs or never sees the
 # command: a session started bare or in safe mode loads no project hooks,

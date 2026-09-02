@@ -40,7 +40,7 @@
 - Anchor every claim to a grep-able token
   Write every claim about the code, the interface, or a command so it names a token a reader can grep: a file path, an npm script, a component name, a section id, a class prefix, or an environment variable. Free-form prose drifts silently when the thing it describes is renamed, while an anchored claim fails the gate on the commit that renames it.
 - Run the docs gate before pushing and in the build
-  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the hook and the pull-request check be the net.
+  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the build step and the pull-request check be the net.
 - Give every rule file a paths list whose first segment resolves
   Give every rule file a `paths:` list, and make each glob's first non-glob segment resolve on disk. A glob that resolves to nothing means the rule never loads, so it rots without one failure to warn you.
 - Put a fact where its litmus test says it belongs
