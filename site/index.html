@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House Rules Explained</title>
+<meta name="description" content="A plain-language guide to keeping your conventions intact across every project you build with Claude Code.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 32 32 10l24 22v24H8z' fill='%231E4E9E'/%3E%3Cpath d='M26 56V38h12v18' fill='%23F6F7F4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F6F7F4; --ink: #1C2330; --muted: #5B6472; --blueprint: #1E4E9E;
+    --blueprint-soft: rgba(30, 78, 158, 0.10); --grid: rgba(30, 78, 158, 0.085);
+    --rule: rgba(28, 35, 48, 0.16); --panel: #FFFFFF; --code-bg: rgba(30, 78, 158, 0.07);
+    --pass: #2E7D5B; --finding: #B8432B; color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #121722; --ink: #E6E9EF; --muted: #9AA3B2; --blueprint: #7FA6E8;
+      --blueprint-soft: rgba(127, 166, 232, 0.14); --grid: rgba(127, 166, 232, 0.10);
+      --rule: rgba(230, 233, 239, 0.18); --panel: #1A2130; --code-bg: rgba(127, 166, 232, 0.12);
+      --pass: #6CC29A; --finding: #E07A63; color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background-color: var(--paper);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 28px 28px; color: var(--ink);
+    font-family: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif; font-size: 17px; line-height: 1.65;
+  }
+  a { color: var(--blueprint); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--blueprint); outline-offset: 2px; }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--panel); padding: 8px 12px; border: 1px solid var(--rule); }
+  .skip:focus { left: 8px; z-index: 10; }
+
+  .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); max-width: 1120px; margin: 0 auto; gap: 48px; padding: 0 24px; }
+  .side { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 40px 0 40px; }
+  .brand { font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 1.15rem; line-height: 1.2; color: var(--ink); text-decoration: none; display: block; }
+  .brand small { display: block; font-family: "IBM Plex Mono", Menlo, monospace; font-weight: 400; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blueprint); margin-top: 6px; }
+  .nav { margin: 28px 0 0; padding: 0; list-style: none; border-left: 2px solid var(--rule); }
+  .nav li { margin: 0; }
+  .nav a { display: block; padding: 6px 0 6px 14px; margin-left: -2px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.active { color: var(--blueprint); border-left-color: var(--blueprint); font-weight: 700; }
+  .side .repo { margin-top: 28px; font-size: 0.9rem; }
+  .side .repo a { display: inline-block; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); text-decoration: none; color: var(--ink); }
+
+  main { max-width: 68ch; padding: 48px 0 96px; }
+  header.hero { margin-bottom: 8px; }
+  .eyebrow { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blueprint); margin: 0 0 10px; }
+  h1, h2, h3 { font-family: "Fraunces", Georgia, "Times New Roman", serif; font-weight: 600; line-height: 1.15; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2.6rem; font-variation-settings: "opsz" 144; letter-spacing: -0.01em; }
+  .tagline { font-size: 1.2rem; line-height: 1.5; color: var(--muted); margin: 18px 0 0; max-width: 58ch; }
+  section { scroll-margin-top: 24px; }
+  section h2 { font-size: 1.6rem; margin-top: 56px; padding-top: 18px; border-top: 2px solid var(--blueprint); }
+  section h3 { font-size: 1.12rem; margin-top: 22px; }
+  p { margin: 14px 0 0; }
+  ul, ol { margin: 10px 0 0; padding-left: 1.2em; }
+  li { margin-top: 8px; }
+  li > p { margin: 0; }
+  strong { font-weight: 700; }
+  code { font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace; font-size: 0.88em; background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 3px; }
+  pre { margin: 14px 0 0; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--blueprint); overflow-x: auto; font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace; font-size: 0.86rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  blockquote { margin: 14px 0 0; padding: 12px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; }
+  blockquote p { margin: 0; }
+  blockquote p + p { margin-top: 10px; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0 0; font-size: 0.95rem; display: block; overflow-x: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  th { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 24px 0 0; }
+  dl { margin: 14px 0 0; }
+  dt { font-weight: 700; margin-top: 14px; }
+  dd { margin: 4px 0 0; }
+  footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 0.86rem; color: var(--muted); }
+
+  .menu-btn { display: none; }
+  @media (max-width: 900px) {
+    .layout { display: block; padding: 0 18px; }
+    .side { position: sticky; top: 0; height: auto; padding: 14px 0; background: var(--paper); border-bottom: 1px solid var(--rule); z-index: 5; }
+    .side .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .menu-btn { display: inline-block; font: inherit; font-size: 0.9rem; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); color: var(--ink); cursor: pointer; }
+    .nav { display: none; margin: 12px 0 0; border-left: 0; }
+    .nav.open { display: block; }
+    .nav a { padding: 8px 0; border-left: 0; }
+    .side .repo { display: none; }
+    main { padding-top: 24px; }
+    h1 { font-size: 2.1rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the guide</a>
+<div class="layout">
+  <aside class="side">
+    <div class="row">
+      <a class="brand" href="#top">house-rules<small>the guide</small></a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+    </div>
+    <ul class="nav" id="nav">
+      <li><a href="#what-this-is">What this is</a></li>
+      <li><a href="#the-drift">What goes wrong</a></li>
+      <li><a href="#house-analogy">Your house</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#whats-inside">What&#x27;s inside</a></li>
+      <li><a href="#origins">Its origins</a></li>
+      <li><a href="#getting-started">Getting started</a></li>
+      <li><a href="#after-setup">What to expect</a></li>
+      <li><a href="#glossary">Glossary of terms</a></li>
+    </ul>
+    <p class="repo"><a href="https://github.com/dubbl-a/house-rules">View the repository on GitHub</a></p>
+  </aside>
+  <main id="main">
+    <header class="hero" id="top">
+      <p class="eyebrow">A guide for newcomers</p>
+      <h1>House Rules Explained</h1>
+      <p class="tagline">A plain-language guide to keeping your conventions intact across every project you build with Claude Code.</p>
+    </header>
+    <section id="what-this-is">
+      <h2>What this is</h2>
+<p>If you have been using Claude Code for a few weeks and your projects have quietly started to disagree with each other, this guide is for you. house-rules is a set of plain-English working conventions for projects built with Claude Code, delivered as an add-on that copies them into your project and checks, whenever you ask, that they are still intact.</p>
+<p>You do not need to be a programmer, only a project you care about and a terminal, the text window where you type commands. Every technical word is explained where it first appears, and a glossary follows at the end.</p>
+    </section>
+    <section id="the-drift">
+      <h2>What goes quietly wrong</h2>
+<p>The first week goes well. You tell Claude Code how you like things done, write it down in a file at the top of your project, and the sessions that follow, a session being one working conversation with the assistant, mostly do it your way. Then a few weeks pass, you have three or four projects, and small things stop lining up.</p>
+<ul><li>The instruction file grew. Every fix added a paragraph, and now only some of it gets followed.</li><li>A rule you wrote once now lives in three projects, because you copied it. Each copy has drifted, and none knows about the others.</li><li>A rule tells the assistant to run a small program you renamed last month, and nothing told you, because nothing checks whether what the rule says is still true, only whether the words are still there.</li><li>You are asked why a rule exists, cannot remember, and the rule gets worked around instead of revised.</li><li>What a session worked out on Tuesday is gone on Thursday, or lives only in notes on one machine nobody else sees.</li></ul>
+<p>Nothing broke. That is the problem: nothing broke, and nothing accumulated either. Each project drifted its own way, and nothing told you.</p>
+    </section>
+    <section id="house-analogy">
+      <h2>Your house, and what the builder left you</h2>
+<p>Every project you work in is a house you own. Claude Code is what the builder installed before you moved in, the same in every one of them, and the assistant is a guest working there, new each time. What the builder installed gives you:</p>
+<ul><li><strong>A noticeboard by the door.</strong> Claude Code reads the instruction file at the top of your project every session, plus rule files that go up only when a matching file is opened. The board holds advice, and a guest may do otherwise.</li><li><strong>Doors and locks.</strong> Some commands you can simply forbid in Claude Code's settings file, and Claude Code refuses those itself. That is real enforcement rather than a request.</li><li><strong>A fuse box.</strong> A hook, a small program Claude Code runs just before an action, can cut the power to that action.</li><li><strong>A notepad on the fridge.</strong> The assistant keeps notes between sessions, on that machine only.</li><li><strong>The appliances you install.</strong> A plugin, an add-on giving Claude Code extra skills and hooks (a skill is a set of instructions you trigger by typing its name after a slash), cannot post anything on the noticeboard.</li></ul>
+<p>All of that is Claude Code's own work, and for one person on one machine in one house it is enough by itself.</p>
+<p>house rules is what you post for the guest in every house you own, in the same words, plus four things the builder does not supply: a sealed copy of the posting, each carrying a fingerprint, a short code that changes if even one character of the file does, so a scribble shows up; an inspector who reads the house's documents; a ledger, a written record, of what this house does differently and why; and a handoff, so what the guest knew leaves the fridge.</p>
+<p>The analogy has a limit worth naming. A real fuse box cannot be switched off by the appliance. This one can: a setting turns hooks off, and a session started with its safety checks turned off loads no project hooks at all. So a rule that must hold gets a deadbolt beside it too, one of those forbidden-command settings, rather than relying on the fuse box alone.</p>
+    </section>
+    <section id="how-it-works">
+      <h2>How it works, in six moves</h2>
+<p>The method is six moves you should be able to retell at dinner.</p>
+<ol><li><strong>Write a rule so it can be argued with.</strong> An instruction you could follow, one clause saying why, a line naming what enforces it, a pointer to the evidence that earned it. A rule with no why gets worked around.</li><li><strong>Post only what is relevant.</strong> Rule files have a ceiling, a maximum length, of 200 lines, and each names the kinds of file it covers, so a session picks up only the rules that matter.</li><li><strong>Copy the rules in rather than link to them.</strong> They are written word for word into your own copy of the project, your checkout, where Claude Code reads them like any other file.</li><li><strong>Record a fingerprint of each copy.</strong> A fingerprint is a short code calculated from a file's contents, so changing one character changes the code. They live in a lock file, a record of how each file looked when it arrived.</li><li><strong>Have something read it back.</strong> A checker rereads the project's documents whenever you ask and reports what no longer holds.</li><li><strong>Change it at the source.</strong> A rule you disagree with is fixed in the package rather than your copy, and the next version reaches you as a plan you approve.</li></ol>
+    </section>
+    <section id="whats-inside">
+      <h2>What is in the package</h2>
+<p><strong>Nine modules.</strong> A module is a themed set of rules, 112 rules in all. Five are on unless you switch them off.</p>
+<ul><li><strong>claude-code</strong> protects the assistant's setup: what it reads each session, how long that is, where a new fact belongs.</li><li><strong>docs</strong> protects the written record, the README and changelog and rule files, so no document points at something that no longer exists.</li><li><strong>engineering</strong> protects how code gets written and changed day to day.</li><li><strong>github</strong> protects how a change travels on GitHub, the website where a project and its history are kept and shared: a branch, a separate copy of your work to make the change in, and a pull request each time, a pull request being a proposal to fold your work into the main line, the version of the project everyone builds on, with somewhere to review it first.</li><li><strong>testing</strong> protects the word done: what gets tested, and what a passing test may claim.</li></ul>
+<p>Four more turn on only if your project looks like it needs them. <strong>database</strong> protects stored data when its shape changes. <strong>deployment</strong> protects releases, so putting something live is deliberate. <strong>data-pipelines</strong> protects scheduled jobs that move data in bulk. <strong>llm-output</strong> protects text a model produced, before anyone reads it as fact.</p>
+<p><strong>Five skills you run.</strong> A skill is a set of instructions you trigger by typing its name after a slash, inside Claude Code.</p>
+<ul><li><code>/house-rules:bootstrap</code> sets a project up the first time.</li><li><code>/house-rules:sync</code> brings a later version in.</li><li><code>/house-rules:conventions</code> answers "what is the house rule for this" from a short index, a table of contents of the rules, without reading every rule.</li><li><code>/house-rules:revise-docs</code> files something you just learned where it belongs.</li><li><code>/house-rules:handoff</code> closes a session by writing down what the next person needs.</li></ul>
+<p><strong>The branch guard</strong> is the fuse box in action. Being a hook, it runs on its own: when your project's settings say changes go through pull requests, it refuses a commit or push (sending your changes up to GitHub) straight onto the main line. A commit is one saved snapshot of a change.</p>
+<p><strong>The checker</strong> is the inspector: one command, <code>node .house/check.mjs</code>, running ten families of check, among them a copy edited by hand, a document naming a file that is gone, and a file past its line ceiling.</p>
+<p>Beside them sits <code>house.json</code>: which modules are on, a dated ledger of anything you declined, and per-file line ceilings that tighten as files shrink. Twelve paired evals, real tasks with a check of whether each rule held or should not have fired, hold a session to these rules.</p>
+    </section>
+    <section id="origins">
+      <h2>Where it came from</h2>
+<p>These rules were distilled from five working projects that one maintainer built with Claude Code over about five months, holding roughly 1,312 commits between them.</p>
+<p>The distillation came out of the failures. One instruction file had reached 1,512 lines, about seven times the length its own rule allowed, and was being skipped. The same rule sat in several projects and every copy had drifted. Rules with no evidence behind them got argued with, and what one session learned never reached the next person.</p>
+    </section>
+    <section id="getting-started">
+      <h2>Getting started</h2>
+<p>These steps assume a Mac. Linux works the same way with its own installer in place of Homebrew.</p>
+<p><strong>What you need first</strong></p>
+<ol><li>A terminal. On a Mac, open the Terminal app.</li><li>Homebrew, the tool that installs other tools on a Mac, installed once from https://brew.sh.</li><li>Three tools, installed with <code>brew install git gh node</code>. Git tracks your project's history, gh is the GitHub command line tool, and Node runs the checker. Node must be 22 or newer, which <code>node --version</code> confirms.</li><li>A GitHub account, signed in once with <code>gh auth login</code>.</li><li>Claude Code itself, installed by following the official quickstart at https://code.claude.com/docs/en/quickstart, which gives a one-line install command for Mac and Linux and the Windows equivalents. Then run <code>claude</code> and follow the prompts to sign in.</li></ol>
+<p><strong>Install house-rules, once per machine.</strong> The first command below tells Claude Code where to find it, a marketplace being a published list of add-ons. The second installs it for your user account, so it is there in every project.</p>
+<pre><code>claude plugin marketplace add dubbl-a/house-rules
+claude plugin install house-rules@house-rules --scope user</code></pre>
+<p><strong>Set up one project.</strong> Open a terminal in the project folder, start Claude Code by typing <code>claude</code>, and run:</p>
+<pre><code>/house-rules:bootstrap</code></pre>
+<p>It looks over the project, proposes a file called <code>house.json</code> naming which modules fit, and on your approval writes the rule files, the checker, and the lock file into your own copy.</p>
+<p><strong>Check any time.</strong> From the top folder of the project:</p>
+<pre><code>node .house/check.mjs</code></pre>
+<p>It prints its findings, or nothing when everything holds. It is also a good command to add to CI, the service that runs a project's checks on every proposed change.</p>
+    </section>
+    <section id="after-setup">
+      <h2>What to expect afterward</h2>
+<p><strong>Updates arrive as a plan you approve.</strong> When the package changes, or when you change <code>house.json</code>, run <code>/house-rules:sync</code> inside the project. It prints what it would do and waits. Read it as you would any proposed update: take what you want, decline what you do not. A managed file, one the package wrote and keeps in step, that you edited by hand is never overwritten; it is refused, with the difference shown.</p>
+<p><strong>When the checker reports something,</strong> there are three honest ways to settle it.</p>
+<ol><li>Fix the thing it found. A renamed script, a document pointing at a file that moved, a file grown too long: change it so the finding goes away. This covers most findings.</li><li>Write down that you are doing it differently. Record a deviation in <code>house.json</code>, a dated note of what you declined and why, which the checker reads back on every run. An exception with a reason attached is a decision; an exception with no reason is drift.</li><li>Send the change to the package. If a rule file itself needed editing, that edit belongs in the package rather than your copy: propose it there, then bring it back with <code>/house-rules:sync</code>, which also restores your copy.</li></ol>
+<p><strong>Where to ask.</strong> The project's home on GitHub is https://github.com/dubbl-a/house-rules. Its issues page has a form for something broken, one for a rule you want changed, and one for a question, and the question form points you to the Discussions tab. These rules keep changing, and disagreement is the point rather than a problem.</p>
+    </section>
+    <section id="glossary">
+      <h2>Glossary</h2>
+<ul><li><strong>Repository (repo).</strong> Your project's folder of files, plus the record of every change to it.</li><li><strong>Checkout.</strong> Your own copy of a repository, the one on your machine.</li><li><strong>Commit.</strong> One saved snapshot of a change, with a message saying what it was for.</li><li><strong>Pull request.</strong> A proposal to fold a separate line of work into the main one, opened so it can be reviewed first.</li><li><strong>Plugin.</strong> An add-on giving Claude Code extra skills and hooks.</li><li><strong>Skill.</strong> A set of instructions Claude Code follows when you type its name after a slash, such as <code>/house-rules:sync</code>.</li><li><strong>Branch.</strong> A separate line of work in a repository, made so a change can be worked on and reviewed apart from the main line.</li><li><strong>Marketplace.</strong> A published list of plugins and where to get them.</li><li><strong>Hook.</strong> A small script Claude Code runs at a set moment, able to stop the action.</li><li><strong>Lock file.</strong> A record of how each managed file looked when it arrived.</li><li><strong>Fingerprint (hash).</strong> A short code calculated from a file's contents, which changes if the file does.</li><li><strong>CI.</strong> A service that runs a project's checks on every proposed change, so a break is caught without anyone remembering to look.</li><li><strong>Eval.</strong> A test of behavior rather than code: a real task, plus a check of whether the rules held. The cases come in pairs, one where the rule should hold and one where it should not fire.</li><li><strong>Deviation.</strong> A dated note that this project declines a default, and why.</li><li><strong>Ratchet.</strong> A line ceiling that tightens when a file gets shorter, so a trimmed file cannot grow back.</li><li><strong>Anchor.</strong> The line under a rule naming what enforces it, or saying that nothing does.</li></ul>
+    </section>
+    <footer>house-rules is published by its maintainer for anyone to adopt. Code is MIT licensed; the rule text and this guide are CC BY 4.0. <a href="https://github.com/dubbl-a/house-rules">github.com/dubbl-a/house-rules</a></footer>
+  </main>
+</div>
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.nav a'));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+    var btn = document.querySelector('.menu-btn');
+    var nav = document.getElementById('nav');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        var open = nav.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      links.forEach(function (a) { a.addEventListener('click', function () { nav.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }); });
+    }
+    if ('IntersectionObserver' in window) {
+      var current = null;
+      var obs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) { if (e.isIntersecting) { current = e.target.id; } });
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + current); });
+      }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+      sections.forEach(function (s) { obs.observe(s); });
+    }
+  })();
+</script>
+</body>
+</html>
