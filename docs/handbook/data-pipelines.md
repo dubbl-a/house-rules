@@ -42,9 +42,13 @@ repo-b's `revops.md` gates deletion behind one script, one call site, its own br
 
 The plan-validate-execute shape is external, widely-held guidance rather than a fleet-specific pattern: add `--dry-run` to every irreversible script and default a destructive prompt to `[y/N]`, with an explicit `--yes` for automation (see Sources), and for batch or destructive work emit a machine-verifiable plan, validate it with a script, then apply, so an intermediate artifact catches errors before anything is touched (see Sources).
 
+Native floor, as of 2026-09-02: the permission system gates the Read, Edit, and Write tools directly while the sandbox isolates only Bash subprocesses, so nothing native sees what a running script writes (https://code.claude.com/docs/en/sandboxing).
+
 ## Brake a prune at a share of the table, and unit-test the brake
 
 repo-b's `revops.md` refuses to delete more than 10% of a table in one run, with an explicit `--force` flag to override. repo-d's `publish-voters.mjs` carries the same brake as a percentage-threshold refusal on a destructive publish, with `--force`, `--dry-run`, and a unit test of the brake predicate itself, because a brake nobody has watched trip is only a comment in the code, not a control.
+
+Native floor, as of 2026-09-02: the permission flow for a destructive filesystem command, which still prompts for an rm or rmdir against a critical path even in auto-allow sandbox mode, and which never sees a row delete a script issues (https://code.claude.com/docs/en/sandboxing).
 
 ## Drive writes from a policy registry that fails closed on an unknown policy
 

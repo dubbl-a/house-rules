@@ -14,7 +14,7 @@ Receipts: `docs/handbook/deployment.md#deploy-manually-after-the-merge-because-a
 ## Chain the deploy guards before building anything, and give them one named escape hatch
 
 Run every guard before the build starts, so a refusal costs seconds instead of a whole build: checkout clean and level with the remote, target account pinned, CI green on the tip, and the tip commit belonging to a merged pull request.
-Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success.
+Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because a push made with the default workflow token starts no run at all and leaves the tip genuinely unchecked.
 Ask what else has written to the shared state the build reads, because a deploy publishes the state that store is in right now, not the state the merged pull requests imply.
 Give the chain exactly one escape hatch, set through a named environment variable and described at every call site as rare and deliberate.
 Anchor: `scripts/house/deploy-guards.mjs`, called as the deploy script's first step; the one escape is the `DEPLOY_FROM=any` environment variable.
@@ -34,7 +34,7 @@ Put the whole sequence in one script so the order cannot drift and a step cannot
 Never call the platform CLI by hand: it walks up the directory tree looking for config, so a stray file at the repo root can shadow the real one and ship an ungated service.
 Put the generators that produce what the build reads inside that script, because the build ships whatever the table already holds, not what the newest source data says.
 Name that script as the canonical runbook and have other procedures point at it instead of inventing their own step list.
-Anchor: the committed Claude Code settings allowlist, which names `npm run deploy` and never the raw platform CLI.
+Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script, because an allow entry alone just skips a prompt while a deny rule is the layer the harness enforces regardless of what the model decides.
 Receipts: `docs/handbook/deployment.md#invoke-a-deploy-only-through-its-named-script`
 
 ## Verify the deployed URL against the built file with the cache bypassed

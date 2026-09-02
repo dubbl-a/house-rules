@@ -23,7 +23,7 @@ Receipts: `docs/handbook/llm-output.md#keep-a-deterministic-backbone-and-let-the
 
 ## Report no finding rather than manufacture one
 
-Hold a high bar for a finding: most runs should end with nothing to report, and a real one becomes a named edit with exact replacement text, shipped as a pull request rather than quietly accumulated.
+Hold a high bar for a finding: the review surfaces already treat a run that reports nothing as a normal outcome, and this repo extends that floor to every generated report, so a real finding becomes a named edit with exact replacement text shipped as a pull request rather than quietly accumulated.
 Report an unmet requirement in a gap report instead of papering over it with the nearest plausible substitute, which is the shape fabrication takes when a slot has to be filled.
 Close every report with a limitations section naming what was not checked, so a thin pass cannot read as a thorough one.
 Anchor: schema. The report schema accepts an empty findings list and rejects a missing limitations section, so silence validates and a hollow finding does not.
@@ -31,7 +31,7 @@ Receipts: `docs/handbook/llm-output.md#report-no-finding-rather-than-manufacture
 
 ## Refute with named lenses, drop by default, and log the drops
 
-Run every draft claim past named refutation lenses, one per failure class, so a reviewer can say which lens caught what instead of trusting a general impression of care.
+The hosted reviewer already fans out one agent per issue class and verifies candidates before reporting; on that floor, run every draft claim past named refutation lenses, one per failure class, so a reviewer can say which lens caught what instead of trusting a general impression of care.
 Tier the number of passes by stakes, drop anything a lens refutes, and log each drop with its reason so the loss stays visible rather than silent.
 Before attributing an oddity to a known failure mode, ask whether both readings could be true at once; a familiar bug is the cheapest wrong answer available.
 Anchor: validator. The validation step refuses to exit clean while a surviving claim carries no lens verdict or a drop carries no logged reason.
@@ -66,7 +66,8 @@ Receipts: `docs/handbook/llm-output.md#reword-a-locked-claim-never-strengthen-it
 
 ## Treat silence as not approval
 
-Show the diff and wait for an explicit yes before generating a file, because silence is not approval and neither is a question left unanswered.
+Where the harness gates a write, its permission prompt is the floor and an agent message never substitutes for it; everywhere else, show the diff and wait for an explicit yes before generating a file, because silence is not approval and neither is a question left unanswered.
+Plan mode is the harness floor here: it holds edits until a person picks an approve option, but the hold ends at approval, does not bind where bypass permissions are available, and never applies to a printed run, so ask for the yes yourself.
 The same reading applies to data: said nothing is not said yes, and the full rule lives in engineering.md.
 Anchor: none (because an approval a script could grant is not an approval; the gate is the person).
 Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
