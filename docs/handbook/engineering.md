@@ -63,7 +63,7 @@ repo-a's `match-measurement.md` describes the incident directly: a check once te
 
 repo-e's `scripts/check_pagefit.py` is the source of this rule. Its char-over/bullet-under combination has rendered both ways in past runs: a 12-bullet draft against a 14-bullet anchor spilled to two pages, while two other drafts reading the same way over budget still rendered one page. Rather than trust that the check has quietly self-corrected, that blind spot is documented in the tool itself, with the observed cases kept as a running record rather than discarded, and the checker prints its own verdict as advisory rather than authoritative on that specific combination: "treat the verdict as advisory and let the Word render decide. Do not cut content on this signal alone." A gate that has been wrong before does not get to be certain until that record earns it back.
 
-Native floor, as of 2026-09-02: hosted Code Review's check run, which reports its findings and never blocks a merge, and its verification pass, which filters candidates before they are posted, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#check-run-output).
+Native floor, as of 2026-09-02: hosted Code Review reports its findings on a check run that never blocks a merge and filters candidates through a verification pass before posting them, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#check-run-output).
 
 ## Record a significant decision as a numbered, immutable record
 

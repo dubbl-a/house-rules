@@ -36,7 +36,7 @@ The external anchor is Anthropic's own guidance: prefer a predictable, fixed cod
 
 The concrete failure this guards against is documented in `feedback_calibrated_analysis_briefs.md`: the May 2026 regional-money finance brief needed an explicit limitations section naming what was not checked, because absence of evidence in disclosure data is evidence of nothing happening in disclosure data, not evidence that nothing happened at all. A closing caveat cannot fix a body that already overclaimed.
 
-Native floor, as of 2026-09-02: hosted Code Review runs a verification step that checks candidates against actual code behavior, so a run that reports nothing is a normal outcome there, where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#how-reviews-work).
+Native floor, as of 2026-09-02: hosted Code Review runs a verification step that checks candidates against actual code behavior, so a run that reports nothing is a normal outcome there, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#how-reviews-work).
 
 ## Refute with named lenses, drop by default, and log the drops
 
@@ -44,7 +44,7 @@ Native floor, as of 2026-09-02: hosted Code Review runs a verification step that
 
 The case that motivates checking a familiar failure mode before trusting it comes from the council-meeting corpus (`feedback_known_failure_mode_bias.md`). ASR transcription was already known to mangle proper nouns, so a transcript reading a weekday-qualified date in one place and an unqualified date in another read as an ASR error on sight. It was not: one date was the statutory deadline, which fell on a weekend, and the other was the last regularly scheduled meeting before it, which fell on a weekday, two distinct real facts, both transcribed correctly. A peer session holding the deadline from an independent source caught the false flag. The cheap check, a weekday lookup, would have settled it before any edit was made.
 
-Native floor, as of 2026-09-02: hosted Code Review fans out one agent per issue class and verifies candidates before ranking them, but never reports which agent caught what and logs no drops, and it runs only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#how-reviews-work).
+Native floor, as of 2026-09-02: hosted Code Review fans out one agent per issue class and verifies candidates before ranking them, but never reports which agent caught what and logs no drops, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#how-reviews-work).
 
 ## Cite or stay silent
 

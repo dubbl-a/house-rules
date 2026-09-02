@@ -59,7 +59,7 @@ No incident recorded; the rule came in on reasoning alone, from external guidanc
 
 **What the changelog checkbox does not carry.** repo-a's own changelog rule adds a bright-line caveat the generic checkbox text cannot state: if a changelog bullet names one candidate in a race, every candidate in that race gets equivalent mention or none does. That caveat is the product's editorial promise, not a fleet convention (recorded, and dropped on purpose, as TW-191), so the vendored template's "CHANGELOG.md entry under [Unreleased] included" line stays generic rather than encoding it. A repo carrying a similar bright line appends its own sentence to that checkbox after adopting the template and records the append in its own `house.json` `deviations` array, so a later `/house-rules:sync` does not quietly overwrite the local wording back to the generic line.
 
-Native floor, as of 2026-09-02: hosted Code Review reading the repo CLAUDE.md and flagging documentation a pull request leaves outdated (https://code.claude.com/docs/en/code-review.md#claudemd), which surfaces as a non-blocking nit and only on drift the pull request newly introduces (https://code.claude.com/docs/en/code-review.md#severity-levels), and only where that Team and Enterprise preview runs.
+Native floor, as of 2026-09-02: hosted Code Review reads the repo CLAUDE.md and flags documentation a pull request leaves outdated, as a non-blocking nit, only on drift the pull request newly introduces, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#claudemd, https://code.claude.com/docs/en/code-review.md#severity-levels).
 
 ## Never put a closing keyword beside an issue number you do not mean to close
 
@@ -105,7 +105,7 @@ Native floor, as of 2026-09-02: worktree cleanup on session exit, which removes 
 
 **repo-c, `.claude/rules/deployment.md`.** Secrets go through `wrangler secret put` only, never into `wrangler.toml`, never into the repo, and never pasted into a Claude session.
 
-Native floor, as of 2026-09-02: the sandbox's default filesystem access, which still lets a session read a credential file, and the session environment a subprocess inherits (https://code.claude.com/docs/en/sandboxing); the mitigations that close that gap are deny rules on Read, which are what keep a credential file out of a session at all (https://code.claude.com/docs/en/permissions.md), and the credential helper settings that keep a key out of a config file (https://code.claude.com/docs/en/settings.md).
+Native floor, as of 2026-09-02: the sandbox's default filesystem access, which still lets a session read a credential file, and the session environment a subprocess inherits (https://code.claude.com/docs/en/sandboxing.md); the mitigations that close that gap are deny rules on Read, which are what keep a credential file out of a session at all (https://code.claude.com/docs/en/permissions.md), and the credential helper settings that keep a key out of a config file (https://code.claude.com/docs/en/settings.md).
 
 ## Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
 
