@@ -60,6 +60,7 @@ authority (CITED). REUSE and BORROW are the two that carry an ongoing rule:
 | spdx.github.io/spdx-spec/v2.3/SPDX-license-expressions | 2026-09-01 | CC BY 3.0 | CITED | the `MIT AND CC-BY-4.0` expression | re-read on an SPDX spec update |
 | linuxfoundation.org/licensebestpractices | 2026-09-01 | docs | CITED | per-content-type licensing | re-read on republication |
 | code.claude.com/docs/en/plugins-reference | 2026-09-01 | docs | CITED | no rules component; a plugin-root CLAUDE.md is not loaded (the reason render and vendor exist) | re-read if a rules component ships |
+| code.claude.com/docs (harness survey) | 2026-09-02 | docs | CITED | the native-feature facts behind every rule's native-floor sentence; see `docs/handbook/sources/harness-survey.md` | re-run the survey workflows on every Claude Code major |
 
 Internal bases (not public, recorded for the same reason): repo-b
 `scripts/check-docs-drift.mjs` and `.claude/hooks/no-direct-master.sh` are the

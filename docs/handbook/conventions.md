@@ -22,7 +22,9 @@ prose.
 Native floor, as of 2026-09-02: a plugin has no native component that ships rule files or
 instruction content as project context (https://code.claude.com/docs/en/plugins-reference), so
 house renders its rules into the project rules directory, where the harness loads them like any
-other project rule and scopes them by their paths frontmatter.
+other project rule and scopes them by their paths frontmatter. The native-feature facts behind
+every rule's native-floor sentence are the dated survey at
+`docs/handbook/sources/harness-survey.md`, re-run when a Claude Code major ships.
 
 A handbook chapter lives at `docs/handbook/<module>.md`, is never vendored and never loaded into
 any consuming repo's context, and stays in this repo only. It carries what a rule file cannot:
