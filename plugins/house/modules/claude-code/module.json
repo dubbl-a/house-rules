@@ -1,0 +1,22 @@
+{
+  "name": "claude-code",
+  "default": "on",
+  "rules": [
+    "rules/claude-code.md"
+  ],
+  "files": [],
+  "configSlots": [
+    "claudeWorkflowGlobs",
+    {
+      "name": "claudeGlobs",
+      "default": [
+        ".claude/**",
+        "CLAUDE.md"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$claudeGlobs",
+    "$claudeWorkflowGlobs"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "data-pipelines",
+  "default": "detect",
+  "rules": ["rules/data-pipelines.md"],
+  "files": [{"src": "files/retro.mjs", "dest": "scripts/house/retro.mjs"}],
+  "configSlots": ["pipelineGlobs"],
+  "defaultPaths": ["$pipelineGlobs"]
+}

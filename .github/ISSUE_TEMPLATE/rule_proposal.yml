@@ -1,0 +1,68 @@
+name: Rule proposal
+description: Propose a new house rule, or a change to an existing one, for a module.
+title: "[rule]: "
+labels: ["rule-proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read `CONTRIBUTING.md` first, especially the upstream-first and rule-file-shape
+        sections. Rule content is a minor change, but renaming or removing a rule heading is a
+        major one under `docs/decisions/0011-rule-content-changes-are-minor.md`.
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      description: Which module does this rule belong to?
+      options:
+        - claude-code
+        - data-pipelines
+        - database
+        - deployment
+        - docs
+        - engineering
+        - github
+        - llm-output
+        - testing
+        - new module (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: heading
+    attributes:
+      label: Proposed imperative heading
+      description: The rule stated as its own heading, the way an existing rule file states one.
+      placeholder: "Run the docs gate before pushing and in the build"
+    validations:
+      required: true
+
+  - type: textarea
+    id: deciding-case
+    attributes:
+      label: The deciding case
+      description: >
+        The incident or example that earns this rule. A rule with no case behind it does not
+        earn a heading.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: renames
+    attributes:
+      label: Does this rename or remove an existing rule heading or config slot?
+      description: A rename or removal is a major change under ADR 0011.
+      options:
+        - "No, this is a new heading or a reworded existing one"
+        - "Yes, it renames or removes an existing heading or slot"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: read-contributing
+    attributes:
+      label: Confirmation
+      options:
+        - label: I read CONTRIBUTING.md, including the upstream-first and rule-file-shape sections.
+          required: true

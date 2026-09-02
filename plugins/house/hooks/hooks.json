@@ -1,0 +1,13 @@
+{
+  "description": "House branch guard: denies commits and pushes on protected branches in repos that opt in via house.json.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/no-direct-master.sh", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}

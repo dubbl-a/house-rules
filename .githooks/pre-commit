@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Pre-commit: refuse to stage secrets or sensitive data.
+#
+# THIS IS A BACKSTOP, NOT THE GUARD. The real guard is .gitignore — a file
+# matching these patterns should never be tracked in the first place. This
+# hook exists for the accident: a stray `git add -f`, a pattern nobody wrote
+# yet. It checks staged file paths only, does no network I/O, and stays
+# fast on purpose — a slow hook gets bypassed once and disabled forever.
+# Anything slower (linting, tests, a hosted secret scanner) belongs in CI.
+#
+# Install once per clone:
+#   git config core.hooksPath .githooks
+#
+# Escape hatch — use it deliberately, not by habit:
+#   git commit --no-verify
+
+set -euo pipefail
+
+# --- PIIPATTERNS -------------------------------------------------------------
+# Extended-regex patterns (grep -E), one per line, matched against each
+# staged file's path. This starting set covers env files and generic
+# credential/data dumps; add this repo's own PII surfaces (an export
+# directory, a filename convention for sensitive data) before it needs them,
+# not after.
+PIIPATTERNS=(
+  '\.env($|\.[^.]*$)'      # .env, .env.local, ... — see ALLOWLIST for .env.example
+  '\.dev\.vars$'
+  '(^|/)\.backups?/'
+  '\.(csv|sql|dump)$'
+  '(^|/)secrets?(/|$)'
+  '(^|/)credentials?(/|$)'
+)
+
+# --- ALLOWLIST -----------------------------------------------------------
+# Exact paths or patterns that legitimately match PIIPATTERNS above and are
+# safe to commit. Add an entry here only with a one-line reason beside it;
+# an allowlist entry with no reason is a future accident.
+ALLOWLIST=(
+  '\.env\.example$'          # placeholder values only, never a real secret
+  '(^|/)migrations/.*\.sql$' # schema, not data
+)
+# -----------------------------------------------------------------------------
+
+staged=$(git diff --cached --name-only --diff-filter=ACM || true)
+[ -z "$staged" ] && exit 0
+
+blocked=()
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  for pat in "${PIIPATTERNS[@]}"; do
+    if echo "$path" | grep -qE "$pat"; then
+      allowed=false
+      for ok in "${ALLOWLIST[@]}"; do
+        if echo "$path" | grep -qE "$ok"; then
+          allowed=true
+          break
+        fi
+      done
+      [ "$allowed" = false ] && blocked+=("$path")
+      break
+    fi
+  done
+done <<< "$staged"
+
+if [ "${#blocked[@]}" -gt 0 ]; then
+  echo "pre-commit: refusing to stage what looks like secrets or sensitive data:" >&2
+  printf '  %s\n' "${blocked[@]}" >&2
+  echo >&2
+  echo "Fix it: unstage the file (git restore --staged <path>), add it to" >&2
+  echo ".gitignore if it should never be tracked, or add it to ALLOWLIST" >&2
+  echo "above with a reason if it's a genuine exception." >&2
+  echo "Deliberate bypass: git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0

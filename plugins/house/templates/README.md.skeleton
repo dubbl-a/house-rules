@@ -1,0 +1,36 @@
+# TODO: Project Name
+
+TODO: one or two sentences — what this is and who it's for. If `CLAUDE.md`
+already says this, don't repeat it here; link to it instead.
+
+## Run it
+
+TODO: the exact commands a fresh clone needs, and nothing else. List only
+commands that exist right now — a command you plan to add later belongs in
+an issue, not here. A README that tells you to run a missing command is
+worse than a short one.
+
+```bash
+TODO: install command
+TODO: run command
+TODO: test command
+```
+
+TODO (only if this repo uses the house pre-commit hook): document the
+one-time `git config core.hooksPath .githooks` step here.
+
+## Where to go next
+
+- `CLAUDE.md` — conventions and domain rules for anyone (human or agent)
+  working in this repo.
+- TODO: the one or two docs a newcomer actually needs (architecture, data
+  model, a runbook). Don't index everything under `docs/`; a directory
+  listing already does that.
+
+<!--
+Don't restate what package.json (or its equivalent manifest) already says:
+the dependency list, the full scripts list, the version. A reader can run
+the package manager's own list command for that. This file is for what the
+manifest can't tell them — what the project is, and the exact commands to
+get moving.
+-->

@@ -1,0 +1,76 @@
+{
+  "files": [
+    {
+      "path": ".claude/rules/house/claude-code.md",
+      "module": "claude-code",
+      "source": "modules/claude-code/rules/claude-code.md",
+      "bodySha256": "66c85c6611c142fa4a2fb7cde04a638897e92086454d6bc32455caa346d717de"
+    },
+    {
+      "path": ".claude/rules/house/docs.md",
+      "module": "docs",
+      "source": "modules/docs/rules/docs.md",
+      "bodySha256": "f497b8b02a94028727148e7763313dd441fe8b953bb9162e9972580f27955fcc"
+    },
+    {
+      "path": ".claude/rules/house/engineering.md",
+      "module": "engineering",
+      "source": "modules/engineering/rules/engineering.md",
+      "bodySha256": "a01b29b47ce501999703e58c6275cb4ac3a6fed1588dac5f68a59f656160410f"
+    },
+    {
+      "path": "scripts/house/is-main.mjs",
+      "module": "engineering",
+      "source": "modules/engineering/files/is-main.mjs",
+      "bodySha256": "102e399e972c4d143d4a5839b7b33c9c6dd656837b0aae9aaf7a95c20a2b14da"
+    },
+    {
+      "path": ".claude/rules/house/github.md",
+      "module": "github",
+      "source": "modules/github/rules/github.md",
+      "bodySha256": "4bfdcdc08ae13be7d3cf8549bc14e0d3ee336d7daceba45c6a9188875e512784"
+    },
+    {
+      "path": "scripts/house/scan-dist-secrets.mjs",
+      "module": "github",
+      "source": "modules/github/files/scan-dist-secrets.mjs",
+      "bodySha256": "c4400043f5b030dd0eec067a68e5efa6d076d004bb70209403ebf1c42ca7e854"
+    },
+    {
+      "path": "scripts/house/cleanup-worktree.sh",
+      "module": "github",
+      "source": "modules/github/files/cleanup-worktree.sh",
+      "bodySha256": "b385be66aeb3f45a59b6f19d6ce3dd54d0f003a82378124ff785c365a37788ef"
+    },
+    {
+      "path": ".claude/rules/house/testing.md",
+      "module": "testing",
+      "source": "modules/testing/rules/testing.md",
+      "bodySha256": "92e376f32b1e5d15ad165b54fd0c2d57fc9f68bc251c60148489c10f56157a80"
+    },
+    {
+      "path": ".house/check.mjs",
+      "module": "_payload",
+      "source": "payload/check.mjs",
+      "bodySha256": "940aedf537d2d627ac7e60233d2f8f42db88f7e29386635437b53ed6902c3239"
+    }
+  ],
+  "scaffolds": [
+    {
+      "template": "CLAUDE.md.skeleton",
+      "path": "CLAUDE.md.house-skeleton"
+    },
+    {
+      "template": "PULL_REQUEST_TEMPLATE.md",
+      "path": ".github/PULL_REQUEST_TEMPLATE.md"
+    },
+    {
+      "template": "dependabot.yml",
+      "path": ".github/dependabot.yml"
+    },
+    {
+      "template": "pr-checks.yml",
+      "path": ".github/workflows/pr-checks.yml"
+    }
+  ]
+}

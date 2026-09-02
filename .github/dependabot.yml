@@ -1,0 +1,14 @@
+# Dependabot: version updates only. Security updates are a separate repo
+# setting (Settings > Code security > Dependabot) — leave it on; this file
+# doesn't control it.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      all-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

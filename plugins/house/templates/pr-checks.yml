@@ -1,0 +1,42 @@
+name: pr-checks
+# Target wall time under one minute, so the feedback loop beats a local build.
+#
+# Deliberately NOT gated here (name what is excluded and why):
+#   - anything needing a credential CI should not hold
+#   - <add the repo's expensive local-only checks here>
+on:
+  pull_request:
+  workflow_dispatch:
+  # Deliberately no `push:` trigger on the protected branch — pull_request
+  # already covers every merge, and adding push would bill every commit twice.
+permissions:
+  contents: read # Read-only checkout; no comment/issue/PR mutation from this workflow.
+concurrency:
+  # A new push supersedes the run it's checking, so cancelling the stale run
+  # is correct here. A job that must finish rather than restart mid-run (a
+  # scheduled sync, a deploy) should set cancel-in-progress: false instead.
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22 }
+      - run: npm ci --ignore-scripts || npm install --ignore-scripts
+      - run: node .house/check.mjs
+      # The branch-guard hook protects this repo; test it here too, not only
+      # on the machine that happened to write it.
+      - run: npm run test:hooks --if-present
+      # If this repo commits a rendered artifact (a generated doc, a built
+      # email, a snapshot), re-render it here and diff against what's
+      # committed — a drift gate beats trusting the generator ran.
+      - run: npm run check:snapshots --if-present
+      - run: npm test --if-present
+
+# Need a scheduled workflow too (a sync job, a nightly report)? Offset the
+# cron off the top of the hour (e.g. "17 * * * *") to dodge the stampede,
+# set timeout-minutes, and give it a secrets-present guard step that fails
+# loudly before any lane runs rather than partway through.

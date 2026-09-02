@@ -1,0 +1,142 @@
+{
+  "version": "0.5.0",
+  "defaultBranch": "main",
+  "branchPolicy": "pr",
+  "protectedBranches": [
+    "master",
+    "main"
+  ],
+  "guard": {
+    "by": "plugin",
+    "decided": "2026-08-31",
+    "why": "the user-scope house-rules plugin supplies the PreToolUse hook; no repo-local copy is kept so the two cannot drift"
+  },
+  "modules": {
+    "claude-code": {
+      "enabled": true,
+      "config": {
+        "claudeWorkflowGlobs": []
+      }
+    },
+    "data-pipelines": {
+      "enabled": false,
+      "config": {
+        "pipelineGlobs": []
+      }
+    },
+    "database": {
+      "enabled": false,
+      "config": {}
+    },
+    "deployment": {
+      "enabled": false,
+      "config": {
+        "deployGlobs": []
+      }
+    },
+    "docs": {
+      "enabled": true,
+      "config": {
+        "roots": [],
+        "excludeFiles": [
+          "plugins/house/modules/**",
+          "plugins/house/templates/**",
+          "plugins/house/skills/**",
+          "plugins/house/evals/**",
+          {
+            "path": "docs/handbook/sources/**",
+            "why": "package-authored survey material; its tokens describe surveyed repos, not this tree"
+          },
+          "docs/handbook/claude-code.md",
+          "docs/handbook/conventions.md",
+          "docs/handbook/data-pipelines.md",
+          "docs/handbook/database.md",
+          "docs/handbook/deployment.md",
+          "docs/handbook/docs.md",
+          "docs/handbook/llm-output.md",
+          "docs/decisions/0004-archive-tier-scanned-by-per-repo-flag.md",
+          "docs/decisions/0007-path-scoped-rules-load-on-read.md"
+        ],
+        "archiveDirs": [],
+        "scanArchive": true,
+        "haystackDirs": [
+          "scripts",
+          "package.json",
+          ".github/workflows",
+          "plugins/house/scripts",
+          "plugins/house/payload",
+          "plugins/house/hooks",
+          "plugins/house/schema"
+        ],
+        "extraPathRoots": [],
+        "packageRoots": [],
+        "buildArtifactPrefixes": [],
+        "classPrefixes": [],
+        "componentSuffixes": [],
+        "componentAllowlist": [],
+        "bareScriptAllowlist": [
+          "check:docs",
+          "check:house",
+          "prebuild",
+          "postbuild"
+        ],
+        "lengthLimits": {
+          "CLAUDE.md": 40,
+          "README.md": 120,
+          ".claude/rules/house/*.md": 200
+        },
+        "maxCoLoadLines": 400,
+        "emDash": {
+          "mode": "all",
+          "exclude": [
+            {
+              "path": "docs/handbook/sources/**",
+              "why": "point-in-time research notes kept verbatim"
+            }
+          ]
+        }
+      }
+    },
+    "engineering": {
+      "enabled": true,
+      "config": {
+        "codeGlobs": [],
+        "gateGlobs": []
+      }
+    },
+    "github": {
+      "enabled": true,
+      "config": {
+        "actionsBudgetMinutes": 2000,
+        "secretGlobs": []
+      }
+    },
+    "llm-output": {
+      "enabled": false,
+      "config": {
+        "llmGlobs": []
+      }
+    },
+    "testing": {
+      "enabled": true,
+      "config": {
+        "testGlobs": [
+          "tests/**"
+        ],
+        "gateGlobs": [
+          ".github/workflows/**"
+        ]
+      }
+    }
+  },
+  "ratchet": {},
+  "ratchetRaises": [
+    {
+      "path": "README.md",
+      "from": 60,
+      "to": 120,
+      "why": "the public README now has to carry positioning, prerequisites, versioning policy, and licensing for a reader who has never seen this package, which does not fit in 60 lines",
+      "decided": "2026-09-02"
+    }
+  ]
+}

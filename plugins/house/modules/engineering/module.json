@@ -1,0 +1,30 @@
+{
+  "name": "engineering",
+  "default": "on",
+  "rules": [
+    "rules/engineering.md"
+  ],
+  "files": [
+    {
+      "src": "files/is-main.mjs",
+      "dest": "scripts/house/is-main.mjs"
+    }
+  ],
+  "configSlots": [
+    "codeGlobs",
+    "gateGlobs",
+    {
+      "name": "codeRoots",
+      "default": [
+        "scripts/**",
+        "src/**",
+        "lib/**"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$codeRoots",
+    "$codeGlobs",
+    "$gateGlobs"
+  ]
+}

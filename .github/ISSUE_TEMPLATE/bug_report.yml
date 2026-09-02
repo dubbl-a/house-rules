@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in the checker, a hook, a skill, or a rendered rule file is not doing what it says.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run `node .house/check.mjs` (or `npm run check:house` in this repo) and paste its output
+        below. A report without checker output usually bounces back with a request for it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and in which repo (this one, or one that adopted house-rules)?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Output of `claude plugin list`.
+      placeholder: "house-rules@house-rules  0.4.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands run, in order.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: checker-output
+    attributes:
+      label: Checker output
+      description: Paste the output of `node .house/check.mjs`, if applicable.
+      render: shell
+    validations:
+      required: false

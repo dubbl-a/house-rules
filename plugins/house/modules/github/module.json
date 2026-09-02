@@ -1,0 +1,8 @@
+{
+  "name": "github",
+  "default": "on",
+  "rules": ["rules/github.md"],
+  "files": [{"src": "files/scan-dist-secrets.mjs", "dest": "scripts/house/scan-dist-secrets.mjs"}, {"src": "files/cleanup-worktree.sh", "dest": "scripts/house/cleanup-worktree.sh"}],
+  "configSlots": ["actionsBudgetMinutes", "secretGlobs", {"name": "githubGlobs", "default": [".github/**", ".githooks/**", ".env.example"]}],
+  "defaultPaths": ["$githubGlobs", "$secretGlobs"]
+}

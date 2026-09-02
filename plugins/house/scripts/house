@@ -1,0 +1,1163 @@
+#!/usr/bin/env node
+// house CLI: init | render | check | doctor
+//
+// Single file, node builtins + `git` only (no npm dependencies). Runs as an
+// ES module: the real install location (plugins/house/scripts/house) sits
+// under this repo's root package.json ("type": "module"), which makes an
+// extensionless entry file here parse as ESM; CommonJS syntax breaks in that
+// context (confirmed empirically -- an ancestor package.json with an
+// explicit "type" is authoritative and disables Node's CJS/ESM sniffing).
+// When this file is copied into a fixture directory with no package.json at
+// all (as the tests do, to exercise real source-resolution paths), Node
+// falls back to syntax sniffing and ESM still works. Do not switch this file
+// to require()/module.exports.
+//
+// house <init|render|check|doctor> [--repo <path>] [--apply]
+//       [--force-managed <path>] [--json]
+//
+// Repo root: `git rev-parse --show-toplevel` from cwd, or the literal path
+// given to --repo (resolved against cwd, not re-resolved through git --
+// mirrors payload/check.mjs).
+//
+// Module SOURCES always resolve relative to *this script's own location*,
+// never to the target --repo: <scriptdir>/../modules/*/module.json, each
+// shaped { name, default: "on"|"detect"|"off", rules: [...], files: [...],
+// configSlots: [...], defaultPaths: [...] }. The plugin version comes from
+// <scriptdir>/../.claude-plugin/plugin.json.
+//
+// Exit codes: init -- 1 when house.json already exists, 2 on a fatal
+// packaging error (unreadable plugin.json), 0 otherwise. render -- 2 when
+// house.json is absent/unparseable, 1 when any managed target would be
+// (or was) refused, 0 otherwise. check -- whatever the underlying check.mjs
+// exits. doctor -- always 0 (diagnostic only).
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ── generic helpers (kept intentionally in sync with payload/check.mjs's
+//    equivalents, since a few of these values must be byte-for-byte
+//    reproducible by that script at check time) ──────────────────────────
+
+function arr(x) { return Array.isArray(x) ? x : []; }
+function isPlainObject(x) { return x !== null && typeof x === 'object' && !Array.isArray(x); }
+function isNonEmptyString(x) { return typeof x === 'string' && x.trim().length > 0; }
+function sha256Hex(str) { return createHash('sha256').update(str, 'utf8').digest('hex'); }
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// A managed file's "body" is everything after its first line when that
+// first line is a whole-line HTML comment (the managed-header convention);
+// otherwise the body is the whole file. Verbatim copy of check.mjs's
+// managedBody() so lock hashes computed here are exactly what check.mjs
+// will recompute at check time.
+function managedBody(raw) {
+  const nl = raw.indexOf('\n');
+  const firstLine = nl === -1 ? raw : raw.slice(0, nl);
+  if (/^<!--.*-->\s*$/.test(firstLine.trim())) return nl === -1 ? '' : raw.slice(nl + 1);
+  return raw;
+}
+
+function globToRegExp(glob) {
+  let pat = glob;
+  if (!pat.includes('/')) pat = `**/${pat}`;
+  let re = '';
+  let i = 0;
+  while (i < pat.length) {
+    const c = pat[i];
+    if (c === '*') {
+      if (pat[i + 1] === '*') {
+        const j = i + 2;
+        if (pat[j] === '/') { re += '(?:.*/)?'; i = j + 1; continue; }
+        re += '.*'; i = j; continue;
+      }
+      re += '[^/]*'; i += 1; continue;
+    }
+    if (c === '?') { re += '[^/]'; i += 1; continue; }
+    re += escapeRegExp(c); i += 1;
+  }
+  return new RegExp(`^${re}$`);
+}
+
+// True when glob matches at least one path in the list. A bare `name-*.ext`
+// glob (no slash before the first wildcard) matches at any depth, mirroring
+// the platform and globToRegExp's own `**/` prefixing.
+function globMatchesAny(glob, paths) {
+  const re = globToRegExp(glob);
+  const bare = !glob.slice(0, Math.max(glob.indexOf('*'), 0) === -1 ? glob.length : glob.indexOf('*')).includes('/');
+  return paths.some((p) => re.test(p) || (bare && re.test(p.slice(p.lastIndexOf('/') + 1))));
+}
+
+function frontmatterCloseIndex(lines) {
+  if ((lines[0] || '').trim() !== '---') return -1;
+  return lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+}
+function stripFrontmatter(raw) {
+  const lines = raw.split('\n');
+  const closeIdx = frontmatterCloseIndex(lines);
+  if (closeIdx <= 0) return raw;
+  return lines.slice(closeIdx + 1).join('\n');
+}
+function countLinesExcludingFrontmatter(raw) {
+  return (stripFrontmatter(raw).match(/\n/g) || []).length;
+}
+
+function posixJoin(...parts) { return parts.join('/').replace(/\/+/g, '/'); }
+function normalizeRepoPath(p) { return String(p).replace(/^\.\//, '').replace(/^\/+/, ''); }
+
+// A repo-relative dest must resolve to something at or under `root`.
+// normalizeRepoPath strips a leading ./ or / but does nothing about interior
+// `../` segments, so `../../escaped.txt` would write outside the target repo.
+// This is the guard that refuses it (F9). Same test as payload/check.mjs's.
+function isInsideRoot(root, rel) {
+  if (typeof rel !== 'string' || rel === '') return false;
+  const r = path.relative(root, path.resolve(root, rel));
+  return r !== '..' && !r.startsWith(`..${path.sep}`) && !path.isAbsolute(r);
+}
+
+// A config-slot value is spliced verbatim into a rendered rule file's YAML
+// frontmatter (`  - <value>`). A value carrying a newline, a `-->`, or a bare
+// `---` line could close the frontmatter early or the managed header and
+// inject instruction text Claude Code would then load (F8). Reject those.
+function configValueIsSafe(v) {
+  if (typeof v !== 'string') return false;
+  if (/[\r\n]/.test(v)) return false;
+  if (v.includes('-->')) return false;
+  if (v.trim() === '---') return false;
+  return true;
+}
+
+// ── git ──────────────────────────────────────────────────────────────────
+
+function git(cwd, args) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' });
+}
+function gitLsFiles(repoRoot) {
+  try {
+    return git(repoRoot, ['ls-files', '-z']).split('\0').filter(Boolean);
+  } catch { return []; }
+}
+
+// #18: a destination house writes that .gitignore swallows never enters
+// `git ls-files`, so the vendored checker's drift/shape/lengths/coload
+// families skip it and print a false "0 findings" (repo-e's first run,
+// with `.claude/` blanket-ignored). Ask git itself rather than parsing
+// .gitignore syntax: `git check-ignore` honors every .gitignore, the repo's
+// info/exclude, and core.excludesFile. --no-index evaluates a path even when
+// it is already tracked, and the path need not exist. Returns
+// [{path, source, line, pattern}] (empty when nothing is ignored), or null
+// when git could not answer, so a caller prints nothing rather than claiming
+// a negative it did not check.
+const HOUSE_WRITE_PROBES = [
+  { probe: '.claude/rules/house/house-probe.md', display: '.claude/rules/house/**' },
+  { probe: '.house/check.mjs', display: '.house/check.mjs' },
+  { probe: '.house/lock.json', display: '.house/lock.json' },
+  { probe: '.house/INDEX.md', display: '.house/INDEX.md' },
+];
+function gitIgnored(repoRoot, paths) {
+  if (!paths.length) return [];
+  const res = spawnSync('git', ['check-ignore', '--no-index', '--stdin', '-z', '-v'], {
+    cwd: repoRoot, input: `${paths.join('\0')}\0`, encoding: 'utf8',
+  });
+  if (res.error || (res.status !== 0 && res.status !== 1)) return null;
+  const f = (res.stdout || '').split('\0');
+  const out = [];
+  for (let i = 0; i + 3 < f.length; i += 4) {
+    // -v reports the pattern that decided each path; a pattern starting with
+    // `!` is a negation, so that path is NOT ignored (git-scm check-ignore
+    // docs). Some git versions print such matches, some do not; skip them.
+    if (f[i + 2].startsWith('!')) continue;
+    out.push({ source: f[i], line: f[i + 1], pattern: f[i + 2], path: f[i + 3] });
+  }
+  return out;
+}
+// The fixed destinations every render writes, probed by a stand-in path so a
+// pattern at any level (`.claude/`, `.claude/rules/`, `.claude/rules/house/`)
+// is caught, reported under the directory it stands for. `extraDests` are
+// concrete paths probed beside them in the same git call: every module's
+// files[].dest (scripts/house/*.mjs) and, once a lock exists, its entries. A
+// concrete path under a flagged stand-in directory, caught by the same ignore
+// rule, folds into the stand-in so one rule reads as one line rather than
+// once per vendored file.
+function moduleFileDests(modules) {
+  return arr(modules).flatMap((m) => arr(m.json && m.json.files).map((f) => (isPlainObject(f) && typeof f.dest === 'string' ? f.dest : null)).filter(Boolean));
+}
+function probeIgnoredHouseDests(repoRoot, extraDests = []) {
+  const probes = HOUSE_WRITE_PROBES.map((p) => p.probe);
+  const concrete = [...new Set(arr(extraDests).filter((d) => typeof d === 'string' && d && !probes.includes(d)))];
+  const hits = gitIgnored(repoRoot, [...probes, ...concrete]);
+  if (!hits) return [];
+  const entries = hits.map((h) => ({ ...h, path: (HOUSE_WRITE_PROBES.find((p) => p.probe === h.path) || { display: h.path }).display }));
+  const dirs = entries.filter((e) => e.path.endsWith('/**'));
+  return entries.filter((e) => e.path.endsWith('/**')
+    || !dirs.some((d) => d.source === e.source && d.line === e.line && e.path.startsWith(d.path.slice(0, -2))));
+}
+function ignoreRuleOf(e) { return `${e.source}:${e.line} "${e.pattern}"`; }
+function groupByIgnoreRule(entries) {
+  const m = new Map();
+  for (const e of arr(entries)) m.set(ignoreRuleOf(e), [...(m.get(ignoreRuleOf(e)) || []), e.path]);
+  return m;
+}
+function ignoredDestWarningLines(entries) {
+  return [...groupByIgnoreRule(entries)].map(([rule, paths]) => `warning: ${paths.join(', ')} ${paths.length === 1 ? 'is' : 'are'} git-ignored (${rule}): house's checker walks git ls-files, so a file git cannot see never reaches its drift, shape, lengths, or coload families and CI sees it as missing. Narrow the ignore rule (ignore .claude/settings.local.json, not .claude/ or .house/), then git add the rendered files.`);
+}
+function formatIgnoredDests(entries) {
+  const g = groupByIgnoreRule(entries);
+  return g.size ? [...g].map(([rule, paths]) => `${paths.join(', ')} (${rule})`).join('; ') : 'none';
+}
+
+function resolveRepoRootFromValue(repoArg) {
+  if (repoArg) return path.resolve(process.cwd(), repoArg);
+  try {
+    return git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
+  } catch (e) {
+    console.error(`house: not a git repository and no --repo given (${e.message})`);
+    process.exit(2);
+  }
+}
+function resolveRepoRoot(args) { return resolveRepoRootFromValue(args.repo); }
+
+// ── plugin / module source discovery (always relative to this script) ────
+
+function readPluginVersion() {
+  const p = path.join(__dirname, '..', '.claude-plugin', 'plugin.json');
+  try {
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    if (typeof j.version === 'string' && j.version) return j.version;
+  } catch { /* fall through to the fatal message below */ }
+  console.error(`house: could not read a version string from ${p}`);
+  process.exit(2);
+}
+
+function findModules() {
+  const modulesDir = path.join(__dirname, '..', 'modules');
+  let entries;
+  try { entries = readdirSync(modulesDir, { withFileTypes: true }); } catch { return []; }
+  const mods = [];
+  for (const ent of entries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+    const dir = path.join(modulesDir, ent.name);
+    const mjPath = path.join(dir, 'module.json');
+    if (!existsSync(mjPath)) continue;
+    let json = null;
+    let error = null;
+    try { json = JSON.parse(readFileSync(mjPath, 'utf8')); } catch (e) { error = e.message; }
+    mods.push({ dirName: ent.name, dir, json, error });
+  }
+  return mods;
+}
+function moduleName(m) { return (m.json && typeof m.json.name === 'string' && m.json.name) || m.dirName; }
+
+// ── init ─────────────────────────────────────────────────────────────────
+
+function probeDefaultBranch(repoRoot) {
+  try {
+    const ref = git(repoRoot, ['symbolic-ref', 'refs/remotes/origin/HEAD']).trim();
+    const parts = ref.split('/');
+    if (parts.length) return parts[parts.length - 1];
+  } catch { /* no origin remote (or no HEAD ref yet): fall through */ }
+  try {
+    const cur = git(repoRoot, ['branch', '--show-current']).trim();
+    if (cur) return cur;
+  } catch { /* fall through */ }
+  try {
+    const cur = git(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    if (cur && cur !== 'HEAD') return cur;
+  } catch { /* fall through */ }
+  return 'main';
+}
+
+// PA-003: a rule whose `paths:` glob silently fails to match is
+// indistinguishable from a rule that does nothing, so the only real proof a
+// vendored rule loads is the harness saying so. The `InstructionsLoaded` hook
+// logs exactly which instruction files load, when, and why; doctor reports
+// whether that positive control is wired rather than leaving it to inference.
+function instructionsLoadedProbe(repoRoot) {
+  for (const name of ['settings.json', 'settings.local.json']) {
+    const p = path.join(repoRoot, '.claude', name);
+    if (!existsSync(p)) continue;
+    try {
+      if (readFileSync(p, 'utf8').includes('InstructionsLoaded')) return name;
+    } catch { /* unreadable: fall through to the next candidate */ }
+  }
+  return null;
+}
+
+// A repo-local guard the hook would actually defer to: a NON-EMPTY PreToolUse
+// array in .claude/settings.json (the hook's own rule; a hooks key alone or a
+// PostToolUse-only block is not a branch guard). doctor must never report
+// `repo` for a settings file the hook would not defer to, or an operator
+// could uninstall the plugin believing the repo protects itself.
+function repoSettingsHasHooksBlock(repoRoot) {
+  const p = path.join(repoRoot, '.claude', 'settings.json');
+  if (!existsSync(p)) return false;
+  try {
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    return isPlainObject(j) && isPlainObject(j.hooks) && Array.isArray(j.hooks.PreToolUse) && j.hooks.PreToolUse.length > 0;
+  } catch { return false; }
+}
+
+function probeRepo(repoRoot, fileDests = []) {
+  const tracked = gitLsFiles(repoRoot);
+  const topDirs = [...new Set(tracked.filter((f) => f.includes('/')).map((f) => f.slice(0, f.indexOf('/'))))].sort();
+  const hasWrangler = existsSync(path.join(repoRoot, 'wrangler.toml'));
+  const hasVercel = existsSync(path.join(repoRoot, 'vercel.json'));
+  const hasDockerfile = existsSync(path.join(repoRoot, 'Dockerfile'));
+  let hasAstroConfig = false;
+  try { hasAstroConfig = readdirSync(repoRoot).some((f) => f.startsWith('astro.config.')); } catch { /* ignore */ }
+  const hasDeploymentMarkers = hasWrangler || hasVercel || hasDockerfile || hasAstroConfig;
+  const hasDbMarkers = existsSync(path.join(repoRoot, 'db')) || existsSync(path.join(repoRoot, 'migrations'));
+  return {
+    defaultBranch: probeDefaultBranch(repoRoot),
+    topLevelTrackedDirs: topDirs,
+    hasPackageJson: existsSync(path.join(repoRoot, 'package.json')),
+    hasClaudeRules: existsSync(path.join(repoRoot, '.claude', 'rules')),
+    hasRepoHook: existsSync(path.join(repoRoot, '.claude', 'hooks', 'no-direct-master.sh')),
+    hasSettingsHooksBlock: repoSettingsHasHooksBlock(repoRoot),
+    hasDeploymentMarkers,
+    hasDbMarkers,
+    ignoredHouseDests: probeIgnoredHouseDests(repoRoot, fileDests),
+  };
+}
+
+// Most configSlots are glob-array slots (defaulting to []), matched by a
+// module's defaultPaths via "$slotName". A few are scalars the docs/github
+// modules also expose as named configSlots even though nothing expands
+// them as a path list; their defaults come straight from payload/check.mjs's
+// own header comment, which documents each one's type and default (the
+// canonical spec for what check.mjs actually reads).
+const SCALAR_SLOT_DEFAULTS = { scanArchive: false, maxCoLoadLines: 400, actionsBudgetMinutes: 2000 };
+const OBJECT_SLOT_DEFAULTS = { lengthLimits: {} };
+
+function slotDefault(slotName) {
+  if (Object.prototype.hasOwnProperty.call(SCALAR_SLOT_DEFAULTS, slotName)) return SCALAR_SLOT_DEFAULTS[slotName];
+  if (Object.prototype.hasOwnProperty.call(OBJECT_SLOT_DEFAULTS, slotName)) return { ...OBJECT_SLOT_DEFAULTS[slotName] };
+  return [];
+}
+
+function slotDefaults(json) {
+  const out = {};
+  for (const s of arr(json && json.configSlots)) {
+    if (typeof s === 'string' && s) out[s] = slotDefault(s);
+    else if (isPlainObject(s) && typeof s.name === 'string' && s.name) {
+      out[s.name] = 'default' in s ? s.default : slotDefault(s.name);
+    }
+  }
+  return out;
+}
+
+// docs is the one module init populates beyond enabled/config-slot-defaults:
+// haystackDirs from the repo's own conventional dirs, roots from doc dirs
+// that actually exist. Both lists are proposals -- the operator edits
+// house.json freely before the first render.
+function docsConfigFromProbe(repoRoot) {
+  const haystackCandidates = ['src', 'scripts', 'db', 'public'];
+  const haystackDirs = haystackCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
+  if (existsSync(path.join(repoRoot, 'package.json'))) haystackDirs.push('package.json');
+  if (existsSync(path.join(repoRoot, '.github', 'workflows'))) haystackDirs.push('.github/workflows');
+  const rootCandidates = ['docs', '.claude/rules', '.claude/skills', '.claude/commands'];
+  const roots = rootCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
+  return { haystackDirs, roots };
+}
+
+// "detect" probing for the two named modules the content spec actually
+// gives a stack signal for. Any other detect-default module name (there are
+// none in the shipped v0.1 content spec, but module sources are read
+// generically) has no known probe, so it defaults OFF rather than guessing.
+function probeDetectEnabled(name, probe) {
+  if (name === 'deployment') return probe.hasDeploymentMarkers;
+  if (name === 'database') return probe.hasDbMarkers;
+  return false;
+}
+
+function buildProposedManifest(repoRoot, pluginVersion, modules, probe) {
+  const modulesOut = {};
+  for (const m of modules) {
+    if (m.error) continue; // malformed module.json: reported separately, not proposed
+    const name = moduleName(m);
+    const defaultKind = (m.json && m.json.default) || 'off';
+    let enabled;
+    let config = slotDefaults(m.json);
+
+    if (name === 'data-pipelines' || name === 'llm-output') {
+      // Always off at init, with empty glob slots and no probe-derived
+      // extras: the operator fills these in deliberately.
+      enabled = false;
+      for (const key of Object.keys(config)) config[key] = [];
+    } else if (defaultKind === 'on') {
+      enabled = true;
+    } else if (defaultKind === 'detect') {
+      enabled = probeDetectEnabled(name, probe);
+      if (name === 'docs') config = { ...config, ...docsConfigFromProbe(repoRoot) };
+    } else {
+      enabled = false;
+    }
+
+    modulesOut[name] = { enabled, config };
+  }
+  return {
+    version: pluginVersion,
+    defaultBranch: probe.defaultBranch,
+    branchPolicy: 'pr',
+    protectedBranches: ['master', 'main'],
+    modules: modulesOut,
+  };
+}
+
+function wiringInstructionLines() {
+  return [
+    'Wiring (paste into the target repo):',
+    '  package.json scripts:',
+    '    "check:docs": "node .house/check.mjs --only=drift,todo"',
+    '    "check:house": "node .house/check.mjs"',
+    '  CI step:',
+    '    node .house/check.mjs',
+    '  Plugin install (once per machine):',
+    '    claude plugin marketplace add dubbl-a/house-rules',
+    '    claude plugin install house-rules@house-rules --scope user',
+    '  Next step: `house render --apply` to vendor the rules this manifest turns on.',
+  ];
+}
+
+function cmdInit(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (existsSync(housePath)) {
+    console.error(`house init: refusing -- ${housePath} already exists. Edit it directly, or delete it and re-run init if you want a fresh probe.`);
+    process.exit(1);
+  }
+
+  const pluginVersion = readPluginVersion();
+  const modules = findModules();
+  const probe = probeRepo(repoRoot, moduleFileDests(modules));
+  const moduleWarnings = modules.filter((m) => m.error).map((m) => `modules/${m.dirName}/module.json: invalid JSON (${m.error})`);
+  const proposed = buildProposedManifest(repoRoot, pluginVersion, modules, probe);
+
+  if (args.json) {
+    console.log(JSON.stringify({ proposed, probe, moduleWarnings, wiring: wiringInstructionLines() }, null, 2));
+  } else {
+    for (const w of moduleWarnings) console.log(`warning: ${w}`);
+    for (const line of ignoredDestWarningLines(probe.ignoredHouseDests)) console.log(line);
+    console.log(JSON.stringify(proposed, null, 2));
+    console.log('');
+    for (const line of wiringInstructionLines()) console.log(line);
+  }
+
+  if (args.apply) {
+    mkdirSync(path.dirname(housePath), { recursive: true });
+    writeFileSync(housePath, `${JSON.stringify(proposed, null, 2)}\n`, 'utf8');
+    if (!args.json) console.log(`\nWrote ${housePath}`);
+  }
+  process.exit(0);
+}
+
+// ── render ───────────────────────────────────────────────────────────────
+
+// The one definition of "this module is on" for render: present in
+// house.json with enabled === true. init writes every module, so there is
+// no default-on fallback; the scaffold gate below reuses this so the two
+// cannot disagree.
+function moduleEnabled(houseData, name) {
+  const cfg = isPlainObject(houseData) && isPlainObject(houseData.modules) ? houseData.modules[name] : null;
+  return isPlainObject(cfg) && cfg.enabled === true;
+}
+
+function expandPaths(defaultPaths, config) {
+  const out = [];
+  for (const entry of arr(defaultPaths)) {
+    if (typeof entry !== 'string' || !entry) continue;
+    if (entry.startsWith('$')) {
+      const slotName = entry.slice(1);
+      const val = config && Array.isArray(config[slotName]) ? config[slotName] : [];
+      for (const v of val) if (typeof v === 'string' && v && !out.includes(v)) out.push(v);
+    } else if (!out.includes(entry)) {
+      // #19: a slot value that repeats a literal (or another slot's value)
+      // rendered the glob twice; order-preserving dedup, first mention wins.
+      out.push(entry);
+    }
+  }
+  return out;
+}
+
+// One reader for .house/lock.json as a whole. null when the lock is absent or
+// unparseable, which every caller reads as "this repo has never completed a
+// render": everything classifies as create/refuse-on-conflict, and #23's
+// scaffold record starts empty.
+function loadPriorLockJson(repoRoot) {
+  const p = path.join(repoRoot, '.house', 'lock.json');
+  if (!existsSync(p)) return null;
+  try { return JSON.parse(readFileSync(p, 'utf8')); }
+  catch { return null; }
+}
+
+function loadPriorLock(repoRoot) {
+  const j = loadPriorLockJson(repoRoot);
+  const m = new Map();
+  if (j === null) return m;
+  const entries = Array.isArray(j) ? j : (Array.isArray(j.files) ? j.files : []);
+  for (const e of entries) if (isPlainObject(e) && e.path) m.set(e.path, e);
+  return m;
+}
+
+// #23: which one-time scaffolds this repo has already been offered, as
+// template -> the path it landed at. Keyed by TEMPLATE, not destination: the
+// CLAUDE.md skeleton's dest moves to the sidecar name once a CLAUDE.md exists,
+// so a path key would miss it on the very next render and write the sidecar
+// again. A lock written before this key existed (every repo rendered at 0.2.2
+// or earlier) is read as "already scaffolded" for each template whose module
+// gate passes right now, so an adopter's next render is the quiet one; a
+// template whose module is off stays unrecorded, so enabling that module later
+// still delivers its scaffolds.
+function priorScaffoldRecord(lockJson, scaffolds, houseData, repoRoot) {
+  const rec = new Map();
+  if (lockJson === null) return rec;
+  if (Array.isArray(lockJson.scaffolds)) {
+    for (const e of lockJson.scaffolds) {
+      if (typeof e === 'string') rec.set(e, e);
+      else if (isPlainObject(e) && typeof e.template === 'string') rec.set(e.template, typeof e.path === 'string' ? e.path : e.template);
+    }
+    return rec;
+  }
+  for (const s of SCAFFOLDS) {
+    if (s.module && !moduleEnabled(houseData, s.module)) continue;
+    // #34 review: the seed must apply the row's `when` predicate too, or a
+    // pre-0.2.3 repo that was never ELIGIBLE for a scaffold gets it recorded
+    // as already-offered, and becoming eligible later (adding a package.json)
+    // no longer delivers it, unlike a fresh-lock repo.
+    if (!scaffoldApplies(s, repoRoot)) continue;
+    rec.set(s.tmpl, s.dest);
+  }
+  return rec;
+}
+
+// Classifies one managed target as: create (new), missing (was locked, now
+// gone -- restore), clean (on-disk body matches the last known-good hash),
+// clean-forced (--force-managed named this exact path), or refuse (on-disk
+// body was hand-edited since the last render).
+function classify(repoRoot, target, priorLock, forceManagedPath) {
+  const absPath = path.join(repoRoot, target.path);
+  const priorEntry = priorLock.get(target.path);
+  if (!existsSync(absPath)) {
+    return { status: priorEntry ? 'missing' : 'create', target };
+  }
+  const onDiskHash = sha256Hex(managedBody(readFileSync(absPath, 'utf8')));
+  const compareHash = priorEntry ? priorEntry.bodySha256 : target.lockHash;
+  if (onDiskHash === compareHash) return { status: 'clean', target };
+  if (forceManagedPath && forceManagedPath === target.path) return { status: 'clean-forced', target };
+  return { status: 'refuse', target, onDiskHash, expectedHash: compareHash };
+}
+
+function writeIfChanged(absPath, content) {
+  let current = null;
+  try { current = readFileSync(absPath, 'utf8'); } catch { /* not present yet */ }
+  if (current === content) return false;
+  mkdirSync(path.dirname(absPath), { recursive: true });
+  writeFileSync(absPath, content, 'utf8');
+  return true;
+}
+
+function extractH2WithFirstLine(content) {
+  const lines = content.split('\n');
+  const headingIdx = [];
+  let inFence = false;
+  lines.forEach((line, idx) => {
+    if (/^\s*```/.test(line)) { inFence = !inFence; return; }
+    if (inFence) return;
+    if (/^##\s+.+$/.test(line)) headingIdx.push({ idx, text: line.replace(/^##\s+/, '').trim() });
+  });
+  const out = [];
+  for (let i = 0; i < headingIdx.length; i++) {
+    const start = headingIdx[i].idx + 1;
+    const end = i + 1 < headingIdx.length ? headingIdx[i + 1].idx : lines.length;
+    let firstLine = '';
+    for (let j = start; j < end; j++) {
+      const t = lines[j].trim();
+      if (t && !/^Anchor:/.test(t)) { firstLine = t; break; }
+    }
+    out.push({ text: headingIdx[i].text, firstLine });
+  }
+  return out;
+}
+
+function buildIndex(plan) {
+  const lines = ['# House Index', '', '(generated by `house render`; do not edit by hand)', ''];
+  for (const p of plan) {
+    if (p.target.kind !== 'rule') continue;
+    lines.push(`## ${p.target.path}`);
+    const headings = extractH2WithFirstLine(p.target.content);
+    if (headings.length === 0) lines.push('(no `##` headings found)');
+    for (const h of headings) {
+      lines.push(`- ${h.text}`);
+      if (h.firstLine) lines.push(`  ${h.firstLine}`);
+    }
+    lines.push('');
+  }
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+// RATCHET: when a docs lengthLimits entry would fail an existing tracked
+// file, record its live line count so the build stays green instead of
+// blocking on pre-existing size. CLAUDE.md is never ratchet-eligible; it
+// comes back as a follow-up instead. Auto-tightens on shrink.
+function computeRatchetUpdates(repoRoot, houseData) {
+  const docsCfg = (houseData.modules && isPlainObject(houseData.modules.docs) && isPlainObject(houseData.modules.docs.config))
+    ? houseData.modules.docs.config : {};
+  const limits = isPlainObject(docsCfg.lengthLimits) ? docsCfg.lengthLimits : {};
+  const tracked = gitLsFiles(repoRoot);
+  const updates = {};
+  const followUps = [];
+  for (const [pattern, val] of Object.entries(limits)) {
+    const limitLines = typeof val === 'number' ? val : (isPlainObject(val) && typeof val.lines === 'number' ? val.lines : null);
+    if (limitLines === null) continue;
+    const matches = /[*?]/.test(pattern)
+      ? tracked.filter((f) => globToRegExp(pattern).test(f))
+      : (tracked.includes(pattern) ? [pattern] : []);
+    for (const f of matches) {
+      const abs = path.join(repoRoot, f);
+      if (!existsSync(abs)) continue;
+      const raw = readFileSync(abs, 'utf8');
+      const count = countLinesExcludingFrontmatter(raw);
+      const existingRatchet = isPlainObject(houseData.ratchet) && Number.isInteger(houseData.ratchet[f]) ? houseData.ratchet[f] : null;
+      const effectiveCeiling = existingRatchet !== null ? Math.max(existingRatchet, limitLines) : limitLines;
+      if (count > effectiveCeiling) {
+        if (f === 'CLAUDE.md') { followUps.push({ path: f, count, limit: effectiveCeiling }); continue; }
+        updates[f] = count;
+      } else if (existingRatchet !== null && count < existingRatchet) {
+        updates[f] = count; // shrink: tighten the ceiling
+      }
+    }
+  }
+  return { updates, followUps };
+}
+
+// The one-time scaffolds, as one table. Read twice: by plannedDestPaths (a
+// `paths:` glob must not be dropped when this very render creates the file
+// that satisfies it) and by the writer in cmdRender.
+//
+// #26: the CLAUDE.md skeleton is always the sidecar, never CLAUDE.md itself.
+// `bootstrap/SKILL.md` has always said "Bootstrap never originates the repo's
+// root file. A person merges the skeleton in by hand", and the CLI did the
+// opposite when no CLAUDE.md existed, handing the repo a `# TODO: Project
+// Name` root file authored on its behalf. Safe to change only together with
+// plannedDestPaths: without that, a repo left with no CLAUDE.md had
+// claude-code vendor zero rules, which is a manifest FINDING.
+//
+// #32: dependabot.yml carries an optional `when` predicate. Its template
+// hardcodes `package-ecosystem: npm`, so a repo with no package.json would be
+// handed a config Dependabot cannot resolve; the predicate is the gate that
+// keeps it out of those repos.
+const SCAFFOLDS = [
+  { tmpl: 'PULL_REQUEST_TEMPLATE.md', dest: '.github/PULL_REQUEST_TEMPLATE.md', module: 'github' },
+  { tmpl: 'pr-checks.yml', dest: '.github/workflows/pr-checks.yml', module: 'github' },
+  { tmpl: 'dependabot.yml', dest: '.github/dependabot.yml', module: 'github', when: (repoRoot) => existsSync(path.join(repoRoot, 'package.json')) },
+  { tmpl: 'CLAUDE.md.skeleton', dest: 'CLAUDE.md.house-skeleton', module: null },
+];
+
+// The single reading of a row's optional `when`, called from BOTH places that
+// iterate SCAFFOLDS (plannedDestPaths and the writer in cmdRender). Those two
+// drifted once before, which left a vendored rule carrying a `paths:` glob
+// nothing satisfied and turned a render into a red gate; one helper called at
+// the same point in both loops is what keeps them from drifting again.
+function scaffoldApplies(sc, repoRoot) { return !sc.when || sc.when(repoRoot); }
+
+// #26: the dest paths this render is about to write. A `paths:` glob must
+// not be dropped for matching nothing when THIS render creates the file that
+// satisfies it. Two literal globs used to be exempted by name, which covered
+// the vendored rules but not `.claude/**`, so on a FIRST render into a repo
+// with no CLAUDE.md the claude-code module's default `claudeGlobs` collapsed
+// to nothing and the module vendored zero rules: a manifest FINDING on a
+// freshly bootstrapped repo. Computed before the plan so the filter can test
+// against the tracked tree plus what is about to exist.
+function plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceScaffold) {
+  const dests = ['.house/check.mjs'];
+  for (const m of modules) {
+    if (m.error) continue;
+    const name = moduleName(m);
+    if (!moduleEnabled(houseData, name)) continue;
+    for (const rulePath of arr(m.json.rules)) {
+      dests.push(posixJoin('.claude/rules/house', path.basename(rulePath)));
+    }
+    for (const fEntry of arr(m.json.files)) {
+      // Same shape check the plan applies before it writes a files[] dest: a
+      // malformed entry is skipped there, so it must not count here either.
+      if (!isPlainObject(fEntry) || typeof fEntry.src !== 'string' || typeof fEntry.dest !== 'string') continue;
+      dests.push(normalizeRepoPath(fEntry.dest));
+    }
+  }
+  // Review finding: gate these on the SAME condition the writer uses, not on
+  // the table alone. #23 made a scaffold write-once-per-repo, so counting
+  // every enabled scaffold kept `.github/**` alive in a repo that had deleted
+  // those files and would not be given them again. The vendored rule then
+  // carried a `paths:` glob matching zero tracked files, which check.mjs
+  // reports as a drift FINDING: render would hand the repo a red gate.
+  for (const sc of SCAFFOLDS) {
+    if (sc.module && !moduleEnabled(houseData, sc.module)) continue;
+    if (!scaffoldApplies(sc, repoRoot)) continue;
+    // On disk counts whether or not git tracks it yet. The previous version
+    // skipped an existing dest on the assumption that `git ls-files` covered
+    // it, which is false for a scaffold the LAST render just wrote and nobody
+    // has staged: it was in neither set, so the glob was dropped, the rule
+    // skipped, and the orphan sweep deleted the very rule file the previous
+    // render had written. Two renders in a row flip-flopped.
+    if (existsSync(path.join(repoRoot, sc.dest))) { dests.push(sc.dest); continue; }
+    // Otherwise it only counts if this render is actually going to write it.
+    // Every condition below mirrors the writer in cmdRender; when they drift,
+    // this keeps a glob alive that nothing satisfies and the checker reports
+    // the vendored rule as drift, which is the failure this gate exists to
+    // prevent. A missing template file is the writer's last check.
+    if (scaffoldRecord.has(sc.tmpl) && !forceScaffold) continue;
+    if (!existsSync(path.join(__dirname, '..', 'templates', sc.tmpl))) continue;
+    dests.push(sc.dest);
+  }
+  return dests;
+}
+
+function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, forceScaffold) {
+  const priorLock = loadPriorLock(repoRoot);
+  const plan = [];
+  const skips = [];
+  const moduleWarnings = [];
+  // Hoisted: one `git ls-files` for the whole plan (it was re-run per rule),
+  // unioned with the dests this render will write, so a glob is dropped only
+  // when nothing in the repo AND nothing this render creates satisfies it.
+  const renderTargets = [...gitLsFiles(repoRoot), ...plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceScaffold)];
+
+  for (const m of modules) {
+    if (m.error) { moduleWarnings.push(`modules/${m.dirName}/module.json: invalid JSON (${m.error})`); continue; }
+    const name = moduleName(m);
+    const cfg = houseData.modules[name];
+    if (!moduleEnabled(houseData, name)) continue;
+    // #13: a $slot referenced by defaultPaths falls back to its DECLARED
+    // default when house.json does not set it, so a load-bearing default path
+    // (docs' README.md/CLAUDE.md set via $docFiles, engineering's src/** via
+    // $codeRoots) becomes overridable without changing any existing repo's
+    // behavior: a repo that has not set the slot renders exactly the historical
+    // literals, a repo that sets it narrows what the rule vendors. An explicit
+    // value in house.json (including []) still wins over the default, since the
+    // spread puts cfg.config last and expandPaths only reads Array-valued slots.
+    const moduleCfg = { ...slotDefaults(m.json), ...(isPlainObject(cfg.config) ? cfg.config : {}) };
+
+    for (const rulePath of arr(m.json.rules)) {
+      const sourceAbs = path.join(m.dir, rulePath);
+      if (!existsSync(sourceAbs)) { moduleWarnings.push(`modules/${m.dirName}/${rulePath}: rule source is missing`); continue; }
+      const sourceBody = readFileSync(sourceAbs, 'utf8');
+      const rawExpanded = expandPaths(m.json.defaultPaths, moduleCfg);
+      const destPath = posixJoin('.claude/rules/house', path.basename(rulePath));
+      // F1(b): drop any paths: glob that matches zero tracked files in THIS
+      // repo. A trigger for a directory the consumer does not have is dead
+      // weight and, worse, the glob-zero drift check would flag it. The
+      // vendored file itself is not yet tracked at render time, so a glob that
+      // only its own dest would satisfy (`.claude/rules/**`) is kept explicitly.
+      const expanded = rawExpanded.filter((g) => globMatchesAny(g, renderTargets));
+      const dropped = rawExpanded.filter((g) => !expanded.includes(g));
+      if (dropped.length) moduleWarnings.push(`modules/${m.dirName}/${rulePath}: dropped ${dropped.length} paths: glob(s) matching nothing here (${dropped.join(', ')})`);
+      if (expanded.length === 0) {
+        skips.push({ path: destPath, module: name, rulePath, reason: 'every paths: glob expanded from this module matched no file in this repo; a rule with no `paths:` is always-on, so it was not written. Populate its config slot with a real path.' });
+        continue;
+      }
+      const fm = `---\npaths:\n${expanded.map((p) => `  - ${p}`).join('\n')}\n---\n`;
+      const headerHash = sha256Hex(sourceBody);
+      const source = `modules/${m.dirName}/${rulePath}`;
+      const header = `<!-- house-managed v${pluginVersion} module=${name} source=${source} body-sha256=${headerHash} DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->`;
+      const content = `${fm}${header}\n${sourceBody}`;
+      const lockHash = sha256Hex(managedBody(content));
+      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'rule' }, priorLock, forceManagedPath));
+    }
+
+    for (const fEntry of arr(m.json.files)) {
+      if (!isPlainObject(fEntry) || typeof fEntry.src !== 'string' || typeof fEntry.dest !== 'string') {
+        moduleWarnings.push(`modules/${m.dirName}/module.json: files[] entry ${JSON.stringify(fEntry)} is not a {src,dest} object; skipped`);
+        continue;
+      }
+      const relSrc = fEntry.src.startsWith('files/') ? fEntry.src : posixJoin('files', fEntry.src);
+      const sourceAbs = path.join(m.dir, relSrc);
+      if (!existsSync(sourceAbs)) { moduleWarnings.push(`modules/${m.dirName}/${relSrc}: files[] source is missing`); continue; }
+      const content = readFileSync(sourceAbs, 'utf8');
+      const lockHash = sha256Hex(managedBody(content));
+      const destPath = normalizeRepoPath(fEntry.dest);
+      const source = `modules/${m.dirName}/${relSrc}`;
+      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'file' }, priorLock, forceManagedPath));
+    }
+  }
+
+  // payload/check.mjs -> .house/check.mjs, vendored byte-identical regardless
+  // of which modules are enabled (check always needs somewhere to run from).
+  {
+    const sourceAbs = path.join(__dirname, '..', 'payload', 'check.mjs');
+    const content = readFileSync(sourceAbs, 'utf8');
+    const lockHash = sha256Hex(managedBody(content));
+    plan.push(classify(repoRoot, { path: '.house/check.mjs', module: '_payload', source: 'payload/check.mjs', content, lockHash, kind: 'payload' }, priorLock, forceManagedPath));
+  }
+
+  return { plan, skips, moduleWarnings };
+}
+
+const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
+
+function printRenderPlan({ plan, skips, moduleWarnings, ignoredDests, json }) {
+  if (json) {
+    console.log(JSON.stringify({
+      plan: plan.map((p) => ({ status: p.status, path: p.target.path, module: p.target.module, kind: p.target.kind })),
+      skips, moduleWarnings, ignoredDests: arr(ignoredDests),
+    }, null, 2));
+    return;
+  }
+  for (const w of moduleWarnings) console.log(`warning: ${w}`);
+  for (const line of ignoredDestWarningLines(ignoredDests)) console.log(line);
+  for (const p of plan) {
+    const label = STATUS_LABEL[p.status] || p.status;
+    console.log(`${label.padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
+    if (p.status === 'refuse') {
+      console.log(`  on-disk body no longer matches its managed source. Exits: propose the change upstream in house, record a deviation and unmanage this file, or \`house render --force-managed ${p.target.path}\`.`);
+    }
+  }
+  for (const s of skips) {
+    console.log(`${'skip'.padEnd(15)} ${s.path}  (module: ${s.module}) -- ${s.reason}`);
+  }
+}
+
+function cmdRender(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (!existsSync(housePath)) {
+    console.error(`house render: ${housePath} not found. Run \`house init --apply\` first.`);
+    process.exit(2);
+  }
+  let houseData;
+  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+  catch (e) {
+    console.error(`house render: ${housePath} is not valid JSON (${e.message})`);
+    process.exit(2);
+  }
+  if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) {
+    console.error(`house render: ${housePath} has no usable "modules" object`);
+    process.exit(2);
+  }
+
+  const pluginVersion = readPluginVersion();
+  const modules = findModules();
+  const forceManagedPath = args.forceManaged ? normalizeRepoPath(args.forceManaged) : null;
+  // Read before anything below writes: the lock is rewritten at the end of an
+  // --apply, and the scaffold gate needs what it said on the way in.
+  const priorLockJson = loadPriorLockJson(repoRoot);
+
+  // The scaffold record decides both what gets written below and which
+  // scaffold dests count as render targets, so it is read once, here.
+  const scaffoldRecord = priorScaffoldRecord(priorLockJson, SCAFFOLDS, houseData, repoRoot); // template -> path
+  const { plan, skips, moduleWarnings } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold);
+  // #18: warn (never refuse) when a destination this plan writes is
+  // git-ignored; the lock and INDEX are written outside the plan, so probe
+  // them by name.
+  const ignoredDests = gitIgnored(repoRoot, [...plan.map((p) => p.target.path), '.house/lock.json', '.house/INDEX.md']) || [];
+  printRenderPlan({ plan, skips, moduleWarnings, ignoredDests, json: args.json });
+
+  const refusals = plan.filter((p) => p.status === 'refuse');
+  if (refusals.length > 0) process.exit(1);
+
+  if (!args.apply) process.exit(0);
+
+  for (const p of plan) {
+    if (p.status === 'create' || p.status === 'missing' || p.status === 'clean' || p.status === 'clean-forced') {
+      writeIfChanged(path.join(repoRoot, p.target.path), p.target.content);
+    }
+  }
+
+  // #12: render OWNS the vendored tree, so after writing the plan it must also
+  // remove any managed file no longer in the plan. When a module's paths narrow
+  // until they match nothing the rule is skipped (not written), but a copy from
+  // a prior, broader render is left behind on disk (repo-c had to `git rm` a
+  // stale data-pipelines.md by hand). Orphans are: every file physically under
+  // .claude/rules/house/ that is not in this plan (render owns that whole
+  // directory), plus any managed dest the prior lock recorded that this plan no
+  // longer produces (a files[] dest from a now-disabled module). The lock and
+  // INDEX are rewritten from the plan below, so removing these keeps the tree,
+  // the lock, and the plan in exact agreement.
+  const planDests = new Set(plan.map((p) => p.target.path));
+  const orphans = new Set();
+  const rulesHouseDir = path.join(repoRoot, '.claude', 'rules', 'house');
+  if (existsSync(rulesHouseDir)) {
+    for (const ent of readdirSync(rulesHouseDir, { withFileTypes: true })) {
+      if (!ent.isFile()) continue;
+      const rel = posixJoin('.claude/rules/house', ent.name);
+      if (!planDests.has(rel)) orphans.add(rel);
+    }
+  }
+  for (const rel of loadPriorLock(repoRoot).keys()) {
+    if (!planDests.has(rel)) orphans.add(rel);
+  }
+  const removed = [];
+  for (const rel of orphans) {
+    if (!isInsideRoot(repoRoot, rel)) continue; // never delete outside the repo
+    const abs = path.join(repoRoot, rel);
+    if (!existsSync(abs)) continue;
+    try { unlinkSync(abs); removed.push(rel); } catch { /* best effort: an un-removable orphan stays and is re-reported next render */ }
+  }
+  removed.sort();
+  if (removed.length && !args.json) {
+    console.log('\nRemoved (orphaned managed files no longer in the plan):');
+    for (const r of removed) console.log(`  ${r}`);
+  }
+
+  // F5: one-time scaffolding. Unlike managed rule files these are written only
+  // when absent and never hash-checked (the lock records that they were
+  // offered, nothing more), so a repo owns and may edit or delete them freely.
+  // The CLAUDE.md skeleton lands as a sidecar so an existing CLAUDE.md is
+  // never overwritten; the reader merges it by hand.
+  // #18: the two .github/ scaffolds belong to the github module, so a repo
+  // that disabled it (no CI, direct-to-main) must not receive them. Never
+  // silently: one note per disabled module names what was not written and
+  // what already on disk was left alone (not in the lock, yours to edit), so
+  // a repo on branchPolicy "pr" that just lost its CI step can see why.
+  // #23: "one-time" used to mean once per render, not once per repo. The
+  // skeleton exists to be merged into CLAUDE.md by hand and then deleted, so
+  // every later `render --apply` wrote it back and each adopter re-sync had to
+  // `rm` it again. The lock now records which templates this repo has already
+  // been offered (see priorScaffoldRecord), and a recorded template is not
+  // rewritten whether or not its file is still there. `--scaffold` ignores the
+  // record and writes back anything missing; it still never overwrites a file
+  // on disk, so a repo's edited copy is safe either way.
+  const scaffoldWritten = [];
+  const scaffoldSkipped = new Map(); // module -> [{dest, existed}]: its module is disabled
+  for (const s of SCAFFOLDS) {
+    const abs = path.join(repoRoot, s.dest);
+    const tmplAbs = path.join(__dirname, '..', 'templates', s.tmpl);
+    if (s.module && !moduleEnabled(houseData, s.module)) {
+      scaffoldSkipped.set(s.module, [...(scaffoldSkipped.get(s.module) || []), { dest: s.dest, existed: existsSync(abs) }]);
+      continue;
+    }
+    // Same gate, same position in the loop, as plannedDestPaths above. A row
+    // whose `when` says this repo is not a candidate is not written and not
+    // recorded, so turning the repo into one later (adding a package.json)
+    // still delivers it.
+    if (!scaffoldApplies(s, repoRoot)) continue;
+    // On disk already: nothing to write, but this repo has plainly been
+    // offered the template, so record it and stop asking after a later delete.
+    if (existsSync(abs)) { scaffoldRecord.set(s.tmpl, s.dest); continue; }
+    if (scaffoldRecord.has(s.tmpl) && !args.scaffold) continue;
+    if (!existsSync(tmplAbs)) continue;
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, readFileSync(tmplAbs, 'utf8'), 'utf8');
+    scaffoldRecord.set(s.tmpl, s.dest);
+    scaffoldWritten.push(s.dest);
+  }
+  if (scaffoldWritten.length && !args.json) {
+    console.log('\nScaffolded (one-time, yours to edit; not managed):');
+    for (const d of scaffoldWritten) console.log(`  ${d}`);
+  }
+  if (scaffoldSkipped.size && !args.json) {
+    for (const [mod, entries] of scaffoldSkipped) {
+      const parts = entries.map((e) => `${e.dest} (${e.existed ? 'left in place, not managed; delete by hand if unwanted' : 'not written'})`);
+      console.log(`\nNote: ${mod} module is disabled, so its one-time scaffolds were skipped: ${parts.join(', ')}.`);
+    }
+  }
+
+  const { updates: ratchetUpdates, followUps } = computeRatchetUpdates(repoRoot, houseData);
+  houseData.ratchet = isPlainObject(houseData.ratchet) ? houseData.ratchet : {};
+  for (const [f, count] of Object.entries(ratchetUpdates)) houseData.ratchet[f] = count;
+  houseData.version = pluginVersion;
+  writeIfChanged(housePath, `${JSON.stringify(houseData, null, 2)}\n`);
+
+  const lockData = {
+    files: plan.map((p) => ({ path: p.target.path, module: p.target.module, source: p.target.source, bodySha256: p.target.lockHash })),
+    // #23: not hash-checked and never refused, unlike files[]. This is a record
+    // of what was offered once, so the tamper family ignores it by construction
+    // (it reads files[] only) and a repo may delete a scaffold freely.
+    scaffolds: [...scaffoldRecord.entries()].map(([template, dest]) => ({ template, path: dest })).sort((a, b) => (a.template < b.template ? -1 : a.template > b.template ? 1 : 0)),
+  };
+  writeIfChanged(path.join(repoRoot, '.house', 'lock.json'), `${JSON.stringify(lockData, null, 2)}\n`);
+  writeIfChanged(path.join(repoRoot, '.house', 'INDEX.md'), buildIndex(plan));
+
+  if (followUps.length && !args.json) {
+    console.log('\nFollow-up (CLAUDE.md is not ratchet-eligible, so it was not ratcheted):');
+    for (const f of followUps) console.log(`  ${f.path}: ${f.count} lines (limit ${f.limit})`);
+  }
+
+  process.exit(0);
+}
+
+// ── doctor ───────────────────────────────────────────────────────────────
+
+function probeJqOnPath() {
+  try { execFileSync('jq', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] }); return true; } catch { return false; }
+}
+
+// #32: leaving the branch guard to the plugin is a real choice, but an
+// unwritten one is indistinguishable from nobody having thought about it, so
+// the checker warns until house.json records it. A record counts only when it
+// is complete: by === "plugin", an ISO date, and a why somebody actually
+// wrote. Anything else reads as unrecorded here, so doctor and the checker
+// answer the same question the same way.
+function guardRecordIsWellFormed(houseData) {
+  const g = isPlainObject(houseData) ? houseData.guard : null;
+  return isPlainObject(g)
+    && g.by === 'plugin'
+    && typeof g.decided === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.decided)
+    && isNonEmptyString(g.why)
+    && Object.keys(g).every((k) => ['by', 'decided', 'why'].includes(k));
+}
+
+function cmdDoctor(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const pluginVersion = readPluginVersion();
+  const housePath = path.join(repoRoot, 'house.json');
+  const houseExists = existsSync(housePath);
+  let houseData = null;
+  let houseParseError = null;
+  if (houseExists) {
+    try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); } catch (e) { houseParseError = e.message; }
+  }
+
+  const repoHookExists = existsSync(path.join(repoRoot, '.claude', 'hooks', 'no-direct-master.sh'));
+  const settingsHooksBlock = repoSettingsHasHooksBlock(repoRoot);
+
+  let guard;
+  let caveat = null;
+  let guardRecorded = false;
+  if (repoHookExists || settingsHooksBlock) {
+    guard = 'repo';
+  } else if (houseData && houseData.branchPolicy === 'pr') {
+    guardRecorded = guardRecordIsWellFormed(houseData);
+    guard = guardRecorded
+      ? `plugin (recorded ${houseData.guard.decided})`
+      : 'plugin (unrecorded; record it as "guard": {"by": "plugin", "decided": "<date>", "why": "..."} in house.json to clear the checker\'s [guard] warning)';
+    caveat = 'assumes the house plugin is installed and enabled in this session (user-scope install) -- doctor cannot verify plugin enablement from the repo alone.';
+  } else if (houseData && houseData.branchPolicy === 'direct') {
+    guard = 'NONE (branchPolicy direct)';
+  } else {
+    guard = 'NONE (fail-open: no house.json)';
+  }
+
+  const jqOnPath = probeJqOnPath();
+  const settingsLocalExists = existsSync(path.join(repoRoot, '.claude', 'settings.local.json'));
+  const ruleLoadProbe = instructionsLoadedProbe(repoRoot);
+  // #18: the fixed render destinations, every module's managed-file dest, and
+  // whatever the lock says was written, in one git call, so a repo that added
+  // the ignore after render is caught too.
+  const ignoredDests = probeIgnoredHouseDests(repoRoot, [...moduleFileDests(findModules()), ...loadPriorLock(repoRoot).keys()]);
+
+  let npmWiring = [];
+  const pkgPath = path.join(repoRoot, 'package.json');
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      for (const [k, v] of Object.entries(pkg.scripts || {})) {
+        if (typeof v === 'string' && v.includes('.house/check.mjs')) npmWiring.push(k);
+      }
+    } catch { /* unreadable package.json: report no wiring found */ }
+  }
+
+  const pinStatus = houseData && typeof houseData.version === 'string'
+    ? (houseData.version === pluginVersion ? `pin v${houseData.version} matches plugin v${pluginVersion}` : `pin v${houseData.version} differs from installed plugin v${pluginVersion} (run \`house render --apply\` to sync)`)
+    : 'no version pin (house.json absent, unparseable, or missing "version")';
+
+  const result = {
+    effectiveBranchGuard: guard, guardRecorded, caveat, jqOnPath, pluginVersion,
+    housePin: houseData && houseData.version ? houseData.version : null,
+    pinStatus, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests,
+    houseJsonPresent: houseExists, houseJsonParseError: houseParseError,
+  };
+
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(`effective branch guard: ${guard}`);
+    if (caveat) console.log(`  caveat: ${caveat}`);
+    console.log(`jq on PATH: ${jqOnPath ? 'yes' : 'no'}`);
+    console.log(`plugin version: ${pluginVersion}`);
+    console.log(pinStatus);
+    console.log(`npm wiring (.house/check.mjs referenced by): ${npmWiring.length ? npmWiring.join(', ') : 'none found'}`);
+    console.log(`.claude/settings.local.json: ${settingsLocalExists ? 'present' : 'absent'}`);
+    console.log(ruleLoadProbe
+      ? `rule-load positive control: InstructionsLoaded hook declared in .claude/${ruleLoadProbe}`
+      : 'rule-load positive control: none wired (add an InstructionsLoaded hook to log which rule files load; without it a rule whose glob never matches looks exactly like a rule that does nothing)');
+    console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
+    if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);
+  }
+  process.exit(0);
+}
+
+// ── check ────────────────────────────────────────────────────────────────
+
+function cmdCheck(rawArgs) {
+  let repoArg = null;
+  const passthrough = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a === '--repo') { repoArg = rawArgs[++i]; }
+    else if (a.startsWith('--repo=')) { repoArg = a.slice('--repo='.length); }
+    else passthrough.push(a);
+  }
+  const repoRoot = resolveRepoRootFromValue(repoArg);
+  // #32: ALWAYS the plugin's own payload, never the repo's vendored copy.
+  // Preferring `.house/check.mjs` when it existed contradicted sync/SKILL.md
+  // step 6 (which uses this command to preview the checker a sync is about to
+  // vendor) and made that preview impossible in any repo that had ever
+  // rendered: the command answered with the OLD checker. The vendored copy is
+  // still what CI runs, and is run directly (`node .house/check.mjs`), so the
+  // two roles stay distinct instead of one command meaning both.
+  const target = path.join(__dirname, '..', 'payload', 'check.mjs');
+  // stderr, never stdout: `house check --json` output is parsed off stdout, so
+  // a banner there would corrupt every consumer of it.
+  console.error(`house check: running the plugin payload ${target} (the vendored copy CI runs is node .house/check.mjs)`);
+  // #34 review: the reverse skew. This command runs the INSTALLED payload, so
+  // a repo pinned ahead of the plugin (synced elsewhere, plugin not updated
+  // here) gets answers CI's vendored checker will not give; an older payload
+  // even reports the newer manifest's keys as unknown. Say so up front.
+  try {
+    const pin = JSON.parse(readFileSync(path.join(repoRoot, 'house.json'), 'utf8')).version;
+    const payloadVersion = readPluginVersion();
+    const semver = /^\d+\.\d+\.\d+$/;
+    const gt = (a, b) => { const pa = a.split('.').map(Number); const pb = b.split('.').map(Number); for (let i = 0; i < 3; i++) { if (pa[i] !== pb[i]) return pa[i] > pb[i]; } return false; };
+    if (semver.test(pin || '') && semver.test(payloadVersion || '') && gt(pin, payloadVersion)) {
+      console.error(`house check: this repo is pinned to ${pin} but the installed plugin's payload is ${payloadVersion}, so results may differ from CI's vendored checker; update the plugin before trusting this preview.`);
+    }
+  } catch { /* no readable pin: nothing to compare */ }
+  const res = spawnSync(process.execPath, [target, '--repo', repoRoot, ...passthrough], { stdio: 'inherit' });
+  if (res.error) {
+    console.error(`house check: failed to run ${target}: ${res.error.message}`);
+    process.exit(1);
+  }
+  process.exit(res.status === null ? 1 : res.status);
+}
+
+// ── CLI / main ───────────────────────────────────────────────────────────
+
+function parseArgs(argv) {
+  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--repo') out.repo = argv[++i];
+    else if (a.startsWith('--repo=')) out.repo = a.slice('--repo='.length);
+    else if (a === '--apply') out.apply = true;
+    else if (a === '--force-managed') out.forceManaged = argv[++i];
+    else if (a.startsWith('--force-managed=')) out.forceManaged = a.slice('--force-managed='.length);
+    else if (a === '--json') out.json = true;
+    else if (a === '--scaffold') out.scaffold = true;
+    // Unrecognized flags are ignored for init/render/doctor (check has its
+    // own passthrough path and never reaches this parser).
+  }
+  return out;
+}
+
+function main() {
+  const argv = process.argv.slice(2);
+  const cmd = argv[0];
+  const rest = argv.slice(1);
+
+  if (cmd === 'check') { cmdCheck(rest); return; }
+
+  if (!['init', 'render', 'doctor'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]');
+    process.exit(2);
+  }
+
+  const args = parseArgs(rest);
+  if (cmd === 'init') return cmdInit(args);
+  if (cmd === 'render') return cmdRender(args);
+  if (cmd === 'doctor') return cmdDoctor(args);
+}
+
+main();

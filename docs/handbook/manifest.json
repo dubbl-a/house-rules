@@ -1,0 +1,1514 @@
+{
+  "artifacts": [
+    {
+      "path": "plugins/house/modules/docs/rules/docs.md",
+      "kind": "rule",
+      "module": "docs",
+      "budgetLines": 190,
+      "owns": [
+        "TW-001",
+        "TW-002",
+        "TW-003",
+        "TW-004",
+        "TW-005",
+        "TW-006",
+        "TW-007",
+        "TW-008",
+        "TW-009",
+        "TW-010",
+        "TW-011",
+        "TW-013",
+        "TW-014",
+        "TW-015",
+        "TW-016",
+        "TW-027",
+        "TW-032",
+        "TW-033",
+        "TW-034",
+        "TW-046",
+        "TW-047",
+        "TW-162",
+        "TW-173",
+        "TW-176",
+        "TW-179",
+        "TW-180",
+        "AG-001",
+        "AG-011",
+        "AG-013",
+        "AG-014",
+        "AG-015",
+        "AG-053",
+        "AG-056",
+        "AG-057",
+        "AG-058",
+        "AG-061",
+        "AS-007",
+        "AS-008",
+        "AS-009",
+        "AS-029",
+        "AS-039",
+        "AS-043",
+        "AS-047",
+        "SB-004",
+        "SB-005",
+        "SB-030",
+        "MEM-008",
+        "MEM-048",
+        "MEM-049",
+        "MEM-050",
+        "MEM-090",
+        "MEM-094",
+        "EXT-011",
+        "EXT-012",
+        "EXT-023",
+        "EXT-042"
+      ],
+      "crossRefs": [
+        "TW-181",
+        "AG-003",
+        "AG-005",
+        "AG-006",
+        "AG-007",
+        "AG-008",
+        "AG-009",
+        "AG-010",
+        "AS-001",
+        "AS-005",
+        "SB-001",
+        "SB-002",
+        "SB-003",
+        "MEM-047",
+        "EXT-001",
+        "EXT-009",
+        "EXT-010"
+      ],
+      "headings": [
+        "Anchor every claim to a grep-able token",
+        "Run the docs gate before pushing and in the build",
+        "Give every rule file a paths list whose first segment resolves",
+        "Put a fact where its litmus test says it belongs",
+        "State a rule as imperative, why, anchor, receipts",
+        "Move dates, names, and measured numbers out of rule prose",
+        "Keep files under budget, and raise a ceiling only with a written reason",
+        "Cut, don't append, and trim on a fixed cadence",
+        "Split a file only when splitting narrows what loads",
+        "Opt a point-in-time doc out with a file-level reason",
+        "Don't document a command that does not exist",
+        "Ship the docs and changelog edit in the same PR as the change"
+      ],
+      "notes": "12 headings and 57 owned rows against 190 lines is 15.8 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/docs.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/engineering/rules/engineering.md",
+      "kind": "rule",
+      "module": "engineering",
+      "budgetLines": 200,
+      "owns": [
+        "TW-025",
+        "TW-026",
+        "TW-042",
+        "TW-055",
+        "TW-064",
+        "TW-065",
+        "TW-066",
+        "TW-068",
+        "TW-073",
+        "TW-077",
+        "TW-078",
+        "TW-079",
+        "TW-080",
+        "TW-081",
+        "TW-082",
+        "TW-083",
+        "TW-084",
+        "TW-085",
+        "TW-099",
+        "TW-100",
+        "TW-103",
+        "TW-108",
+        "TW-109",
+        "TW-115",
+        "TW-116",
+        "TW-117",
+        "TW-118",
+        "TW-119",
+        "TW-121",
+        "TW-122",
+        "TW-123",
+        "TW-124",
+        "TW-125",
+        "TW-126",
+        "TW-127",
+        "TW-129",
+        "TW-130",
+        "TW-131",
+        "TW-132",
+        "TW-133",
+        "TW-139",
+        "TW-140",
+        "TW-151",
+        "TW-175",
+        "TW-178",
+        "TW-183",
+        "AG-027",
+        "AG-051",
+        "AG-052",
+        "AG-054",
+        "AG-055",
+        "AS-002",
+        "AS-003",
+        "AS-004",
+        "AS-028",
+        "SB-033",
+        "SB-045",
+        "RT-013",
+        "RT-014",
+        "RT-016",
+        "RT-017",
+        "RT-018",
+        "RT-019",
+        "RT-022",
+        "RT-023",
+        "MEM-002",
+        "MEM-004",
+        "MEM-005",
+        "MEM-006",
+        "MEM-007",
+        "MEM-009",
+        "MEM-018",
+        "MEM-019",
+        "MEM-025",
+        "MEM-029",
+        "MEM-030",
+        "MEM-031",
+        "MEM-032",
+        "MEM-053",
+        "MEM-054",
+        "MEM-056",
+        "MEM-058",
+        "MEM-076",
+        "MEM-087",
+        "MEM-088",
+        "MEM-095",
+        "EXT-015",
+        "EXT-016",
+        "EXT-017",
+        "EXT-018",
+        "EXT-020",
+        "EXT-022",
+        "EXT-026",
+        "EXT-027",
+        "EXT-029",
+        "EXT-046",
+        "EXT-047",
+        "EXT-048",
+        "EXT-049",
+        "EXT-050"
+      ],
+      "crossRefs": [
+        "TW-189",
+        "MEM-001",
+        "MEM-003",
+        "MEM-084"
+      ],
+      "headings": [
+        "Build the simplest thing that answers the question",
+        "Keep one implementation per computation, and let the gate and the report share it",
+        "Prove a check can fail before trusting that it passed",
+        "Verify the served artifact, not the source",
+        "Validate the body before writing it, because a status code is not a content check",
+        "Never let a gate mint the answer key it grades against",
+        "Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero",
+        "Show the ratio and the sample, because one number is never the accuracy",
+        "Make a measuring instrument reproducible",
+        "Assert an invariant where its state is created, with a why and a remedy",
+        "Make every waiver print its reason, and give an integrity gate none",
+        "Read a missing field as missing, because absence is not confidence",
+        "Demote a gate that has been wrong before",
+        "Record a significant decision as a numbered, immutable record",
+        "Land a build-time guard with the code it protects",
+        "Search public prior art before building a tool, and record what you did not adopt",
+        "Pin a framework default your output depends on, with the reason beside it",
+        "Enumerate from the system of record, and fail hard on a missing member",
+        "Normalize against fixed anchors, never against the live population",
+        "Make an error message teach the fix",
+        "Read config from the environment, and keep build, release, and run separate"
+      ],
+      "notes": "21 headings and 101 owned rows against 200 lines is 9.5 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/engineering.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/github/rules/github.md",
+      "kind": "rule",
+      "module": "github",
+      "budgetLines": 200,
+      "owns": [
+        "TW-028",
+        "TW-050",
+        "TW-054",
+        "TW-057",
+        "TW-058",
+        "TW-059",
+        "TW-060",
+        "TW-095",
+        "TW-097",
+        "TW-098",
+        "TW-137",
+        "AG-036",
+        "AG-037",
+        "AG-041",
+        "AS-016",
+        "AS-019",
+        "AS-024",
+        "AS-025",
+        "AS-026",
+        "AS-038",
+        "SB-016",
+        "SB-022",
+        "SB-024",
+        "SB-042",
+        "MEM-038",
+        "MEM-039",
+        "MEM-040",
+        "MEM-041",
+        "MEM-042",
+        "MEM-044",
+        "MEM-045",
+        "MEM-046",
+        "MEM-080",
+        "MEM-081",
+        "MEM-082",
+        "MEM-083",
+        "EXT-058",
+        "EXT-059",
+        "EXT-060",
+        "EXT-061",
+        "EXT-062",
+        "EXT-063",
+        "EXT-064",
+        "EXT-066",
+        "EXT-068"
+      ],
+      "crossRefs": [
+        "AS-035",
+        "AS-036",
+        "EXT-065",
+        "PA-033"
+      ],
+      "headings": [
+        "Gate every PR on checks that need no credential, and name what is not gated",
+        "Give a workflow read-only permissions and pin every action by SHA",
+        "Budget Actions minutes as account-wide money",
+        "Open an issue instead of failing a scheduled run, and comment out a cron with its reason",
+        "Turn on push protection, head-branch deletion, and grouped dependency updates",
+        "Make the PR template force a docs-check answer",
+        "Never put a closing keyword beside an issue number you do not mean to close",
+        "Ship phased work as commits on one PR",
+        "Stage explicit paths, never everything at once",
+        "Classify a merged branch by its PR state, not by merge detection",
+        "Never delete the branch from the worktree being merged",
+        "Keep credentials out of the repo, the commit, and the chat",
+        "Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires",
+        "Give a restricted key exactly one writable scope",
+        "Never log a vendor object",
+        "Treat a preview URL as production for exposure",
+        "Label a non-secret as a non-secret"
+      ],
+      "notes": "17 headings and 45 owned rows against 200 lines is 11.8 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/claude-code/rules/claude-code.md",
+      "kind": "rule",
+      "module": "claude-code",
+      "budgetLines": 170,
+      "owns": [
+        "TW-030",
+        "TW-031",
+        "TW-062",
+        "TW-156",
+        "TW-157",
+        "TW-158",
+        "TW-159",
+        "TW-164",
+        "TW-165",
+        "TW-167",
+        "TW-168",
+        "TW-169",
+        "TW-170",
+        "AG-004",
+        "AG-025",
+        "AG-026",
+        "AG-035",
+        "AG-042",
+        "AG-065",
+        "AS-033",
+        "AS-034",
+        "AS-041",
+        "AS-042",
+        "SB-011",
+        "SB-012",
+        "SB-015",
+        "SB-017",
+        "RT-002",
+        "RT-020",
+        "RT-021",
+        "RT-024",
+        "RT-026",
+        "MEM-034",
+        "MEM-036",
+        "MEM-055",
+        "MEM-057",
+        "MEM-070",
+        "EXT-002",
+        "EXT-003",
+        "EXT-004",
+        "EXT-006",
+        "EXT-014",
+        "EXT-024",
+        "EXT-025",
+        "EXT-030",
+        "EXT-031",
+        "EXT-032",
+        "EXT-033",
+        "EXT-034",
+        "EXT-035",
+        "EXT-037",
+        "EXT-038",
+        "EXT-099"
+      ],
+      "crossRefs": [
+        "TW-166",
+        "SB-013",
+        "RT-027",
+        "MEM-079",
+        "EXT-005",
+        "EXT-007",
+        "EXT-008",
+        "EXT-074"
+      ],
+      "headings": [
+        "Put only what Claude would get wrong without it in the root file",
+        "Keep the auto-memory index to hooks, and hold it under its cap",
+        "Scope a domain rule with paths, and never leave a rule file unscoped",
+        "Make a procedure a skill, not a rule",
+        "Keep a skill body short, its references one level deep, and its name equal to its directory",
+        "Disable model invocation on a skill with side effects",
+        "Set the model explicitly on every subagent and workflow agent",
+        "Make a must-hold rule a hook, fail it closed, and test it with real payloads",
+        "Run adversarial review in a fresh subagent with a named lens",
+        "Plan when the approach is uncertain, and clear the context after two failed corrections",
+        "Treat git state as shared across sessions",
+        "Keep the committed settings narrow and the local settings local",
+        "Read a resume file as a harness artifact, not a handoff",
+        "Hand off through a carryover issue",
+        "Check for a peer session before driving shared external state"
+      ],
+      "notes": "15 headings and 53 owned rows against 170 lines is 11.3 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/claude-code.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/deployment/rules/deployment.md",
+      "kind": "rule",
+      "module": "deployment",
+      "budgetLines": 150,
+      "owns": [
+        "TW-094",
+        "TW-144",
+        "TW-146",
+        "TW-147",
+        "TW-148",
+        "TW-149",
+        "TW-152",
+        "TW-155",
+        "AG-039",
+        "AG-040",
+        "AS-027",
+        "SB-023",
+        "SB-029",
+        "SB-031",
+        "SB-032",
+        "MEM-011",
+        "MEM-012",
+        "MEM-069",
+        "MEM-077",
+        "MEM-078",
+        "EXT-052",
+        "EXT-055"
+      ],
+      "crossRefs": [
+        "TW-150",
+        "EXT-051",
+        "EXT-056"
+      ],
+      "headings": [
+        "Deploy manually after the merge, because a merge is not a production update",
+        "Chain the deploy guards before building anything, and give them one named escape hatch",
+        "Migrate before deploying the code that reads the schema",
+        "Invoke a deploy only through its named script",
+        "Verify the deployed URL against the built file with the cache bypassed",
+        "Repoint and deploy the consumer before dropping the producer's column",
+        "Restore a backup before calling it a backup"
+      ],
+      "notes": "7 headings and 22 owned rows against 150 lines is 21.4 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/deployment.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/database/rules/database.md",
+      "kind": "rule",
+      "module": "database",
+      "budgetLines": 160,
+      "owns": [
+        "TW-071",
+        "TW-075",
+        "TW-086",
+        "TW-087",
+        "TW-088",
+        "TW-089",
+        "TW-090",
+        "TW-091",
+        "TW-093",
+        "TW-096",
+        "TW-141",
+        "TW-163",
+        "AG-048",
+        "AS-010",
+        "AS-011",
+        "AS-012",
+        "AS-013",
+        "AS-014",
+        "AS-015",
+        "AS-017",
+        "AS-021",
+        "SB-026",
+        "SB-027",
+        "SB-028",
+        "MEM-071",
+        "MEM-072",
+        "MEM-075",
+        "EXT-053",
+        "EXT-054"
+      ],
+      "crossRefs": [
+        "TW-092",
+        "MEM-074"
+      ],
+      "headings": [
+        "Write forward-only numbered idempotent migrations, each opening with what and why",
+        "Back up before a destructive migration, and diff after it",
+        "Treat provenance columns as behavior",
+        "Let row lifecycle decide a new table, never ownership",
+        "Add the table registry line in the same PR as the migration",
+        "Store money as integer cents and reconcile against the books",
+        "Give each initiative its own least-privilege role",
+        "Never let a write script pick its target from a dotfile"
+      ],
+      "notes": "8 headings and 29 owned rows against 160 lines is 20.0 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/database.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/data-pipelines/rules/data-pipelines.md",
+      "kind": "rule",
+      "module": "data-pipelines",
+      "budgetLines": 180,
+      "owns": [
+        "TW-067",
+        "TW-069",
+        "TW-072",
+        "TW-074",
+        "TW-101",
+        "TW-102",
+        "TW-104",
+        "TW-105",
+        "TW-106",
+        "TW-107",
+        "TW-110",
+        "TW-111",
+        "TW-112",
+        "TW-113",
+        "TW-128",
+        "AG-043",
+        "AG-045",
+        "AG-046",
+        "AG-047",
+        "AG-050",
+        "AS-020",
+        "AS-022",
+        "AS-023",
+        "SB-020",
+        "SB-039",
+        "SB-040",
+        "RT-025",
+        "MEM-028",
+        "MEM-061",
+        "MEM-062",
+        "MEM-064",
+        "MEM-065",
+        "MEM-066",
+        "MEM-067",
+        "MEM-068",
+        "MEM-085",
+        "EXT-045"
+      ],
+      "crossRefs": [
+        "TW-190",
+        "AG-044",
+        "AS-018",
+        "AS-030",
+        "SB-041",
+        "MEM-024",
+        "MEM-027",
+        "EXT-044"
+      ],
+      "headings": [
+        "End every pipeline run with a retro of invariants, deltas, and proposals",
+        "Make a pipeline idempotent and resumable, and log the idempotency rather than assume it",
+        "Write nothing when a record is unchanged",
+        "Default to a dry run and require an explicit flag to write",
+        "Brake a prune at a share of the table, and unit-test the brake",
+        "Drive writes from a policy registry that fails closed on an unknown policy",
+        "Make unmapped input loud",
+        "Archive first, parse second, and write the ledger row in the same transaction",
+        "Reconcile a vendor's success response against an independent count",
+        "Name, don't act, on ambiguous data"
+      ],
+      "notes": "10 headings and 37 owned rows against 180 lines is 18.0 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/data-pipelines.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/llm-output/rules/llm-output.md",
+      "kind": "rule",
+      "module": "llm-output",
+      "budgetLines": 150,
+      "owns": [
+        "TW-070",
+        "TW-120",
+        "TW-160",
+        "TW-161",
+        "TW-184",
+        "TW-186",
+        "AG-028",
+        "AG-029",
+        "AG-030",
+        "AG-031",
+        "AG-032",
+        "AG-049",
+        "SB-034",
+        "SB-035",
+        "SB-036",
+        "SB-037",
+        "SB-038",
+        "RT-007",
+        "RT-008",
+        "RT-009",
+        "RT-010",
+        "RT-011",
+        "RT-012",
+        "RT-015",
+        "MEM-013",
+        "MEM-014",
+        "MEM-015",
+        "MEM-016",
+        "MEM-017",
+        "MEM-020",
+        "MEM-021",
+        "MEM-022",
+        "MEM-023",
+        "MEM-059",
+        "MEM-060",
+        "MEM-063",
+        "MEM-086",
+        "EXT-021"
+      ],
+      "crossRefs": [
+        "TW-185",
+        "AG-064",
+        "MEM-026"
+      ],
+      "headings": [
+        "Quarantine model output until a human moves it",
+        "Keep a deterministic backbone and let the model fill the slots",
+        "Report no finding rather than manufacture one",
+        "Refute with named lenses, drop by default, and log the drops",
+        "Cite or stay silent",
+        "Gate output on status tags",
+        "Reword a locked claim, never strengthen it",
+        "Treat silence as not approval",
+        "Read agreement with a shown suggestion as anchored, not accurate"
+      ],
+      "notes": "9 headings and 38 owned rows against 150 lines is 16.7 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/llm-output.md, and the file ends with ## Don't."
+    },
+    {
+      "path": "plugins/house/modules/testing/rules/testing.md",
+      "kind": "rule",
+      "module": "testing",
+      "budgetLines": 160,
+      "owns": [
+        "TW-134",
+        "TW-135",
+        "TW-196",
+        "TW-197",
+        "TW-198",
+        "AS-032",
+        "MEM-010",
+        "MEM-099",
+        "EXT-028",
+        "EXT-040",
+        "EXT-077",
+        "EXT-078",
+        "EXT-079",
+        "EXT-080",
+        "EXT-081",
+        "EXT-082",
+        "EXT-083",
+        "EXT-084",
+        "EXT-086",
+        "EXT-087",
+        "EXT-088",
+        "EXT-089",
+        "EXT-090",
+        "EXT-091",
+        "EXT-092"
+      ],
+      "crossRefs": [
+        "TW-028",
+        "TW-040",
+        "TW-053",
+        "TW-077",
+        "TW-103",
+        "TW-136",
+        "TW-137",
+        "TW-145",
+        "AG-038",
+        "RT-019",
+        "MEM-001",
+        "MEM-009",
+        "MEM-030",
+        "MEM-087",
+        "EXT-022",
+        "EXT-029",
+        "EXT-039",
+        "EXT-065",
+        "EXT-076",
+        "EXT-093"
+      ],
+      "headings": [
+        "Give the agent a check it can run before you walk away",
+        "Scale the pyramid to the repo you have, and route what the PR gate cannot afford",
+        "Split deterministic tests from model-behavior evals, and give each its own budget and cadence",
+        "Test the guard itself, as its own CI step",
+        "Feed a real payload through the real wiring, and never re-implement the logic under test",
+        "Ship every gate with a positive control and a negative control",
+        "Prove an eval can fail, then grade it with the cheapest grader that can",
+        "Read the snapshot diff before accepting it, because a snapshot is a drift gate",
+        "Quarantine a flaky test loudly, and never retry it into silence",
+        "Treat coverage as a search-light, never as a target",
+        "Mirror the module layout in the test tree, and keep each fixture beside its test",
+        "Explain a test-runner config quirk in the config, with the incident that produced it",
+        "Keep a demoted check running, reported, and counted"
+      ],
+      "notes": "13 headings and 25 owned rows against 160 lines is 12.3 lines per rule including blanks. Tight: one why sentence plus one clause of detail per rule, no worked contrast. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/testing.md, and the file ends with ## Don't. Ships with plugins/house/modules/testing/module.json: name testing, default on, rules [\"rules/testing.md\"], no managed files, configSlots [\"testGlobs\", \"gateGlobs\", {name testRoots, default [\"tests/**\", \"test/**\"]}], defaultPaths [\"$testRoots\", \"$testGlobs\", \"$gateGlobs\"]. Cross-ref, never restate: the known-answer control stays engineering.md#prove-a-check-can-fail-before-trusting-that-it-passed; the demotion call and a checker's own tally stay engineering.md#demote-a-gate-that-has-been-wrong-before, and this file's heading covers only the suite-level obligation to keep the demoted check running and counted; the ratio-with-its-sample rule stays engineering.md#show-the-ratio-and-the-sample-because-one-number-is-never-the-accuracy; a cost constraint as an invariant stays engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy; the credential-free PR gate and its step list stay github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated, with account-wide minutes at github.md#budget-actions-minutes-as-account-wide-money and scheduled-run failure policy at github.md#open-an-issue-instead-of-failing-a-scheduled-run-and-comment-out-a-cron-with-its-reason; hook authoring, failing closed, and the escalation ladder stay claude-code.md#make-a-must-hold-rule-a-hook-fail-it-closed-and-test-it-with-real-payloads; building a few evaluations before the prose stays claude-code.md#make-a-procedure-a-skill-not-a-rule (EXT-038, pointed at by EXT-093); the deterministic-backbone principle behind the grader ladder stays llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots; the guard's own test script stays tests/hooks/run.sh (TW-040)."
+    },
+    {
+      "path": "docs/handbook/docs.md",
+      "kind": "chapter",
+      "module": "docs",
+      "budgetLines": 400,
+      "owns": [
+        "AG-012",
+        "AG-062",
+        "AS-045",
+        "MEM-089",
+        "SB-006",
+        "TW-012",
+        "TW-024",
+        "TW-174",
+        "TW-182",
+        "TW-187",
+        "TW-188"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/docs/rules/docs.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/engineering.md",
+      "kind": "chapter",
+      "module": "engineering",
+      "budgetLines": 400,
+      "owns": [
+        "EXT-019",
+        "EXT-073"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/engineering/rules/engineering.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/github.md",
+      "kind": "chapter",
+      "module": "github",
+      "budgetLines": 400,
+      "owns": [
+        "TW-052",
+        "AG-023",
+        "AG-063",
+        "AS-046",
+        "RT-005",
+        "MEM-073",
+        "EXT-057",
+        "EXT-069",
+        "EXT-072"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/github/rules/github.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/claude-code.md",
+      "kind": "chapter",
+      "module": "claude-code",
+      "budgetLines": 400,
+      "owns": [
+        "SB-007",
+        "SB-014",
+        "EXT-013",
+        "EXT-071",
+        "PA-018",
+        "PA-019"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/claude-code/rules/claude-code.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/deployment.md",
+      "kind": "chapter",
+      "module": "deployment",
+      "budgetLines": 400,
+      "owns": [
+        "TW-154"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/deployment/rules/deployment.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/database.md",
+      "kind": "chapter",
+      "module": "database",
+      "budgetLines": 400,
+      "owns": [
+        "AG-059",
+        "AS-048"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/database/rules/database.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/data-pipelines.md",
+      "kind": "chapter",
+      "module": "data-pipelines",
+      "budgetLines": 400,
+      "owns": [
+        "TW-114"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/data-pipelines/rules/data-pipelines.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/llm-output.md",
+      "kind": "chapter",
+      "module": "llm-output",
+      "budgetLines": 400,
+      "owns": [
+        "SB-049",
+        "MEM-098"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/llm-output/rules/llm-output.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\"."
+    },
+    {
+      "path": "docs/handbook/origins.md",
+      "kind": "chapter",
+      "module": "core",
+      "budgetLines": 400,
+      "owns": [
+        "MEM-097",
+        "EXT-036",
+        "EXT-070",
+        "EXT-075",
+        "PA-001",
+        "PA-005",
+        "PA-012",
+        "PA-022",
+        "PA-034"
+      ],
+      "crossRefs": [],
+      "notes": "The five-repo survey and the prior-art sweep: what each repo contributed, what the fleet already hand-copied, and why no public tool covered the gap. Owns the context rows, not rules."
+    },
+    {
+      "path": "docs/handbook/conventions.md",
+      "kind": "chapter",
+      "module": "core",
+      "budgetLines": 400,
+      "owns": [
+        "EXT-043",
+        "EXT-076"
+      ],
+      "crossRefs": [],
+      "notes": "The two tiers, the superseded-banner form, the deviations form, the carryover-issue form, and the rule for retiring a memory entry once its rule ships."
+    },
+    {
+      "path": "docs/handbook/testing.md",
+      "kind": "chapter",
+      "module": "testing",
+      "budgetLines": 400,
+      "owns": [
+        "TW-199",
+        "MEM-100",
+        "EXT-085",
+        "EXT-094",
+        "EXT-095",
+        "EXT-096",
+        "EXT-097",
+        "EXT-098",
+        "PA-035",
+        "PA-036",
+        "PA-037",
+        "PA-038",
+        "PA-039"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/testing/rules/testing.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\". The reconciliation pass added a Rejected alternatives section, which its own rows supply: the no-vendor verdict (PA-038), golden transcript snapshots (EXT-095), and the doctrine read and deliberately not ported at this pass (EXT-098)."
+    },
+    {
+      "path": "plugins/house/skills/bootstrap/SKILL.md",
+      "kind": "skill",
+      "module": "core",
+      "budgetLines": 500,
+      "owns": [],
+      "crossRefs": [
+        "TW-029",
+        "RT-006",
+        "PA-008"
+      ],
+      "notes": "disable-model-invocation: true (side effects). Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. Dry-run default; refuses when a manifest exists; writes the skeleton beside an existing root file, never over it."
+    },
+    {
+      "path": "plugins/house/skills/sync/SKILL.md",
+      "kind": "skill",
+      "module": "core",
+      "budgetLines": 500,
+      "owns": [
+        "PA-029"
+      ],
+      "crossRefs": [],
+      "notes": "disable-model-invocation: true (side effects). Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. Carries the three-exit refusal text for a locally modified managed file, plus check and doctor output."
+    },
+    {
+      "path": "plugins/house/skills/conventions/SKILL.md",
+      "kind": "skill",
+      "module": "core",
+      "budgetLines": 500,
+      "owns": [
+        "PA-027"
+      ],
+      "crossRefs": [],
+      "notes": "Model-invocable. Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. Placeholder exists at this path; replace it. Reads .house/INDEX.md and never gets disabled."
+    },
+    {
+      "path": "plugins/house/skills/revise-docs/SKILL.md",
+      "kind": "skill",
+      "module": "core",
+      "budgetLines": 500,
+      "owns": [
+        "PA-023"
+      ],
+      "crossRefs": [],
+      "notes": "Model-invocable. Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. Routes a learning to the matching rule file and an incident to the handbook, never to the root file."
+    },
+    {
+      "path": "plugins/house/skills/handoff/SKILL.md",
+      "kind": "skill",
+      "module": "core",
+      "budgetLines": 500,
+      "owns": [
+        "TW-063"
+      ],
+      "crossRefs": [],
+      "notes": "disable-model-invocation: true (side effects). Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. The carryover-issue shape; the sections come from TW-062."
+    },
+    {
+      "path": "plugins/house/templates/CLAUDE.md.skeleton",
+      "kind": "template",
+      "module": "docs",
+      "budgetLines": 100,
+      "owns": [
+        "TW-029",
+        "TW-045",
+        "TW-048",
+        "TW-049",
+        "TW-051",
+        "TW-138",
+        "AG-002",
+        "SB-018",
+        "SB-044",
+        "RT-003",
+        "RT-006",
+        "MEM-037",
+        "MEM-051",
+        "MEM-052"
+      ],
+      "crossRefs": [
+        "AS-040",
+        "MEM-033",
+        "MEM-035",
+        "MEM-093"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/README.md.skeleton",
+      "kind": "template",
+      "module": "docs",
+      "budgetLines": 110,
+      "owns": [],
+      "crossRefs": [
+        "AS-029",
+        "TW-013"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/CHANGELOG.md",
+      "kind": "template",
+      "module": "docs",
+      "budgetLines": 20,
+      "owns": [],
+      "crossRefs": [
+        "TW-047",
+        "EXT-042"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/PULL_REQUEST_TEMPLATE.md",
+      "kind": "template",
+      "module": "github",
+      "budgetLines": 30,
+      "owns": [
+        "TW-061",
+        "EXT-067"
+      ],
+      "crossRefs": [],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/pr-checks.yml",
+      "kind": "template",
+      "module": "github",
+      "budgetLines": 90,
+      "owns": [
+        "TW-053",
+        "TW-056",
+        "TW-136",
+        "AS-037",
+        "SB-021"
+      ],
+      "crossRefs": [],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/dependabot.yml",
+      "kind": "template",
+      "module": "github",
+      "budgetLines": 30,
+      "owns": [],
+      "crossRefs": [
+        "EXT-059",
+        "EXT-066"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/pre-commit",
+      "kind": "template",
+      "module": "github",
+      "budgetLines": 90,
+      "owns": [
+        "SB-008",
+        "SB-009",
+        "SB-043",
+        "EXT-039"
+      ],
+      "crossRefs": [],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/.worktreeinclude",
+      "kind": "template",
+      "module": "github",
+      "budgetLines": 12,
+      "owns": [
+        "AG-033",
+        "AG-034"
+      ],
+      "crossRefs": [],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/settings.json",
+      "kind": "template",
+      "module": "claude-code",
+      "budgetLines": 40,
+      "owns": [],
+      "crossRefs": [
+        "TW-156",
+        "AG-025",
+        "SB-011"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/launch.json",
+      "kind": "template",
+      "module": "claude-code",
+      "budgetLines": 25,
+      "owns": [
+        "TW-171"
+      ],
+      "crossRefs": [
+        "SB-010"
+      ],
+      "notes": "Reference template, copied by hand."
+    },
+    {
+      "path": "plugins/house/templates/skills-README.md",
+      "kind": "template",
+      "module": "claude-code",
+      "budgetLines": 45,
+      "owns": [],
+      "crossRefs": [
+        "TW-164",
+        "AS-041",
+        "AS-042",
+        "EXT-007",
+        "EXT-008"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/templates/0001-adopt-house.md",
+      "kind": "template",
+      "module": "core",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "RT-006",
+        "PA-028"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
+      "path": "plugins/house/payload/check.mjs",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 900,
+      "owns": [
+        "TW-017",
+        "TW-018",
+        "TW-019",
+        "TW-020",
+        "TW-021",
+        "TW-023",
+        "AG-016",
+        "AG-017",
+        "AG-018",
+        "AS-044",
+        "SB-025",
+        "PA-004",
+        "PA-007",
+        "PA-015",
+        "PA-030"
+      ],
+      "crossRefs": [],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/scripts/house",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 600,
+      "owns": [
+        "PA-003",
+        "PA-008",
+        "PA-009"
+      ],
+      "crossRefs": [],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/hooks/no-direct-master.sh",
+      "kind": "script",
+      "module": "github",
+      "budgetLines": 200,
+      "owns": [
+        "TW-035",
+        "TW-036",
+        "TW-037",
+        "TW-038",
+        "TW-039",
+        "AG-019",
+        "AG-020",
+        "AG-021",
+        "AG-022",
+        "AG-024",
+        "AS-031"
+      ],
+      "crossRefs": [
+        "PA-020",
+        "PA-021"
+      ],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "tests/hooks/run.sh",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 200,
+      "owns": [
+        "TW-040"
+      ],
+      "crossRefs": [],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "tests/",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 1200,
+      "owns": [],
+      "crossRefs": [
+        "TW-040",
+        "AG-016",
+        "TW-134",
+        "EXT-040"
+      ],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "scripts/check-traceability.mjs",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 200,
+      "owns": [],
+      "crossRefs": [
+        "TW-180",
+        "PA-030"
+      ],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "tests/smoke-bootstrap.sh",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [],
+      "crossRefs": [
+        "PA-008",
+        "TW-103"
+      ],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/modules/data-pipelines/files/retro.mjs",
+      "kind": "script",
+      "module": "data-pipelines",
+      "budgetLines": 300,
+      "owns": [],
+      "crossRefs": [
+        "TW-064",
+        "TW-067",
+        "TW-068"
+      ],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/modules/engineering/files/is-main.mjs",
+      "kind": "script",
+      "module": "engineering",
+      "budgetLines": 40,
+      "owns": [
+        "TW-145"
+      ],
+      "crossRefs": [],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/modules/github/files/cleanup-worktree.sh",
+      "kind": "script",
+      "module": "github",
+      "budgetLines": 140,
+      "owns": [
+        "TW-043",
+        "TW-044",
+        "SB-019"
+      ],
+      "crossRefs": [
+        "MEM-043"
+      ],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/modules/deployment/files/deploy-guards.mjs",
+      "kind": "script",
+      "module": "deployment",
+      "budgetLines": 220,
+      "owns": [
+        "TW-041",
+        "TW-172"
+      ],
+      "crossRefs": [],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/modules/github/files/scan-dist-secrets.mjs",
+      "kind": "script",
+      "module": "github",
+      "budgetLines": 160,
+      "owns": [
+        "AG-038"
+      ],
+      "crossRefs": [],
+      "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
+    },
+    {
+      "path": "plugins/house/schema/house.schema.json",
+      "kind": "schema",
+      "module": "core",
+      "budgetLines": 200,
+      "owns": [
+        "TW-022",
+        "RT-004",
+        "PA-028"
+      ],
+      "crossRefs": [],
+      "notes": "Config slots for every token namespace a repo would otherwise hardcode, plus branchPolicy, carveOuts, ratchet, ratchetRaises, and the deviations ledger with its required why."
+    },
+    {
+      "path": "docs/decisions/0001-vendor-rules-over-imports-symlinks-and-replay.md",
+      "kind": "adr",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [
+        "PA-002",
+        "PA-006",
+        "PA-010",
+        "PA-011",
+        "PA-031",
+        "PA-032"
+      ],
+      "crossRefs": [],
+      "notes": "MADR 4.0.0 verbatim, zero-padded number, bidirectional supersede links."
+    },
+    {
+      "path": "docs/decisions/0002-hook-fails-open-without-a-manifest.md",
+      "kind": "adr",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [
+        "PA-017"
+      ],
+      "crossRefs": [
+        "AG-019",
+        "AS-034"
+      ],
+      "notes": "MADR 4.0.0 verbatim, zero-padded number, bidirectional supersede links."
+    },
+    {
+      "path": "docs/decisions/0003-ratchet-never-trim.md",
+      "kind": "adr",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [],
+      "crossRefs": [
+        "TW-013",
+        "TW-017"
+      ],
+      "notes": "MADR 4.0.0 verbatim, zero-padded number, bidirectional supersede links."
+    },
+    {
+      "path": "docs/decisions/0004-archive-tier-scanned-by-per-repo-flag.md",
+      "kind": "adr",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [],
+      "crossRefs": [
+        "TW-005",
+        "AG-011"
+      ],
+      "notes": "MADR 4.0.0 verbatim, zero-padded number, bidirectional supersede links."
+    },
+    {
+      "path": "docs/decisions/0005-one-plugin-modules-by-function.md",
+      "kind": "adr",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [
+        "PA-024",
+        "PA-026"
+      ],
+      "crossRefs": [],
+      "notes": "MADR 4.0.0 verbatim, zero-padded number, bidirectional supersede links."
+    },
+    {
+      "path": "docs/decisions/0006-prior-art-evaluated-with-the-deciding-case.md",
+      "kind": "adr",
+      "module": "core",
+      "budgetLines": 120,
+      "owns": [
+        "PA-013",
+        "PA-014",
+        "PA-016",
+        "PA-025"
+      ],
+      "crossRefs": [],
+      "notes": "MADR 4.0.0 verbatim, zero-padded number, bidirectional supersede links."
+    },
+    {
+      "path": "plugins/house/evals/branch-and-pr/",
+      "kind": "eval",
+      "module": "github",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-045",
+        "TW-035"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to commit a one-line fix with the checkout on the protected branch: with the plugin, it branches, pushes, and opens a PR (and the hook denies if it tries anyway); without, it commits on the protected branch."
+    },
+    {
+      "path": "plugins/house/evals/docs-ride-along/",
+      "kind": "eval",
+      "module": "docs",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-046"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to add a new npm script: with the plugin, the README and root-file edit land in the same change; without, the script ships alone."
+    },
+    {
+      "path": "plugins/house/evals/anchor-a-claim/",
+      "kind": "eval",
+      "module": "docs",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-001"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to document a new page feature: with the plugin, the prose names a grep-able token that resolves; without, it writes free-form UI prose."
+    },
+    {
+      "path": "plugins/house/evals/known-answer-control/",
+      "kind": "eval",
+      "module": "engineering",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-103"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Told a re-run reported zero changes: with the plugin, it asks for a case whose answer is known independently before calling it a pass; without, it reports the clean run as verification."
+    },
+    {
+      "path": "plugins/house/evals/verify-served-artifact/",
+      "kind": "eval",
+      "module": "engineering",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-081",
+        "MEM-005"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked whether a value sweep is complete: with the plugin, it greps the built output for the literal; without, it re-runs the same source-scoped pattern."
+    },
+    {
+      "path": "plugins/house/evals/not-evaluable-verdict/",
+      "kind": "eval",
+      "module": "engineering",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-116"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: A gate cannot evaluate because its fixture is empty: with the plugin, it reports NOT EVALUABLE and exits non-zero; without, it prints a pass or a zero."
+    },
+    {
+      "path": "plugins/house/evals/integrity-gate-no-waiver/",
+      "kind": "eval",
+      "module": "engineering",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-078",
+        "TW-079"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to get a failing citation-integrity gate to pass: with the plugin, it refuses the waiver path and fixes the data; without, it reaches for an env-var override."
+    },
+    {
+      "path": "plugins/house/evals/dry-run-default/",
+      "kind": "eval",
+      "module": "data-pipelines",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "TW-104"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to write a script that deletes stale rows: with the plugin, dry run is the default and an explicit flag writes, with a prune brake; without, it deletes on the first run."
+    },
+    {
+      "path": "plugins/house/evals/quarantine-model-output/",
+      "kind": "eval",
+      "module": "llm-output",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "SB-034",
+        "TW-160"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to have a model draft records into the repo: with the plugin, drafts land in an untracked directory and a human moves them; without, they are written straight into the tracked tree."
+    },
+    {
+      "path": "plugins/house/evals/migrate-before-deploy/",
+      "kind": "eval",
+      "module": "deployment",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "SB-031"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to ship a schema change plus the code that reads it: with the plugin, the migration runs before the deploy and the fast path is justified; without, the deploy goes first."
+    },
+    {
+      "path": "plugins/house/evals/explicit-model-tier/",
+      "kind": "eval",
+      "module": "claude-code",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "MEM-055"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: Asked to fan out several subagents: with the plugin, every call sets model explicitly by task tier; without, they silently inherit the session model."
+    },
+    {
+      "path": "plugins/house/evals/positive-and-negative-control/",
+      "kind": "eval",
+      "module": "testing",
+      "budgetLines": 60,
+      "owns": [],
+      "crossRefs": [
+        "MEM-099",
+        "EXT-079"
+      ],
+      "notes": "prompt.md plus graders/. Behavior that must differ: asked to add a new gate script to a repo and confirm it works, with the plugin the conventions skill surfaces the positive-and-negative-control rule, so the agent commits a case the gate must fail beside the case it must pass and runs both; without, it writes only the passing case and reports the clean run as validation."
+    }
+  ],
+  "counts": {
+    "rules": 9,
+    "chapters": 11,
+    "skills": 5,
+    "adrs": 11,
+    "templates": 12,
+    "evals": 12
+  }
+}

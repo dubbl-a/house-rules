@@ -1,0 +1,17 @@
+{
+  "name": "house",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs tests/check/*.test.mjs",
+    "test:hooks": "bash tests/hooks/run.sh",
+    "check:traceability": "node scripts/check-traceability.mjs",
+    "check:docs": "node .house/check.mjs --only=drift,todo",
+    "check:house": "node .house/check.mjs",
+    "verify": "npm test && npm run test:hooks && npm run check:traceability && npm run check:house"
+  }
+}

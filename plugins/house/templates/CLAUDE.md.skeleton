@@ -1,0 +1,94 @@
+# TODO: Project Name
+
+## What this is
+
+TODO: 2-3 sentences — what this project is, who it's for, and (if true)
+that it's a standing thing rather than a one-off script.
+
+## Core principle
+
+TODO (optional): if one non-negotiable rule is the reason the rest of this
+file exists to protect (an editorial line, a data-integrity promise, a
+security boundary), state it here in one paragraph. Delete this heading if
+there isn't one.
+
+## Stack
+
+TODO: the stack in one paragraph, no version numbers. Name choices that
+differ from a newcomer's default guess; skip anything derivable from the
+manifest (`package.json`, `requirements.txt`, ...).
+
+## Domain rules (path-scoped)
+
+Topic-specific rules load only when a matching path is open. Grep
+`.claude/rules/` to find one when nothing has loaded.
+
+| File | Loads when working in | Covers |
+| --- | --- | --- |
+<!-- TODO: one row per file in `.claude/rules/house/`. `.house/INDEX.md`,
+which `house render` writes, lists every rule file with the globs it loads
+on, so copy the first two columns from there and write Covers yourself.
+Rule files this repo authored itself get their rows in this same table. -->
+
+## Build-time guards
+
+TODO: one sentence per guard, naming the failure class it catches (one
+that renders fine, builds green, and is invisible to review) rather than
+what the code does. Delete this heading if there are none yet.
+
+## What not to do
+
+- Don't commit `.env` files, cloud account IDs, or API keys.
+- Name one library per job, and the condition under which that choice may
+  be revisited. If a task seems to need a new library or framework,
+  surface the trade-off before adding it rather than after.
+- TODO: this repo's own bright lines (content restraint, forbidden
+  dependencies, anything a mistake here would be expensive for).
+
+## Contributing workflow
+
+- Branch and open a PR for every change, even solo work and even a
+  one-line fix — never commit directly to the default branch.
+- Worktree by default. Branch in the main checkout only when the change is
+  a single commit, touches nothing that renders, no other session has a
+  worktree open, and no long-running job you would not want to interrupt
+  is in flight; escalate to a worktree on any doubt.
+- Run `git worktree list` before creating one, and continue in the
+  worktree that already exists rather than opening a second for the same
+  branch. Name its directory after the branch with slashes flattened to
+  dashes, give each worktree its own install and its own dev-server port,
+  and seed the gitignored state it needs by symlinking shared fixtures,
+  never by copying them.
+- Ship the README, CLAUDE.md, and changelog edit a change requires in the
+  same PR, not as a follow-up.
+- Deploy is manual: a merged PR is not a production update. TODO: name
+  this repo's deploy command.
+- Git state is shared across sessions — check the current branch
+  immediately before every commit and push.
+- Preview a rendered surface yourself before asking for approval, state
+  the scope of what's being approved, and never self-approve; escalate
+  rather than assume on a subjective call, an irreversible action, or
+  anything crossing this repo's stated bright line.
+- Include a surface the change should not have touched in that preview:
+  an unaffected page is how you tell a defect you introduced from one
+  that was already there. Preview is skippable only for pure docs edits,
+  script-only changes that never run in a browser, dependency bumps that
+  pass build and tests, and config with no visible surface; when in
+  doubt, preview.
+
+## Deviations from house
+
+None yet. When this repo declines a house default (a disabled module, a
+non-`pr` branch policy, a carve-out, a raised co-load ceiling), record it
+here **and** in `house.json`'s `deviations` array, dated, with why. This
+section mirrors that ledger; `house.json` is the source of truth.
+
+## Who this is for
+
+TODO: one or two sentences — who reads this repo, and the question they
+usually arrive with.
+
+<!-- Maintaining this file: its own line budget, what belongs here versus
+a rule file versus the README versus a skill, and the gate that checks
+both, are governed by the docs module — see .claude/rules/house/docs.md.
+Read it before adding to this file. -->

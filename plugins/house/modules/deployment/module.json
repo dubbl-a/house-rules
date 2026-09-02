@@ -1,0 +1,8 @@
+{
+  "name": "deployment",
+  "default": "detect",
+  "rules": ["rules/deployment.md"],
+  "files": [{"src": "files/deploy-guards.mjs", "dest": "scripts/house/deploy-guards.mjs"}, {"src": "files/assert-main-at-origin.mjs", "dest": "scripts/house/assert-main-at-origin.mjs"}],
+  "configSlots": ["deployGlobs"],
+  "defaultPaths": ["$deployGlobs"]
+}

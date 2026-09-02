@@ -1,0 +1,15 @@
+{
+  "name": "house-rules",
+  "description": "Opinionated repository conventions for Claude Code, vendored into each repo and kept honest by a checker: docs, engineering, GitHub, Claude Code hygiene, testing, deployment, database, data pipelines, LLM output.",
+  "owner": {
+    "name": "Aaron Altamura"
+  },
+  "plugins": [
+    {
+      "name": "house-rules",
+      "description": "Vendors rule files into a repo, checks them for drift and tampering, and adds a branch guard hook plus bootstrap, sync, conventions, revise-docs, and handoff skills.",
+      "source": "./plugins/house",
+      "category": "development"
+    }
+  ]
+}

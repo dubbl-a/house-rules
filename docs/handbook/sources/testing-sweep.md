@@ -1,0 +1,80 @@
+<!-- docs-drift-ignore-file: point-in-time survey captured 2026-08-24; anchors record what was true on that date -->
+# Source: public Claude Code testing landscape (survey agent output, 2026-08-24)
+
+## Landscape: what actually tests Claude Code artifacts
+
+| Repo / tool | Stars | License | Recency | How it tests |
+|---|---|---|---|---|
+| [obra/superpowers](https://github.com/obra/superpowers) | 277k | MIT | pushed 2026-08-19 | Two tiers. `tests/` = bash/node/python infra tests via `run-*.sh` + `npm test`, CI-safe. `evals/` = the **drill** harness (cloned from `superpowers-evals`), which drives *real tmux sessions* of Claude Code / Codex / Gemini CLI with an LLM actor and an LLM verifier, scenarios in `evals/scenarios/*.yaml`, `uv run drill run <name> -b claude`. 3 to 30+ min per scenario, real API cost, **explicitly excluded from CI**. |
+| superpowers `tests/explicit-skill-requests/` | " | " | " | Headless probes: `claude -p "$PROMPT" --plugin-dir … --dangerously-skip-permissions --max-turns N --output-format stream-json`, then `grep -q '"name":"Skill"'` plus a skill-name regex over the JSON log. Also detects "premature action" (a non-Skill tool firing before the Skill). `run-haiku-test.sh` pins `--model haiku` to see whether a cheaper model fails first. Sibling dirs (`codex/`, `devin/`, `kimi/`, `opencode/`, `pi/`, `hermes/`) test cross-harness portability. |
+| [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) `skill-creator` | 33.9k | Apache-2.0 | active | The only official plugin with a real eval loop. Modes Create/Eval/Improve/Benchmark. `scripts/`: `run_eval.py`, `run_loop.py`, `aggregate_benchmark.py`, `improve_description.py`, `generate_report.py`, `quick_validate.py`. Schemas: `evals.json` (prompt + `expectations[]`), `grading.json` (`expectations[].passed` + `execution_metrics`), `benchmark.json`. Agents: **grader** (also critiques the eval, flagging "assertions too easy to satisfy"), **comparator** (*blind*, does not know which version produced which output), **analyzer** (unblinds afterward). `run_loop.py` supports a **train/test split to prevent overfitting**. `aggregate_benchmark.py` reports mean/stddev/min/max of pass rate, latency, tokens. |
+| same repo, `plugin-dev` | " | " | active | Agents `plugin-validator.md`, `skill-reviewer.md`, `agent-creator.md`. The validator is a **10-step static read** (Read/Grep/Glob/Bash+jq): manifest, dirs, commands, agents, skills, hooks, MCP, file org, security. It never executes the plugin or invokes a skill. `skill-reviewer` never mentions evals at all. |
+| `hookify` (in `anthropics/claude-code`) | n/a | Apache-2.0 | active | **No tests, no evals, no dry-run.** Verification is prose: "Run `rm -rf /tmp/test` … you should see the warning." Debug advice is `python3 -c "import re; …"`. A cautionary example, not a model. |
+| [karanb192/claude-code-hooks](https://github.com/karanb192/claude-code-hooks) | 485 | MIT | pushed 2026-08-23 | Node's built-in runner (`node --test`), **zero npm deps**, tests colocated at `plugins/<name>/tests/<name>.test.js` across 20 plugins. Three categories: unit tests of core functions, **integration tests of the stdin/stdout flow**, config validation. CI `test.yml`: ubuntu-latest x Node **18/20/22**, `fail-fast: false`, installs prettier/ruff/uv first. |
+| [VoxCore84/claude-code-hook-tester](https://github.com/VoxCore84/claude-code-hook-tester) | 0 | MIT | 3 commits | Low stars, right idea. Auto-discovers hooks three ways (settings.json → `hook-manifest.json` → filename heuristics), sends **event-specific mock JSON on stdin for 10 lifecycle events** (overridable via `payloads.json`), asserts exit codes with the real semantics (0 pass, **2 = intentional block**, anything else = crash), flags >5s, `--json` for CI. |
+| [skill-bench/skill-eval-action](https://github.com/skill-bench/skill-eval-action) | 9 | MIT | active | YAML cases in `<skill>/evals/`: `name, prompt, files, criteria, expect_skill, timeout, allowed_tools`. Two `claude -p` calls per case (execute, then grade). **Requires at least one negative trigger case (`expect_skill: false`).** Upserts one PR comment via an HTML marker. Documents four CI matrix strategies including changed-only via git diff. No ablation. |
+| [TribeAI/claude-evals](https://github.com/TribeAI/claude-evals) | 20 | Apache-2.0 | new | Grades trajectories via SDK hooks (PreToolUse/PostToolUse/SubagentStop). LLM judge with variance reduction (repeat, take median) and random delimiters against prompt injection. `compare` classifies regression severity. Cost ceiling $0.50/task. |
+| [Emasoft/claude-plugins-validation](https://github.com/Emasoft/claude-plugins-validation) | 4 | MIT | active | 190+ rules, 10,800+ tests, fully offline, exit codes 0-4. Claims to have found "five silent-failure modes" in Claude Code's plugin loader empirically. No documented planted-violation fixture corpus. |
+| [disler/claude-code-hooks-mastery](https://github.com/disler/claude-code-hooks-mastery) | 3.9k | **none** | stale (2026-03-04) | All 13 hook events, "11/13 validated via automated testing." Popular but unlicensed and stale. Do not borrow code. |
+
+`hesreallyhim/awesome-claude-code` (52.9k) has no testing category worth harvesting; its own quality mechanism is editorial ("tools that don't work get cut") plus pre-commit and a `Makefile`.
+
+## The built-in: `claude plugin eval`
+
+Early access, gated per org, **no public docs page**. Cases are `evals/<case>/prompt.md` (frontmatter `name, tags, plugins, runs` [default 3], `max_turns` [10], `timeout_seconds` [300], `allowed_tools, model, env`), plus `graders/<name>.md` and optional `case.yaml` with `context.scaffold_script` / `history_file` / `add_dirs`. Graders: `regex`, `tool_used` (with `input_match`, `min`, `max`), `tool_order`, `file_exists` (glob over *created* paths), `llm`, `baseline`. Skill invocation is checked with `tool_used: Skill` + an `input_match` regex. `--ablation with-without` produces `with` / `without` arms with a per-grader delta. Isolation is a throwaway workspace with fresh `HOME` and `CLAUDE_CONFIG_DIR`, only the plugin under test loaded, credentials deleted at end; **network is not blocked, so it is not an OS sandbox**. `--threshold` defaults to 1.0; `--max-cost-usd` exits 2 on overage; results land in `results/<ts>/aggregate-result.json`. Its own guidance: *"Prefer deterministic graders for long artifacts; llm judges are noisy on long inputs."* Note `/skill-doctor` is cost/usage reporting, not behavior, and `claude plugin validate` is structure only.
+
+## Vendor tooling verdict (skeptical)
+
+- **promptfoo** (24.5k, OSS): the only one with a first-class `skill-used` / `not-skill-used` assertion normalized from Skill tool calls, plus fixture dirs (`v1`/`v2`) to A/B two SKILL.md versions. Closest competitor to the built-in. **Still skip:** it duplicates `--ablation with-without` and adds a YAML dialect.
+- **DeepEval** (OSS): 50+ metrics incl. tool correctness and argument correctness. Overkill for behavioral rules; built for RAG/model regression.
+- **Braintrust / LangSmith**: hosted, account-gated, dashboards you would not look at. LangSmith's *finding* is worth stealing (82% task completion with skills vs 9% without; invocation only ~70% even when explicitly prompted) but not the platform.
+- **MLflow** (`mlflow autolog claude`): traces every tool call and feeds failing judge rationales back to Claude to auto-patch SKILL.md. Interesting loop, heavy dependency.
+
+**Verdict: adopt no vendor.** `claude plugin eval` already gives cases + six grader types + ablation + repeats + cost ceilings + a JSON schema, with zero new dependencies and no API key plumbing. Revisit only if you need cross-model sweeps the built-in cannot express.
+
+## Anthropic's own guidance
+
+The [skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) page states it plainly: *"Create evaluations BEFORE writing extensive documentation."* Five steps: run without a skill to find gaps, build **three** scenarios, establish a baseline, write minimal instructions, iterate. Its checklist requires "at least three evaluations" and "tested with Haiku, Sonnet, and Opus." Note the page is stale in one respect: it says *"There is not currently a built-in way to run these evaluations,"* which `claude plugin eval` has since falsified.
+
+[Demystifying evals for AI agents](https://anthropic.com/engineering/demystifying-evals-for-ai-agents) (2026-01-09) is the strongest single source: *"Each trial should be 'isolated' by starting from a clean environment"*; three grader classes (code/model/human); *"It's often better to grade what the agent produced, not the path it took"*; 20-50 tasks drawn from real failures; pass@k vs pass^k; *"A good task is one where two domain experts would independently reach the same pass/fail verdict"*; *"Test both the cases where a behavior should occur and where it shouldn't. One-sided evals create one-sided optimization"*; and *"You won't know if your graders are working well unless you read the transcripts."* Cookbook artifacts exist (`tool_evaluation/tool_evaluation.ipynb`, `misc/building_evals.ipynb`) but are API-level, not Claude Code level.
+
+## Ranked patterns for the module
+
+| # | Pattern | Exemplar | Verdict |
+|---|---|---|---|
+| 1 | **Split deterministic harness tests from model-behavior evals**, with different budgets and CI posture (fast tier gates PRs; eval tier runs nightly/on-demand). | superpowers `docs/testing.md`; `--max-cost-usd`; TribeAI $0.50 ceiling | **ADOPT-AS-RULE**. The single highest-value heading. |
+| 2 | **With/without ablation is the measurement**, not the pass rate. A rule that passes at 100% in both arms taught nothing. | `--ablation with-without`; Anthropic step 3; LangChain 82/9 | **ADOPT-AS-RULE** |
+| 3 | **Three evals before the prose.** Write cases from observed failures, then write only enough rule text to pass them. | Anthropic best practices | **ADOPT-AS-RULE** |
+| 4 | **Grader ladder: deterministic first, judge last.** `tool_used` / `file_exists` / `regex` before `llm`; judges are noisy on long artifacts. | plugin eval; Anthropic three grader types | **ADOPT-AS-RULE** |
+| 5 | **Negative cases are mandatory**, not optional. Every "should fire" needs a "should not fire." | `expect_skill: false`; "one-sided evals create one-sided optimization" | **ADOPT-AS-RULE** |
+| 6 | **Feed real event payloads through real hook wiring**: per-event stdin JSON, assert the real exit-code contract (0 / 2 = block / other = crash). | VoxCore84; karanb192 integration tier | **ADOPT-AS-RULE** |
+| 7 | **Repeat trials and report variance**, never a single green run. Default 3 runs; report stddev; distinguish pass@k from pass^k. | `runs: 3` + `--threshold`; `aggregate_benchmark.py`; superpowers "5+ reps" | **ADOPT-AS-RULE** |
+| 8 | **Grade outcomes and state, not the path taken.** | Anthropic evals article; `file_exists` over created paths | **ADOPT-AS-RULE**. Partially ALREADY-OURS: `scripts/lib/retro.mjs` invariants grade end state. |
+| 9 | **Grade the grader.** Have the grader flag assertions that are too easy, and read transcripts before trusting a number. | `skill-creator/agents/grader.md`; Anthropic transcript review | **ADOPT-AS-RULE** |
+| 10 | **Headless `claude -p … --output-format stream-json` + grep the trace** for the Skill tool call, and separately detect "premature action." | superpowers `run-test.sh`; skill-eval-action | **ADOPT-AS-PRACTICE** (our harness) |
+| 11 | **Per-case fixture scaffold + fresh workspace/HOME.** | `case.yaml scaffold_script`; LangChain Docker scaffold | **ADOPT-AS-PRACTICE** |
+| 12 | **Cheap-model canary.** Pin Haiku to find the rule that only works because Opus is smart. | `run-haiku-test.sh`; Anthropic's Haiku/Sonnet/Opus checklist | **ADOPT-AS-PRACTICE** |
+| 13 | **Train/test split on eval cases** so the rule is not tuned to its own tests. | `run_loop.py` | **ADOPT-AS-PRACTICE** |
+| 14 | **Blind the comparison, unblind only for analysis.** | `comparator.md` / `analyzer.md` | **ALREADY-OURS** (blind panels, `.claude/rules/match-measurement.md`; plus our own harder lesson that blind panels leak via derived fields) |
+| 15 | **CI matrix across runtime versions** with `fail-fast: false`. | karanb192 Node 18/20/22 | **ADOPT-AS-PRACTICE, scoped.** We pin Node 22.12+; a matrix buys little. |
+| 16 | **Golden transcript snapshots.** | nobody credible | **SKIP.** Anthropic explicitly warns path-matching is "too rigid… agents regularly find valid approaches that eval designers didn't anticipate." |
+
+## (a) Three things our module would say that no public source says
+
+1. **Every gate ships with a planted violation that must fail it, in the same CI job.** Not one public source does this. `plugin-validator` only reads files and never executes; `hookify` has no verification at all; Emasoft has 10,800 tests of the validator's *code* but no documented corpus of deliberately-broken plugins proving the validator still detects them. Our framing is sharper because we learned it the hard way: a no-op is not evidence, and a checker that always reports zero looks identical to a clean repo. A gate without a positive control is decoration.
+
+2. **A failing gate must carry its own `why` and `remedy` at the point of failure, and gates are explicitly typed as waivable or not.** Public harnesses emit pass/fail plus a rationale string. None require the failure to teach the reader how to fix it, and none distinguish a promise with a documented escape hatch (`EQUAL_TREATMENT_WAIVER`, which prints its reason) from one with none (`source_ref_integrity`). That two-class model, invariants that can be overridden loudly versus invariants that cannot, is ours.
+
+3. **A holdout is spent the moment you measure against it, and that must be recorded.** `skill-creator` has a train/test split; nobody says what happens after you look. Our scorer-retune discipline (pre-register the sweep, declare the outcome, mark the holdout SPENT, never re-validate against it) is a stronger claim than anything published, and it is the rule that keeps an eval suite from quietly becoming a training set.
+
+Honorable mention, also absent upstream: **verify the built artifact, not the source construct.** Every public eval grades the agent's output text or trace. None say "after any sweep, grep the built output for the literal," which is exactly how a JS `matchMedia` survived a CSS-only breakpoint sweep here.
+
+## (b) Upstreams ledger: BORROW entries, pinned 2026-08-24
+
+1. **`obra/superpowers`** (MIT, 277k, pushed 2026-08-19). Borrow: `docs/testing.md` two-tier split with cost guidance; `skills/writing-skills/testing-skills-with-subagents.md` RED/GREEN/REFACTOR pressure-scenario method (pressure taxonomy: time, sunk cost, authority, economic, exhaustion, social, pragmatic; 3+ combined; capture rationalizations verbatim and counter each); `tests/explicit-skill-requests/run-test.sh` headless probe shape. Highest-value single upstream.
+2. **`anthropics/claude-plugins-official`, `plugins/skill-creator`** (Apache-2.0, 33.9k). Borrow: the `evals.json` / `grading.json` / `benchmark.json` triple; grader-critiques-the-eval; blind comparator then unblinding analyzer; train/test split; variance aggregation.
+3. **`karanb192/claude-code-hooks`** (MIT, 485, pushed 2026-08-23). Borrow: zero-dependency `node --test`, tests colocated per plugin, an explicit stdin/stdout integration tier, `fail-fast: false` matrix.
+4. **Anthropic, "Demystifying evals for AI agents"** (2026-01-09, docs not code). Borrow as the citation anchor for grader classes, isolation, outcome-over-path, two-experts task quality, pass@k/pass^k, and two-sided case design.
+5. **`skill-bench/skill-eval-action`** (MIT, 9 stars). Borrow the *idea* only, not the code: mandatory `expect_skill: false` negative case, and the upsert-one-PR-comment reporting convention.
+
+Do not borrow from `disler/claude-code-hooks-mastery` (no license, stale) or `hookify` (no tests to borrow).

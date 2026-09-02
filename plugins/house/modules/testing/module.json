@@ -1,0 +1,24 @@
+{
+  "name": "testing",
+  "default": "on",
+  "rules": [
+    "rules/testing.md"
+  ],
+  "files": [],
+  "configSlots": [
+    "testGlobs",
+    "gateGlobs",
+    {
+      "name": "testRoots",
+      "default": [
+        "tests/**",
+        "test/**"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$testRoots",
+    "$testGlobs",
+    "$gateGlobs"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "docs",
+  "default": "on",
+  "rules": ["rules/docs.md"],
+  "files": [],
+  "configSlots": [
+    "roots",
+    "excludeFiles",
+    "archiveDirs",
+    "scanArchive",
+    "haystackDirs",
+    "extraPathRoots",
+    "packageRoots",
+    "buildArtifactPrefixes",
+    "classPrefixes",
+    "componentSuffixes",
+    "componentAllowlist",
+    "bareScriptAllowlist",
+    "lengthLimits",
+    "maxCoLoadLines",
+    {
+      "name": "docFiles",
+      "default": [
+        "CLAUDE.md",
+        "README.md",
+        "CHANGELOG.md",
+        ".claude/rules/**",
+        ".claude/skills/**",
+        ".claude/commands/**",
+        "docs/**"
+      ]
+    },
+    {
+      "name": "emDash",
+      "default": {
+        "mode": "public",
+        "paths": [
+          "README.md",
+          "CHANGELOG.md",
+          "docs/**/*.md"
+        ],
+        "exclude": []
+      }
+    }
+  ],
+  "defaultPaths": [
+    "$docFiles"
+  ]
+}

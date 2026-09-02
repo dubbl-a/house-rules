@@ -1,0 +1,213 @@
+house-rules
+Copyright (c) 2026 Aaron Altamura
+
+This repository is licensed by path. Code is MIT, prose is CC BY 4.0, and the
+SPDX expression for the repository as a whole is:
+
+    MIT AND CC-BY-4.0
+
+
+MIT (full text in LICENSE)
+--------------------------
+
+    plugins/house/payload/
+    plugins/house/scripts/
+    plugins/house/hooks/
+    plugins/house/modules/*/files/
+    plugins/house/schema/
+    scripts/
+    tests/
+    the JSON manifests: house.json, package.json,
+      plugins/house/.claude-plugin/plugin.json, .claude-plugin/marketplace.json,
+      plugins/house/modules/*/module.json, .house/lock.json,
+      docs/handbook/manifest.json
+
+Code examples inside documentation are MIT as well, wherever the surrounding
+prose sits. A snippet lifted out of a rule file, a skill, or a handbook chapter
+carries no attribution requirement, because a convention nobody can paste is
+not a convention.
+
+
+CC BY 4.0 (full text in LICENSE-DOCS)
+-------------------------------------
+
+    rule files: plugins/house/modules/*/rules/ and the vendored copies
+      under .claude/rules/house/
+    skills: plugins/house/skills/
+    markdown templates: plugins/house/templates/
+    docs/
+    README.md
+    CHANGELOG.md
+
+Attribution for the prose means naming house-rules and its repository URL, and
+saying whether the text was changed. Vendoring a rule file into another repo,
+which is what this package exists to do, is a use the license already permits;
+the managed-file header each vendored file carries names its source.
+
+Anything not listed above takes the license of its kind: a file that is
+executed or read by a program is MIT, a file that is read by a person is
+CC BY 4.0.
+
+One carve-out inside that scope: CODE_OF_CONDUCT.md is not this package's
+prose. It is the Contributor Covenant 2.1, licensed by its authors under
+CC BY 4.0 and reproduced here with its own attribution section intact. One
+change was made, which that license asks to be stated: the Enforcement
+sentence was rewritten to name this project's own reporting channels in place
+of the upstream's contact placeholder. Nothing else was altered, and the
+copyright line at the top of this file does not reach any of it.
+
+
+Third-party attributions
+------------------------
+
+Every upstream that contributed text, structure, a schema shape, or a working
+method to this package is named below, except the Code of Conduct, which is
+the carve-out above. The full provenance ledger, including sources consulted,
+evaluated, and rejected without copying, is docs/handbook/upstreams.md.
+
+1. MADR (Markdown Any Decision Records) 4.0.0.
+   https://github.com/adr/madr
+   Offered under MIT OR CC0-1.0. Taken here under CC0-1.0, which asks for
+   nothing, and named anyway.
+
+   docs/decisions/0000-template.md keeps MADR's section skeleton: context
+   and problem statement, decision drivers, considered options, decision
+   outcome, consequences, confirmation, pros and cons of the options, more
+   information. The headings are in this package's sentence case, the
+   optional frontmatter is cut to status and date, and every placeholder
+   sentence is rewritten in house style.
+
+2. github.com/obra/superpowers.
+   Licensed under the MIT License. Its notice, preserved here:
+
+       MIT License
+
+       Copyright (c) 2025 Jesse Vincent
+
+       Permission is hereby granted, free of charge, to any person obtaining
+       a copy of this software and associated documentation files (the
+       "Software"), to deal in the Software without restriction, including
+       without limitation the rights to use, copy, modify, merge, publish,
+       distribute, sublicense, and/or sell copies of the Software, and to
+       permit persons to whom the Software is furnished to do so, subject to
+       the following conditions:
+
+       The above copyright notice and this permission notice shall be
+       included in all copies or substantial portions of the Software.
+
+       THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+       EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+       MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+       NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+       BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+       ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+       CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+       SOFTWARE.
+
+   That repository was the starting point for this package's worktree and
+   finish-branch guidance and for the split between deterministic tests and
+   model-behavior evals, along with the cost posture that keeps the paid tier
+   out of the merge gate and the shape of its headless probe. The guidance was
+   rewritten against this fleet's own incidents and is welded to gates that
+   exist only here. Where its wording is used it is quoted as a quotation,
+   with a source URL, in docs/handbook/testing.md and under
+   docs/handbook/sources/. One notice covers both of the ledger rows that
+   name this repository.
+
+3. anthropics/claude-plugins-official, the claude-md-management plugin.
+   https://github.com/anthropics/claude-plugins-official
+   Licensed under the Apache License, Version 2.0.
+
+   The auditing habit in plugins/house/skills/revise-docs/SKILL.md, checking
+   that every claim resolves in the repo before writing it down, was taken
+   from that plugin's revise command. The habit is all that was taken: no
+   text from the upstream is reproduced here, and the skill replaces the
+   upstream's append-to-the-root-file default with routing.
+
+4. anthropics/claude-plugins-official, the plugin-dev plugin.
+   https://github.com/anthropics/claude-plugins-official
+   Licensed under the Apache License, Version 2.0.
+
+   The manifest and hook shapes in plugins/house/.claude-plugin/plugin.json
+   and plugins/house/hooks/hooks.json were authored against that plugin's
+   documentation. What is common to both is the set of field names the Claude
+   Code plugin format requires and the ${CLAUDE_PLUGIN_ROOT} form of a hook
+   command. Every value is this package's own.
+
+5. anthropics/claude-plugins-official, the skill-creator plugin.
+   https://github.com/anthropics/claude-plugins-official
+   Licensed under the Apache License, Version 2.0.
+
+   docs/handbook/testing.md takes five working methods from that plugin: the
+   eval, grading, and benchmark file triple; the grader that also critiques
+   the eval it just graded; the blind comparator followed by an unblinding
+   analyzer; the train and test split; and variance aggregation across
+   repeated runs. Each is named there with the upstream file it came from,
+   and again in that chapter's Sources list. These are methods, not text.
+   The eval cases under plugins/house/evals/ carry the field names the
+   built-in plugin eval harness requires, which share no field name with
+   skill-creator's own eval, grading, and benchmark schemas.
+
+6. github.com/karanb192/claude-code-hooks and
+   github.com/VoxCore84/claude-code-hook-tester.
+   Both licensed under the MIT License.
+
+   The testing method for this package's hook tier came from that
+   repository: a zero-dependency runner, tests colocated with the plugin
+   they cover, and an explicit stdin and stdout integration tier that feeds
+   a real event payload into the real hook and asserts on the real output.
+   The runner at tests/hooks/run.sh is this package's own bash, written
+   against this package's own hook contract. A word-sequence comparison of
+   everything under tests/ against that repository found no shared test
+   text: the only matches are a node import line, a git config line inside a
+   fixture, and the hook JSON key sequence the format requires. No code was
+   copied, so its notice is not reproduced; the attribution is here and in
+   the Sources list of docs/handbook/testing.md.
+
+   The hook-tester repository is where the same tier gets its payload and its
+   pass and fail contract: a mock event payload per lifecycle event sent on
+   stdin, and the discipline of asserting a hook's real three-way outcome
+   (0 passes, 2 is an intentional block, anything else is a crash) instead of
+   reading any non-zero exit as a failure. This package's hook signals a block
+   through the JSON decision field rather than through exit 2, so
+   tests/hooks/run.sh applies that discipline to this protocol instead: exit 0
+   with empty output is an allow, exit 0 carrying a deny decision is an
+   intentional block, and a non-zero exit is a crash. Its one file is Python
+   and this package's runner is bash; the same word-sequence comparison found
+   no overlap at all with either that file or its payload fixtures, so its
+   notice is not reproduced either. It is cited in docs/handbook/testing.md
+   and in that chapter's Sources list.
+
+7. github.com/FlorianBruniaux/claude-code-ultimate-guide.
+   Licensed under CC BY-SA 4.0.
+
+   The section "Set the model explicitly on every subagent and workflow
+   agent" in docs/handbook/claude-code.md was written after reading that
+   guide's model-selection material. It is an independent expression
+   informed by that guide, not an adaptation of it. The guide sorts tasks by
+   complexity into a decision table and a flowchart that name specific
+   models, effort levels, per-task cost estimates, and a per-plan budget
+   modifier. This package's section is organized around a different thing,
+   the failure of an omitted model silently inheriting the session's tier,
+   states the tier match in one sentence of task kinds with no model named
+   and no price quoted, and grounds itself in this fleet's own recorded
+   experience and in the eval pair under
+   plugins/house/evals/explicit-model-tier/. A word-sequence comparison of
+   the whole handbook and every rule file against the whole guide finds no
+   shared prose beyond generic connective phrases; every substantive match
+   is a link both sides cite to third-party documentation. Share-alike
+   attaches to an adaptation of expression and not to an idea, so nothing
+   here is a derivative work of that guide and no part of this repository is
+   distributed under CC BY-SA 4.0. The credit is kept in that chapter's
+   Sources list and in the ledger.
+
+The remaining ledger rows contributed no text, structure, or schema and are
+recorded there rather than here: ai-rulez and Packmind for ideas and framing,
+ctxlint for one check whose idea was reimplemented in this package's own code
+and credited in a comment beside it, claude-code-hooks again for a
+guard-batching note kept for a future version, skill-eval-action for the
+negative-trigger-case idea, Anthropic's evals article as a citation anchor,
+Microsoft's code-with-engineering-playbook which the handbook links out to
+rather than rewriting, and agents-lint, agnix, and copier, which were
+evaluated and rejected without copying. The internal bases named at the end
+of that ledger are the author's own private repositories.

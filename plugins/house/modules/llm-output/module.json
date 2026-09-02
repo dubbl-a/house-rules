@@ -1,0 +1,8 @@
+{
+  "name": "llm-output",
+  "default": "detect",
+  "rules": ["rules/llm-output.md"],
+  "files": [],
+  "configSlots": ["llmGlobs"],
+  "defaultPaths": ["$llmGlobs"]
+}

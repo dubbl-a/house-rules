@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm run check:docs)",
+      "Bash(npm run check:house)",
+      "Bash(gh run *)",
+      "Bash(gh workflow *)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue view*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr merge*)"
+    ]
+  }
+}

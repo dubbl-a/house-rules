@@ -1,0 +1,22 @@
+{
+  "name": "database",
+  "default": "detect",
+  "rules": [
+    "rules/database.md"
+  ],
+  "files": [],
+  "configSlots": [
+    {
+      "name": "dbGlobs",
+      "default": [
+        "db/**",
+        "migrations/**",
+        "src/lib/db/**",
+        "scripts/db-*"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$dbGlobs"
+  ]
+}
