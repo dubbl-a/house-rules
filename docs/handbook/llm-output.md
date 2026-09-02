@@ -36,11 +36,15 @@ The external anchor is Anthropic's own guidance: prefer a predictable, fixed cod
 
 The concrete failure this guards against is documented in `feedback_calibrated_analysis_briefs.md`: the May 2026 regional-money finance brief needed an explicit limitations section naming what was not checked, because absence of evidence in disclosure data is evidence of nothing happening in disclosure data, not evidence that nothing happened at all. A closing caveat cannot fix a body that already overclaimed.
 
+Native floor, as of 2026-09-02: Code Review runs a verification step that checks candidates against actual code behavior, so a run that reports nothing is a normal outcome there (https://code.claude.com/docs/en/code-review.md#how-reviews-work).
+
 ## Refute with named lenses, drop by default, and log the drops
 
 `repo-d`'s intel-enrichment skill runs two independent refuter passes with named lenses: lens 1 checks sources (every quote string-matches its source, every URL supports the claim it is cited for), lens 2 checks identity and attribution. Anything a lens refutes is dropped by default, and every drop is logged to a `research_gaps` field so the loss stays visible rather than silent.
 
 The case that motivates checking a familiar failure mode before trusting it comes from the council-meeting corpus (`feedback_known_failure_mode_bias.md`). ASR transcription was already known to mangle proper nouns, so a transcript reading a weekday-qualified date in one place and an unqualified date in another read as an ASR error on sight. It was not: one date was the statutory deadline, which fell on a weekend, and the other was the last regularly scheduled meeting before it, which fell on a weekday, two distinct real facts, both transcribed correctly. A peer session holding the deadline from an independent source caught the false flag. The cheap check, a weekday lookup, would have settled it before any edit was made.
+
+Native floor, as of 2026-09-02: hosted Code Review fans out one agent per issue class and verifies candidates before ranking them, but never reports which agent caught what and logs no drops (https://code.claude.com/docs/en/code-review.md#how-reviews-work).
 
 ## Cite or stay silent
 
@@ -81,6 +85,8 @@ The clearest verification incident is dated 2026-08-02 (`feedback_verify_endorse
 ## Treat silence as not approval
 
 `repo-e`'s approval gate is the one row behind this heading, and it carries no separate incident in the sources beyond the rule itself: "No file is generated before the user explicitly approves the diff. Silence is not approval." No incident recorded; the rule came in on reasoning alone. The reasoning, stated in the rule file this chapter backs, is that an approval a script could grant is not an approval; the person is the only gate that counts, and a question left unanswered is exactly as unresolved as one never asked.
+
+Native floor, as of 2026-09-02: the permission system, where file modification requires approval and an agent message never counts as consent (https://code.claude.com/docs/en/permissions.md), and plan mode, which holds edits until a person approves the plan but does not bind where bypass permissions are available and never applies to a printed run (https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode).
 
 ## Read agreement with a shown suggestion as anchored, not accurate
 

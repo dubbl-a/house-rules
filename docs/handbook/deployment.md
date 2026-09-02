@@ -18,6 +18,8 @@ repo-a pre-flights its own build the same way, with `assertMasterAtOrigin('deplo
 
 The chain checks the repo's own git state, not what else has written to the shared infrastructure the build reads. repo-a's laptop Postgres is shared across every worktree; a deploy publishes whatever the database holds at that moment, not the state the merged pull requests imply (MEM-069, `project_shared_laptop_db_deploy_hazard.md`). A parallel session's unfinished pipeline run ships anyway if nobody asks what else has touched the store first, because none of the four guards above can see it.
 
+Native floor, as of 2026-09-02: GitHub does not trigger workflows on commits pushed with the default GITHUB_TOKEN, which is why an empty list of check runs has to read as unchecked rather than as a pass (https://code.claude.com/docs/en/github-actions.md#ci-not-running-on-claudes-commits).
+
 ## Migrate before deploying the code that reads the schema
 
 repo-d's `npm run ship` orders itself merge, score, sync (which migrates), enrich, intel-sync, deploy, and that ordering is documented as load-bearing: "a deploy before the migration leaves new endpoints/tables missing, learned the hard way" (SB-031). The repo also carries a documented app-only shortcut, `npm run deploy`, gated behind a written test for when the fast path is provably safe: no `migrations/*.sql` in the diff, no pipeline or scoring-config change. When any doubt remains, the rule is to run the full ordered ship instead of trusting judgment on the fast path.
@@ -31,6 +33,8 @@ repo-a's `npm run deploy` (`scripts/deploy.mjs`, TW-147) chains `npm run build`,
 Any generator that produces an aggregate the build reads has to run inside that same script, before the build step, because the build ships whatever the table already holds, not what the newest source data says (MEM-077, `project_cloudflare_deploy_manual.md`).
 
 repo-d names the concrete failure a named script prevents (SB-029, `CLAUDE.md`): "Deploy ONLY via `npm run deploy` or from `worker/`." Wrangler walks up the directory tree looking for its config, so a stray root-level `wrangler.jsonc` shadows the real one in `worker/` and ships an ungated public Worker. The trap file is gitignored, and the fix is written down in three places at once: CLAUDE.md, the deploy skill's Hazards section, and the cleanup-worktree verification checklist, one incident producing three separate enforcement points rather than one.
+
+Native floor, as of 2026-09-02: Claude Code permission rules, where a deny rule is evaluated whatever a hook returns and an allow entry only skips the prompt (https://code.claude.com/docs/en/permissions.md).
 
 ## Verify the deployed URL against the built file with the cache bypassed
 

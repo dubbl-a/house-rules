@@ -23,6 +23,8 @@ No incident recorded across the module's four repos for this rule; it entered on
 
 repo-b gives the same reasoning a sharper, concrete form. `docs/runbooks/recovery.md` (246 lines) exists to cover backups, restore, and secret rotation for "the Neon DB that has no second copy anywhere." A store with no second copy is the one place where "we have a backup" cannot be asserted, only demonstrated by an actual restore, which is why this rule has no anchor in code: the backup lands outside the repo, and only a runbook step someone has actually run, and a pasted post-migration diff, are the control.
 
+Native floor, as of 2026-09-02: checkpointing, which does not track files modified by bash commands and is documented as session-level recovery rather than a replacement for version control (https://code.claude.com/docs/en/checkpointing).
+
 ## Treat provenance columns as behavior
 
 repo-c (`.claude/rules/services.md`): the domain model behind the camp's RV ledger never collapses its four roles, and a person to RV link is "stored, never inferred." `.claude/rules/database.md` extends the same discipline to sync state: provenance columns are "load-bearing, not metadata." A `manual` provenance value is never overwritten by a later sync, because a non-machine channel means "a human asserted this and the API can't see it."
@@ -43,6 +45,8 @@ repo-a (`scripts/retro/domains/schema.mjs`, `db/tables.json`): a migration that 
 
 repo-d (`docs/neon-tables.md`): the same registry idea from a repo with no retro tooling behind it, kept purely as a discipline: purpose, writer, readers, and data class per table, "kept in step with the baseline migration," so "the next database review starts from a lookup, not archaeology."
 
+Native floor, as of 2026-09-02: hosted Code Review reading the repo CLAUDE.md, which flags a doc that a pull request makes outdated at nit severity only, for newly introduced violations, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#claudemd).
+
 ## Store money as integer cents and reconcile against the books
 
 repo-c (`.claude/rules/database.md`, `.claude/rules/stripe.md`, `.claude/rules/finance.md`): money is stored as `INTEGER` cents, and the floating-point type is banned at the schema level. Fees are read from Stripe's own `balance_transaction` object, never computed by arithmetic on the gross amount, "because the provider's number is the one the bank actually moved." Revenue is recognized on charge, not on payout, and every bucket in the taxonomy has a precise, written meaning; input that lands in none of them is a loud build-gate failure, not a silent drop. Reconciliation against the actual books, not against the sync's own totals, is the correctness gate: do not trust a sync until the figures tie out, because a total that agrees only with itself proves nothing.
@@ -55,9 +59,13 @@ The asymmetry the rule warns about is a documented gotcha, not a hypothetical: a
 
 repo-d (`db/connection.mjs`, `CLAUDE.md`): the same posture in a second Neon project. `repo_g_app` owns its own `repo_g` schema, has `SELECT` only on `reference.*`, and is blind to repo-f's tables; each initiative loads its own `.env` via `process.loadEnvFile` ("no `dotenv`"), and CLAUDE.md states the rule plainly: "Never point repo-g scripts at the root `.env` (the admin string) or vice versa."
 
+Native floor, as of 2026-09-02: the Bash sandbox, which isolates Bash subprocesses and leaves the built-in file tools to the permission system, and which never inspects the queries a script issues once it is running (https://code.claude.com/docs/en/sandboxing).
+
 ## Never let a write script pick its target from a dotfile
 
 repo-a: out-of-band matchers read `DATABASE_URL` from the exported environment, "deliberately not from `.dev.vars`, a write script should not pick its target database out of a dotfile." A read-only build may still load a dotfile for vendor keys (`--env-file=.dev.vars` is fine there); the line the rule draws is specifically about what decides *which database* a write lands in, not about dotfiles in general.
+
+Native floor, as of 2026-09-02: Bash permission rules, which match the command text after a built-in, non-configurable wrapper list is stripped; environment runners such as direnv are not on that list (https://code.claude.com/docs/en/permissions.md).
 
 ## Sources
 

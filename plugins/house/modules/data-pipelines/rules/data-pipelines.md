@@ -32,7 +32,7 @@ Receipts: `docs/handbook/data-pipelines.md#write-nothing-when-a-record-is-unchan
 
 ## Default to a dry run and require an explicit flag to write
 
-Make the dry run the default and `--apply` the opt-in, so the first run of a new script is a plan a human reads rather than a change nobody asked for.
+Make the dry run the default and `--apply` the opt-in, because the harness gates the file tools Claude calls directly but cannot see what a script writes once it is running, so the first run of a new script is a plan a human reads rather than a change nobody asked for.
 Plan, validate, execute: emit a machine-verifiable diff, check it, then write, and leave an audit row per write. Gate deletion behind one script with one call site and its own breadcrumb.
 Roll out in tiers with a small first push before the full one, and head a script whose dry run would itself surface regressions with a do-not-run note, because the dry half is not always the safe half.
 
@@ -41,7 +41,7 @@ Receipts: `docs/handbook/data-pipelines.md#default-to-a-dry-run-and-require-an-e
 
 ## Brake a prune at a share of the table, and unit-test the brake
 
-Refuse to delete more than a set share of a table in one run and require an explicit `--force` to override, because the run that empties the table looks exactly like the run that clears three stale rows until the count comes back.
+Refuse to delete more than a set share of a table in one run and require an explicit `--force` to override, because the harness routes a destructive filesystem command through a permission prompt but never sees a row delete a script issues, and the run that empties the table looks exactly like the run that clears a few stale rows until the count comes back.
 Unit-test the brake rule itself at both sides of the share, since a brake nobody has watched trip is a comment.
 
 Anchor: a unit test of the brake predicate just under and just over the share, run in CI.

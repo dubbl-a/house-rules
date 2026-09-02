@@ -41,6 +41,12 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
   enforcement, the runner's cost ceiling and grader types, and hook debugging. The matching
   handbook chapters gained a dated `Native floor` line per heading with its citation. No heading,
   config slot, hook contract, or file layout changed.
+- The `database`, `deployment`, `data-pipelines`, and `llm-output` rules now name the native Claude
+  Code feature each one builds on, so a reader arriving from the Claude Code docs sees an extension
+  rather than a restatement, and the matching handbook chapters cite that floor with its source.
+  One of these is an accuracy fix: the named-deploy-script rule's anchor claimed a settings
+  allowlist that omits the platform CLI is what refuses it, when an allow entry only skips a prompt
+  and a deny rule is the layer that blocks.
 
 ## [0.5.0] - 2026-09-02
 

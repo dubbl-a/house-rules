@@ -13,7 +13,7 @@ Receipts: `docs/handbook/database.md#write-forward-only-numbered-idempotent-migr
 
 Take a full backup immediately before any migration that drops or rewrites data, and keep a rollback path you have actually executed, because a rollback plan you have never run is a hypothesis.
 Diff the schema and the row counts before and after, because a migration that misses rows or lands the wrong column type still exits zero. A clean exit code is a claim about the process, not about the data.
-Anchor: none (because the backup lands outside the repo, so nothing in the tree can prove it was taken; the runbook step and the pasted post-migration diff are the control)
+Anchor: none (because the backup lands outside the repo and the session cannot restore it either: checkpoints do not track what a Bash command changed and are not a substitute for version control, so the runbook step and the pasted post-migration diff are the control).
 Receipts: `docs/handbook/database.md#back-up-before-a-destructive-migration-and-diff-after-it`
 
 ## Treat provenance columns as behavior
@@ -37,7 +37,7 @@ Receipts: `docs/handbook/database.md#let-row-lifecycle-decide-a-new-table-never-
 Ship the registry line for a new table in the same PR as the migration that creates it, because a registry filled in later is a registry filled in from memory.
 Record purpose, writer, readers, and data class for each table, so the next database review starts from a lookup instead of archaeology.
 Check the registry against live grants in both directions, because a table missing from the registry and a registry line whose grants no longer exist are both drift, and only the two-way check catches the second.
-Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy.
+Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy, because the hosted review that notices a doc going stale raises it as a non-blocking nit and is not available in every org.
 Receipts: `docs/handbook/database.md#add-the-table-registry-line-in-the-same-pr-as-the-migration`
 
 ## Store money as integer cents and reconcile against the books
@@ -52,14 +52,14 @@ Receipts: `docs/handbook/database.md#store-money-as-integer-cents-and-reconcile-
 
 Separate publishable data from sensitive data by schema and by role, give each initiative its own role and its own env file, and never let one reach the other, because crossing the streams once is enough to leak.
 Assert the running role before a pipeline touches anything, and refuse to run as the wrong one, because a privileged connection turns a read-only job into an unlogged write.
-Enforce the firewall with a runtime guard and not only with a grant whenever the build itself runs as a privileged role, since a grant that permits the read cannot stop it. Ship the guard with its own falsification procedure; the rule for proving a check can fail lives in engineering.md.
+Enforce the firewall with a runtime guard and not only with a grant whenever the build itself runs as a privileged role, since a grant that permits the read cannot stop it and the harness stops at the tool boundary: permission rules and the sandbox never reach inside a script's own database queries. Ship the guard with its own falsification procedure; the rule for proving a check can fail lives in engineering.md.
 State where a rule's inverse does not generalize, because a new relation can auto-grant on the publishable side while the sensitive side needs no revoke, and a reader will otherwise reason from one to the other.
 Anchor: a runtime guard that throws on any query naming a sensitive table, plus a role assertion at the top of every pipeline entry point.
 Receipts: `docs/handbook/database.md#give-each-initiative-its-own-least-privilege-role`
 
 ## Never let a write script pick its target from a dotfile
 
-Read the connection string for any write path from the exported environment, never from a dotfile some tool loads on your behalf, because the dotfile silently decides which database a destructive run lands in.
+Read the connection string for any write path from the exported environment, never from a dotfile some tool loads on your behalf, because permission rules match only the command text and cannot see which database a run resolves to, and an environment runner like direnv is not stripped before that match.
 Fail fast when the variable is unset rather than falling back to a default, because a silent fallback writes to the wrong place and still looks like success. A read-only build may load a dotfile; a writer may not.
 Anchor: a test asserting the write path throws when the connection variable is absent, and no dotfile loader flag on any script that writes.
 Receipts: `docs/handbook/database.md#never-let-a-write-script-pick-its-target-from-a-dotfile`
