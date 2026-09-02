@@ -55,6 +55,12 @@
   h1, h2, h3 { font-family: "Fraunces", Georgia, "Times New Roman", serif; font-weight: 600; line-height: 1.15; text-wrap: balance; margin: 0; }
   h1 { font-size: 2.6rem; font-variation-settings: "opsz" 144; letter-spacing: -0.01em; }
   .tagline { font-size: 1.2rem; line-height: 1.5; color: var(--muted); margin: 18px 0 0; max-width: 58ch; }
+  .brief { margin: 22px 0 0; padding: 4px 16px 14px; background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--blueprint); border-radius: 4px; font-size: 1.02rem; max-width: 62ch; }
+  .brief p { margin-top: 10px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 18px 0 0; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); font-size: 0.86rem; }
+  .meta div { display: flex; flex-direction: column; gap: 2px; }
+  .meta dt { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 400; margin: 0; }
+  .meta dd { margin: 0; color: var(--ink); }
   section { scroll-margin-top: 24px; }
   section h2 { font-size: 1.6rem; margin-top: 56px; padding-top: 18px; border-top: 2px solid var(--blueprint); }
   section h3 { font-size: 1.12rem; margin-top: 22px; }
@@ -119,6 +125,17 @@
       <p class="eyebrow">A guide for newcomers</p>
       <h1>House Rules Explained</h1>
       <p class="tagline">A plain-language guide to turning the advice you give Claude Code into rules that hold, with something that checks they still do.</p>
+      <div class="brief">
+        <p><strong>What it is:</strong> a set of plain-English working rules for projects built with Claude Code, copied into your project as ordinary files, plus one command that reports which rules no longer hold.</p>
+        <p><strong>Why you need it:</strong> what you tell Claude Code is advice that nothing checks. It goes stale, grows too long to follow, and drifts between projects, and nothing tells you.</p>
+      </div>
+      <dl class="meta">
+        <div><dt>Written by</dt><dd>Aaron Altamura, co-written with Claude Code</dd></div>
+        <div><dt>Updated</dt><dd><time datetime="2026-09-02">2 September 2026</time></dd></div>
+        <div><dt>Covers</dt><dd>house-rules v0.6.0</dd></div>
+        <div><dt>Reading time</dt><dd>About 13 minutes</dd></div>
+        <div><dt>License</dt><dd>CC BY 4.0 for the text, MIT for the code</dd></div>
+      </dl>
     </header>
     <section id="what-this-is">
       <h2>What this is</h2>
@@ -158,11 +175,11 @@
     </section>
     <section id="origins">
       <h2>Why I built this</h2>
-<p>I am Aaron Altamura. I am not a software engineer by trade. I build the tools I need with Claude Code, and this guide is written in the plain language I needed it in myself.</p>
-<p>Over about five months I built five working projects that way, roughly 1,312 commits between them, a commit being one saved snapshot of a change. The rules here are not a theory. They are what I wrote down after the same things went wrong on me more than once.</p>
-<p>One instruction file reached 1,512 lines. Its own rule said 200. Nothing objected on its own: Claude Code names a target length and will suggest cuts when you ask it to look the file over, but nothing was holding that file to a number on every run, and by then it was being skipped rather than followed. The longer the file, the less of it gets followed. A rule told the assistant to run a small program I had renamed, and it went on saying so, because nothing reads a rule back against the project it describes. Rules I could not justify got argued with and worked around, which was fair, because I had written the instruction and not the reason. What one session learned stayed in notes on my machine: Claude Code keeps its own notes between sessions, but they live on one computer, outside the project, where nobody else sees them.</p>
-<p>None of that was Claude Code failing. It gave me the places to put rules, and hooks, small programs it runs just before an action, that can stop a step outright. What I did not have was an opinion about what the rules should say, and anything that would read them back and tell me which ones had quietly stopped being true. So I wrote both. The five projects run on these rules now, and so does the package itself.</p>
-<p>You can find me on <a href="https://www.linkedin.com/in/aaron-altamura">LinkedIn</a> and <a href="https://github.com/dubbl-a">GitHub</a>.</p>
+<p>I'm Aaron Altamura. By day I build AI and data systems for go-to-market teams at software companies, which is to say I&#x27;m not a software engineer by trade. I build the tools I need with Claude Code, and I wrote this guide, co-written with Claude Code, in the plain language I wished I had at the start.</p>
+<p>Over about five months I built five working projects that way, roughly 1,312 commits between them (a commit is one saved change). These rules aren't a theory. They're what I wrote down after the same things went wrong on me more than once.</p>
+<p>One instruction file grew to 1,512 lines when its own rule said 200, and nothing objected on its own, so it ended up skipped more than followed. A rule kept pointing at a program I had renamed, because nothing checks a rule against the project it describes. Rules I couldn't justify got argued with and worked around, fairly, since I&#x27;d written the instruction and not the reason. And what one session learned stayed in notes on my machine, where no one else could see them.</p>
+<p>None of that was Claude Code failing me. It gave me the places to put rules, and hooks, small programs that run just before an action and can stop it. What it didn't give me was an opinion about what the rules should say, or anything that would read them back and tell me which ones had quietly stopped being true. So I wrote both. The five projects run on these rules now, and so does the package itself.</p>
+<p>If any of this sounds like your last month, I'd like to hear about it. Find me on <a href="https://www.linkedin.com/in/aaron-altamura">LinkedIn</a> or <a href="https://github.com/dubbl-a">GitHub</a>.</p>
     </section>
     <section id="getting-started">
       <h2>Getting started</h2>
@@ -190,7 +207,7 @@ claude plugin install house-rules@house-rules --scope user</code></pre>
       <h2>Glossary</h2>
 <ul><li><strong>Repository (repo).</strong> Your project's folder of files, plus the record of every change to it.</li><li><strong>Checkout.</strong> Your own copy of a repository, the one on your machine.</li><li><strong>Commit.</strong> One saved snapshot of a change, with a message saying what it was for.</li><li><strong>Pull request.</strong> A proposal to fold a separate line of work into the main one, opened so it can be reviewed first.</li><li><strong>Plugin.</strong> An add-on giving Claude Code extra skills and hooks.</li><li><strong>Skill.</strong> A set of instructions Claude Code follows when you type its name after a slash, such as <code>/house-rules:sync</code>.</li><li><strong>Branch.</strong> A separate line of work in a repository, made so a change can be worked on and reviewed apart from the main line.</li><li><strong>Marketplace.</strong> A published list of plugins and where to get them.</li><li><strong>Hook.</strong> A small script Claude Code runs at a set moment, able to stop the action.</li><li><strong>Lock file.</strong> A record of how each managed file looked when it arrived.</li><li><strong>Fingerprint (hash).</strong> A short code calculated from a file's contents, which changes if the file does.</li><li><strong>CI.</strong> A service that runs a project's checks on every proposed change, so a break is caught without anyone remembering to look.</li><li><strong>Eval.</strong> A test of behavior rather than code: a real task, plus a check of whether the rules held. The cases come in pairs, one where the rule should hold and one where it should not fire.</li><li><strong>Deviation.</strong> A dated note that this project declines a default, and why.</li><li><strong>Ratchet.</strong> A line ceiling that tightens when a file gets shorter, so a trimmed file cannot grow back.</li><li><strong>Anchor.</strong> The line under a rule naming what enforces it, or saying that nothing does.</li></ul>
     </section>
-    <footer>house-rules is published by its maintainer for anyone to adopt. Code is MIT licensed; the rule text and this guide are CC BY 4.0. <a href="https://github.com/dubbl-a/house-rules">github.com/dubbl-a/house-rules</a></footer>
+    <footer>house-rules is published by its maintainer, Aaron Altamura, for anyone to adopt. This guide was co-written with Claude Code. Code is MIT licensed; the rule text and this guide are CC BY 4.0. <a href="https://github.com/dubbl-a/house-rules">github.com/dubbl-a/house-rules</a></footer>
   </main>
 </div>
 <script>
