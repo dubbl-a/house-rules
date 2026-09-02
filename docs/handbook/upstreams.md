@@ -3,7 +3,10 @@
 
 Every public source this package reuses or borrows from, pinned to what was
 consulted, so staying current is a deliberate, diffable act rather than a
-re-fork. Two relationships, two rules:
+re-fork. The Relationship column, in one line each: what was taken (REUSE,
+BORROW); what shaped a choice without being taken (INFORMED); what was
+evaluated and not adopted (CONSULTED, REJECTED); and what is cited as an
+authority (CITED). REUSE and BORROW are the two that carry an ongoing rule:
 
 - **REUSE (dependency):** consumed at a pinned version; staying current is a
   version bump that must pass this package's own positive and negative
@@ -44,7 +47,7 @@ re-fork. Two relationships, two rules:
 | cruft.github.io/cruft | 2026-09-01 | MIT | INFORMED | the update, check, and skip-list trio that validated render plus checker plus deviations; already discussed in `docs/handbook/sources/prior-art.md` | re-read on a cruft major |
 | rulesync.dev | 2026-09-01 | docs | CONSULTED (not adopted) | CLI-pull distribution of rule files from a hosted source; no render or per-repo override step | re-read on republication |
 | github.com/intellectronica/ruler | 2026-09-01 | MIT | CONSULTED (not adopted) | cross-tool fan-out of one rules source; no lock, checker, or ledger | re-read on a ruler major |
-| github.com/yelmuratoff/agent_sync | 2026-09-01 | GPL-3.0 | CONSULTED (not adopted) | a hash manifest for its own generated outputs; the comparison that kept this package from claiming hash drift as novel | re-read on its next release |
+| github.com/yelmuratoff/agent_sync | 2026-09-01 | GPL-3.0-only | CONSULTED (not adopted) | a hash manifest for its own generated outputs; the comparison that kept this package from claiming hash drift as novel | re-read on its next release |
 | github.com/lirantal/agent-rules | 2026-09-01 | Apache-2.0 | CONSULTED (not adopted) | one-shot scaffolding of curated rules; no update story | re-read on its next release |
 | github.com/PatrickJS/awesome-cursorrules | 2026-09-01 | CC0-1.0 | CONSULTED (not adopted) | a copy-paste rule collection; the demand signal and the missing update story | re-read on its next release |
 | github.com/jameskomo/config-drift-checker | 2026-09-01 | FSL-1.1-ALv2 (not OSI-approved) | CONSULTED (not adopted) | a with-and-without ablation of an agent config; the comparison that kept this package from claiming evals as novel | re-read on its next release |
