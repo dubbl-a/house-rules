@@ -6,6 +6,8 @@ and nothing reaches your repo without a person approving the diff, so read each 
 dependency bump, take the parts you want, and fork the package for the last word. A repo never
 imports house-rules; it adopts a rendered snapshot.
 
+New here, or not an engineer? Read the plain-language guide first: https://house-rules-guide.vercel.app
+
 ## What you get
 
 No single piece below is novel. What this package puts together is the whole loop.
