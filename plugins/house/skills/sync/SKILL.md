@@ -76,15 +76,15 @@ Render's `Scaffolded` list (`.github/PULL_REQUEST_TEMPLATE.md`, `.github/workflo
 
 A scaffold is offered once per repo, not once per render. The lock's `scaffolds` list records which templates this repo has already been given; a template recorded there is never written again, whether or not its file is still on disk. So a `CLAUDE.md.house-skeleton` that was merged into `CLAUDE.md` and deleted stays deleted, and no re-sync has to `rm` it. If a repo wants one back, `render --apply --scaffold` writes any missing scaffold and still never overwrites a file that is there. Expect the `scaffolds` key to appear in the lock diff on the first sync at 0.2.3 or later; it is a record, not a hash, and nothing refuses on it.
 
-### 5. Bump the pin
+### 5. Confirm the pin
 
-After a successful apply, update `house.json`'s version pin to the plugin version actually loaded this session. Read that version from:
+Confirm `house.json` now carries the loaded plugin version; render wrote it, never hand-edit it. `render --apply` sets the `version` field to the plugin version in:
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json
 ```
 
-Never read `installed_plugins.json` for this. `installed_plugins.json` records install state across repos and can lag or differ from what is loaded right now; `plugin.json` under `CLAUDE_PLUGIN_ROOT` is the version actually running this sync.
+Never read `installed_plugins.json` to check this. It records install state across repos and can lag or differ from what is loaded right now; `plugin.json` under `CLAUDE_PLUGIN_ROOT` is the version actually running this sync.
 
 ### 6. Verify with the vendored checker
 

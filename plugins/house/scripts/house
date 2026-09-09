@@ -433,17 +433,40 @@ function slotDefaults(json) {
   return out;
 }
 
-// docs is the one module init populates beyond enabled/config-slot-defaults:
-// haystackDirs from the repo's own conventional dirs, roots from doc dirs
-// that actually exist. Both lists are proposals -- the operator edits
-// house.json freely before the first render.
+// A configured root that resolves to zero tracked .md files is a hard drift
+// finding (check.mjs's "zero-match root" check in checkDrift), not a
+// warning, so proposing one at init would hand a fresh adopter a failing
+// gate for a directory that merely happens to exist (docs/ holding only
+// images, say). git has nothing tracked yet at init time, so the only way
+// to answer "does this directory actually have a markdown file under it" is
+// to walk the filesystem directly.
+function dirHasMarkdown(absDir) {
+  let entries;
+  try { entries = readdirSync(absDir, { withFileTypes: true }); } catch { return false; }
+  for (const e of entries) {
+    if (e.isFile() && e.name.endsWith('.md')) return true;
+    if (e.isDirectory() && dirHasMarkdown(path.join(absDir, e.name))) return true;
+  }
+  return false;
+}
+
+// docs is the one module init populates config for at all: haystackDirs from
+// the repo's own conventional dirs, roots from doc dirs that actually exist.
+// Every other slot, on every module including docs' own, is left out of the
+// written config entirely, so the module's declared default (read at render
+// and check time) is what governs until the operator sets it explicitly.
+// Both lists here are proposals -- the operator edits house.json freely
+// before the first render.
 function docsConfigFromProbe(repoRoot) {
   const haystackCandidates = ['src', 'scripts', 'db', 'public'];
   const haystackDirs = haystackCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
   if (existsSync(path.join(repoRoot, 'package.json'))) haystackDirs.push('package.json');
   if (existsSync(path.join(repoRoot, '.github', 'workflows'))) haystackDirs.push('.github/workflows');
+  // roots is stricter than haystackDirs: existing is not enough, since an
+  // empty (or markdown-free) root is a finding downstream, not a quiet
+  // no-op.
   const rootCandidates = ['docs', '.claude/rules', '.claude/skills', '.claude/commands'];
-  const roots = rootCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
+  const roots = rootCandidates.filter((d) => dirHasMarkdown(path.join(repoRoot, d)));
   return { haystackDirs, roots };
 }
 
@@ -464,18 +487,20 @@ function buildProposedManifest(repoRoot, pluginVersion, modules, probe) {
     const name = moduleName(m);
     const defaultKind = (m.json && m.json.default) || 'off';
     let enabled;
-    let config = slotDefaults(m.json);
+    // Every module gets an empty config: render already spreads
+    // slotDefaults(m.json) under whatever house.json sets (buildRenderPlan),
+    // and the vendored checker carries its own per-slot fallback, so a
+    // written-empty slot still behaves exactly like today's default. What
+    // changes is that the repo follows a future default instead of freezing
+    // the value init happened to see. docs is the one exception: its
+    // haystackDirs/roots come from an actual probe of this repo, not a
+    // generic default, so they are worth writing down.
+    const config = name === 'docs' ? docsConfigFromProbe(repoRoot) : {};
 
-    if (name === 'data-pipelines' || name === 'llm-output') {
-      // Always off at init, with empty glob slots and no probe-derived
-      // extras: the operator fills these in deliberately.
-      enabled = false;
-      for (const key of Object.keys(config)) config[key] = [];
-    } else if (defaultKind === 'on') {
+    if (defaultKind === 'on') {
       enabled = true;
     } else if (defaultKind === 'detect') {
       enabled = probeDetectEnabled(name, probe);
-      if (name === 'docs') config = { ...config, ...docsConfigFromProbe(repoRoot) };
     } else {
       enabled = false;
     }
@@ -803,9 +828,11 @@ function plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceSca
 // mistake, when it appears in any array-valued slot's DECLARED default for
 // this module (tests/** vs test/**, src/** vs lib/**...). Checked against
 // slotDefaults(m.json) -- the module's own spec -- rather than the merged
-// config, so a house.json seeded by init with the full default list (every
-// slot's default is exactly what init writes) still reads as a default even
-// where the adopter later re-pins the same value explicitly.
+// config, because init writes {} for nearly every slot: a repo that has
+// never touched this slot would fail an is-it-a-default test that looked at
+// house.json's config instead, and warn on a convention it never wrote. The
+// same check keeps working when an adopter re-pins a slot to exactly its own
+// declared default value.
 function defaultPathSet(json) {
   const out = new Set();
   for (const v of Object.values(slotDefaults(json))) {
