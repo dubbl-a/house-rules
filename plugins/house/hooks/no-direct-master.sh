@@ -192,7 +192,7 @@ carve_out_satisfied() {
 # resolution below parsed out was a directory that does not exist. The fallback
 # then sent the check to the payload cwd, so a commit from a perfectly good
 # feature branch was refused as being on the protected one (#17, and the
-# addendum to #27). Any segment beginning -c, -m, or -F after a hyphen hit it.
+# addendum to #1). Any segment beginning -c, -m, or -F after a hyphen hit it.
 #
 # There is deliberately NO boundary on the RIGHT. Requiring `=` or whitespace
 # after the flag reads better and is wrong: it leaves git's own attached form
@@ -216,12 +216,28 @@ _strip_flag_args() {
     s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"\`\$]*\"/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$]+/\1/g"
 }
-# Full strip, including -c. Used for target resolution, where a -c value must
-# not be allowed to steer the target.
+# Full strip, including -c, for the verb scans.
 strip_message_args() { _strip_flag_args '-m|--message|-F|--file|-c' "$1"; }
+# The BLIND strip, quoted and bare values removed whole, `$` and backtick
+# included, for target resolution ONLY. The two consumers of a strip fail in
+# opposite directions. For the verb scans, text left in can only add a deny.
+# For target resolution, text left in is a steering wheel: a `cd <repo> &&`
+# inside a message value that survived the strip is parsed as the target, and
+# a real sibling repo on a feature branch is a fail-open. The first version of
+# the expand-aware strip above was used here too and did exactly that (#1,
+# review round 1): `-m "cost $5. cd ../sibling && done"` on master was allowed.
+# So target resolution keeps the old rules. A -c value must not steer either,
+# hence -c is in this alternation as well.
+_strip_flag_args_blind() {
+  printf '%s' "$2" | sed -E "
+    s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"]*\"/\1/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"]+/\1/g"
+}
+strip_message_args_for_target() { _strip_flag_args_blind '-m|--message|-F|--file|-c' "$1"; }
 # The same strip with -c RETAINED. An interpreter's -c body is code that will
 # run (`bash -c 'git commit -m x'`), not prose, so the verb scans below must
-# see it; stripping it blinded them to every interpreter since v0.2.2 (#27).
+# see it; stripping it blinded them to every interpreter since v0.2.2 (#1).
 # git's own `git -c key=value commit` with a space-free value still denies
 # through the full strip, so scanning the UNION of the two variants can only
 # add denials, never remove one. Known still-open (#1, NOT closed here): a
@@ -241,7 +257,7 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 # message (`-m "note: cd /nonexistent && push"`) must not be able to point
 # the check at a non-repo path, because a non-repo path is a deliberate
 # fail-open below and quoted prose would turn it into a disarm.
-cmd_for_target=$(strip_message_args "$cmd")
+cmd_for_target=$(strip_message_args_for_target "$cmd")
 target_dir=""
 if [[ "$cmd_for_target" =~ git[[:space:]]+-C[[:space:]]+([^[:space:]]+) ]]; then
   target_dir="${BASH_REMATCH[1]}"
@@ -325,7 +341,7 @@ branch_policy=$(jq -r '.branchPolicy // "pr"' "$house_json" 2>/dev/null || echo 
 # a repo-local hook script, or a repo-local .claude/settings.json that
 # declares its own "hooks" key.
 #
-# #27: deference used to be by mere file EXISTENCE, which made an empty or
+# #1: deference used to be by mere file EXISTENCE, which made an empty or
 # no-op `exit 0` file a complete disarm -- and `checkGuard` certified that same
 # file by bare existsSync, so the checker reported the repo as protected while
 # nothing was enforcing anything. Protection reported, none present, is worse
@@ -333,7 +349,7 @@ branch_policy=$(jq -r '.branchPolicy // "pr"' "$house_json" 2>/dev/null || echo 
 #
 # So require substance, with the predicate failing toward DENY: a local guard
 # whose shape we do not recognize leaves THIS hook armed, which costs a branch
-# creation, never a miss. That is the direction #27 asks every allowlist here
+# creation, never a miss. That is the direction #1 asks every allowlist here
 # to fail in. The checker shares this definition.
 local_hook_is_substantive() {
   local f="$1" line
@@ -448,10 +464,13 @@ re_push='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+
 # take the first regex match per variant and stop, so a push to a protected
 # branch chained behind an innocent one (`git push origin feat && git push
 # origin master`) was never read (#1). Parentheses, backticks, and redirection
-# arrows split too: a substitution or subshell closes with `)` glued to the
-# last token (`$(git push origin master)`), and a redirection glues the same
-# way (`master>/dev/null`), and either leaves the branch name unmatched. A
-# token cut short by one of these can only turn allow into deny. Parameter
+# arrows become SPACES, not clause breaks: a substitution or subshell closes
+# with `)` glued to the last token (`$(git push origin master)`) and a
+# redirection glues the same way (`master>/dev/null`), and either leaves the
+# branch name unmatched; a space frees the token. A clause break there was
+# tried and rejected: it moved everything after the character out of the push
+# clause, so `git push $(echo origin) master` and `git push >/dev/null origin
+# master` were never scanned, both of which the hook denied before. Parameter
 # expansion rather than sed: BSD sed has no `\n` in a replacement.
 split_clauses() {
   local c="$1"
@@ -460,11 +479,11 @@ split_clauses() {
   c="${c//;/$'\n'}"
   c="${c//&/$'\n'}"
   c="${c//\|/$'\n'}"
-  c="${c//\(/$'\n'}"
-  c="${c//\)/$'\n'}"
-  c="${c//\`/$'\n'}"
-  c="${c//</$'\n'}"
-  c="${c//>/$'\n'}"
+  c="${c//\(/ }"
+  c="${c//\)/ }"
+  c="${c//\`/ }"
+  c="${c//</ }"
+  c="${c//>/ }"
   printf '%s\n' "$c"
 }
 
@@ -540,6 +559,11 @@ push_clause_is_tag_only() {
 # push clause was seen. Decided over ALL clauses, never the leftmost: the tag
 # carve-out in the reverted attempt read the first clause only, so a branch
 # publish rode in behind a tag publish.
+#
+# A clause the recogniser does not read but that still carries the word
+# `push` (`git --git-dir=x/ push origin master`) is refused outright: the
+# carve-out must never turn a form the scans cannot see into an escape from
+# the protected-branch block (#1, review round 1).
 all_push_clauses_tag_only() {
   local v clause seen=0
   for v in "${scan_variants[@]}"; do
@@ -547,6 +571,8 @@ all_push_clauses_tag_only() {
       if [[ "$clause" =~ (^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([^\&\;\|]*) ]]; then
         seen=1
         push_clause_is_tag_only "${BASH_REMATCH[3]}" || return 1
+      elif [[ "$clause" =~ (^|[^[:alnum:]])push([[:space:]]|$) ]]; then
+        return 1
       fi
     done < <(split_clauses "$v")
   done
@@ -565,7 +591,11 @@ cmd_blind=$(strip_message_args "$cmd" | sed -E "
   s/\"[^\"]*\"//g;
   s/(^|[[:space:]])#.*\$//")
 quoted_only_hint() {
-  if grep -qE "$1" <<<"$cmd_blind"; then
+  # A quoted span holding a substitution or a backtick is code that runs, not
+  # prose; the file route would be the wrong advice, so say nothing.
+  if [[ "$cmd" == *'$('* || "$cmd" == *'`'* ]]; then
+    printf ''
+  elif grep -qE "$1" <<<"$cmd_blind"; then
     printf ''
   else
     printf ' %s' "The git verb here appears only inside a quoted string. If that text is prose (an issue body, a note), write it to a file with the Write tool and pass the file instead (--body-file, -F)."

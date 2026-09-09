@@ -676,6 +676,49 @@ reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision
 if [[ "$reason" == *"feature branch"* && "$reason" != *"quoted string"* ]]; then
   pass "a real verb outside quotes gets no prose hint"
 else fail "prose hint on a real verb" "reason: $reason"; fi
+
+# ── #1 review round 1: the fixes above opened seams of their own ──────────
+# (1) A clause break at `(`, backtick, `<`, `>` moved everything after the
+# character out of the push clause, so a push to master with a substitution
+# or a redirection BEFORE the ref was never read. They are spaces now.
+git -C "$t" checkout -q feat/x
+expect_deny "round 1: a substitution before the ref is still scanned" \
+  "$(mk_payload "git $_p \$(echo origin) master" "$t")" "protected branch"
+expect_deny "round 1: backticks before the ref are still scanned" \
+  "$(mk_payload "git $_p \`echo origin\` master" "$t")" "protected branch"
+expect_deny "round 1: a redirection before the ref is still scanned" \
+  "$(mk_payload "git $_p >/dev/null origin master" "$t")" "protected branch"
+# (2) The expand-aware strip must not reach target resolution: a message value
+# holding `$` survived the strip there, and a `cd <sibling> &&` inside it
+# pointed the check at a repo on a feature branch.
+git -C "$t" checkout -q master
+t2="$TMP_ROOT/case_tags_sibling"; new_repo "$t2"
+echo '{"branchPolicy":"pr"}' >"$t2/house.json"
+git -C "$t2" add house.json && git -C "$t2" $_verb -q -m house
+git -C "$t2" checkout -q -b feat/sib
+expect_deny "round 1: a dollar-bearing message cannot steer the target (cd)" \
+  "$(mk_payload "$_c -m \"cost \$5. cd $t2 && done\"" "$t")" "feature branch"
+expect_deny "round 1: a backtick-bearing message cannot steer the target" \
+  "$(mk_payload "$_c -m \"see \`x\`. cd $t2 && done\"" "$t")" "feature branch"
+expect_deny "round 1: a dollar-bearing message cannot steer the target (-C)" \
+  "$(mk_payload "$_c -m \"cost \$5. git -C $t2 status\"" "$t")" "feature branch"
+# (3) The carve-out must not turn a push the recogniser cannot read into an
+# escape from the protected-branch block.
+expect_deny "round 1: a tag push chained with an unrecognised push form" \
+  "$(mk_payload "git $_p origin v1.0 && git --git-dir=$t/.git/ $_p origin master" "$t")" "feature branch"
+# (4) The refspec scan is the carve-out's safety net: a tag named after a
+# protected branch passes the grammar and is still refused there.
+git -C "$t" tag main
+expect_deny "round 1: a tag named main passes the grammar and the refspec scan refuses it" \
+  "$(mk_payload "git $_p origin tag main" "$t")" "protected branch"
+# (5) The prose hint stays silent on a substitution: that is code, not prose.
+git -C "$t" checkout -q feat/x
+run_hook "$(mk_payload "$_c -m \"\$(git $_p origin master)\"" "$t")"
+reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
+if [[ "$reason" == *"protected branch"* && "$reason" != *"quoted string"* ]]; then
+  pass "round 1: no prose hint on a substitution"
+else fail "prose hint on substitution" "reason: $reason"; fi
+git -C "$t" checkout -q master
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
