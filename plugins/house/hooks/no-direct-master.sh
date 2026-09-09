@@ -340,7 +340,6 @@ fi
 target_from_command=0
 [[ -n "$target_dir" ]] && target_from_command=1
 
-# Tilde expansion + strip surrounding quotes.
 target_dir="${target_dir/#\~/$HOME}"
 target_dir="${target_dir%\"}"; target_dir="${target_dir#\"}"
 target_dir="${target_dir%\'}"; target_dir="${target_dir#\'}"
@@ -460,14 +459,11 @@ fi
 # i.e. the guard would silently vanish exactly when it matters most).
 trap crashed ERR
 
-# protectedBranches, default ["master","main"] when the key is absent.
 protected_list=$(jq -r '(.protectedBranches // ["master","main"])[]' "$house_json" 2>/dev/null)
 if [[ -z "$protected_list" ]]; then
   protected_list=$'master\nmain'
 fi
 
-# carveOuts: array of glob patterns. Empty/absent means no carve-out is
-# configured for this repo.
 carve_outs=$(jq -r '(.carveOuts // [])[]' "$house_json" 2>/dev/null)
 
 carve_out_reason_suffix=""
