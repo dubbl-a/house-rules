@@ -488,17 +488,9 @@ fi
 # Single-pass strip, not a full shell parser; fail-fast UX for Claude's
 # direct invocations.
 #
-# Which protection is real is a per-repo fact, not a constant, and the fleet
-# has shipped both readings at once: one hook documented server-side branch
-# protection as ABSENT (private repo on a free plan: the protected-branch API
-# answers "Upgrade to GitHub Pro"), so the hook and the deploy guards ARE the
-# protection; a sibling hook documented it as PRESENT and called itself a
-# convenience on top. Both cannot be true of the same repo. Check which case
-# the target repo is in before deciding how much this hook is carrying: where
-# the platform enforces protection server side, this is fail-fast UX and not a
-# substitute for it; where the platform enforces nothing, this script and the
-# deploy guards are the only thing standing between a session and the
-# protected branch.
+# Which protection is real (this hook vs. GitHub's own) is a per-repo fact,
+# not a constant: see docs/handbook/github.md, "The branch guard's reach, and
+# which protection is real."
 # Quote handling has to tell a commit MESSAGE from a quoted keyword. A blind
 # strip of every quoted span turns `git 'commit'` into `git ` and
 # `git push origin 'master'` into `git push origin `, silently defeating the
