@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.7.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=ee0d65a7e6add965ff3736ebca77e81eef6e6c14fce50bfc7f282586aec9c2d9 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.7.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=33084cde005388876e6bccbbce39319ad1d96bbf6022e67563d99fbbb6887c12 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -79,6 +79,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 Turn a rule that must hold every time into a hook, because a rule file is advisory context and only a pre-tool hook stops the action.
 Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a session started bare, in safe mode, or in restricted mode never loads project hooks at all, so anything that must survive those needs a deny rule in managed settings beside it.
 Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, because a silent exit reads as no decision and never as approval.
+Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, because text left in can only add denials while text wrongly removed hides the verb and is a bypass. Pin both directions in the tests, since the tidier-looking pattern is usually the one that removes too much.
 Keep the decision in the script rather than in a hook's fine-grained filter, which the harness documents as best-effort and unfit for a hard allow or deny.
 Escalate as autonomy rises, from a prompt, to a check the agent runs before you walk away, to a hook, to a verification subagent.
 Read a permission block as evidence of a wrong step earlier, not as an obstacle to route around.
@@ -159,6 +160,7 @@ Don't chain a reference to another reference, because a nested file gets partial
 Don't leave model invocation enabled on a skill that writes, deploys, or spends.
 Don't let an agent call inherit the session's model by omitting the tier.
 Don't lean on a hook's fine-grained filter for a hard allow or deny; match broadly and keep the decision in the script.
+Don't tighten a guard's text rewriting to fix a false refusal without checking what the tighter pattern stops removing.
 Don't route around a permission block, because it is evidence of a wrong step earlier.
 Don't keep correcting the same failure past the second attempt in one context.
 Don't trust the branch you read at session start.

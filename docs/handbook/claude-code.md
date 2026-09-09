@@ -214,6 +214,30 @@ rises, from prompt to condition to hook to verification subagent; and make any r
 every time a hook, because the instruction file is advisory context
 (code.claude.com/docs/en/best-practices, items 1 and 3; code.claude.com/docs/en/hooks, item 8).
 
+The text-handling half of "fail it closed" was earned on 2026-09-08, and it is the part that
+reads as an ergonomics detail until it is not. The branch guard strips flag-borne values out of a
+command before matching, so a commit message cannot trigger or defeat the patterns. That stripper
+matched its flag alternation anywhere in the command, including inside a word, so a worktree whose
+directory name held a segment beginning `-c`, `-m`, or `-F` lost the rest of that segment, target
+resolution parsed out a path that does not exist, and a commit from a good feature branch was
+refused as being on the protected one. Two people hit it in one week and both worked around it by
+renaming the directory.
+
+The fix was to require the flag to start a token. The obvious companion, requiring a separator
+after the flag so the value is unmistakably a value, was drafted and rejected: it leaves git's own
+attached form (`git -cuser.name=x` followed by the verb) unstripped, and the commit pattern
+requires the verb to follow `git` directly, so that string stops matching and a real commit on a
+protected branch is allowed. A change aimed squarely at a false refusal would have opened a
+bypass, and it looked like the cleaner regex of the two.
+
+That asymmetry is the rule. Leaving text in can only add denials, because every scan is a match
+against more text than before. Removing text that a pattern needed is silent and unbounded. The
+same asymmetry is why `plugins/house/hooks/no-direct-master.sh` scans the union of two strip
+variants rather than one, and why both directions now have cases in `tests/hooks/run.sh`,
+including the attached form the rejected variant would have exposed. It is also a fresh instance
+of what the guard's own issue history warns about: three consecutive review rounds on an earlier
+attempt each found bypasses introduced by the previous round's fix.
+
 Native floor, as of 2026-09-02: PreToolUse hook decision mechanics
 (https://code.claude.com/docs/en/hooks), deny and ask rules evaluated whatever a hook returns
 (https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks), and the startup

@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "441b20a36ca9dcd2f1b9a6c79158b26e903d3981320ca3fd7016ece6105b3ef1"
+      "bodySha256": "4313a57dc6413f0dbe383ebc8ffe78c57aac7eece7e00dac4dab1e1c0692275c"
     },
     {
       "path": ".claude/rules/house/docs.md",

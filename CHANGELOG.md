@@ -20,6 +20,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
   that an incremental model's key is not itself tested. The handbook chapter carries the incident
   and the sources.
 
+### Changed
+- **"Make a must-hold rule a hook" now covers the guard's text handling, not just its exit paths.**
+  Failing closed was stated for a crash, a missing helper, and an unreadable payload, but not for
+  the rewriting a guard does to a command before matching it. The rule now says to err toward
+  rewriting less than intended, because text left in can only add denials while text wrongly
+  removed hides the verb and is a bypass, and to pin both directions in the tests, since the
+  tidier-looking pattern is usually the one that removes too much. The handbook chapter carries the
+  case that earned it: the fix for the 0.7.0 flag-stripper defect had an obvious companion change
+  that would have turned a false refusal into a real bypass on protected branches.
+
 ## [0.7.0] - 2026-09-08
 
 The settings rule gains the shape that stops a permission list accreting, and the settings template ships a deny list naming each tool's escape hatches. The branch guard stops refusing a commit because of the directory's name (minor under ADR 0011: rule content and a template, no heading, config slot, hook contract, or layout moved).
