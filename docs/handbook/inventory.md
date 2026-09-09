@@ -14,6 +14,10 @@ Rows AG-065 and EXT-099 came in on the memory-index pass, which read the officia
 documentation against one repo's live auto-memory index. Neither has a line in the six source
 catalogs, so both cite what was read instead.
 
+Row TW-201 came in later still, from a publisher-grain failure observed in repo-a rather than from
+any source catalog, so its Source cell cites the incident. It is the first row added from a live
+incident instead of a survey.
+
 Rows EXT-086 to EXT-098 and PA-035 to PA-039 came in on the reconciliation pass that read the two
 testing source catalogs (`sources/testing-sweep.md`, `sources/testing-external.md`) after a
 template bug had kept them out of the spec stage. That pass also repointed EXT-084 to the renamed
@@ -262,6 +266,7 @@ rule's text without its own heading. `handbook-only` is context or a receipt, no
 | TW-198 | repo-a:src/lib/results/**, scripts/council/** (testing sweep 2026-08-24) | Pin a check that depends on a live upstream to a recorded fixture inside the gate and run the live version on its own cadence, because a red that turns on someone else's uptime teaches the reader to ignore red | fold | rule:testing.md#quarantine-a-flaky-test-loudly-and-never-retry-it-into-silence |
 | TW-199 | repo-a:.github/workflows/pr-checks.yml, stated scope (testing sweep 2026-08-24) | Record what the gate runs today and what it deliberately leaves ungated, so a later reader can tell an accepted gap from an oversight | handbook-only | chapter:testing |
 | TW-200 | repo-a:.claude/rules/maintaining-docs.md §Anchor every UI/feature claim, worked example (phase 6 review 2026-08-24) | The Bad/Good example pair illustrating the anchor rule, written against real race-page section ids; drop, because the ids name repo-a's own page structure, would read as broken anchors on any other repo, and the abstract vocabulary they illustrate already ports as TW-003 | drop | n/a |
+| TW-201 | repo-a:publish path, person-roles projection (publisher-grain incident 2026-09-08) | Key a published projection on the whole natural key of its source and widen it in the same change that widens the source, prove that grain with a unique constraint on the source itself, and assert the two against each other as a run invariant, because a column addition that widens what makes a row unique is classed as safe by every schema-evolution tool and first surfaces as a cardinality violation two systems downstream | port | rule:data-pipelines.md#key-a-projection-on-its-sources-whole-grain-and-prove-that-grain-with-a-constraint |
 
 ---
 

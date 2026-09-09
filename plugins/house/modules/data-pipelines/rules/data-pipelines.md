@@ -89,6 +89,17 @@ Derive every edge in the pipeline rather than by hand, leave a type extensible i
 Anchor: a review-queue status for held rows, plus a matcher test asserting an ambiguous fixture links nothing and mints nothing.
 Receipts: `docs/handbook/data-pipelines.md#name-dont-act-on-ambiguous-data`
 
+## Key a projection on its source's whole grain, and prove that grain with a constraint
+
+Key every published projection on the whole natural key of its source, and widen that key in the same change that widens the source, because a projection still keyed on yesterday's grain collapses two rows that now differ into one.
+Prove the grain with a unique constraint on the source rather than trusting the query that reads it, since two rows that ought to differ are indistinguishable from one row until something downstream tries to write both.
+Treat an added column as a breaking change whenever it widens what makes a row unique, because every schema-evolution tool classes an addition as the safe case and none of them ask whether the grain moved.
+Assert each projection's write key against that constraint as a run invariant, because this failure passes the migration, passes the write, and first appears as an opaque error two systems away with nothing naming the change that caused it.
+The constraint itself, and the migration that adds it, are database.md's.
+
+Anchor: a retro invariant comparing every projection's write key against the unique constraint on its source table, run by the retro runner this module ships before any publish.
+Receipts: `docs/handbook/data-pipelines.md#key-a-projection-on-its-sources-whole-grain-and-prove-that-grain-with-a-constraint`
+
 ## Don't
 
 Don't adopt a retro proposal automatically; print it and let a human decide.
@@ -111,5 +122,6 @@ Don't count a vendor's success response as a count.
 Don't guess an unrecognised type, and don't let a population statistic decide a row.
 Don't hand-enter a relationship the pipeline should derive.
 Don't loosen a guard to fix a hold.
+Don't call a column addition safe before checking whether it widened the grain, and don't leave a natural key unconstrained on the table that owns it.
 
 Anchor: every prohibition here inverts a rule above and is enforced by that rule's anchor.

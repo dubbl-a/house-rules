@@ -6,6 +6,20 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+- **New `data-pipelines` rule: "Key a projection on its source's whole grain, and prove that grain
+  with a constraint".** A migration widened what makes a row unique in a source table; the
+  publisher projecting that table kept the old key, so two rows that now differ collapsed onto one
+  key and the batch died with a cardinality violation two systems downstream. The rule says to key
+  a published projection on the whole natural key of its source and widen it in the same change,
+  to prove the grain with a unique constraint on the source rather than trusting the query that
+  reads it, to treat a column addition as breaking whenever it widens what makes a row unique, and
+  to assert the projection's write key against that constraint as a run invariant. It complements
+  rather than restates the surrounding tooling: every schema-evolution tool classes an addition as
+  the safe case and none of them ask whether the grain moved, and the closest neighbour warns only
+  that an incremental model's key is not itself tested. The handbook chapter carries the incident
+  and the sources.
+
 ## [0.7.0] - 2026-09-08
 
 The settings rule gains the shape that stops a permission list accreting, and the settings template ships a deny list naming each tool's escape hatches. The branch guard stops refusing a commit because of the directory's name (minor under ADR 0011: rule content and a template, no heading, config slot, hook contract, or layout moved).
