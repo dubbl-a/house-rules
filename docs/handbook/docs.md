@@ -176,7 +176,8 @@ documented-but-unenforced ceiling is what a ratchet is for: `npm run check:house
 ratchet family holds every document, root file, rule file, README, skill body, and handbook
 chapter, to its configured ceiling, and the ceiling tightens on its own whenever a file shrinks,
 so a raise takes a written entry naming the path, the old and new limit, the reason, and the date
-decided, validated against the manifest schema, rather than landing as a quiet edit.
+decided, validated against the manifest schema, rather than landing as a quiet edit; the recorded
+raise takes effect only on a run with `--accept-lengths`.
 
 Native floor, as of 2026-09-02: the root instruction file's soft size guidance and the hard
 file-size cap past which the harness skips the file entirely

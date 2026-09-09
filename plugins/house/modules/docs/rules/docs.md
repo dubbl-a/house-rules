@@ -53,7 +53,7 @@ Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-ru
 
 The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work instead of being renegotiated.
-Raising a ceiling takes an entry naming the path, the old and new limit, the reason, and the date it was decided, so the raise argues for itself in the diff rather than landing as a quiet edit.
+Raising a ceiling takes an entry naming the path, the old and new limit, the reason, and the date it was decided, so the raise argues for itself in the diff rather than landing as a quiet edit; it takes effect only on a run with `--accept-lengths`.
 Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema.
 Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-only-with-a-written-reason`
 
