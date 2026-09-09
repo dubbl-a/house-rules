@@ -6,6 +6,18 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+- **The branch guard no longer refuses a commit because of the directory's name.** The flag
+  stripper in `plugins/house/hooks/no-direct-master.sh` matched its `-m`/`--message`/`-F`/
+  `--file`/`-c` alternation anywhere in the command, including inside a word, so a worktree or
+  clone whose path held a segment beginning `-c`, `-m`, or `-F` had the rest of that segment
+  eaten as if it were a flag value. Target resolution then parsed out a path that does not
+  exist, fell back to the session checkout, and refused a commit made from a perfectly good
+  feature branch. The flag must now start a token. A boundary on the other side of the flag was
+  tried and rejected because it leaves git's own attached form unstripped and hides the verb
+  from the deny patterns, which would turn a false deny into a bypass; both directions are now
+  pinned in `tests/hooks/run.sh`. Reported as issue 17, and the addendum to issue 1.
+
 ## [0.6.0] - 2026-09-02
 
 Rule prose names the native Claude Code feature each rule builds on, after an audit found no duplicates or conflicts with the harness; no heading, config slot, hook contract, or layout changed (minor under ADR 0011).

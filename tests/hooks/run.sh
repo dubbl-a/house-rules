@@ -500,6 +500,56 @@ expect_deny "a target the same command creates does not resolve yet, and denies"
 expect_allow "a genuinely non-repo working directory still fails open" \
   "$(mk_payload "$_c -m x" "/tmp")"
 
+# --- #17: the flag strip must not eat a path segment ---------------------
+# _strip_flag_args ran its alternation (-m|--message|-F|--file|-c) with no
+# token boundary on the left, so the -c of a directory named
+# ...-council-audit-findings matched and the rest of that segment was deleted.
+# Target resolution then landed on a path that is not a repo, the wrong-guess
+# fallback sent it to the payload cwd (the protected checkout), and a valid
+# feature-branch commit was refused. Reported twice in one week, once from a
+# worktree and once from a plain clone; both times the workaround was renaming
+# the directory. Any segment beginning -c, -m, or -F after a hyphen triggers it.
+#
+# Only a LEFT anchor closes this. A right boundary (requiring = or whitespace
+# between the flag and its value) was tried and rejected: it leaves git's own
+# attached form `git -cuser.name=x commit` unstripped, and the commit pattern
+# does not match that string, so a real commit on a protected branch would be
+# ALLOWED. Under-stripping costs a false deny; over-stripping costs a bypass,
+# and the last case below is what pins that direction.
+p="$TMP_ROOT/case_strip"; new_repo "$p"
+echo '{"branchPolicy":"pr"}' >"$p/house.json"
+git -C "$p" add house.json && git -C "$p" commit -q -m house
+
+for seg in fix-council-audit-findings main-cleanup Fix-typo; do
+  w="$TMP_ROOT/wt-$seg"; new_repo "$w"
+  echo '{"branchPolicy":"pr"}' >"$w/house.json"
+  git -C "$w" add house.json && git -C "$w" commit -q -m house
+  git -C "$w" checkout -q -b "kind/$seg"
+  echo body >"$w/msg.txt"
+  expect_allow "cd into a path whose segment starts -c/-m/-F resolves to that repo: $seg" \
+    "$(mk_payload "cd $w && $_c -q -F $w/msg.txt" "$p")"
+  expect_allow "-C at a path whose segment starts -c/-m/-F resolves to that repo: $seg" \
+    "$(mk_payload "git -C $w $_verb -q -F $w/msg.txt" "$p")"
+done
+
+# The fix resolves the target rather than discarding it, so the same poisoned
+# path on a PROTECTED branch must still deny. Without this the fix would be a
+# disarm dressed up as an ergonomics repair.
+wm="$TMP_ROOT/wt-guard-council-audit"; new_repo "$wm"
+echo '{"branchPolicy":"pr"}' >"$wm/house.json"
+git -C "$wm" add house.json && git -C "$wm" commit -q -m house
+expect_deny "a path with a -c segment on a protected branch still denies (cd)" \
+  "$(mk_payload "cd $wm && $_c -m x" "$p")" "feature branch"
+expect_deny "a path with a -c segment on a protected branch still denies (-C)" \
+  "$(mk_payload "git -C $wm $_verb -m x" "$p")" "feature branch"
+
+# The strip itself must still do its job in both -c forms, or the bypass the
+# right boundary would have opened comes back by another route.
+expect_deny "git -c with a separated value still denies on a protected branch" \
+  "$(mk_payload "git -c user.name=x $_verb -m y" "$p")" "feature branch"
+expect_deny "git -c with an ATTACHED value still denies on a protected branch" \
+  "$(mk_payload "git -cuser.name=x $_verb -m y" "$p")" "feature branch"
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
