@@ -388,7 +388,7 @@
       "headings": [
         "Put only what Claude would get wrong without it in the root file",
         "Keep the auto-memory index to hooks, and hold it under its cap",
-        "Scope a domain rule with paths, and never leave a rule file unscoped",
+        "Give a domain rule a paths list, and never leave a rule file unscoped",
         "Make a procedure a skill, not a rule",
         "Keep a skill body short, its references one level deep, and its name equal to its directory",
         "Disable model invocation on a skill with side effects",
@@ -1502,13 +1502,5 @@
       ],
       "notes": "prompt.md plus graders/. Behavior that must differ: asked to add a new gate script to a repo and confirm it works, with the plugin the conventions skill surfaces the positive-and-negative-control rule, so the agent commits a case the gate must fail beside the case it must pass and runs both; without, it writes only the passing case and reports the clean run as validation."
     }
-  ],
-  "counts": {
-    "rules": 9,
-    "chapters": 11,
-    "skills": 5,
-    "adrs": 11,
-    "templates": 12,
-    "evals": 12
-  }
+  ]
 }
