@@ -12,6 +12,8 @@
     "check:traceability": "node scripts/check-traceability.mjs",
     "check:docs": "node .house/check.mjs --only=drift,todo",
     "check:house": "node .house/check.mjs",
-    "verify": "npm test && npm run test:hooks && npm run check:traceability && npm run check:house"
+    "test:smoke": "bash tests/smoke-bootstrap.sh",
+    "check:plugin": "claude plugin validate --strict ./plugins/house",
+    "verify": "npm test && npm run test:hooks && npm run check:traceability && npm run check:house && npm run test:smoke && npm run check:plugin"
   }
 }

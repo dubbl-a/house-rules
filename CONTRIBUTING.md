@@ -13,8 +13,10 @@ before merging.
 
 ## Before you push: `npm run verify`
 
-`npm run verify` chains `npm test`, `npm run test:hooks`, `npm run check:traceability`, and
-`npm run check:house`. Run it locally before every push; CI runs the same checks, and more, in
+`npm run verify` chains `npm test`, `npm run test:hooks`, `npm run check:traceability`,
+`npm run check:house`, `npm run test:smoke`, and `npm run check:plugin`. The last needs the
+`claude` CLI on `PATH`, a prerequisite for the local gate; a missing CLI fails the run rather
+than skipping it. Run `npm run verify` locally before every push; CI runs the same checks in
 `.github/workflows/ci.yml`.
 
 ## Upstream-first: edit the source, never the vendored copy
