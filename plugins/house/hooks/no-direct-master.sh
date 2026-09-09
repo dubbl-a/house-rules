@@ -181,11 +181,28 @@ carve_out_satisfied() {
 # ALTERNATION is passed in, so their text can neither trigger nor defeat a
 # match. Single-pass, not a full shell parser. One helper so the stripped and
 # the -c-retaining variants below can never desynchronize their sed rules.
+#
+# The flag must START a token, hence the `(^|[[:space:]])` and the `\1` that
+# puts the separator back. Without it the alternation matched INSIDE a word:
+# the -c of a directory named ...-council-audit-findings was read as the flag,
+# the rest of the segment was eaten as its value, and the path the target
+# resolution below parsed out was a directory that does not exist. The fallback
+# then sent the check to the payload cwd, so a commit from a perfectly good
+# feature branch was refused as being on the protected one (#17, and the
+# addendum to #27). Any segment beginning -c, -m, or -F after a hyphen hit it.
+#
+# There is deliberately NO boundary on the RIGHT. Requiring `=` or whitespace
+# after the flag reads better and is wrong: it leaves git's own attached form
+# `git -cuser.name=x commit` unstripped, and the commit pattern below does not
+# match that string, so a real commit on a protected branch would be ALLOWED.
+# This strip has to fail toward stripping less than intended, never toward
+# hiding a verb: under-stripping costs a false deny, over-stripping costs a
+# bypass. Both directions are pinned in tests/hooks/run.sh.
 _strip_flag_args() {
   printf '%s' "$2" | sed -E "
-    s/($1)=?[[:space:]]*'[^']*'//g;
-    s/($1)=?[[:space:]]*\"[^\"]*\"//g;
-    s/($1)=?[[:space:]]*[^[:space:]'\"]+//g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"]*\"/\1/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"]+/\1/g"
 }
 # Full strip, including -c. Used for target resolution, where a -c value must
 # not be allowed to steer the target.
@@ -206,7 +223,7 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 #   1. `git -C <path> ...`         -> use <path>
 #   2. `cd <path> && git ...`      -> use <path>
 #   3. `cd <path> ; git ...`       -> use <path>
-#   4. otherwise                   -> use tool_input.cwd from the payload,
+#   4. otherwise                   -> use the payload's top-level cwd,
 #      falling back to "." (the hook process's own cwd)
 # Resolved against the message-stripped command: text inside a commit
 # message (`-m "note: cd /nonexistent && push"`) must not be able to point
