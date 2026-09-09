@@ -304,9 +304,59 @@ test('#26: a glob matching nothing tracked and nothing rendered is still dropped
   const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n' });
   house(repo, 'init', '--apply');
   const out = house(repo, 'render', '--apply').toString();
-  assert.match(out, /dropped \d+ paths: glob\(s\) matching nothing here/, 'the drop still happens for genuinely absent paths');
+  // #25: src/** and lib/** are engineering's own declared codeRoots default
+  // (scripts/** is the sibling that matches here), a known alternative
+  // convention rather than something this adopter wrote, so the drop goes
+  // quiet in text mode.
+  assert.doesNotMatch(out, /warning:/, 'a dropped default prints no warning');
   const eng = readFileSync(join(repo, '.claude/rules/house/engineering.md'), 'utf8').split('\n---\n')[0];
-  assert.doesNotMatch(eng, /^ {2}- src\/\*\*$/m, 'src/** is absent here and stays dropped');
+  assert.doesNotMatch(eng, /^ {2}- src\/\*\*$/m, 'src/** is absent here and stays dropped from the frontmatter');
+
+  const outJson = JSON.parse(house(repo, 'render', '--json').toString());
+  const eng2 = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/engineering.md');
+  assert.ok(eng2, `expected an engineering.md droppedDefaults entry, got ${JSON.stringify(outJson.droppedDefaults)}`);
+  assert.deepEqual(eng2.paths.sort(), ['lib/**', 'src/**'], 'the drop still surfaces, just in --json rather than as a warning');
+});
+
+// #25: the flip side, an adopter-written glob is not a known alternative
+// convention, so it must keep warning even though a default-list drop next
+// to it now goes quiet.
+test('#25: an adopter-written glob matching nothing still warns', () => {
+  const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n' });
+  house(repo, 'init', '--apply');
+  const hj = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  hj.modules.engineering.config.codeGlobs = ['nope/**'];
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'pin an adopter-written codeGlobs entry');
+
+  const out = house(repo, 'render', '--apply').toString();
+  assert.match(out, /warning: modules\/engineering\/rules\/engineering\.md: dropped 1 paths: glob\(s\) matching nothing here \(nope\/\*\*\)/,
+    `an adopter-written glob still warns:\n${out}`);
+
+  const outJson = JSON.parse(house(repo, 'render', '--json').toString());
+  const eng = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/engineering.md');
+  assert.ok(!eng || !eng.paths.includes('nope/**'), 'the adopter-written glob is never reported as a droppedDefault');
+});
+
+// #25: membership is checked against the module's DECLARED default list, not
+// against whether house.json still matches what init originally wrote, so an
+// adopter who explicitly re-pins a slot to its own default value (exactly
+// what init seeds) gets the same quiet treatment.
+test('#25: a default path re-pinned verbatim in house.json still counts as a default', () => {
+  const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n' });
+  house(repo, 'init', '--apply');
+  const hj = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  hj.modules.engineering.config.codeRoots = ['scripts/**', 'src/**', 'lib/**'];
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 're-pin codeRoots to its own default');
+
+  const out = house(repo, 'render', '--apply').toString();
+  assert.doesNotMatch(out, /warning:/, 'a default re-pinned to its own value is still a default, so it stays quiet');
+
+  const outJson = JSON.parse(house(repo, 'render', '--json').toString());
+  const eng = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/engineering.md');
+  assert.ok(eng, `expected an engineering.md droppedDefaults entry, got ${JSON.stringify(outJson.droppedDefaults)}`);
+  assert.deepEqual(eng.paths.sort(), ['lib/**', 'src/**']);
 });
 
 // Migration: every repo rendered at 0.2.2 or earlier has a lock with no
@@ -448,9 +498,15 @@ test('#26: a scaffold the render will not write does not keep its glob alive', (
   const frontmatter = existsSync(gh) ? readFileSync(gh, 'utf8').split('\n---\n')[0] : '';
   assert.doesNotMatch(frontmatter, /\.github\/\*\*/,
     'a glob that neither the tree nor this render satisfies must not be vendored');
+  // #25: .github/** is githubGlobs' own declared default (alongside
+  // .githooks/** and .env.example, neither of which this fixture has either),
+  // so the drop goes quiet in text mode and surfaces only in --json.
   const out2 = house(repo, 'render', '--apply').toString();
-  assert.match(out2, /dropped \d+ paths: glob\(s\) matching nothing here[^\n]*\.github/,
-    `and the drop must be reported, not silent:\n${out2}`);
+  assert.doesNotMatch(out2, /warning:/, 'a dropped default prints no warning');
+  const outJson = JSON.parse(house(repo, 'render', '--json').toString());
+  const ghDropped = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/github.md');
+  assert.ok(ghDropped, `expected a github.md droppedDefaults entry, got ${JSON.stringify(outJson.droppedDefaults)}`);
+  assert.ok(ghDropped.paths.includes('.github/**'), `expected .github/** among the dropped defaults, got ${JSON.stringify(ghDropped.paths)}`);
 });
 
 // Second review pass: `plannedDestPaths` skipped a scaffold that already
