@@ -10,6 +10,14 @@ test('hooks.json uses the plugin wrapper format', () => {
   assert.ok(h.hooks && Array.isArray(h.hooks.PreToolUse));
 });
 
+// #26: the rule-load positive control depends on the plugin actually
+// shipping this hook; a hooks.json that lost the block would silently
+// degrade `house doctor`'s "plugin" case back to "none wired".
+test('hooks.json declares a non-empty InstructionsLoaded array', () => {
+  const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
+  assert.ok(h.hooks && Array.isArray(h.hooks.InstructionsLoaded) && h.hooks.InstructionsLoaded.length > 0);
+});
+
 // v0.3.0 ship-set invariant: the vendored checker must be byte-identical to
 // the payload and match the lock's recorded hash. Until now this was a human
 // checklist step (cmp + shasum); a payload edit without a render left tamper
