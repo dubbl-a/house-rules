@@ -648,12 +648,11 @@ any_clause_verb() {
 # so it cannot be the thing this guard exists to stop; the documented release
 # step is a tag push from the default branch, and refusing it sent every tag
 # through `gh api`.
-tag_ref_exists() {
-  if git "${git_dir_arg[@]}" show-ref --verify --quiet "refs/tags/$1"; then return 0; fi
-  return 1
-}
-branch_ref_exists() {
-  if git "${git_dir_arg[@]}" show-ref --verify --quiet "refs/heads/$1"; then return 0; fi
+# True if refs/<namespace>/<name> exists (namespace: tags or heads). One
+# function for both lookups push_args_are_tag_only needs: is this token a
+# real tag, and separately, is it also a branch (git would push the branch).
+ref_exists() {
+  if git "${git_dir_arg[@]}" show-ref --verify --quiet "refs/$1/$2"; then return 0; fi
   return 1
 }
 remote_known() {
@@ -669,7 +668,7 @@ push_args_are_tag_only() {
     [[ -n "$tok" ]] || continue
     if [[ "$want_tag" -eq 1 ]]; then
       want_tag=0
-      tag_ref_exists "$tok" || return 1
+      ref_exists tags "$tok" || return 1
       refspecs=$((refspecs + 1))
       continue
     fi
@@ -681,15 +680,15 @@ push_args_are_tag_only() {
         want_tag=1 ;;
       refs/tags/*)
         [[ "$remote_seen" -eq 1 ]] || return 1
-        tag_ref_exists "${tok#refs/tags/}" || return 1
+        ref_exists tags "${tok#refs/tags/}" || return 1
         refspecs=$((refspecs + 1)) ;;
       *)
         if [[ "$remote_seen" -eq 0 ]]; then
           remote_known "$tok" || return 1
           remote_seen=1
         else
-          tag_ref_exists "$tok" || return 1
-          if branch_ref_exists "$tok"; then return 1; fi
+          ref_exists tags "$tok" || return 1
+          if ref_exists heads "$tok"; then return 1; fi
           refspecs=$((refspecs + 1))
         fi ;;
     esac
