@@ -130,9 +130,26 @@ function commitAll(dir, message = 'update') {
   execFileSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '-q', '-m', message, '--allow-empty'], { cwd: dir });
 }
 
-/** Run the fixture CLI as a real subprocess. Returns {code, out, err}. */
-function runCli(cliPath, args) {
-  const res = spawnSync(process.execPath, [cliPath, ...args], { encoding: 'utf8' });
+/**
+ * Run the fixture CLI as a real subprocess. Returns {code, out, err}.
+ *
+ * Every call gets its own throwaway CLAUDE_CONFIG_DIR unless the caller
+ * passes one in `env`: doctor now reads an InstructionsLoaded log under
+ * <CLAUDE_CONFIG_DIR>/house/instructions-loaded/, and without this a run
+ * here could read (or, via the hook tests, write) the real machine's own
+ * log. Sandboxed on every call, not just doctor's, since it costs nothing
+ * for the commands that never look at it.
+ */
+function runCli(cliPath, args, env = {}) {
+  let configDir = env.CLAUDE_CONFIG_DIR;
+  if (!configDir) {
+    configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+    CLEANUP_DIRS.push(configDir);
+  }
+  const res = spawnSync(process.execPath, [cliPath, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
+  });
   return { code: res.status, out: res.stdout || '', err: res.stderr || '' };
 }
 
@@ -441,6 +458,148 @@ test('#32 doctor: the plugin guard line reports whether house.json records the c
     assert.match(m.out, /effective branch guard:\s*plugin \(unrecorded;/, `${JSON.stringify(guard)} is not a guard record`);
     assert.equal(JSON.parse(runCli(cliPath, ['doctor', '--repo', repoM, '--json']).out).guardRecorded, false);
   }
+});
+
+// ── rule-load positive control (#26) ────────────────────────────────────
+//
+// instructionsLoadedProbe used to be a substring search over two settings
+// files, which could not see a hook the plugin itself ships and could be
+// fooled by the word "InstructionsLoaded" appearing anywhere in a settings
+// file. It now checks the real hook wiring (repo settings first, then the
+// plugin's own hooks/hooks.json) and reports evidence read back from the
+// hook's own log.
+
+function writePluginInstructionsLoadedHooks(dir) {
+  mkdirSync(join(dir, 'hooks'), { recursive: true });
+  writeFileSync(join(dir, 'hooks', 'hooks.json'), `${JSON.stringify({
+    hooks: { InstructionsLoaded: [{ hooks: [{ type: 'command', command: 'node x', timeout: 5 }] }] },
+  }, null, 2)}\n`);
+}
+
+function instructionsLoadedKey(repoRoot) { return repoRoot.replace(/\//g, '-'); }
+
+function writeInstructionsLoadedLog(configDir, repoRoot, lines) {
+  const dir = join(configDir, 'house', 'instructions-loaded');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${instructionsLoadedKey(repoRoot)}.jsonl`), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`);
+}
+
+test('doctor: rule-load positive control reports none wired when nothing declares the hook', () => {
+  const { cliPath } = buildFixturePlugin(); // this fixture ships no hooks/hooks.json at all
+  const repo = buildTargetRepo();
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /rule-load positive control: none wired \(add an InstructionsLoaded hook/);
+
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { CLAUDE_CONFIG_DIR: configDir }).out);
+  assert.deepEqual(j.ruleLoadProbe, {
+    source: null,
+    logPath: join(configDir, 'house', 'instructions-loaded', `${instructionsLoadedKey(repo)}.jsonl`),
+    lastLoadAt: null,
+    vendoredSeen: 0,
+    vendoredTotal: 0,
+  });
+});
+
+test('doctor: rule-load positive control reports repo when .claude/settings.json declares a non-empty InstructionsLoaded array', () => {
+  const { cliPath } = buildFixturePlugin(); // plugin does NOT declare it either, to isolate repo priority
+  const repo = buildTargetRepo();
+  mkdirSync(join(repo, '.claude'), { recursive: true });
+  writeFileSync(join(repo, '.claude', 'settings.json'), `${JSON.stringify({
+    hooks: { InstructionsLoaded: [{ hooks: [{ type: 'command', command: 'node y' }] }] },
+  }, null, 2)}\n`);
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /rule-load positive control: repo \(\.claude\/settings\.json\)/);
+  assert.doesNotMatch(r.out.split('rule-load positive control:')[1] || '', /caveat/, 'the repo case carries no plugin-enablement caveat');
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.equal(j.ruleLoadProbe.source, 'repo');
+});
+
+test('doctor: the word "InstructionsLoaded" inside an unrelated settings.json string is not a repo guard (negative control)', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  mkdirSync(join(repo, '.claude'), { recursive: true });
+  writeFileSync(join(repo, '.claude', 'settings.json'), `${JSON.stringify({
+    note: 'we rely on InstructionsLoaded to see rule loads',
+  }, null, 2)}\n`);
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /rule-load positive control: none wired/);
+  assert.doesNotMatch(r.out, /rule-load positive control: repo/);
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.equal(j.ruleLoadProbe.source, null);
+});
+
+test('doctor: plugin hook declared but no log yet for this checkout', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  const repo = buildTargetRepo();
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /rule-load positive control: plugin hook declared; no log yet for this checkout \(start a session here, then re-run doctor\)/);
+  assert.match(r.out, /caveat: assumes the house plugin is installed and enabled/);
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.equal(j.ruleLoadProbe.source, 'plugin');
+  assert.equal(j.ruleLoadProbe.lastLoadAt, null);
+  assert.equal(j.ruleLoadProbe.vendoredTotal, 0); // no house.json/render yet: nothing vendored
+});
+
+test('doctor: plugin hook with a log reports the last load and how many vendored rules were seen', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { alpha: { enabled: true, config: {} } } });
+  const rendered = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(rendered.code, 0, rendered.out + rendered.err);
+  // alpha is the only rendered rule here; beta stays disabled (detect, unmatched).
+  const lock = JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'));
+  assert.equal(lock.files.filter((e) => e.path.startsWith('.claude/rules/house/')).length, 1);
+
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  writeInstructionsLoadedLog(configDir, repo, [
+    { ts: '2026-09-08T10:00:00.000Z', file_path: join(repo, '.claude', 'rules', 'house', 'alpha.md'), load_reason: 'session_start', session_id: 's1' },
+    { ts: '2026-09-08T10:05:00.000Z', file_path: join(repo, '.claude', 'rules', 'house', 'alpha.md'), load_reason: 'path_glob_match', session_id: 's1' },
+  ]);
+  const env = { CLAUDE_CONFIG_DIR: configDir };
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo], env);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /rule-load positive control: plugin hook; log .*: last load 2026-09-08T10:05:00\.000Z, 1 of 1 vendored rules seen/);
+  assert.match(r.out, /caveat: assumes the house plugin is installed and enabled/);
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
+  assert.equal(j.ruleLoadProbe.source, 'plugin');
+  assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:05:00.000Z');
+  assert.equal(j.ruleLoadProbe.vendoredSeen, 1);
+  assert.equal(j.ruleLoadProbe.vendoredTotal, 1);
+  assert.equal(j.ruleLoadProbe.logPath, join(configDir, 'house', 'instructions-loaded', `${instructionsLoadedKey(repo)}.jsonl`));
+});
+
+test('doctor: honors CLAUDE_CODE_PROJECT_DIR_NAME beside CLAUDE_CONFIG_DIR for the log key, matching the hook\'s own derivation', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  const repo = buildTargetRepo();
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  const named = 'my-named-project';
+  mkdirSync(join(configDir, 'house', 'instructions-loaded'), { recursive: true });
+  writeFileSync(join(configDir, 'house', 'instructions-loaded', `${named}.jsonl`), `${JSON.stringify({ ts: '2026-09-08T10:00:00.000Z', file_path: 'x', load_reason: 'session_start', session_id: 's1' })}\n`);
+
+  const env = { CLAUDE_CONFIG_DIR: configDir, CLAUDE_CODE_PROJECT_DIR_NAME: named };
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
+  assert.equal(j.ruleLoadProbe.logPath, join(configDir, 'house', 'instructions-loaded', `${named}.jsonl`));
+  assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:00:00.000Z');
 });
 
 // ── check ────────────────────────────────────────────────────────────────

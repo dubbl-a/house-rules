@@ -36,6 +36,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -274,16 +275,78 @@ function probeDefaultBranch(repoRoot) {
 // indistinguishable from a rule that does nothing, so the only real proof a
 // vendored rule loads is the harness saying so. The `InstructionsLoaded` hook
 // logs exactly which instruction files load, when, and why; doctor reports
-// whether that positive control is wired rather than leaving it to inference.
+// whether that positive control is wired, and what its own log has actually
+// witnessed, rather than leaving either to inference.
+
+// <key> mirrors payload/check.mjs's memoryIndexPath: CLAUDE_CODE_PROJECT_DIR_NAME
+// when it rides beside CLAUDE_CONFIG_DIR, else repoRoot with every "/" turned
+// into "-". The hook derives the same key from the payload's own `cwd`
+// instead of a resolved repo root, since that is all a hook ever sees.
+function instructionsLoadedLogPath(repoRoot) {
+  const cfgDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
+  const key = (process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME) || repoRoot.replace(/\//g, '-');
+  return path.join(cfgDir, 'house', 'instructions-loaded', `${key}.jsonl`);
+}
+
+// A repo-local hook the InstructionsLoaded event would actually invoke: a
+// NON-EMPTY hooks.InstructionsLoaded array in .claude/settings.json. Same
+// settings.local.json exclusion as repoSettingsHasHooksBlock below and
+// check.mjs's settingsHasPreToolUseHook: that file is per-machine and
+// gitignored, so a hook living only there does not travel with the repo.
+function repoSettingsHasInstructionsLoadedBlock(repoRoot) {
+  const p = path.join(repoRoot, '.claude', 'settings.json');
+  if (!existsSync(p)) return false;
+  try {
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    return isPlainObject(j) && isPlainObject(j.hooks) && Array.isArray(j.hooks.InstructionsLoaded) && j.hooks.InstructionsLoaded.length > 0;
+  } catch { return false; }
+}
+
+// The plugin's OWN hooks/hooks.json, resolved the same way every other
+// plugin-relative path in this file is: relative to this script's own
+// location, never to --repo.
+function pluginDeclaresInstructionsLoaded() {
+  const p = path.join(__dirname, '..', 'hooks', 'hooks.json');
+  try {
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    return isPlainObject(j) && isPlainObject(j.hooks) && Array.isArray(j.hooks.InstructionsLoaded) && j.hooks.InstructionsLoaded.length > 0;
+  } catch { return false; }
+}
+
+// The vendored rule dests this repo's last render actually wrote, per
+// .house/lock.json: every rule file always lands at
+// .claude/rules/house/<basename> (render's own fixed destination, never a
+// config slot), so filtering the lock's paths on that prefix is exact.
+function vendoredRuleDests(repoRoot) {
+  return [...loadPriorLock(repoRoot).keys()].filter((p) => p.startsWith('.claude/rules/house/') && p.endsWith('.md'));
+}
+
+// Evidence comes from the log itself: the last timestamp seen, and how many
+// of the vendored rule dests appear as (a suffix of) some line's file_path.
+// A malformed line is skipped rather than treated as absence of evidence;
+// an absent log is not an error, just nothing witnessed yet.
 function instructionsLoadedProbe(repoRoot) {
-  for (const name of ['settings.json', 'settings.local.json']) {
-    const p = path.join(repoRoot, '.claude', name);
-    if (!existsSync(p)) continue;
-    try {
-      if (readFileSync(p, 'utf8').includes('InstructionsLoaded')) return name;
-    } catch { /* unreadable: fall through to the next candidate */ }
-  }
-  return null;
+  const source = repoSettingsHasInstructionsLoadedBlock(repoRoot)
+    ? 'repo'
+    : (pluginDeclaresInstructionsLoaded() ? 'plugin' : null);
+  const logPath = instructionsLoadedLogPath(repoRoot);
+  const vendored = vendoredRuleDests(repoRoot);
+  const seen = new Set();
+  let lastLoadAt = null;
+  try {
+    const raw = readFileSync(logPath, 'utf8');
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      let rec;
+      try { rec = JSON.parse(line); } catch { continue; }
+      if (!isPlainObject(rec)) continue;
+      if (typeof rec.ts === 'string') lastLoadAt = rec.ts;
+      if (typeof rec.file_path === 'string') {
+        for (const dest of vendored) if (rec.file_path.endsWith(dest)) seen.add(dest);
+      }
+    }
+  } catch { /* no log yet for this checkout */ }
+  return { source, logPath, lastLoadAt, vendoredSeen: seen.size, vendoredTotal: vendored.length };
 }
 
 // A repo-local guard the hook would actually defer to: a NON-EMPTY PreToolUse
@@ -999,6 +1062,13 @@ function guardRecordIsWellFormed(houseData) {
     && Object.keys(g).every((k) => ['by', 'decided', 'why'].includes(k));
 }
 
+// Shared by both doctor lines that rely on the plugin actually being
+// installed and enabled in this session (the branch guard's "plugin" state,
+// and the rule-load probe's "plugin" source): neither is verifiable from the
+// repo alone, so both carry the identical caveat rather than two wordings of
+// the same gap.
+const PLUGIN_ENABLEMENT_CAVEAT = 'assumes the house plugin is installed and enabled in this session (user-scope install) -- doctor cannot verify plugin enablement from the repo alone.';
+
 function cmdDoctor(args) {
   const repoRoot = resolveRepoRoot(args);
   const pluginVersion = readPluginVersion();
@@ -1023,7 +1093,7 @@ function cmdDoctor(args) {
     guard = guardRecorded
       ? `plugin (recorded ${houseData.guard.decided})`
       : 'plugin (unrecorded; record it as "guard": {"by": "plugin", "decided": "<date>", "why": "..."} in house.json to clear the checker\'s [guard] warning)';
-    caveat = 'assumes the house plugin is installed and enabled in this session (user-scope install) -- doctor cannot verify plugin enablement from the repo alone.';
+    caveat = PLUGIN_ENABLEMENT_CAVEAT;
   } else if (houseData && houseData.branchPolicy === 'direct') {
     guard = 'NONE (branchPolicy direct)';
   } else {
@@ -1070,9 +1140,16 @@ function cmdDoctor(args) {
     console.log(pinStatus);
     console.log(`npm wiring (.house/check.mjs referenced by): ${npmWiring.length ? npmWiring.join(', ') : 'none found'}`);
     console.log(`.claude/settings.local.json: ${settingsLocalExists ? 'present' : 'absent'}`);
-    console.log(ruleLoadProbe
-      ? `rule-load positive control: InstructionsLoaded hook declared in .claude/${ruleLoadProbe}`
-      : 'rule-load positive control: none wired (add an InstructionsLoaded hook to log which rule files load; without it a rule whose glob never matches looks exactly like a rule that does nothing)');
+    if (ruleLoadProbe.source === 'repo') {
+      console.log('rule-load positive control: repo (.claude/settings.json)');
+    } else if (ruleLoadProbe.source === 'plugin') {
+      console.log(ruleLoadProbe.lastLoadAt
+        ? `rule-load positive control: plugin hook; log ${ruleLoadProbe.logPath}: last load ${ruleLoadProbe.lastLoadAt}, ${ruleLoadProbe.vendoredSeen} of ${ruleLoadProbe.vendoredTotal} vendored rules seen`
+        : 'rule-load positive control: plugin hook declared; no log yet for this checkout (start a session here, then re-run doctor)');
+      console.log(`  caveat: ${PLUGIN_ENABLEMENT_CAVEAT}`);
+    } else {
+      console.log('rule-load positive control: none wired (add an InstructionsLoaded hook to log which rule files load; without it a rule whose glob never matches looks exactly like a rule that does nothing)');
+    }
     console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);
   }

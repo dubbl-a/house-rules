@@ -119,7 +119,7 @@ What each printed line means (labels as `doctor` prints them):
   "check:docs": "node .house/check.mjs --only=drift,todo"
   "check:house": "node .house/check.mjs"
   ```
-- **`rule-load positive control: ...`.** Whether an `InstructionsLoaded` hook is wired; without one, a rule whose glob never matches looks exactly like a rule that does nothing.
+- **`rule-load positive control: ...`.** Whether an `InstructionsLoaded` hook is wired, and what its own log has actually witnessed; without one, a rule whose glob never matches looks exactly like a rule that does nothing. `repo (.claude/settings.json)`: the repo declares its own hook. `plugin hook; log <path>: last load <ts>, <n> of <m> vendored rules seen`: the plugin's own hook is wired and has logged at least one load, with a real count of how many vendored rule files it has actually seen load. `plugin hook declared; no log yet for this checkout`: the plugin's hook is wired but has not logged anything here yet -- start a session in this repo and re-run doctor. `none wired`: nothing declares the hook at all.
 - **`git-ignored house destinations: none | <paths>`.** Anything but `none` is a destination the checker cannot see; fix the ignore rule as in step 4.
 
 ### 8. Route what the repo cannot fix upstream, one issue per item

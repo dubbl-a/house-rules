@@ -1139,6 +1139,15 @@
       "notes": "Phase 4 writes this. Every check it adds needs a positive control and a negative control in tests/."
     },
     {
+      "path": "plugins/house/hooks/instructions-loaded.mjs",
+      "kind": "script",
+      "module": "core",
+      "budgetLines": 100,
+      "owns": [],
+      "crossRefs": [],
+      "notes": "InstructionsLoaded hook: logs which instruction files load, the rule-load positive control `house doctor` reads back."
+    },
+    {
       "path": "plugins/house/hooks/no-direct-master.sh",
       "kind": "script",
       "module": "github",
