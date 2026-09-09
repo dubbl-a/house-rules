@@ -433,6 +433,23 @@ function slotDefaults(json) {
   return out;
 }
 
+// A configured root that resolves to zero tracked .md files is a hard drift
+// finding (check.mjs's "zero-match root" check in checkDrift), not a
+// warning, so proposing one at init would hand a fresh adopter a failing
+// gate for a directory that merely happens to exist (docs/ holding only
+// images, say). git has nothing tracked yet at init time, so the only way
+// to answer "does this directory actually have a markdown file under it" is
+// to walk the filesystem directly.
+function dirHasMarkdown(absDir) {
+  let entries;
+  try { entries = readdirSync(absDir, { withFileTypes: true }); } catch { return false; }
+  for (const e of entries) {
+    if (e.isFile() && e.name.endsWith('.md')) return true;
+    if (e.isDirectory() && dirHasMarkdown(path.join(absDir, e.name))) return true;
+  }
+  return false;
+}
+
 // docs is the one module init populates config for at all: haystackDirs from
 // the repo's own conventional dirs, roots from doc dirs that actually exist.
 // Every other slot, on every module including docs' own, is left out of the
@@ -445,8 +462,11 @@ function docsConfigFromProbe(repoRoot) {
   const haystackDirs = haystackCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
   if (existsSync(path.join(repoRoot, 'package.json'))) haystackDirs.push('package.json');
   if (existsSync(path.join(repoRoot, '.github', 'workflows'))) haystackDirs.push('.github/workflows');
+  // roots is stricter than haystackDirs: existing is not enough, since an
+  // empty (or markdown-free) root is a finding downstream, not a quiet
+  // no-op.
   const rootCandidates = ['docs', '.claude/rules', '.claude/skills', '.claude/commands'];
-  const roots = rootCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
+  const roots = rootCandidates.filter((d) => dirHasMarkdown(path.join(repoRoot, d)));
   return { haystackDirs, roots };
 }
 

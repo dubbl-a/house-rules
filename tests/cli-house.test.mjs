@@ -78,6 +78,19 @@ console.log('fake house check: ok');
 process.exit(0);
 `;
 
+const DOCS_BODY = `# Docs rules
+
+## Scan the thing
+Anchor: none (because fixture)
+
+Docs body text.
+
+## Don't
+Anchor: none (because fixture)
+
+Don't do the bad thing either.
+`;
+
 /**
  * Build a throwaway fixture plugin dir: modules/alpha (default "on",
  * literal defaultPaths), modules/beta (default "detect", a single "$slot"
@@ -85,11 +98,17 @@ process.exit(0);
  * 9.9.9), and a COPY of the real CLI at scripts/house so source resolution
  * (<scriptdir>/../modules, <scriptdir>/../.claude-plugin/plugin.json) is
  * exercised against this fixture, not the real house package.
+ *
+ * `withDocsModule`: also write modules/docs (default "on"), the one name
+ * `buildProposedManifest` special-cases for its probe-derived config
+ * (docsConfigFromProbe). Opt-in, kept out of the two default fixture
+ * modules, so only the tests that need it pay for the extra module in
+ * house.json.
  */
-function buildFixturePlugin() {
+function buildFixturePlugin({ withDocsModule = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'house-fixture-'));
   CLEANUP_DIRS.push(dir);
-  writeTree(dir, {
+  const modules = {
     '.claude-plugin/plugin.json': `${JSON.stringify({ name: 'house', version: '9.9.9' }, null, 2)}\n`,
     'payload/check.mjs': FAKE_CHECK_MJS,
     'modules/alpha/module.json': `${JSON.stringify({
@@ -106,7 +125,16 @@ function buildFixturePlugin() {
       defaultPaths: ['$slot'],
     }, null, 2)}\n`,
     'modules/beta/rules/beta.md': BETA_BODY,
-  });
+  };
+  if (withDocsModule) {
+    modules['modules/docs/module.json'] = `${JSON.stringify({
+      name: 'docs', default: 'on', rules: ['rules/docs.md'], files: [],
+      configSlots: ['roots', 'haystackDirs'],
+      defaultPaths: ['$roots'],
+    }, null, 2)}\n`;
+    modules['modules/docs/rules/docs.md'] = DOCS_BODY;
+  }
+  writeTree(dir, modules);
   mkdirSync(join(dir, 'scripts'), { recursive: true });
   const cliPath = join(dir, 'scripts', 'house');
   copyFileSync(REAL_CLI_SRC, cliPath);
@@ -230,6 +258,28 @@ test('init --apply writes {} config even for a module declaring a slot with a no
   // under this empty config, so a repo that never touches `depth` still
   // behaves as if it were 3 until the module's own default changes.
   assert.deepEqual(data.modules.beta.config, {});
+});
+
+// A configured docs root that matches zero tracked .md files is a hard
+// drift finding downstream (check.mjs's "zero-match root" check), not a
+// warning, so proposing one at init would hand a fresh adopter a failing
+// gate for a directory that merely happens to exist.
+test('init --apply proposes no docs root for a docs/ directory holding no markdown', () => {
+  const { cliPath } = buildFixturePlugin({ withDocsModule: true });
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'docs/image.txt': 'not markdown\n' });
+  const { code } = runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(code, 0);
+  const data = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.deepEqual(data.modules.docs.config.roots, [], 'docs/ exists but has no .md file anywhere under it');
+});
+
+test('init --apply proposes the docs root once a markdown file exists anywhere under it', () => {
+  const { cliPath } = buildFixturePlugin({ withDocsModule: true });
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'docs/nested/note.md': '# note\n' });
+  const { code } = runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(code, 0);
+  const data = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.deepEqual(data.modules.docs.config.roots, ['docs'], 'a nested .md file is enough to qualify the directory');
 });
 
 // ── render ───────────────────────────────────────────────────────────────

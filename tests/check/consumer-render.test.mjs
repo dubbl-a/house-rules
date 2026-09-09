@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -21,15 +21,22 @@ function fixtureRepo(files) {
 }
 
 // PR 3 parity control: buildProposedManifest now writes {} for a slot instead
-// of its declared default, so this proves the CLI's own defaults (spread by
-// buildRenderPlan) and the vendored checker's per-slot hardcoded fallbacks
-// (400 for maxCoLoadLines, 2000 for actionsBudgetMinutes, EM_DASH_DEFAULT,
-// {} for lengthLimits, [] for every other slot) still agree with what each
-// module.json declares. The three named scalars/objects below are the house
-// CLI's own SCALAR_SLOT_DEFAULTS/OBJECT_SLOT_DEFAULTS table
-// (plugins/house/scripts/house), restated here as an independent adopter-side
-// spec: an adopter who copied these defaults into house.json by hand must see
-// the exact same render and check as one who left the slot out entirely.
+// of its declared default, so this proves a repo whose house.json leaves a
+// slot out checks and renders identically to the same repo with that slot
+// spelled out at the value house init used to write there.
+//
+// The four scalars/objects below are an ANSWER KEY, not a live read of the
+// CLI: they are exactly the SCALAR_SLOT_DEFAULTS/OBJECT_SLOT_DEFAULTS table
+// in plugins/house/scripts/house as it stood at commit dcab836 (the last
+// commit before this PR), i.e. what a repo's house.json already has on disk
+// from the OLD init behavior. Hardcoding them here, rather than importing or
+// reading plugins/house/scripts/house's own table at run time, is the point:
+// this test compares the new {} against that frozen historical answer, not
+// against the code under test, so a future change to the CLI's defaults (or
+// to check.mjs's own fallback constants) cannot silently move both sides of
+// the comparison at once and hide a real drift. If either default value ever
+// changes, update this table by hand to match what pre-existing adopters'
+// house.json files actually contain, not what the CLI computes today.
 const MODULES_DIR = join(ROOT, 'plugins/house/modules');
 const NAMED_SLOT_DEFAULTS = { scanArchive: false, maxCoLoadLines: 400, actionsBudgetMinutes: 2000, lengthLimits: {} };
 
@@ -64,6 +71,25 @@ function readFiles(repo, paths) {
   const out = {};
   for (const p of paths) out[p] = existsSync(join(repo, p)) ? readFileSync(join(repo, p), 'utf8') : null;
   return out;
+}
+
+// A repo-authored rule file (not a house one) with a `paths:` frontmatter and
+// exactly `lines` body lines, per countLinesExcludingFrontmatter's counting
+// (one line per trailing newline in the body). Used to make the coload
+// family's 400-line ceiling load-bearing in the parity fixture below: the
+// family sums every `.claude/rules/**/*.md` file's line count per tracked
+// path it governs, house-vendored or not.
+function ruleFixture(paths, lines) {
+  return `---\npaths:\n${paths.map((p) => `  - ${p}`).join('\n')}\n---\n${'line\n'.repeat(lines)}`;
+}
+
+// The vendored checker exits non-zero on a finding (execFileSync would throw
+// mid-test), and the parity test below deliberately provokes a coload
+// finding and a minutes warning on both sides to make those defaults
+// load-bearing, so it needs stdout regardless of exit code.
+function runCheck(repo) {
+  const res = spawnSync('node', [join(repo, '.house/check.mjs'), '--repo', repo], { encoding: 'utf8' });
+  return res.stdout || '';
 }
 
 // The anti-false-negative control the package-repo dogfood lacked: a freshly
@@ -595,12 +621,37 @@ test('parity: a house.json with every slot absent renders and checks identically
     'package.json': '{"name":"x","scripts":{"check:house":"node .house/check.mjs"}}',
     'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'CHANGELOG.md': '# c\n',
     '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
+    // Every 10 minutes is ~4320 runs/month (estimateRunsPerMonth), well past
+    // a 2000-minute budget: this makes actionsBudgetMinutes load-bearing. If
+    // check.mjs's own fallback (2000) ever diverges from the literal this
+    // test hardcodes below, the sparse side warns or stays quiet differently
+    // than the spelled-out side.
+    '.github/workflows/scheduled.yml': "name: scheduled\non:\n  schedule:\n    - cron: '*/10 * * * *'\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: \"true\"}]\n",
     '.githooks/pre-commit': '#!/bin/sh\n', '.env.example': 'A=1\n',
     'tests/a.test.mjs': "import 'node:test';\n", 'test/b.test.mjs': "import 'node:test';\n",
     'db/schema.sql': '-- s\n', 'migrations/001.sql': '-- m\n', 'src/lib/db/x.mjs': '// x\n', 'scripts/db-seed.mjs': '// seed\n',
     'src/index.mjs': 'export default 1;\n', 'scripts/a.mjs': 'export const a = 1;\n', 'docs/note.md': '# note\n',
+    // Two repo-authored rules that both govern conflict.txt and sum to 440
+    // lines, past the 400-line ceiling: this makes maxCoLoadLines
+    // load-bearing the same way. Neither alone is over budget; only their
+    // sum on the one shared path is, which is what the coload family (not
+    // lengths) actually gates.
+    'conflict.txt': 'co-load fixture file\n',
+    '.claude/rules/custom-a.md': ruleFixture(['conflict.txt'], 220),
+    '.claude/rules/custom-b.md': ruleFixture(['conflict.txt'], 220),
   });
   house(repo, 'init', '--apply');
+
+  // scanArchive and lengthLimits are NOT made sensitive here. scanArchive
+  // only changes behavior in combination with a non-empty archiveDirs, and
+  // archiveDirs' own declared default is [] on both the sparse and the
+  // spelled-out side (there is no non-default archiveDirs value to give the
+  // full side without breaking the "every slot at its OWN declared default"
+  // premise this test rests on); lengthLimits' declared default is {} on
+  // both sides too, and there is no wrong-typed alternative worth reaching
+  // for a fixture over. maxCoLoadLines and actionsBudgetMinutes are the two
+  // slots here whose default is a number a fixture can straddle, so those
+  // are the two this fixture actually exercises.
 
   const managed = [
     '.claude/rules/house/claude-code.md', '.claude/rules/house/database.md', '.claude/rules/house/docs.md',
@@ -626,7 +677,7 @@ test('parity: a house.json with every slot absent renders and checks identically
   house(repo, 'render', '--apply');
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'sparse render');
   const sparseFiles = readFiles(repo, managed);
-  const sparseCheck = execFileSync('node', [join(repo, '.house/check.mjs'), '--repo', repo], { encoding: 'utf8' });
+  const sparseCheck = runCheck(repo);
 
   setEveryModuleConfig(repo, declaredConfig);
   house(repo, 'render', '--apply');
@@ -634,7 +685,7 @@ test('parity: a house.json with every slot absent renders and checks identically
   // disk, so there may be nothing new to stage.
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'full render', '--allow-empty');
   const fullFiles = readFiles(repo, managed);
-  const fullCheck = execFileSync('node', [join(repo, '.house/check.mjs'), '--repo', repo], { encoding: 'utf8' });
+  const fullCheck = runCheck(repo);
 
   assert.deepEqual(fullFiles, sparseFiles,
     'the vendored rule bodies must be byte-identical whether a slot is absent or spelled out at its declared default');
