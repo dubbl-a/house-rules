@@ -340,7 +340,6 @@ fi
 target_from_command=0
 [[ -n "$target_dir" ]] && target_from_command=1
 
-# Tilde expansion + strip surrounding quotes.
 target_dir="${target_dir/#\~/$HOME}"
 target_dir="${target_dir%\"}"; target_dir="${target_dir#\"}"
 target_dir="${target_dir%\'}"; target_dir="${target_dir#\'}"
@@ -460,14 +459,13 @@ fi
 # i.e. the guard would silently vanish exactly when it matters most).
 trap crashed ERR
 
-# protectedBranches, default ["master","main"] when the key is absent.
 protected_list=$(jq -r '(.protectedBranches // ["master","main"])[]' "$house_json" 2>/dev/null)
 if [[ -z "$protected_list" ]]; then
   protected_list=$'master\nmain'
 fi
 
-# carveOuts: array of glob patterns. Empty/absent means no carve-out is
-# configured for this repo.
+# carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
+# in plugins/house/schema/house.schema.json.
 carve_outs=$(jq -r '(.carveOuts // [])[]' "$house_json" 2>/dev/null)
 
 carve_out_reason_suffix=""
@@ -488,17 +486,10 @@ fi
 # Single-pass strip, not a full shell parser; fail-fast UX for Claude's
 # direct invocations.
 #
-# Which protection is real is a per-repo fact, not a constant, and the fleet
-# has shipped both readings at once: one hook documented server-side branch
-# protection as ABSENT (private repo on a free plan: the protected-branch API
-# answers "Upgrade to GitHub Pro"), so the hook and the deploy guards ARE the
-# protection; a sibling hook documented it as PRESENT and called itself a
-# convenience on top. Both cannot be true of the same repo. Check which case
-# the target repo is in before deciding how much this hook is carrying: where
-# the platform enforces protection server side, this is fail-fast UX and not a
-# substitute for it; where the platform enforces nothing, this script and the
-# deploy guards are the only thing standing between a session and the
-# protected branch.
+# Which protection is real (this hook vs. GitHub's own) is a per-repo fact,
+# not a constant: see docs/handbook/github.md, "The branch guard's reach, and
+# which protection is real."
+#
 # Quote handling has to tell a commit MESSAGE from a quoted keyword. A blind
 # strip of every quoted span turns `git 'commit'` into `git ` and
 # `git push origin 'master'` into `git push origin `, silently defeating the
@@ -623,22 +614,31 @@ git_split() {
 # git_next reloads GV_* from what follows the verb just read; it returns 1
 # when nothing is left.
 git_next() { git_split "${GV_ARGS//$'\n'/ }"; }
+# verb_in_text VERB TEXT: split TEXT into clauses and read every git command
+# in every clause (git_next walks a clause holding more than one), returning
+# 0 the moment VERB turns up as a verb anywhere. Shared by any_clause_verb
+# (one text per scan variant) and blind_has_verb (one fixed text, cmd_blind).
+verb_in_text() {
+  local verb="$1" text="$2" clause
+  split_clauses "$text"
+  while IFS= read -r clause; do
+    if git_split "$clause"; then
+      while :; do
+        [[ "$GV_VERB" == "$verb" ]] && return 0
+        git_next || break
+      done
+    fi
+  done <<<"$CLAUSES"
+  return 1
+}
 # any_clause_verb VERB: does any clause of any scan variant run git with this
 # verb? Decided per clause and per git command within it, over every variant,
 # so a verb hidden behind any separator or any global option is read like one
 # in front.
 any_clause_verb() {
-  local v clause
+  local v
   for v in "${scan_variants[@]}"; do
-    split_clauses "$v"
-    while IFS= read -r clause; do
-      if git_split "$clause"; then
-        while :; do
-          [[ "$GV_VERB" == "$1" ]] && return 0
-          git_next || break
-        done
-      fi
-    done <<<"$CLAUSES"
+    verb_in_text "$1" "$v" && return 0
   done
   return 1
 }
@@ -656,12 +656,11 @@ any_clause_verb() {
 # so it cannot be the thing this guard exists to stop; the documented release
 # step is a tag push from the default branch, and refusing it sent every tag
 # through `gh api`.
-tag_ref_exists() {
-  if git "${git_dir_arg[@]}" show-ref --verify --quiet "refs/tags/$1"; then return 0; fi
-  return 1
-}
-branch_ref_exists() {
-  if git "${git_dir_arg[@]}" show-ref --verify --quiet "refs/heads/$1"; then return 0; fi
+# True if refs/<namespace>/<name> exists (namespace: tags or heads). One
+# function for both lookups push_args_are_tag_only needs: is this token a
+# real tag, and separately, is it also a branch (git would push the branch).
+ref_exists() {
+  if git "${git_dir_arg[@]}" show-ref --verify --quiet "refs/$1/$2"; then return 0; fi
   return 1
 }
 remote_known() {
@@ -677,7 +676,7 @@ push_args_are_tag_only() {
     [[ -n "$tok" ]] || continue
     if [[ "$want_tag" -eq 1 ]]; then
       want_tag=0
-      tag_ref_exists "$tok" || return 1
+      ref_exists tags "$tok" || return 1
       refspecs=$((refspecs + 1))
       continue
     fi
@@ -689,15 +688,15 @@ push_args_are_tag_only() {
         want_tag=1 ;;
       refs/tags/*)
         [[ "$remote_seen" -eq 1 ]] || return 1
-        tag_ref_exists "${tok#refs/tags/}" || return 1
+        ref_exists tags "${tok#refs/tags/}" || return 1
         refspecs=$((refspecs + 1)) ;;
       *)
         if [[ "$remote_seen" -eq 0 ]]; then
           remote_known "$tok" || return 1
           remote_seen=1
         else
-          tag_ref_exists "$tok" || return 1
-          if branch_ref_exists "$tok"; then return 1; fi
+          ref_exists tags "$tok" || return 1
+          if ref_exists heads "$tok"; then return 1; fi
           refspecs=$((refspecs + 1))
         fi ;;
     esac
@@ -751,17 +750,7 @@ cmd_blind=$(strip_message_args "$cmd" | sed -E "
   s/\"[^\"]*\"//g;
   s/(^|[[:space:]])#.*\$//")
 blind_has_verb() {
-  local clause
-  split_clauses "$cmd_blind"
-  while IFS= read -r clause; do
-    if git_split "$clause"; then
-      while :; do
-        [[ "$GV_VERB" == "$1" ]] && return 0
-        git_next || break
-      done
-    fi
-  done <<<"$CLAUSES"
-  return 1
+  verb_in_text "$1" "$cmd_blind"
 }
 quoted_only_hint() {
   # A quoted span holding a substitution or a backtick is code that runs, not
