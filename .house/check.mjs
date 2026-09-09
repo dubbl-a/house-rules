@@ -1562,15 +1562,14 @@ function checkLengths(ctx) {
     }
 
     if (linesOver || bytesOver) {
-      const raise = ctx.acceptLengths
-        ? ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count)
-        : null;
-      if (raise) {
+      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count);
+      if (raise && ctx.acceptLengths) {
         tighten.push({ path: file, to: raise.to });
       } else {
         const linesMsg = linesOver ? `${count} lines (limit ${effectiveCeiling})` : '';
         const bytesMsg = bytesOver ? `${linesMsg ? ', ' : ''}${bytes} bytes (limit ${limitBytes})` : '';
-        findings.push(mk('lengths', file, null, 'length', `${linesMsg}${bytesMsg}`));
+        const hint = raise ? `; a ratchetRaises entry to ${raise.to} is on record, re-run with --accept-lengths to apply it` : '';
+        findings.push(mk('lengths', file, null, 'length', `${linesMsg}${bytesMsg}${hint}`));
       }
     } else if (ceilingFromRatchet !== null && count < ceilingFromRatchet) {
       tighten.push({ path: file, to: count });
@@ -2165,6 +2164,7 @@ function report({ families, results, findings, warnings, scannedDocs, coloadWors
     console.log('  2. change the code, so the document was right all along');
     console.log('  3. record the exception with its reason: a `docs-drift-ignore` marker for a token,');
     console.log('     a house.json `deviations` entry for a policy, a `ratchetRaises` entry for a limit');
+    console.log('     (a ratchetRaises entry applies on the next run with --accept-lengths)');
   }
 }
 

@@ -57,7 +57,8 @@ through it, never a silent edit to the checker itself:
   default (a disabled module, a non-`pr` branch policy, a carve-out, an unmanaged file, a raised
   co-load ceiling).
 - **`ratchetRaises`**: one entry, with `path`, `from`, `to`, `why`, and `decided`, when a file
-  legitimately needs to grow past its current line ceiling.
+  legitimately needs to grow past its current line ceiling; the entry applies on a run with
+  `--accept-lengths`.
 
 Both require a written reason on the same commit as the growth or the decline; neither is a way
 to route around review.

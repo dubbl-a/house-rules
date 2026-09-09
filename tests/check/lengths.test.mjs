@@ -159,6 +159,42 @@ test('lengths: --accept-lengths without the flag still fails growth even if a ra
   assert.equal(code, 1);
 });
 
+test('lengths: a matching ratchetRaises entry without the flag names the second step in the finding', () => {
+  const dir = sandbox({
+    'README.md': linesOf(200),
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 210, why: 'legitimately grew', decided: '2026-08-24' }],
+    }),
+  });
+  const { code, out } = run(dir, ['--only=lengths']);
+  assert.equal(code, 1, out);
+  assert.match(out, /200 lines \(limit 100\); a ratchetRaises entry to 210 is on record, re-run with --accept-lengths to apply it/);
+});
+
+test('lengths: no ratchetRaises entry leaves the finding without the hint', () => {
+  const dir = sandbox({
+    'README.md': linesOf(200),
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } } }),
+  });
+  const { code, out } = run(dir, ['--only=lengths']);
+  assert.equal(code, 1, out);
+  assert.match(out, /README\.md \[length\] 200 lines \(limit 100\)\n/);
+});
+
+test('lengths: a ratchetRaises entry whose `to` is under the current count does not hint', () => {
+  const dir = sandbox({
+    'README.md': linesOf(200),
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, why: 'grew a little', decided: '2026-08-24' }],
+    }),
+  });
+  const { code, out } = run(dir, ['--only=lengths']);
+  assert.equal(code, 1, out);
+  assert.match(out, /README\.md \[length\] 200 lines \(limit 100\)\n/);
+});
+
 test('lengths: length count excludes YAML frontmatter', () => {
   const frontmatter = '---\npaths:\n  - "src/**"\n---\n\n';
   const body = linesOf(50);

@@ -75,7 +75,7 @@ as a CI step.
   whenever a default-on module is off, `branchPolicy` is not `pr`, a `carveOuts` glob is added, or
   `maxCoLoadLines` is raised above the default (kind `coload-ceiling`).
 - **ratchet**: per-file line ceilings the checker tightens on its own whenever a file shrinks;
-  raising one takes a written, dated reason in `ratchetRaises`.
+  raising one takes a written, dated reason in `ratchetRaises`, applied on a run with `--accept-lengths`.
 - **guard**: optional dated record that the plugin supplies the branch guard, clearing that warning.
 
 ## The checker
