@@ -40,10 +40,11 @@ function logPathFor(cwd) {
   return path.join(cfgDir, 'house', 'instructions-loaded', `${key}.jsonl`);
 }
 
-// One small O_APPEND write per event. A POSIX-local append of a record this
-// size is atomic: the kernel serializes concurrent appends to the same file
-// descriptor position, so two hook processes racing here each land their
-// whole line, never an interleaved half of one.
+// One small O_APPEND write per event. Each hook process opens its own file
+// descriptor, but O_APPEND makes the seek-to-EOF and the write a single
+// atomic step against every other writer to the same file, so two hook
+// processes racing here each land their whole line, never an interleaved
+// half of one.
 function appendLine(logPath, line) {
   mkdirSync(path.dirname(logPath), { recursive: true });
   appendFileSync(logPath, `${line}\n`, 'utf8');
@@ -56,11 +57,13 @@ function appendLine(logPath, line) {
 // before renameSync over the original, so no reader ever observes a
 // half-written file.
 //
-// Fail direction: an appendLine from another process that lands between this
-// function's readFileSync and its renameSync is overwritten by the rename
-// and lost. That is at most one line, only at the moment the cap is
-// crossed, and only in the undercount direction: it can drop a load that
-// happened, never fabricate one that did not.
+// Fail direction: every appendLine that lands between this function's
+// readFileSync and its renameSync is lost, so a burst of concurrent appends
+// crossing the cap at once can drop several lines, not just one (a second
+// process can also see size > CAP_BYTES and run its own trim, whose rename
+// then clobbers every append written after its own read). The loss is
+// confined to a cap crossing and is undercount-only: it can drop a load
+// that happened, never fabricate one that did not.
 function trimIfOversized(logPath) {
   let size;
   try { size = statSync(logPath).size; } catch { return; }

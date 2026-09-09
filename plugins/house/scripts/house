@@ -329,8 +329,22 @@ function vendoredRuleDests(repoRoot) {
 // The max, not the last line in file order: appendLine's concurrent writers
 // (see instructions-loaded.mjs) can land in any order relative to when each
 // one's ts was stamped, so the last line on disk is not reliably the most
-// recent load. ISO 8601 timestamps compare lexicographically, so a plain
-// string comparison is enough, no Date parsing needed.
+// recent load. ISO 8601 timestamps compare lexicographically, so once a ts
+// is confirmed to actually be one, the max is a plain string comparison.
+//
+// The shape guard is a round trip, not Date.parse's own NaN check: V8's
+// Date parser is lenient enough to turn a non-date string such as "seed-0"
+// into some other valid-looking Date rather than NaN, so a bare
+// !Number.isNaN(Date.parse(ts)) still lets garbage through, and a string
+// starting with a letter sorts above every real timestamp and would pin
+// lastLoadAt to that garbage for the life of the log. Every ts this hook
+// ever writes is `new Date().toISOString()`, so re-serializing a genuine one
+// always reproduces the original string; anything else fails the round trip.
+function isRealTimestamp(ts) {
+  const d = new Date(ts);
+  return !Number.isNaN(d.getTime()) && d.toISOString() === ts;
+}
+
 function instructionsLoadedProbe(repoRoot) {
   const source = repoSettingsHasInstructionsLoadedBlock(repoRoot)
     ? 'repo'
@@ -346,7 +360,8 @@ function instructionsLoadedProbe(repoRoot) {
       let rec;
       try { rec = JSON.parse(line); } catch { continue; }
       if (!isPlainObject(rec)) continue;
-      if (typeof rec.ts === 'string' && (lastLoadAt === null || rec.ts > lastLoadAt)) lastLoadAt = rec.ts;
+      if (typeof rec.ts === 'string' && isRealTimestamp(rec.ts)
+        && (lastLoadAt === null || rec.ts > lastLoadAt)) lastLoadAt = rec.ts;
       if (typeof rec.file_path === 'string') {
         for (const dest of vendored) if (rec.file_path.endsWith(dest)) seen.add(dest);
       }

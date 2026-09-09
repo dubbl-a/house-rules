@@ -29,13 +29,32 @@ function sandboxConfigDir() {
   return d;
 }
 
+/**
+ * Build the child env both runners spawn the hook with: CLAUDE_CONFIG_DIR
+ * always pinned to a sandbox (the caller's, or a fresh one), and
+ * CLAUDE_CODE_PROJECT_DIR_NAME stripped out of the inherited process.env
+ * unless the caller's own `env` sets it. Without that strip, an ambient
+ * CLAUDE_CODE_PROJECT_DIR_NAME (set by ANY real Claude Code session this
+ * suite happens to run inside, this one included) would ride along into
+ * every spawned hook and win the hook's own key derivation over cwd,
+ * collapsing every case that expects a distinct cwd-keyed log onto one file.
+ */
+function buildHookEnv(env = {}) {
+  const configDir = env.CLAUDE_CONFIG_DIR || sandboxConfigDir();
+  const childEnv = { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir };
+  if (!Object.prototype.hasOwnProperty.call(env, 'CLAUDE_CODE_PROJECT_DIR_NAME')) {
+    delete childEnv.CLAUDE_CODE_PROJECT_DIR_NAME;
+  }
+  return { env: childEnv, configDir };
+}
+
 /** Run the real hook as a subprocess with `stdin` piped in. */
 function runHook(stdin, env = {}) {
-  const configDir = env.CLAUDE_CONFIG_DIR || sandboxConfigDir();
+  const { env: childEnv, configDir } = buildHookEnv(env);
   const res = spawnSync(process.execPath, [HOOK_PATH], {
     input: stdin,
     encoding: 'utf8',
-    env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
+    env: childEnv,
   });
   return { code: res.status, out: res.stdout || '', err: res.stderr || '', configDir };
 }
@@ -51,16 +70,17 @@ function logPathFor(configDir, key) {
  * this: it runs strictly one process at a time.
  */
 function runHookAsync(stdin, env = {}) {
+  const { env: childEnv, configDir } = buildHookEnv(env);
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [HOOK_PATH], {
-      env: { ...process.env, ...env },
-    });
+    const child = spawn(process.execPath, [HOOK_PATH], { env: childEnv });
     let out = '';
     let err = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err += d; });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code, out, err }));
+    child.on('close', (code) => resolve({
+      code, out, err, configDir,
+    }));
     child.stdin.end(stdin);
   });
 }

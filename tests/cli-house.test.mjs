@@ -606,6 +606,26 @@ test('doctor: lastLoadAt is the max timestamp seen, not the last line in file or
   assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:05:00.000Z');
 });
 
+test('doctor: a malformed ts (not a real timestamp) is ignored for lastLoadAt rather than winning the max on a lexicographic fluke', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  const repo = buildTargetRepo();
+
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  // 'seed-0' starts with 's', which sorts above every digit, so a plain
+  // string max with no shape guard would pin lastLoadAt to this garbage
+  // forever instead of the one real, parseable timestamp in the log.
+  writeInstructionsLoadedLog(configDir, repo, [
+    { ts: 'seed-0', file_path: 'a.md', load_reason: 'path_glob_match', session_id: 's1' },
+    { ts: '2026-09-08T10:00:00.000Z', file_path: 'b.md', load_reason: 'session_start', session_id: 's1' },
+  ]);
+  const env = { CLAUDE_CONFIG_DIR: configDir };
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
+  assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:00:00.000Z');
+});
+
 test('doctor: honors CLAUDE_CODE_PROJECT_DIR_NAME beside CLAUDE_CONFIG_DIR for the log key, matching the hook\'s own derivation', () => {
   const { dir, cliPath } = buildFixturePlugin();
   writePluginInstructionsLoadedHooks(dir);
