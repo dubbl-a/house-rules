@@ -449,3 +449,59 @@ test('cleanup-worktree.sh: honors house.json defaultBranch for the preflight, no
   assert.equal(res.status, 1);
   assert.match(res.stderr, /must run from the release checkout on release/);
 });
+
+// resolve_kill_list is defined before the script's teardown body and the
+// script returns early when sourced (BASH_SOURCE[0] != $0), so a test can
+// source it and call the function directly without triggering the teardown.
+function sourceAndResolveKillList(cwd, env, bashBin) {
+  // spawnSync resolves the executable itself against `env.PATH` when `env`
+  // is overridden, so a test that strips PATH down to a single directory
+  // must give the bash binary's absolute path rather than the bare name.
+  return spawnSync(bashBin || 'bash', ['-c', `source "${CLEANUP_SH}"; resolve_kill_list`], {
+    encoding: 'utf8',
+    cwd,
+    env: env || process.env,
+  });
+}
+
+test('cleanup-worktree.sh: resolve_kill_list defaults to node and npm without a worktreeKillProcesses slot', () => {
+  const { work } = makeRepoWithOrigin('main');
+  const res = sourceAndResolveKillList(work);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, 'node\nnpm\n');
+});
+
+test('cleanup-worktree.sh: resolve_kill_list honors house.json worktreeKillProcesses slot', () => {
+  const { work } = makeRepoWithOrigin('main');
+  writeFileSync(join(work, 'house.json'), JSON.stringify({
+    modules: { github: { config: { worktreeKillProcesses: ['deno', 'vite'] } } },
+  }));
+
+  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
+  if (!hasJq) {
+    console.log('  (jq not installed, skipping house.json-driven kill-list resolution check)');
+    return;
+  }
+
+  const res = sourceAndResolveKillList(work);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, 'deno\nvite\n');
+});
+
+test('cleanup-worktree.sh: resolve_kill_list falls back to the default without jq on PATH', () => {
+  const { work } = makeRepoWithOrigin('main');
+  writeFileSync(join(work, 'house.json'), JSON.stringify({
+    modules: { github: { config: { worktreeKillProcesses: ['deno', 'vite'] } } },
+  }));
+
+  // A PATH containing only git (via a symlink), so `command -v jq` fails
+  // inside the script the same way it would on a machine without jq
+  // installed, while `git rev-parse --show-toplevel` still resolves.
+  const gitPath = execFileSync('bash', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const binDir = mktemp('house-nobin-');
+  execFileSync('ln', ['-s', gitPath, join(binDir, 'git')]);
+
+  const res = sourceAndResolveKillList(work, { ...process.env, PATH: binDir }, '/bin/bash');
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, 'node\nnpm\n');
+});
