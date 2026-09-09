@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-08
+
+The settings rule gains the shape that stops a permission list accreting, and the settings template ships a deny list naming each tool's escape hatches. The branch guard stops refusing a commit because of the directory's name (minor under ADR 0011: rule content and a template, no heading, config slot, hook contract, or layout moved).
+
 ### Changed
 - **The settings rule now names the shape that stops a permission list accreting, and the
   settings template ships a deny list.** "Keep the committed settings narrow and the local
