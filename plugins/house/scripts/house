@@ -715,11 +715,28 @@ function plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceSca
   return dests;
 }
 
+// #25: a dropped path is a known alternative convention, not an adopter
+// mistake, when it appears in any array-valued slot's DECLARED default for
+// this module (tests/** vs test/**, src/** vs lib/**...). Checked against
+// slotDefaults(m.json) -- the module's own spec -- rather than the merged
+// config, so a house.json seeded by init with the full default list (every
+// slot's default is exactly what init writes) still reads as a default even
+// where the adopter later re-pins the same value explicitly.
+function defaultPathSet(json) {
+  const out = new Set();
+  for (const v of Object.values(slotDefaults(json))) {
+    if (!Array.isArray(v)) continue;
+    for (const p of v) if (typeof p === 'string' && p) out.add(p);
+  }
+  return out;
+}
+
 function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, forceScaffold) {
   const priorLock = loadPriorLock(repoRoot);
   const plan = [];
   const skips = [];
   const moduleWarnings = [];
+  const droppedDefaults = [];
   // Hoisted: one `git ls-files` for the whole plan (it was re-run per rule),
   // unioned with the dests this render will write, so a glob is dropped only
   // when nothing in the repo AND nothing this render creates satisfies it.
@@ -739,6 +756,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     // value in house.json (including []) still wins over the default, since the
     // spread puts cfg.config last and expandPaths only reads Array-valued slots.
     const moduleCfg = { ...slotDefaults(m.json), ...(isPlainObject(cfg.config) ? cfg.config : {}) };
+    const moduleDefaultPaths = defaultPathSet(m.json);
 
     for (const rulePath of arr(m.json.rules)) {
       const sourceAbs = path.join(m.dir, rulePath);
@@ -753,7 +771,16 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       // only its own dest would satisfy (`.claude/rules/**`) is kept explicitly.
       const expanded = rawExpanded.filter((g) => globMatchesAny(g, renderTargets));
       const dropped = rawExpanded.filter((g) => !expanded.includes(g));
-      if (dropped.length) moduleWarnings.push(`modules/${m.dirName}/${rulePath}: dropped ${dropped.length} paths: glob(s) matching nothing here (${dropped.join(', ')})`);
+      // #25: a built-in slot default deliberately lists alternative
+      // conventions (tests/** and test/**) that a repo can only ever match
+      // one of, so warning on the other never clears. Only a dropped path the
+      // adopter actually wrote is a mistake worth a warning; a dropped
+      // default is a known alternative and goes quiet in text mode, surfaced
+      // instead in --json under droppedDefaults.
+      const droppedAdopter = dropped.filter((g) => !moduleDefaultPaths.has(g));
+      const droppedDefault = dropped.filter((g) => moduleDefaultPaths.has(g));
+      if (droppedAdopter.length) moduleWarnings.push(`modules/${m.dirName}/${rulePath}: dropped ${droppedAdopter.length} paths: glob(s) matching nothing here (${droppedAdopter.join(', ')})`);
+      if (droppedDefault.length) droppedDefaults.push({ rule: destPath, paths: droppedDefault });
       if (expanded.length === 0) {
         skips.push({ path: destPath, module: name, rulePath, reason: 'every paths: glob expanded from this module matched no file in this repo; a rule with no `paths:` is always-on, so it was not written. Populate its config slot with a real path.' });
         continue;
@@ -792,16 +819,16 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     plan.push(classify(repoRoot, { path: '.house/check.mjs', module: '_payload', source: 'payload/check.mjs', content, lockHash, kind: 'payload' }, priorLock, forceManagedPath));
   }
 
-  return { plan, skips, moduleWarnings };
+  return { plan, skips, moduleWarnings, droppedDefaults };
 }
 
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
 
-function printRenderPlan({ plan, skips, moduleWarnings, ignoredDests, json }) {
+function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, json }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({ status: p.status, path: p.target.path, module: p.target.module, kind: p.target.kind })),
-      skips, moduleWarnings, ignoredDests: arr(ignoredDests),
+      skips, moduleWarnings, droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
     }, null, 2));
     return;
   }
@@ -847,12 +874,12 @@ function cmdRender(args) {
   // The scaffold record decides both what gets written below and which
   // scaffold dests count as render targets, so it is read once, here.
   const scaffoldRecord = priorScaffoldRecord(priorLockJson, SCAFFOLDS, houseData, repoRoot); // template -> path
-  const { plan, skips, moduleWarnings } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold);
+  const { plan, skips, moduleWarnings, droppedDefaults } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold);
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
   const ignoredDests = gitIgnored(repoRoot, [...plan.map((p) => p.target.path), '.house/lock.json', '.house/INDEX.md']) || [];
-  printRenderPlan({ plan, skips, moduleWarnings, ignoredDests, json: args.json });
+  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, json: args.json });
 
   const refusals = plan.filter((p) => p.status === 'refuse');
   if (refusals.length > 0) process.exit(1);
