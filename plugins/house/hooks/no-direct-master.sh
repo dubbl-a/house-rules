@@ -779,7 +779,7 @@ for scan_cmd in "${scan_variants[@]}"; do
         # text cannot know what it becomes, and the protected name is one of
         # the things it can become. Spell the branch name.
         case "$tok" in
-          --a|--al*|--m*|--pr*|--br*)
+          --a|--al*|--m*|--pr|--pru*|--br*)
             deny "Refusing: '$tok' can move a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
           *'*'*|*'?'*|*'['*)
             deny "Refusing: a wildcard refspec ('$tok') can match a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR." ;;

@@ -875,6 +875,12 @@ expect_allow "round 3: prose naming a tag push in a message is still fine" \
 git -C "$t" checkout -q master
 expect_allow "round 3: a format string with a variable after a read-only verb is still fine" \
   "$(mk_payload "git log --format=\"%h \$x\" -1" "$t")"
+git -C "$t" checkout -q feat/x
+expect_allow "round 3: --progress is not --prune" \
+  "$(mk_payload "git $_p --progress origin feat/x" "$t")"
+expect_allow "round 3: --push-option is not --prune" \
+  "$(mk_payload "git $_p --push-option=ci.skip origin feat/x" "$t")"
+git -C "$t" checkout -q master
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
