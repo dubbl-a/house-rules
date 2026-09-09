@@ -107,7 +107,7 @@
     "github": {
       "enabled": true,
       "config": {
-        "actionsBudgetMinutes": 2000,
+        "actionsBudgetMinutes": null,
         "secretGlobs": []
       }
     },
