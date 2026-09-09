@@ -6,9 +6,18 @@
 #   - `git commit ...` while the target worktree is on a protected branch
 #   - `git push ...`   while the target worktree is on a protected branch,
 #     unless every push clause in the command moves only tags (see
-#     push_clause_is_tag_only: a positive grammar, refused when in doubt)
+#     push_args_are_tag_only: a positive grammar, refused when in doubt)
 #   - `git push <args> <protected>` whose refspec targets a protected branch,
 #     in ANY clause of the command, from any branch
+#   - from any branch, a push that can move a protected branch without naming
+#     it: --all, --branches, --mirror, --prune, a wildcard or computed ref, a
+#     `-c push.*` or `remote.<name>.push=` key
+#   - a git verb the shell computes (`git pu${x}sh`): refused on a protected
+#     branch, and read as a push from any branch
+#
+# The command is read by one token walker (git_split), not by adjacency: a
+# global option between `git` and the verb, a nested git command inside an
+# argument, and every clause behind a separator are all read.
 #
 # Fails OPEN (allow, exit 0) whenever:
 #   - the payload/command isn't a git invocation
@@ -232,12 +241,15 @@ carve_out_satisfied() {
 # addendum to #1). Any segment beginning -c, -m, or -F after a hyphen hit it.
 #
 # There is deliberately NO boundary on the RIGHT. Requiring `=` or whitespace
-# after the flag reads better and is wrong: it leaves git's own attached form
-# `git -cuser.name=x commit` unstripped, and the commit pattern below does not
-# match that string, so a real commit on a protected branch would be ALLOWED.
-# This strip has to fail toward stripping less than intended, never toward
-# hiding a verb: under-stripping costs a false deny, over-stripping costs a
-# bypass. Both directions are pinned in tests/hooks/run.sh.
+# after the flag reads better and was wrong: it left git's own attached form
+# `git -cuser.name=x commit` unstripped, and while the verb scans still matched
+# by adjacency that string did not match, so a real commit on a protected
+# branch was ALLOWED. The token walker (git_split, below) now finds the verb
+# past any global option, so today the cost would only be a value left in the
+# text; the rule stays because a flag's value is never a verb and removing it
+# whole is the direction this strip is allowed to fail in. Under-stripping
+# costs a false deny, over-stripping costs a bypass. Both directions are
+# pinned in tests/hooks/run.sh.
 #
 # A value that would EXPAND is never stripped. A double-quoted or bare value
 # holding `$` or a backtick is code the shell will run, not prose: the strip
@@ -265,8 +277,9 @@ _strip_flag_args() {
 # -c-retaining variant below still shows an interpreter's body to the scans.
 strip_message_args() { _strip_flag_args_blind '-c' "$(_strip_flag_args '-m|--message|-F|--file' "$1")"; }
 # The BLIND strip, quoted and bare values removed whole, `$` and backtick
-# included, for target resolution ONLY. The two consumers of a strip fail in
-# opposite directions. For the verb scans, text left in can only add a deny.
+# included, for target resolution and for -c in the verb scans. The two kinds
+# of consumer fail in opposite directions. For a message flag in the verb
+# scans, text left in can only add a deny.
 # For target resolution, text left in is a steering wheel: a `cd <repo> &&`
 # inside a message value that survived the strip is parsed as the target, and
 # a real sibling repo on a feature branch is a fail-open. The first version of
@@ -282,8 +295,9 @@ strip_message_args() { _strip_flag_args_blind '-c' "$(_strip_flag_args '-m|--mes
 # put a token between `git` and the verb and hid the commit (#1, the quoted
 # -c seam); the same happened to `-c a=$(id -un)` once the word stopped at the
 # space inside the substitution. One rule over the whole word closes both. More
-# stripping is safe here and only here: target resolution guesses less, and
-# the -c-retaining variant still shows an interpreter's body to the verb scans.
+# stripping is safe for these two consumers and no other: target resolution
+# guesses less, and the -c-retaining variant still shows an interpreter's body
+# to the verb scans.
 _strip_flag_args_blind() {
   printf '%s' "$2" | sed -E "
     s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"]|'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`)+/\1/g"
@@ -522,9 +536,17 @@ cmd_safe2=$(strip_flag_args_keep_dash_c "$cmd" | sed -E "
 # expansion for the split itself: BSD sed has no `\n` in a replacement.
 # Backslashes, IFS and parameter defaults were already handled on the whole
 # command, above.
+# Sets CLAUSES rather than printing, so it runs in the parent shell: called
+# through a process substitution, a failing sed here would have fired the ERR
+# trap in the subshell, and the crash-deny JSON would have come back as clause
+# text with no git token in it, which is an allow. In the parent a failure
+# denies the way the contract promises.
+CLAUSES=''
 split_clauses() {
   local c="$1"
-  c=$(printf '%s' "$c" | sed -E 's/[0-9]*(&>>|&>|>&|<&|>>|>|<)[[:space:]]*[^[:space:](]*/ /g')
+  if ! c=$(printf '%s' "$c" | sed -E 's/[0-9]*(&>>|&>|>&|<&|>>|>|<)[[:space:]]*[^[:space:](]*/ /g'); then
+    crashed
+  fi
   c="${c//\|\|/$'\n'}"
   c="${c//&&/$'\n'}"
   c="${c//;/$'\n'}"
@@ -533,7 +555,7 @@ split_clauses() {
   c="${c//\(/ }"
   c="${c//\)/ }"
   c="${c//\`/ }"
-  printf '%s\n' "$c"
+  CLAUSES="$c"
 }
 
 # ── Reading one clause ───────────────────────────────────────────────────
@@ -541,9 +563,6 @@ split_clauses() {
 #   GV_VERB     the first token after `git` that is not a global option,
 #               with the options that take a separate value skipped;
 #   GV_ARGS     the tokens after the verb, one per line;
-#   GV_CMDPOS   1 when the `git` token is in command position: first in the
-#               clause, or right after an interpreter's -c/-e, exec, env,
-#               sudo, command, nohup, time, nice, or xargs;
 #   GV_COMPUTED 1 when the verb holds a `$`, a backtick, a brace, or a quote,
 #               so the shell computes it and this text cannot.
 # Returns 1 when the clause has no git token or no verb after it.
@@ -558,10 +577,10 @@ split_clauses() {
 # The value-taking list is git's own; a flag missing from it costs a wrong
 # verb read, which is a false deny or a miss only for a flag whose VALUE is a
 # git verb, and git rejects `-C=x` and friends outright.
-GV_VERB=''; GV_ARGS=''; GV_CMDPOS=0; GV_COMPUTED=0
+GV_VERB=''; GV_ARGS=''; GV_COMPUTED=0
 git_split() {
-  local toks=() i=0 n tok prev=''
-  GV_VERB=''; GV_ARGS=''; GV_CMDPOS=0; GV_COMPUTED=0
+  local toks=() i=0 n tok
+  GV_VERB=''; GV_ARGS=''; GV_COMPUTED=0
   IFS=$' \t\n' read -r -a toks <<<"$1"
   n="${#toks[@]}"
   [[ "$n" -gt 0 ]] || return 1
@@ -569,13 +588,6 @@ git_split() {
     tok="${toks[$i]}"
     i=$((i + 1))
     if [[ "$tok" == git || "$tok" == */git ]]; then
-      if [[ "$i" -eq 1 ]]; then
-        GV_CMDPOS=1
-      else
-        case "$prev" in
-          -c|-e|exec|env|sudo|command|nohup|time|nice|xargs) GV_CMDPOS=1 ;;
-        esac
-      fi
       while [[ "$i" -lt "$n" ]]; do
         tok="${toks[$i]}"
         i=$((i + 1))
@@ -600,7 +612,6 @@ git_split() {
       done
       return 1
     fi
-    prev="$tok"
   done
   return 1
 }
@@ -619,6 +630,7 @@ git_next() { git_split "${GV_ARGS//$'\n'/ }"; }
 any_clause_verb() {
   local v clause
   for v in "${scan_variants[@]}"; do
+    split_clauses "$v"
     while IFS= read -r clause; do
       if git_split "$clause"; then
         while :; do
@@ -626,7 +638,7 @@ any_clause_verb() {
           git_next || break
         done
       fi
-    done < <(split_clauses "$v")
+    done <<<"$CLAUSES"
   done
   return 1
 }
@@ -710,6 +722,7 @@ push_args_are_tag_only() {
 all_push_clauses_tag_only() {
   local v clause args seen=0
   for v in "${scan_variants[@]}"; do
+    split_clauses "$v"
     while IFS= read -r clause; do
       if git_split "$clause"; then
         [[ "$GV_VERB" == push && "$GV_COMPUTED" -eq 0 ]] || return 1
@@ -721,7 +734,7 @@ all_push_clauses_tag_only() {
       elif [[ "$clause" =~ (^|[^[:alnum:]])(git|push)([^[:alnum:]_-]|$) ]]; then
         return 1
       fi
-    done < <(split_clauses "$v")
+    done <<<"$CLAUSES"
   done
   [[ "$seen" -eq 1 ]] || return 1
   return 0
@@ -739,6 +752,7 @@ cmd_blind=$(strip_message_args "$cmd" | sed -E "
   s/(^|[[:space:]])#.*\$//")
 blind_has_verb() {
   local clause
+  split_clauses "$cmd_blind"
   while IFS= read -r clause; do
     if git_split "$clause"; then
       while :; do
@@ -746,7 +760,7 @@ blind_has_verb() {
         git_next || break
       done
     fi
-  done < <(split_clauses "$cmd_blind")
+  done <<<"$CLAUSES"
   return 1
 }
 quoted_only_hint() {
@@ -811,19 +825,28 @@ fi
 # for never missing a real destructive form. No regex is built from the
 # protected-branch name, so there is nothing to escape.
 #
-# A verb the hook cannot read is refused too, when git is in command position:
-# `git pu${x}sh origin master` names no verb this text can read, while the
-# shell hands git `push` (#1, review round 3). In argument position (`echo
-# "git $CMD"`, an issue body naming `git $branch`) the word is prose and is
-# left alone. Spelling the verb costs nothing.
+# A verb the hook cannot read (`git pu${x}sh origin master` names no verb this
+# text can read, while the shell hands git `push`) is handled inside the loop:
+# refused outright on a protected branch, and read as a push from any branch
+# so its arguments are checked for a protected name (#1, rounds 3 and 5).
 for scan_cmd in "${scan_variants[@]}"; do
+  split_clauses "$scan_cmd"
   while IFS= read -r clause; do
     git_split "$clause" || continue
     while :; do
-    if [[ "$GV_COMPUTED" -eq 1 && "$GV_CMDPOS" -eq 1 ]]; then
-      deny "Refusing: the git verb in this command is computed by the shell, so the branch guard cannot read it (house.json at $toplevel). Spell the verb plainly and retry."
-    fi
-    if [[ "$GV_VERB" != push ]]; then
+    if [[ "$GV_COMPUTED" -eq 1 ]]; then
+      # On a protected branch a verb this text cannot read is refused in any
+      # position: it may be the commit or push the branch is guarded against,
+      # and prose naming `git $x` here costs a retype, not a miss. From a
+      # feature branch the arguments are walked below as if the verb were
+      # push, so a computed verb aimed at a protected name is refused and one
+      # aimed at nothing (`echo "git $CMD"`, `git $x status`) is left alone.
+      # A command-position test was tried instead and reverted: `FOO=1 git
+      # pu${x}sh origin master` was outside its list (#1, round 5).
+      if is_protected_branch "$branch"; then
+        deny "Refusing: the git verb in this command is computed by the shell, so the branch guard cannot read it on '$branch' (house.json at $toplevel). Spell the verb plainly and retry."
+      fi
+    elif [[ "$GV_VERB" != push ]]; then
       git_next || break
       continue
     fi
@@ -867,7 +890,7 @@ for scan_cmd in "${scan_variants[@]}"; do
     done <<<"$push_args"
     git_next || break
     done
-  done < <(split_clauses "$scan_cmd")
+  done <<<"$CLAUSES"
 done
 
 exit 0

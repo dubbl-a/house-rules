@@ -603,9 +603,9 @@ expect_deny "not tag-only: --tag (git's abbreviation of --tags)" \
 expect_deny "not tag-only: --follow-tags moves the branch too" \
   "$(mk_payload "git $_p --follow-tags origin v1.0" "$t")" "feature branch"
 expect_deny "not tag-only: an explicit refspec with a colon" \
-  "$(mk_payload "git $_p origin v1.0:refs/heads/main" "$t")"
+  "$(mk_payload "git $_p origin v1.0:refs/heads/main" "$t")" "feature branch"
 expect_deny "not tag-only: a tag push chained with a branch push" \
-  "$(mk_payload "git $_p origin v1.0 && git $_p origin master" "$t")"
+  "$(mk_payload "git $_p origin v1.0 && git $_p origin master" "$t")" "feature branch"
 expect_deny "not tag-only: --delete" \
   "$(mk_payload "git $_p origin --delete v1.0" "$t")" "feature branch"
 expect_deny "not tag-only: a force flag" \
@@ -680,7 +680,8 @@ else fail "prose hint on a real verb" "reason: $reason"; fi
 # ── #1 review round 1: the fixes above opened seams of their own ──────────
 # (1) A clause break at `(`, backtick, `<`, `>` moved everything after the
 # character out of the push clause, so a push to master with a substitution
-# or a redirection BEFORE the ref was never read. They are spaces now.
+# or a redirection BEFORE the ref was never read. Parentheses and backticks
+# are spaces now; a redirection goes with its target (round 5).
 git -C "$t" checkout -q feat/x
 expect_deny "round 1: a substitution before the ref is still scanned (now refused as computed)" \
   "$(mk_payload "git $_p \$(echo origin) master" "$t")" "cannot read"
@@ -702,8 +703,8 @@ expect_deny "round 1: a backtick-bearing message cannot steer the target" \
   "$(mk_payload "$_c -m \"see \`x\`. cd $t2 && done\"" "$t")" "feature branch"
 expect_deny "round 1: a dollar-bearing message cannot steer the target (-C)" \
   "$(mk_payload "$_c -m \"cost \$5. git -C $t2 status\"" "$t")" "feature branch"
-# (3) The carve-out must not turn a push the recogniser cannot read into an
-# escape from the protected-branch block.
+# (3) The carve-out refuses a clause that runs any other git command, so a
+# push behind a tag push cannot ride through the protected-branch block.
 expect_deny "round 1: a tag push chained with an unrecognised push form" \
   "$(mk_payload "git $_p origin v1.0 && git --git-dir=$t/.git/ $_p origin master" "$t")" "feature branch"
 # (4) The refspec scan is the carve-out's safety net: a tag named after a
@@ -842,7 +843,7 @@ expect_deny "round 3: a tag push chained with any other git command is refused a
   "$(mk_payload "git tag v2.0 && git $_p origin v2.0" "$t")" "earlier call"
 git -C "$t" checkout -q feat/x
 expect_deny "round 3: a computed verb" \
-  "$(mk_payload "git pu\${x}sh origin master" "$t")" "computed"
+  "$(mk_payload "git pu\${x}sh origin master" "$t")" "protected branch"
 expect_deny "round 3: a computed ref" \
   "$(mk_payload "git $_p origin mast\${x}er" "$t")" "computed"
 expect_deny "round 3: a variable ref" \
@@ -909,7 +910,7 @@ expect_deny "adversarial 4: an upper-case remote push key" \
 expect_deny "adversarial 4: a mixed-case push.default key" \
   "$(mk_payload "git -c Push.Default=matching $_p origin" "$t")" "redirect"
 expect_deny "adversarial 4: a computed verb in an interpreter body is still refused" \
-  "$(mk_payload "bash -c \"git \$CMD origin master\"" "$t")" "computed"
+  "$(mk_payload "bash -c \"git \$CMD origin master\"" "$t")" "protected branch"
 expect_allow "adversarial 4: git in argument position with a variable is prose" \
   "$(mk_payload "echo \"git \$CMD\" > notes.txt" "$t")"
 expect_allow "adversarial 4: an issue body naming git with a variable is prose" \
@@ -924,6 +925,29 @@ expect_allow "adversarial 4: a feature push with a trailing redirect" \
   "$(mk_payload "git $_p origin feat/x >/dev/null 2>&1" "$t")"
 expect_deny "adversarial 4: a redirect target does not hide the ref before it" \
   "$(mk_payload "git $_p origin master >/dev/null" "$t")" "protected branch"
+git -C "$t" checkout -q master
+
+# ── #1 round 5 breaker: a computed verb is refused on a protected branch in
+# any position, and read as a push from any branch so its arguments are
+# checked. A command-position test was reverted: a leading assignment or an
+# unlisted launcher put the verb outside it.
+expect_deny "breaker: a leading assignment before a computed verb on master" \
+  "$(mk_payload "FOO=1 git \$V -m x" "$t")" "computed"
+expect_deny "breaker: an unlisted launcher before a computed verb on master" \
+  "$(mk_payload "timeout 5 git \$V -m x" "$t")" "computed"
+expect_deny "breaker: a computed verb with harmless arguments on master" \
+  "$(mk_payload "git \$x status" "$t")" "computed"
+git -C "$t" checkout -q feat/x
+expect_deny "breaker: a leading assignment before a computed push to master" \
+  "$(mk_payload "FOO=1 git pu\${x}sh origin master" "$t")" "protected branch"
+expect_deny "breaker: a launcher with its own option before a computed push to master" \
+  "$(mk_payload "sudo -u x git pu\${x}sh origin master" "$t")" "protected branch"
+expect_deny "breaker: an unlisted launcher before a computed push to master" \
+  "$(mk_payload "timeout 5 git pu\${x}sh origin master" "$t")" "protected branch"
+expect_allow "breaker: a computed verb with harmless arguments on a feature branch" \
+  "$(mk_payload "git \$x status" "$t")"
+expect_allow "breaker: a computed verb aimed at the feature branch itself" \
+  "$(mk_payload "git pu\${x}sh origin feat/x" "$t")"
 git -C "$t" checkout -q master
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"

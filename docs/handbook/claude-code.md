@@ -216,7 +216,9 @@ every time a hook, because the instruction file is advisory context
 
 The text-handling half of "fail it closed" was earned on 2026-09-08, and it is the part that
 reads as an ergonomics detail until it is not. The branch guard strips flag-borne values out of a
-command before matching, so the prose of a commit message cannot trigger or defeat the patterns (a value the shell would expand is left in view since 0.9.0, because it is code). That stripper
+command before matching, so the prose of a commit message cannot trigger or defeat the patterns
+(since 0.9.0 a message value the shell would expand is left in view, because it is code; a `-c`
+value is still removed whole, because it sits before the verb). That stripper
 matched its flag alternation anywhere in the command, including inside a word, so a worktree whose
 directory name held a segment beginning `-c`, `-m`, or `-F` lost the rest of that segment, target
 resolution parsed out a path that does not exist, and a commit from a good feature branch was
@@ -224,11 +226,13 @@ refused as being on the protected one. Two people hit it in one week and both wo
 renaming the directory.
 
 The fix was to require the flag to start a token. The obvious companion, requiring a separator
-after the flag so the value is unmistakably a value, was drafted and rejected: it leaves git's own
-attached form (`git -cuser.name=x` followed by the verb) unstripped, and the commit pattern
-requires the verb to follow `git` directly, so that string stops matching and a real commit on a
-protected branch is allowed. A change aimed squarely at a false refusal would have opened a
-bypass, and it looked like the cleaner regex of the two.
+after the flag so the value is unmistakably a value, was drafted and rejected: it left git's own
+attached form (`git -cuser.name=x` followed by the verb) unstripped, and the commit pattern at the
+time required the verb to follow `git` directly, so that string stopped matching and a real commit
+on a protected branch was allowed. A change aimed squarely at a false refusal would have opened a
+bypass, and it looked like the cleaner regex of the two. (Since 0.9.0 the guard finds the verb by
+walking tokens rather than by adjacency, so that particular seam is closed; the rule about which
+direction a strip may fail in is what the episode teaches, and it still holds.)
 
 That asymmetry is the rule. Leaving text in can only add denials, because every scan is a match
 against more text than before. Removing text that a pattern needed is silent and unbounded. The
