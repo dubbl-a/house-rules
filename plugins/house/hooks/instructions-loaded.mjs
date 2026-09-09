@@ -21,13 +21,17 @@
 // CLAUDE_CONFIG_DIR, else this payload's own `cwd` with every "/" turned
 // into "-". `house doctor` derives the same key from the resolved repo
 // root instead, since that is all doctor ever has.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync, renameSync, unlinkSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
 // A line past this, the file rewrites itself down to roughly its last half
 // rather than growing without bound: this log is evidence for doctor to
-// read back, not an audit trail worth keeping forever.
+// read back, not an audit trail worth keeping forever. Appends are
+// concurrency-safe (appendLine below); the rewrite this triggers is the one
+// remaining window where a concurrent event can be lost, see trimIfOversized.
 const CAP_BYTES = 256 * 1024;
 
 function logPathFor(cwd) {
@@ -36,16 +40,44 @@ function logPathFor(cwd) {
   return path.join(cfgDir, 'house', 'instructions-loaded', `${key}.jsonl`);
 }
 
-function appendCapped(logPath, line) {
+// One small O_APPEND write per event. A POSIX-local append of a record this
+// size is atomic: the kernel serializes concurrent appends to the same file
+// descriptor position, so two hook processes racing here each land their
+// whole line, never an interleaved half of one.
+function appendLine(logPath, line) {
   mkdirSync(path.dirname(logPath), { recursive: true });
-  let existing = '';
-  try { existing = readFileSync(logPath, 'utf8'); } catch { /* no log yet: start fresh */ }
-  let content = `${existing}${line}\n`;
-  if (Buffer.byteLength(content, 'utf8') > CAP_BYTES) {
+  appendFileSync(logPath, `${line}\n`, 'utf8');
+}
+
+// Runs only when the file has actually grown past CAP_BYTES, so the
+// whole-file rewrite this does is rare rather than once per event. Reads the
+// log, halves it, and writes the result to a temp file beside the log (same
+// directory, so the rename below is on the same filesystem and atomic)
+// before renameSync over the original, so no reader ever observes a
+// half-written file.
+//
+// Fail direction: an appendLine from another process that lands between this
+// function's readFileSync and its renameSync is overwritten by the rename
+// and lost. That is at most one line, only at the moment the cap is
+// crossed, and only in the undercount direction: it can drop a load that
+// happened, never fabricate one that did not.
+function trimIfOversized(logPath) {
+  let size;
+  try { size = statSync(logPath).size; } catch { return; }
+  if (size <= CAP_BYTES) return;
+
+  const tmpPath = path.join(path.dirname(logPath), `.${path.basename(logPath)}.${process.pid}.tmp`);
+  try {
+    const content = readFileSync(logPath, 'utf8');
     const lines = content.split('\n').filter((l) => l.length > 0);
-    content = `${lines.slice(Math.floor(lines.length / 2)).join('\n')}\n`;
+    const trimmed = `${lines.slice(Math.floor(lines.length / 2)).join('\n')}\n`;
+    writeFileSync(tmpPath, trimmed, 'utf8');
+    renameSync(tmpPath, logPath);
+  } catch {
+    // Best effort: leave the log as-is rather than risk losing it, and
+    // clean up the temp file if the write got that far but the rename did not.
+    try { unlinkSync(tmpPath); } catch { /* nothing to clean up */ }
   }
-  writeFileSync(logPath, content, 'utf8');
 }
 
 try {
@@ -59,7 +91,9 @@ try {
       load_reason: typeof payload.load_reason === 'string' ? payload.load_reason : null,
       session_id: typeof payload.session_id === 'string' ? payload.session_id : null,
     };
-    appendCapped(logPathFor(payload.cwd), JSON.stringify(record));
+    const logPath = logPathFor(payload.cwd);
+    appendLine(logPath, JSON.stringify(record));
+    trimIfOversized(logPath);
   }
 } catch { /* malformed stdin, unwritable log, anything: never block the session */ }
 
