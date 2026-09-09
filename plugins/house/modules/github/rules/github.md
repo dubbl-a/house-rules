@@ -26,6 +26,7 @@ Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin
 Treat CI minutes as one pool shared by every repo on the account, billed per job with a per-job minimum, so the number of runs costs as much as their duration.
 Pause an expensive cron by hand, then ship a one-shot job to re-enable it, because a token cannot re-enable another repo's workflow.
 Read the check-run annotation when a run dies at startup, because a billing failure carries no logs and looks nothing like a code failure.
+Set the slot to null on a public repo, because its Actions minutes are unmetered, and let the check state that plainly instead of estimating runs against a budget that no longer applies.
 Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's own spending budget is the hard stop. An agent workflow caps nothing on its own, and its runner minutes draw on the same account pool as every other job.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 
@@ -133,6 +134,14 @@ Say beside a deliberately public value that it is public and why, so nobody reda
 Anchor: `.env.example`, where each public value carries the reason it is safe to commit.
 Receipts: `docs/handbook/github.md#label-a-non-secret-as-a-non-secret`
 
+## Ship the community files the platform looks for, and keep issue intake as forms
+
+Ship a code of conduct, a security policy that names a reporting route, and a contributing guide, because the platform's community-profile check reads each missing one as a gap and a newcomer reads that gap as neglect.
+Take issue intake through YAML forms with blank issues disabled, so a report starts from a structured shape instead of a free-text box.
+The pull-request template already has its own rule above; point here rather than repeating it.
+Anchor: confirm the platform's community-profile endpoint at adoption, the same shape as confirming push protection in settings; a checker family here is a later cycle if it earns one.
+Receipts: `docs/handbook/github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms`
+
 ## Don't
 
 Don't gate a PR on a check that needs a live credential.
@@ -151,4 +160,5 @@ Don't give one key write access to a second scope.
 Don't log a vendor object, in a log line, an error message, or a URL.
 Don't leave a preview URL outside the auth policy.
 Don't redact a value that is deliberately public.
+Don't ship without a code of conduct, a security policy, or a contributing guide, and don't leave blank issues enabled.
 Anchor: each prohibition above is the negative of a rule in this file; that rule names the enforcement.
