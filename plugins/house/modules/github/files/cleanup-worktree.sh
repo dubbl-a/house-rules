@@ -2,8 +2,9 @@
 # Tear down a sibling worktree after its PR has merged.
 #
 # Runs the canonical cleanup tail in order:
-#   1. kill any node/npm/astro/wrangler process whose cwd is inside the
-#      worktree (typically a forgotten dev server);
+#   1. kill any process from the configured kill list (house.json's
+#      github.worktreeKillProcesses slot, default node/npm) whose cwd is
+#      inside the worktree (typically a forgotten dev server);
 #   2. `git worktree remove --force` the worktree path; --force is
 #      required because every worktree carries an untracked
 #      `node_modules/` (each worktree gets its own install), and the
@@ -60,6 +61,42 @@ resolve_default_branch() {
   fi
   echo main
 }
+
+# resolve_kill_list: house.json's github.worktreeKillProcesses config
+# slot, else the default ["node", "npm"]. Prints one name per line, empty
+# when the slot is an explicit empty array (or an array with no string
+# entries); that means "kill nothing" and is honored rather than
+# overridden back to the default. A slot that is present but not an
+# array falls back to the default and warns on stderr, since that is a
+# misconfiguration rather than an unset slot. Mirrors
+# resolve_default_branch's jq-with-fallback pattern: the bash-level
+# fallback also fires when jq or house.json itself is unavailable.
+resolve_kill_list() {
+  local repo_root house_json raw_type names
+  repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  house_json="$repo_root/house.json"
+  if [[ -f "$house_json" ]] && command -v jq >/dev/null 2>&1; then
+    raw_type="$(jq -r '(.modules.github.config.worktreeKillProcesses // null) | type' "$house_json" 2>/dev/null || true)"
+    if [[ "$raw_type" == "array" ]]; then
+      names="$(jq -r '.modules.github.config.worktreeKillProcesses | map(select(type=="string")) | .[]' "$house_json" 2>/dev/null || true)"
+      if [[ -n "$names" ]]; then
+        printf '%s\n' "$names"
+      fi
+      return 0
+    fi
+    if [[ -n "$raw_type" && "$raw_type" != "null" ]]; then
+      echo "cleanup-worktree.sh: worktreeKillProcesses in house.json is not an array; using the default (node, npm)" >&2
+    fi
+  fi
+  printf '%s\n' node npm
+}
+
+# Let a test `source` this script and call resolve_default_branch /
+# resolve_kill_list directly, without running the teardown below.
+# BASH_SOURCE[0] differs from $0 only when the file is sourced.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  return 0
+fi
 
 DEFAULT_BRANCH="$(resolve_default_branch)"
 
@@ -123,20 +160,25 @@ fi
 
 # Stop dev/build processes still living inside the worktree. We look up
 # every process whose current working directory is the worktree and kill
-# the node/npm/astro/wrangler ones — that's the dev-server class. Shells,
-# editors, and other tools the user might have open with the worktree as
-# cwd are left alone.
+# the ones matching the configured kill list (resolve_kill_list, default
+# node/npm), the dev-server class. Shells, editors, and other tools the
+# user might have open with the worktree as cwd are left alone.
 echo "→ scanning for processes inside $ABS_WT"
+kill_list="$(resolve_kill_list)"
 pids="$(lsof -d cwd 2>/dev/null | awk -v wt="$ABS_WT" '$NF==wt {print $2}' | sort -u || true)"
 if [[ -n "$pids" ]]; then
   for pid in $pids; do
     cmd="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
-    case "$cmd" in
-      *node*|*npm*|*astro*|*wrangler*)
-        echo "  killing $cmd (pid $pid)"
-        kill "$pid" 2>/dev/null || true
-        ;;
-    esac
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
+      case "$cmd" in
+        *"$name"*)
+          echo "  killing $cmd (pid $pid)"
+          kill "$pid" 2>/dev/null || true
+          break
+          ;;
+      esac
+    done <<< "$kill_list"
   done
   # Give the kernel a moment to release file descriptors so worktree
   # remove doesn't fail on a still-attached process.

@@ -40,7 +40,7 @@
       "path": "scripts/house/cleanup-worktree.sh",
       "module": "github",
       "source": "modules/github/files/cleanup-worktree.sh",
-      "bodySha256": "b385be66aeb3f45a59b6f19d6ce3dd54d0f003a82378124ff785c365a37788ef"
+      "bodySha256": "835d6428535917891406876ded35df7ea194c15d39b98b7e49e59204789fff31"
     },
     {
       "path": ".claude/rules/house/testing.md",
