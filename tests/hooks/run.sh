@@ -766,6 +766,46 @@ expect_allow "adversarial: a plain feature push is still fine" \
 expect_allow "adversarial: a feature push with 2>&1 after the ref is still fine" \
   "$(mk_payload "git $_p origin feat/x 2>&1" "$t")"
 git -C "$t" checkout -q master
+
+# ── #1 adversarial round 2: substitutions in -c, backslashes in words, IFS ──
+# Backslashes are now read the shell's way on the whole command: a
+# backslash-newline vanishes and every other backslash escapes the character
+# after it, which stays. A -c value is one whole word, substitutions included.
+expect_deny "adversarial 2: a -c value with a spaced substitution still denies on master" \
+  "$(mk_payload "git -c user.name=\$(id -un) $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 2: a -c value with spaced backticks still denies on master" \
+  "$(mk_payload "git -c user.name=\`id -un\` $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 2: two -c values, one with a spaced substitution" \
+  "$(mk_payload "git -c a.b=\$(id -un) -c c.d=1 $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 2: a backslash inside the program word cannot hide it" \
+  "$(mk_payload "gi\\t $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 2: a backslash inside the verb cannot hide it" \
+  "$(mk_payload "git co\\mmit -m x" "$t")" "feature branch"
+expect_deny "adversarial 2: a line continuation between git and the verb cannot hide it" \
+  "$(mk_payload "git \\
+$_verb -m x" "$t")" "feature branch"
+git -C "$t" checkout -q feat/x
+expect_deny "adversarial 2: a -c value with a spaced substitution still denies a push to master" \
+  "$(mk_payload "git -c user.name=\$(id -un) $_p origin master" "$t")" "protected branch"
+expect_deny "adversarial 2: a backslash inside the push verb cannot hide it" \
+  "$(mk_payload "git pu\\sh origin master" "$t")" "protected branch"
+expect_deny "adversarial 2: a backslash inside the ref cannot hide it" \
+  "$(mk_payload "git $_p origin mas\\ter" "$t")" "protected branch"
+expect_deny "adversarial 2: a backslash inside a refs/heads ref cannot hide it" \
+  "$(mk_payload "git $_p origin refs/heads/mas\\ter" "$t")" "protected branch"
+expect_deny "adversarial 2: an escaped separator does not glue a push into the clause before it" \
+  "$(mk_payload "git $_p origin feat/x \; git $_p origin master" "$t")" "protected branch"
+expect_deny "adversarial 2: --m is git's shortest --mirror" \
+  "$(mk_payload "git $_p --m origin" "$t")" "without naming it"
+expect_deny "adversarial 2: a substring of IFS is still a separator" \
+  "$(mk_payload "git $_p origin\${IFS:0:1}master" "$t")" "protected branch"
+expect_deny "adversarial 2: a parameter default is read as its value" \
+  "$(mk_payload "git $_p origin \${x:-master}" "$t")" "protected branch"
+expect_allow "adversarial 2: a Windows path in a message is still fine" \
+  "$(mk_payload "$_c -m \"see C:\\Users\\x\\notes.txt\"" "$t")"
+expect_allow "adversarial 2: a feature push after the backslash handling is still fine" \
+  "$(mk_payload "git $_p origin feat/x" "$t")"
+git -C "$t" checkout -q master
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then

@@ -79,6 +79,7 @@ payload=$(cat)
 # and for every non-Bash payload this hook is ever handed.
 case "$payload" in
   *git*) ;;
+  *\\*) ;;   # a backslash can spell the word (`gi\t`); JSON doubles it, so it shows here
   *) exit 0 ;;
 esac
 
@@ -103,6 +104,16 @@ EOF
 fi
 
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null || echo "")
+
+# Backslashes go first, the way the shell reads them: a backslash-newline is a
+# line continuation and vanishes, and every other backslash escapes the next
+# character, which stays. Done to the whole command before any scan or strip,
+# because a backslash anywhere in a word hid that word from every reader here:
+# `gi\t commit`, `git co\mmit`, `git \`+newline+`commit` and `mas\ter` were all
+# invisible (#1, adversarial round 2). Deleting a backslash can only merge
+# characters into a word the scans then see, never split one apart.
+cmd="${cmd//\\$'\n'/}"
+cmd="${cmd//\\/}"
 
 # Precise re-check on the parsed field (the raw-text prefilter above can
 # false-positive, e.g. a cwd path containing "git" with a non-git command).
@@ -237,16 +248,18 @@ strip_message_args() { _strip_flag_args_blind '-c' "$(_strip_flag_args '-m|--mes
 # So target resolution keeps the old rules. A -c value must not steer either,
 # hence -c is in this alternation as well.
 #
-# The value is one shell WORD: a run of bare characters and quoted spans in
+# The value is one shell WORD: a run of bare characters, quoted spans,
+# substitutions (`$(...)`, backticks) and parameter expansions (`${...}`) in
 # any mix, ending at unquoted whitespace. Three separate rules (quoted, quoted,
 # bare) left `-c a="b c"` half-stripped, `a=` gone and `"b c"` behind, which
 # put a token between `git` and the verb and hid the commit (#1, the quoted
-# -c seam). One rule over the whole word closes that. More stripping is safe
-# here and only here: target resolution guesses less, and the -c-retaining
-# variant still shows an interpreter's body to the verb scans.
+# -c seam); the same happened to `-c a=$(id -un)` once the word stopped at the
+# space inside the substitution. One rule over the whole word closes both. More
+# stripping is safe here and only here: target resolution guesses less, and
+# the -c-retaining variant still shows an interpreter's body to the verb scans.
 _strip_flag_args_blind() {
   printf '%s' "$2" | sed -E "
-    s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"]|'[^']*'|\"[^\"]*\")+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"]|'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`)+/\1/g"
 }
 strip_message_args_for_target() { _strip_flag_args_blind '-m|--message|-F|--file|-c' "$1"; }
 # The same strip with -c RETAINED. An interpreter's -c body is code that will
@@ -489,23 +502,22 @@ re_push='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+
 # master` were never scanned, both of which the hook denied before. Parameter
 # expansion rather than sed: BSD sed has no `\n` in a replacement.
 #
-# Before the split: a backslash-newline is a line continuation and joins;
-# `&>`, `>&`, `<&` are redirections, not the `&` separator, and become
-# spaces (`2>&1 master` used to end the clause at the `&`); `$IFS` and
-# `${IFS}` are what the shell splits on and become a space here too; and every
-# remaining backslash becomes a space, because the clause regex stopped at one
-# and `git push origin v1.0 \master` was read as tag-only while the shell
-# handed git `master` (#1, adversarial round). Each of these can only add a
-# token the scans see.
+# Before the split: `&>`, `>&`, `<&` are redirections, not the `&` separator,
+# and become spaces (`2>&1 master` used to end the clause at the `&`); every
+# spelling of IFS (`$IFS`, `${IFS}`, `${IFS:0:1}`) is what the shell splits on
+# and becomes a space here too; and a parameter expansion with a default or
+# alternate value (`${x:-master}`) is read as that value, since the shell may
+# well produce it. Each of these can only add a token the scans see.
+# Backslashes were already handled on the whole command, above.
 split_clauses() {
   local c="$1"
-  c="${c//\\$'\n'/ }"
+  c=$(printf '%s' "$c" | sed -E '
+    s/\$\{IFS[^}]*\}/ /g;
+    s/\$IFS/ /g;
+    s/\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+=?]([^}]*)\}/\1/g')
   c="${c//&>/ }"
   c="${c//>&/ }"
   c="${c//<&/ }"
-  c="${c//\$\{IFS\}/ }"
-  c="${c//\$IFS/ }"
-  c="${c//\\/ }"
   c="${c//\|\|/$'\n'}"
   c="${c//&&/$'\n'}"
   c="${c//;/$'\n'}"
@@ -692,7 +704,7 @@ for scan_cmd in "${scan_variants[@]}"; do
         # unambiguous abbreviation of a long option, so the prefixes are
         # listed down to the shortest git would take (#1, adversarial round).
         case "$tok" in
-          --al|--all|--mi|--mir|--mirr|--mirro|--mirror|--pr|--pru|--prun|--prune)
+          --al|--all|--m|--mi|--mir|--mirr|--mirro|--mirror|--pr|--pru|--prun|--prune)
             deny "Refusing: '$tok' can move a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
           *'*'*)
             deny "Refusing: a wildcard refspec ('$tok') can match a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
