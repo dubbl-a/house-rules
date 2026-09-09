@@ -20,11 +20,11 @@ jobs:
       - run: npm run check:traceability
       - run: bash tests/hooks/run.sh
       - run: node plugins/house/payload/check.mjs
-      - run: bash tests/smoke-bootstrap.sh
+      - run: npm run test:smoke
       - name: Official validator (best-effort install, strict result)
         run: |
           if npm i -g @anthropic-ai/claude-code >/dev/null 2>&1; then
-            claude plugin validate --strict ./plugins/house
+            npm run check:plugin
           else
             echo "claude CLI unavailable in this runner; structure tests above are authoritative"
           fi

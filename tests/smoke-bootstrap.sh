@@ -10,7 +10,7 @@
 # concurrent workflow and may not exist yet at the time this runs. Prints
 # which one it used.
 #
-# Run: bash tests/smoke-bootstrap.sh   (wired as `bash tests/smoke-bootstrap.sh` in ci.yml)
+# Run: bash tests/smoke-bootstrap.sh   (wired as npm run test:smoke, called from ci.yml)
 #
 # Counts and reports pass/fail; exits non-zero if any check failed.
 
