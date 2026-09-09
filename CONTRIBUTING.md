@@ -63,14 +63,16 @@ through it, never a silent edit to the checker itself:
 Both require a written reason on the same commit as the growth or the decline; neither is a way
 to route around review.
 
-## Rule content is minor; the named surface is major
+## Below 1.0, the breaking class spends the minor
 
-`docs/decisions/0011-rule-content-changes-are-minor.md` settles this in two sentences: rewriting,
-adding, or re-arguing rule prose is a minor change, because nothing reaches an adopting repo
-without a person running `/house-rules:sync` and approving the plan it prints; renaming or
-removing a rule heading, removing or renaming a config slot, tightening what the branch guard
-denies, changing the `house.json` or `.house/` layout, or raising the Node floor is major, and is
-still called out as breaking in the changelog while the package sits below 1.0.
+`docs/decisions/0011-rule-content-changes-are-minor.md` settles the classes: rewriting, adding, or
+re-arguing rule prose is minor, because nothing reaches an adopting repo without a person running
+`/house-rules:sync` and approving the plan it prints; renaming or removing a rule heading, removing
+or renaming a config slot, tightening what the branch guard denies, changing the `house.json` or
+`.house/` layout, or raising the Node floor is the breaking class. Below 1.0 there is no major
+slot, so `docs/decisions/0012-below-one-spend-the-minor-on-the-breaking-class.md` gives the
+breaking class the minor and every other change the patch, until 1.0 restores major, minor, and
+patch as 0011 states them.
 
 ## Changelog
 

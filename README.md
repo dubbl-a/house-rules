@@ -88,16 +88,15 @@ vocabulary each family reads is in the header comment atop `plugins/house/payloa
 
 ## Versioning and breaking changes
 
-A change to the prose inside a rule file ships as a minor, not a major. Rule bodies are the bulk of
-what you vendor and nearly every release rewrites some of them, but no rule byte reaches your
-checkout until you run `/house-rules:sync` and approve the plan it prints, so a rewrite is a
-proposal to your repo rather than a delivery into it.
+Three classes, per `docs/decisions/0011-rule-content-changes-are-minor.md`: rule content is minor,
+the named surface (a rule heading, a config slot, the guard's deny set, the `house.json` or
+`.house/` layout, the Node floor) is breaking, and a fix is patch. No rule byte reaches your
+checkout until you run `/house-rules:sync` and approve the plan it prints.
 
-Major is the named surface: renaming or removing a rule heading, removing or renaming a config slot,
-tightening what the branch guard denies, changing the layout of `house.json` or of the vendored
-`.house/` directory, and raising the Node floor in `package.json`. Below 1.0 there is no major slot
-to spend, so such a change is announced as breaking in `CHANGELOG.md` and carried by the next minor.
-The full class lists and the reasoning are in `docs/decisions/0011-rule-content-changes-are-minor.md`.
+Below 1.0 there is no major slot to spend, so the breaking class takes the minor and every other
+change takes the patch, giving a `^0.x` pin the semver it expects. At 1.0 the mapping returns to
+major, minor, and patch as 0011 states them. The full mapping is in
+`docs/decisions/0012-below-one-spend-the-minor-on-the-breaking-class.md`.
 
 ## License
 
