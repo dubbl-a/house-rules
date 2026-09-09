@@ -321,10 +321,16 @@ function vendoredRuleDests(repoRoot) {
   return [...loadPriorLock(repoRoot).keys()].filter((p) => p.startsWith('.claude/rules/house/') && p.endsWith('.md'));
 }
 
-// Evidence comes from the log itself: the last timestamp seen, and how many
+// Evidence comes from the log itself: the max timestamp seen, and how many
 // of the vendored rule dests appear as (a suffix of) some line's file_path.
 // A malformed line is skipped rather than treated as absence of evidence;
 // an absent log is not an error, just nothing witnessed yet.
+//
+// The max, not the last line in file order: appendLine's concurrent writers
+// (see instructions-loaded.mjs) can land in any order relative to when each
+// one's ts was stamped, so the last line on disk is not reliably the most
+// recent load. ISO 8601 timestamps compare lexicographically, so a plain
+// string comparison is enough, no Date parsing needed.
 function instructionsLoadedProbe(repoRoot) {
   const source = repoSettingsHasInstructionsLoadedBlock(repoRoot)
     ? 'repo'
@@ -340,7 +346,7 @@ function instructionsLoadedProbe(repoRoot) {
       let rec;
       try { rec = JSON.parse(line); } catch { continue; }
       if (!isPlainObject(rec)) continue;
-      if (typeof rec.ts === 'string') lastLoadAt = rec.ts;
+      if (typeof rec.ts === 'string' && (lastLoadAt === null || rec.ts > lastLoadAt)) lastLoadAt = rec.ts;
       if (typeof rec.file_path === 'string') {
         for (const dest of vendored) if (rec.file_path.endsWith(dest)) seen.add(dest);
       }
