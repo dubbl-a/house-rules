@@ -82,7 +82,43 @@ repo-d's `intel-enrichment` skill states the cost asymmetry directly: holding an
 
 Two further memory-corpus findings sharpen the "don't act" half specifically. When both surfaced candidate matches look wrong, the fix is to search the full source file rather than choose between the two options already on offer, because the right registrant is often outside the surfaced set entirely (feedback_adjudicate_broader_voter_file.md, memory corpus). And every graph edge in the pipeline, such as a person-to-organization leadership relationship, is derived by the pipeline itself and never hand-typed into NocoDB or Neon, with the relationship type left extensible rather than shipping a low-precision matcher to force a decision the data does not support yet (feedback_no_manual_relationship_entry.md, memory corpus).
 
+## Key a projection on its source's whole grain, and prove that grain with a constraint
+
+repo-a produced this rule on 2026-09-08, during an ordinary publish run. A migration had added a
+body column to the published copy of a person-roles table, widening what makes one of its rows
+unique. The publisher that projects that table onto the published schema kept the old key, so its
+source query did not carry the new column, and two rows that now differ by body collapsed onto one
+key inside a single batch. Postgres refused the batch with a cardinality violation, "ON CONFLICT DO
+UPDATE command cannot affect row a second time", from a line that names the publisher and says
+nothing about the migration. Five people were affected. Four had one current row plus a legacy row
+with no body; one had two rows that looked identical, which is the second half of the finding: the
+source table had no unique constraint on its own natural key, so nothing there could have objected
+either.
+
+What makes this rule worth writing is where it sits relative to everything that already exists.
+Every schema-evolution tool treats an added column as the safe case. dlt calls it the easy case
+and says that is why every vendor picked it as the default; the standard staging policy is to
+evolve columns automatically. None of that tooling asks whether the addition changed what makes a
+row unique. Kimball's rule that declaring the grain is a binding contract on the design is the
+right frame and predates all of it, but the classic failure it warns about is failing to declare a
+grain at the start, not an additive change quietly renegotiating one already declared. dbt is the
+closest neighbour and names the source-side half exactly: it does not test the uniqueness of an
+incremental model's key, and advises testing the source data to confirm the key really is unique.
+So the two halves are each half-covered and the join between them is not covered at all.
+
+The failure signature is the reason it needs a run invariant rather than review. Nothing failed at
+migration time, because adding a column is valid. Nothing failed at write time on the source,
+because no constraint objected. The first symptom was an opaque error in a third system, on a run
+nobody connected to the migration, and diagnosing it took reading a line number against the wrong
+file map first. The check that would have caught it is cheap and mechanical: compare each
+projection's write key against the unique constraint on the table it reads, and fail when the
+constraint spans a column the key does not.
+
 ## Sources
 
+- https://www.kimballgroup.com/2003/03/declaring-the-grain/ (the grain declaration as a binding contract on the design, and failing to declare it as the most frequent design error)
+- https://dlthub.com/blog/schema-evolution-guide (column addition as the default-permitted case in schema evolution, with type changes, removals, and renames treated as the breaking ones)
+- https://docs.getdbt.com/reference/resource-configs/unique_key (that the key is not itself tested for uniqueness, and the advice to test the source data instead)
+- https://pganalyze.com/docs/log-insights/app-errors/U126 (the cardinality violation raised when one batch proposes two rows with the same constrained values)
 - https://nickjanetakis.com/blog/cli-tools-that-support-previews-dry-runs-or-non-destructive-actions (widely-held guidance on `--dry-run` as a default and an explicit `--yes` for automation)
 - https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices (official guidance on plan-validate-execute for batch or destructive work)
