@@ -10,7 +10,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,19 +29,60 @@ function sandboxConfigDir() {
   return d;
 }
 
+/**
+ * Build the child env both runners spawn the hook with: CLAUDE_CONFIG_DIR
+ * always pinned to a sandbox (the caller's, or a fresh one), and
+ * CLAUDE_CODE_PROJECT_DIR_NAME stripped out of the inherited process.env
+ * unless the caller's own `env` sets it. Without that strip, an ambient
+ * CLAUDE_CODE_PROJECT_DIR_NAME (set by ANY real Claude Code session this
+ * suite happens to run inside, this one included) would ride along into
+ * every spawned hook and win the hook's own key derivation over cwd,
+ * collapsing every case that expects a distinct cwd-keyed log onto one file.
+ */
+function buildHookEnv(env = {}) {
+  const configDir = env.CLAUDE_CONFIG_DIR || sandboxConfigDir();
+  const childEnv = { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir };
+  if (!Object.prototype.hasOwnProperty.call(env, 'CLAUDE_CODE_PROJECT_DIR_NAME')) {
+    delete childEnv.CLAUDE_CODE_PROJECT_DIR_NAME;
+  }
+  return { env: childEnv, configDir };
+}
+
 /** Run the real hook as a subprocess with `stdin` piped in. */
 function runHook(stdin, env = {}) {
-  const configDir = env.CLAUDE_CONFIG_DIR || sandboxConfigDir();
+  const { env: childEnv, configDir } = buildHookEnv(env);
   const res = spawnSync(process.execPath, [HOOK_PATH], {
     input: stdin,
     encoding: 'utf8',
-    env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
+    env: childEnv,
   });
   return { code: res.status, out: res.stdout || '', err: res.stderr || '', configDir };
 }
 
 function logPathFor(configDir, key) {
   return join(configDir, 'house', 'instructions-loaded', `${key}.jsonl`);
+}
+
+/**
+ * Run the real hook as a subprocess with `stdin` piped in, asynchronously
+ * (spawn, not spawnSync), so a caller can fire several at once with
+ * Promise.all and actually exercise their overlap. spawnSync cannot express
+ * this: it runs strictly one process at a time.
+ */
+function runHookAsync(stdin, env = {}) {
+  const { env: childEnv, configDir } = buildHookEnv(env);
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [HOOK_PATH], { env: childEnv });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', reject);
+    child.on('close', (code) => resolve({
+      code, out, err, configDir,
+    }));
+    child.stdin.end(stdin);
+  });
 }
 
 test('writes one JSON line under the sandboxed CLAUDE_CONFIG_DIR, keyed off cwd, and exits 0 with no stdout', () => {
@@ -155,4 +196,59 @@ test('a repo whose cwd derives an empty key (missing cwd) writes nothing, rather
   assert.equal(code, 0);
   assert.equal(out, '');
   assert.ok(!existsSync(join(configDir, 'house')));
+});
+
+// ── concurrency (#37) ────────────────────────────────────────────────────
+//
+// appendCapped() used to read the whole log, build the new content in
+// memory, and write the whole file back on every event: two processes that
+// overlap between the read and the write lose whichever line was written
+// first. spawnSync in every test above is strictly sequential and cannot
+// exercise that window at all, so this is the one case in the suite that
+// actually fires real hook processes at once (spawn, not spawnSync) and
+// counts what survives.
+test('16 concurrent hook processes across 3 rounds each land all 16 lines, none lost to the read-modify-write race', async () => {
+  const ROUNDS = 3;
+  const PROCS_PER_ROUND = 16;
+  for (let round = 0; round < ROUNDS; round += 1) {
+    const configDir = sandboxConfigDir();
+    const cwd = `/repo/concurrent-round-${round}`;
+    const expectedFilePaths = new Set();
+    const runs = [];
+    for (let i = 0; i < PROCS_PER_ROUND; i += 1) {
+      const filePath = `/repo/rule-${round}-${i}.md`;
+      expectedFilePaths.add(filePath);
+      const payload = JSON.stringify({
+        session_id: `s-${round}`,
+        cwd,
+        file_path: filePath,
+        load_reason: 'path_glob_match',
+      });
+      runs.push(runHookAsync(payload, { CLAUDE_CONFIG_DIR: configDir }));
+    }
+    // Rounds are sequential by design (each gets its own log file); the 16
+    // processes within a round race each other via Promise.all.
+    const results = await Promise.all(runs);
+
+    for (const r of results) {
+      assert.equal(r.code, 0, `round ${round}: every process must exit 0 (stderr=${r.err})`);
+      assert.equal(r.out, '', `round ${round}: every process must write nothing to stdout`);
+    }
+
+    const logPath = logPathFor(configDir, cwd.replace(/\//g, '-'));
+    const raw = readFileSync(logPath, 'utf8');
+    const seenFilePaths = new Set();
+    let parsedCount = 0;
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      // Parse each line in its own try/catch, the way doctor's probe does:
+      // one malformed line must not sink the whole assertion.
+      let rec;
+      try { rec = JSON.parse(line); } catch { continue; }
+      parsedCount += 1;
+      seenFilePaths.add(rec.file_path);
+    }
+    assert.equal(parsedCount, PROCS_PER_ROUND, `round ${round}: expected exactly ${PROCS_PER_ROUND} lines, got ${parsedCount}`);
+    assert.deepEqual(seenFilePaths, expectedFilePaths, `round ${round}: the logged file_path set must match every process that ran`);
+  }
 });
