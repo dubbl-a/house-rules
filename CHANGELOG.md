@@ -6,6 +6,20 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-09
+
+The InstructionsLoaded logger stops losing lines when rules load together, so doctor's count can be trusted; `house init` stops freezing slot defaults into the adopter's manifest; a public repo can mark its Actions minutes unmetered; and the github module gains a rule for the community files the platform looks for. Patch under ADR 0012: a hook fix, an init change, rule content, and a widened slot value, none of which removes or renames a named surface.
+
+### Fixed
+- **The InstructionsLoaded logger appends instead of rewriting.** The hook shipped in 0.9.0 read the whole log, added a line in memory, and wrote the file back, so two hook processes firing in the same instant lost whichever line landed first, and one file read that matched two rule globs was enough to make `house doctor` report a rule as never loaded. The hook now appends with one small O_APPEND write per event and trims only when the file is over its cap, writing the trimmed copy beside the log and renaming it into place. The one window left is stated beside the code: an append that lands inside a trim is lost, confined to a cap crossing and undercount-only, never a phantom load. Doctor's `last load` is the newest timestamp rather than the last line in file order. A concurrency test fires sixteen real hook processes at once and was shown failing against the 0.9.0 hook. Issue #37.
+
+### Changed
+- **`house init` writes intent, not defaults.** A fresh `house init --apply` now writes `config: {}` for every module instead of copying every declared slot default into `house.json`, so an adopter follows a future default instead of pinning the one that was current at init. The docs module keeps only what the probe found: `haystackDirs`, and `roots` only for a directory that actually holds a markdown file. Render already fills an absent slot from the module's declared default and the vendored checker carries its own fallback per slot, so nothing changes for an existing manifest; a parity test proves `{}` and a fully seeded manifest render and check identically. Two things surfaced on the way: the docs probe had been dead code since it sat under a `detect` branch while docs defaults to `on`, and the sync skill and schema said the version pin is bumped by hand when `house render --apply` has written it since 0.5.0; both now tell the truth. Next-cycle item 2 of #36.
+- **`actionsBudgetMinutes: null` means unmetered.** A public repo's Actions minutes are free, so the minutes family now suppresses its budget warning under an explicit `null` and prints an advisory saying why, rather than going silent. An absent slot still means the default budget. The rule "Budget Actions minutes as account-wide money" says when to set it. Backlog item 6 of #2.
+
+### Added
+- **A github rule for the community files the platform looks for.** "Ship the community files the platform looks for, and keep issue intake as forms": the code of conduct, a security policy with a reporting route, the contributing guide, YAML issue forms with blank issues disabled, and the pull-request template. Nothing local enforces it; the Anchor names the platform's community-profile endpoint as the check at adoption, and the handbook section carries the relaunch observation where that endpoint reported valid forms as missing right after creation. Backlog item 6 of #2; the "command-name idiom" slot from the same item is dropped, since no record says what it meant.
+
 ## [0.9.0] - 2026-09-09
 
 The branch guard reads a command by walking its tokens instead of matching adjacency, which closes a dozen bypasses and lets a tag-only publish through; the InstructionsLoaded positive control ships with the plugin; two refusals learn to name their remedy. Minor under ADR 0012: the guard change tightens what is denied, which ADR 0011 classes as breaking, and below 1.0 that class takes the minor; every other change here is patch-class.
