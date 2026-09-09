@@ -106,7 +106,7 @@ rule's text without its own heading. `handbook-only` is context or a receipt, no
 | TW-035 | repo-a:.claude/hooks/no-direct-master.sh | Block a commit on the protected branch, a push from it, and any push whose refspec targets it | port | script:no-direct-master.sh |
 | TW-036 | same, worktree awareness | Resolve the target worktree's branch by parsing the command, so a command aimed at a sibling checkout is judged against that checkout | port | script:no-direct-master.sh |
 | TW-037 | same, quote handling | Strip quoted text and comments before matching, so a commit message naming the branch cannot false-positive | port | script:no-direct-master.sh |
-| TW-038 | same, stated limitation | Say plainly that the hook is fail-fast UX and server-side branch protection is the real guarantee | fold | script:no-direct-master.sh |
+| TW-038 | same, stated limitation | Say plainly that the hook is fail-fast UX and server-side branch protection is the real guarantee | fold | chapter:github |
 | TW-039 | same, content carve-out | Allow a carve-out only when every changed path matches, and never let an empty diff satisfy it | port | script:no-direct-master.sh |
 | TW-040 | repo-a:scripts/test-no-direct-master.sh | Test the guard with cases that must block and cases that must pass, and build its literal tokens so the test cannot trip itself | port | script:hook-tests |
 | TW-041 | repo-a:scripts/lib/assert-master-at-origin.mjs | Pre-flight any script that reads the working tree and then pushes effects to a live system | port | script:deploy-guards.mjs |

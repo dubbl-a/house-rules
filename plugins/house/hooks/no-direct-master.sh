@@ -464,6 +464,8 @@ if [[ -z "$protected_list" ]]; then
   protected_list=$'master\nmain'
 fi
 
+# carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
+# in plugins/house/schema/house.schema.json.
 carve_outs=$(jq -r '(.carveOuts // [])[]' "$house_json" 2>/dev/null)
 
 carve_out_reason_suffix=""
@@ -487,6 +489,7 @@ fi
 # Which protection is real (this hook vs. GitHub's own) is a per-repo fact,
 # not a constant: see docs/handbook/github.md, "The branch guard's reach, and
 # which protection is real."
+#
 # Quote handling has to tell a commit MESSAGE from a quoted keyword. A blind
 # strip of every quoted span turns `git 'commit'` into `git ` and
 # `git push origin 'master'` into `git push origin `, silently defeating the
