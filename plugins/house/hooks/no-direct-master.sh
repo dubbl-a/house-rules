@@ -182,8 +182,10 @@ carve_out_satisfied() {
 
 # Remove flag-borne arguments (a quoted or bare value, `=`-joined or not) whose
 # ALTERNATION is passed in, so their text can neither trigger nor defeat a
-# match. Single-pass, not a full shell parser. One helper so the stripped and
-# the -c-retaining variants below can never desynchronize their sed rules.
+# match. Single-pass, not a full shell parser. One helper for the two verb-scan
+# variants below (stripped and -c-retaining) so they can never desynchronize
+# their sed rules; target resolution has its own blind helper further down,
+# and the difference between the two is deliberate (see there).
 #
 # The flag must START a token, hence the `(^|[[:space:]])` and the `\1` that
 # puts the separator back. Without it the alternation matched INSIDE a word:
@@ -253,10 +255,12 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 #   3. `cd <path> ; git ...`       -> use <path>
 #   4. otherwise                   -> use the payload's top-level cwd,
 #      falling back to "." (the hook process's own cwd)
-# Resolved against the message-stripped command: text inside a commit
-# message (`-m "note: cd /nonexistent && push"`) must not be able to point
-# the check at a non-repo path, because a non-repo path is a deliberate
-# fail-open below and quoted prose would turn it into a disarm.
+# Resolved against the BLIND-stripped command: text inside a commit message
+# (`-m "note: cd /nonexistent && push"`) must not be able to point the check
+# at a non-repo path, because a non-repo path is a deliberate fail-open below
+# and quoted prose would turn it into a disarm. Blind, not expand-aware: a
+# value holding `$` has to vanish here too, or it steers (see
+# strip_message_args_for_target).
 cmd_for_target=$(strip_message_args_for_target "$cmd")
 target_dir=""
 if [[ "$cmd_for_target" =~ git[[:space:]]+-C[[:space:]]+([^[:space:]]+) ]]; then
