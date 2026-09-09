@@ -218,8 +218,14 @@ _strip_flag_args() {
     s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"\`\$]*\"/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$]+/\1/g"
 }
-# Full strip, including -c, for the verb scans.
-strip_message_args() { _strip_flag_args '-m|--message|-F|--file|-c' "$1"; }
+# Full strip for the verb scans: message flags expand-aware, -c BLIND. The
+# expand-aware rule is right only for a flag that sits AFTER the verb, where a
+# residue can add a match but never break one. git's -c sits BEFORE the verb:
+# leaving `$USER` behind from `-c user.name=$USER commit` put a token between
+# `git` and `commit`, neither scan variant matched, and a commit on master was
+# allowed (#1, adversarial round). So -c is stripped whole here; the
+# -c-retaining variant below still shows an interpreter's body to the scans.
+strip_message_args() { _strip_flag_args_blind '-c' "$(_strip_flag_args '-m|--message|-F|--file' "$1")"; }
 # The BLIND strip, quoted and bare values removed whole, `$` and backtick
 # included, for target resolution ONLY. The two consumers of a strip fail in
 # opposite directions. For the verb scans, text left in can only add a deny.
@@ -230,11 +236,17 @@ strip_message_args() { _strip_flag_args '-m|--message|-F|--file|-c' "$1"; }
 # review round 1): `-m "cost $5. cd ../sibling && done"` on master was allowed.
 # So target resolution keeps the old rules. A -c value must not steer either,
 # hence -c is in this alternation as well.
+#
+# The value is one shell WORD: a run of bare characters and quoted spans in
+# any mix, ending at unquoted whitespace. Three separate rules (quoted, quoted,
+# bare) left `-c a="b c"` half-stripped, `a=` gone and `"b c"` behind, which
+# put a token between `git` and the verb and hid the commit (#1, the quoted
+# -c seam). One rule over the whole word closes that. More stripping is safe
+# here and only here: target resolution guesses less, and the -c-retaining
+# variant still shows an interpreter's body to the verb scans.
 _strip_flag_args_blind() {
   printf '%s' "$2" | sed -E "
-    s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"]*\"/\1/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"]+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"]|'[^']*'|\"[^\"]*\")+/\1/g"
 }
 strip_message_args_for_target() { _strip_flag_args_blind '-m|--message|-F|--file|-c' "$1"; }
 # The same strip with -c RETAINED. An interpreter's -c body is code that will
@@ -476,8 +488,24 @@ re_push='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+
 # clause, so `git push $(echo origin) master` and `git push >/dev/null origin
 # master` were never scanned, both of which the hook denied before. Parameter
 # expansion rather than sed: BSD sed has no `\n` in a replacement.
+#
+# Before the split: a backslash-newline is a line continuation and joins;
+# `&>`, `>&`, `<&` are redirections, not the `&` separator, and become
+# spaces (`2>&1 master` used to end the clause at the `&`); `$IFS` and
+# `${IFS}` are what the shell splits on and become a space here too; and every
+# remaining backslash becomes a space, because the clause regex stopped at one
+# and `git push origin v1.0 \master` was read as tag-only while the shell
+# handed git `master` (#1, adversarial round). Each of these can only add a
+# token the scans see.
 split_clauses() {
   local c="$1"
+  c="${c//\\$'\n'/ }"
+  c="${c//&>/ }"
+  c="${c//>&/ }"
+  c="${c//<&/ }"
+  c="${c//\$\{IFS\}/ }"
+  c="${c//\$IFS/ }"
+  c="${c//\\/ }"
   c="${c//\|\|/$'\n'}"
   c="${c//&&/$'\n'}"
   c="${c//;/$'\n'}"
@@ -651,7 +679,24 @@ for scan_cmd in "${scan_variants[@]}"; do
   while IFS= read -r clause; do
     if [[ "$clause" =~ (^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([^\&\;\|]*) ]]; then
       push_clause="${BASH_REMATCH[3]}"
-      for tok in $push_clause; do
+      # `read -a`, not `for tok in $push_clause`: a literal `*` token must
+      # reach the check below as itself, not as the files in the cwd.
+      local_toks=()
+      IFS=$' \t\n' read -r -a local_toks <<<"$push_clause"
+      [[ "${#local_toks[@]}" -gt 0 ]] || continue
+      for tok in "${local_toks[@]}"; do
+        # A push that names no branch can still move a protected one: --all
+        # and --mirror push every branch, --prune deletes what the remote has
+        # and the refspec lacks, and a wildcard refspec (`refs/heads/*`)
+        # matches the protected name without spelling it. git accepts any
+        # unambiguous abbreviation of a long option, so the prefixes are
+        # listed down to the shortest git would take (#1, adversarial round).
+        case "$tok" in
+          --al|--all|--mi|--mir|--mirr|--mirro|--mirror|--pr|--pru|--prun|--prune)
+            deny "Refusing: '$tok' can move a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
+          *'*'*)
+            deny "Refusing: a wildcard refspec ('$tok') can match a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
+        esac
         for part in ${tok//:/ }; do
           part="${part#+}"
           part="${part#refs/heads/}"

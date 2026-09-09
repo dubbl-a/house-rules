@@ -719,6 +719,53 @@ if [[ "$reason" == *"protected branch"* && "$reason" != *"quoted string"* ]]; th
   pass "round 1: no prose hint on a substitution"
 else fail "prose hint on substitution" "reason: $reason"; fi
 git -C "$t" checkout -q master
+
+# ── #1 adversarial round: -c residue, backslashes, pushes that name no branch ──
+# (1) A -c value ending in a variable left a residue between `git` and the
+# verb, so neither scan variant matched. -c is stripped blind again.
+expect_deny "adversarial: -c value ending in a variable still denies on master" \
+  "$(mk_payload "git -c user.name=\$USER $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial: attached -c value ending in a variable still denies" \
+  "$(mk_payload "git -cuser.name=\$USER $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial: quoted -c value with a substitution still denies on master" \
+  "$(mk_payload "git -c a=\"\$(x)\" $_verb -m x" "$t")" "feature branch"
+# (2) A backslash ended the push clause, so `v1.0 \master` read as tag-only
+# while the shell handed git `master`.
+expect_deny "adversarial: a backslash before the ref cannot hide it from the carve-out" \
+  "$(mk_payload "git $_p origin v1.0 \\master" "$t")" "feature branch"
+expect_deny "adversarial: a line continuation before the ref cannot hide it" \
+  "$(mk_payload "git $_p origin v1.0 \\
+master" "$t")" "feature branch"
+expect_deny "adversarial: --tags with a backslashed branch behind it" \
+  "$(mk_payload "git $_p --tags origin \\master" "$t")" "feature branch"
+# (3) From any branch: redirection pairs and IFS are not clause ends, and a
+# push that names no branch can still move a protected one.
+git -C "$t" checkout -q feat/x
+expect_deny "adversarial: -c value ending in a variable still denies a push to master" \
+  "$(mk_payload "git -c user.name=\$USER $_p origin master" "$t")" "protected branch"
+expect_deny "adversarial: a -c value that expands to a push is scanned" \
+  "$(mk_payload "git -c a=\$(git $_p origin master) status" "$t")" "protected branch"
+expect_deny "adversarial: 2>&1 before the ref does not end the clause" \
+  "$(mk_payload "git $_p origin 2>&1 master" "$t")" "protected branch"
+expect_deny "adversarial: &> before the ref does not end the clause" \
+  "$(mk_payload "git $_p origin &>/dev/null master" "$t")" "protected branch"
+expect_deny "adversarial: \${IFS} between remote and ref is a separator" \
+  "$(mk_payload "git $_p origin\${IFS}master" "$t")" "protected branch"
+expect_deny "adversarial: --all pushes every branch" \
+  "$(mk_payload "git $_p --all origin" "$t")" "without naming it"
+expect_deny "adversarial: --mirror pushes every branch" \
+  "$(mk_payload "git $_p --mirror origin" "$t")" "without naming it"
+expect_deny "adversarial: --al, git's abbreviation, is read the same way" \
+  "$(mk_payload "git $_p --al origin" "$t")" "without naming it"
+expect_deny "adversarial: --prune can delete a protected branch" \
+  "$(mk_payload "git $_p --prune origin feat/x" "$t")" "without naming it"
+expect_deny "adversarial: a wildcard refspec can match a protected branch" \
+  "$(mk_payload "git $_p origin refs/heads/*:refs/heads/*" "$t")" "wildcard"
+expect_allow "adversarial: a plain feature push is still fine" \
+  "$(mk_payload "git $_p origin feat/x" "$t")"
+expect_allow "adversarial: a feature push with 2>&1 after the ref is still fine" \
+  "$(mk_payload "git $_p origin feat/x 2>&1" "$t")"
+git -C "$t" checkout -q master
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
