@@ -286,7 +286,8 @@
         "EXT-063",
         "EXT-064",
         "EXT-066",
-        "EXT-068"
+        "EXT-068",
+        "PA-040"
       ],
       "crossRefs": [
         "AS-035",
@@ -311,9 +312,10 @@
         "Give a restricted key exactly one writable scope",
         "Never log a vendor object",
         "Treat a preview URL as production for exposure",
-        "Label a non-secret as a non-secret"
+        "Label a non-secret as a non-secret",
+        "Ship the community files the platform looks for, and keep issue intake as forms"
       ],
-      "notes": "17 headings and 45 owned rows against 200 lines is 11.8 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
+      "notes": "18 headings and 46 owned rows against 200 lines is 11.9 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
     },
     {
       "path": "plugins/house/modules/claude-code/rules/claude-code.md",

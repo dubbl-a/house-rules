@@ -91,6 +91,11 @@
 //                                              the default set rather than turning the scan off,
 //                                              and the manifest family names it.
 //   modules.github.config.actionsBudgetMinutes   integer, default 2000                  minutes family
+//                                                (explicit `null` means unmetered, e.g. a public
+//                                                repo's included Actions minutes; the minutes
+//                                                family then prints why it is not gated instead
+//                                                of estimating against a budget. Absent stays
+//                                                the default 2000, never treated as null.)
 //
 // Plus the schema's own top-level keys as already defined: version,
 // defaultBranch, branchPolicy, protectedBranches, carveOuts, guard, modules,
@@ -2011,7 +2016,12 @@ function estimateRunsPerMonth(cron) {
 function checkMinutes(ctx) {
   const warnings = [];
   const cfg = moduleConfig(ctx.house, 'github');
-  const budget = Number.isFinite(cfg.actionsBudgetMinutes) ? cfg.actionsBudgetMinutes : 2000;
+  const configured = cfg.actionsBudgetMinutes;
+  if (configured === null) {
+    warnings.push(mk('minutes', '.github/workflows', null, 'minutes', "actionsBudgetMinutes is null: a public repo's Actions minutes are unmetered, so the minutes family is not gated here"));
+    return { findings: [], warnings };
+  }
+  const budget = Number.isFinite(configured) ? configured : 2000;
   const workflowFiles = ctx.allTracked.filter((f) => /^\.github\/workflows\/.*\.ya?ml$/.test(f));
 
   let total = 0;

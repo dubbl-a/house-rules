@@ -145,6 +145,8 @@
   A preview URL outside the auth policy leaks exactly what production would leak.
 - Label a non-secret as a non-secret
   Say beside a deliberately public value that it is public and why, so nobody redacts it by reflex or reads the redaction as proof it was sensitive.
+- Ship the community files the platform looks for, and keep issue intake as forms
+  Ship a code of conduct, a security policy that names a reporting route, and a contributing guide, because the platform's community-profile check reads each missing one as a gap and a newcomer reads that gap as neglect.
 - Don't
   Don't gate a PR on a check that needs a live credential.
 

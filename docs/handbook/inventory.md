@@ -18,6 +18,9 @@ Row TW-201 came in later still, from a publisher-grain failure observed in repo-
 any source catalog, so its Source cell cites the incident. It is the first row added from a live
 incident instead of a survey.
 
+Row PA-040 came in from this package's own carryover issue rather than a source catalog too, citing
+the community-profile finding and the backlog item it closes.
+
 Rows EXT-086 to EXT-098 and PA-035 to PA-039 came in on the reconciliation pass that read the two
 testing source catalogs (`sources/testing-sweep.md`, `sources/testing-external.md`) after a
 template bug had kept them out of the spec stage. That pass also repointed EXT-084 to the renamed
@@ -751,3 +754,4 @@ few are mechanics the package adopts directly, and the testing rows land in the 
 | PA-037 | same, upstreams ledger 3, karanb192 | Borrow the zero-dependency runner, per-plugin colocated tests, and an explicit stdin/stdout integration tier, and scope out the runtime matrix where the package pins one runtime | handbook-only | chapter:testing |
 | PA-038 | same, vendor tooling verdict | Adopt no eval vendor, because the built-in runner already gives cases, graders, ablation, repeats, and cost ceilings with no new dependency and no key plumbing | handbook-only | chapter:testing |
 | PA-039 | same, adopt-as-practice items and per-case isolation | Pin a cheap model as a canary, scaffold each eval case into a fresh workspace, and blind the comparison until analysis | handbook-only | chapter:testing |
+| PA-040 | issue #2 item 4 (community-profile finding) and item 6 (backlog) | Ship the code of conduct, security policy, and contributing guide the platform's community-profile check looks for, take issue intake through YAML forms with blank issues disabled, and point at the existing PR-template rule instead of restating it, because the check reads an absent file as a gap and a newcomer reads that gap as neglect | port | rule:github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms |

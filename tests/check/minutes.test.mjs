@@ -31,6 +31,18 @@ test('minutes: actionsBudgetMinutes is configurable', () => {
   assert.match(out, /\[minutes\]/); // but now over the tighter 10-minute budget
 });
 
+test('minutes: actionsBudgetMinutes null makes a hot cron unmetered (no budget warning, prints why)', () => {
+  const dir = sandbox({
+    '.github/workflows/hot.yml': workflow('*/5 * * * *'),
+    'house.json': houseJson({ modules: { github: { enabled: true, config: { actionsBudgetMinutes: null } } } }),
+  });
+  const { code, out } = run(dir, ['--only=minutes']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /budget/); // no over-budget estimate, unlike the same cron under the default
+  assert.match(out, /\[minutes\]/); // still prints, rather than staying silent
+  assert.match(out, /unmetered/);
+});
+
 test('minutes: no scheduled workflows at all is silent', () => {
   const dir = sandbox({ '.github/workflows/pr.yml': "name: pr\non: pull_request\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps: []\n" });
   const { code, out } = run(dir, ['--only=minutes']);
