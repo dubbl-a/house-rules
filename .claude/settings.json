@@ -14,6 +14,23 @@
       "Bash(gh pr diff*)",
       "Bash(gh pr create*)",
       "Bash(gh pr merge*)"
+    ],
+    "deny": [
+      "Bash(node -e *)",
+      "Bash(node * -e *)",
+      "Bash(node --eval*)",
+      "Bash(node * --eval*)",
+      "Bash(node -p *)",
+      "Bash(node * -p *)",
+      "Bash(node --print*)",
+      "Bash(node * --print*)",
+      "Bash(python3 -c *)",
+      "Bash(python3 * -c *)",
+      "Bash(git -c *)",
+      "Bash(git * -c *)",
+      "Bash(git --exec-path*)",
+      "Bash(git * --exec-path*)",
+      "Bash(psql *\\!*)"
     ]
   }
 }

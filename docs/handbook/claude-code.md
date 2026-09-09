@@ -291,6 +291,44 @@ dead weight left over from a rename.
 repo-e's local settings show the same failure in miniature: two frozen one-off approvals,
 one of them hard-coding an expired scratchpad session UUID.
 
+Why the list accretes, and what stops it. The harness writes an allow rule from the verbatim
+command text when you pick "don't ask again", so the local list grows one exact invocation at a
+time and never converges: repo-a's is now near 270 entries, almost all one-shot commands
+carrying absolute paths. Pruning treats that on a cadence; the shape is what fixes it. Two
+failure modes fall out of the verbatim capture, both observed. Too narrow costs a round trip per
+variant: four exact `sed` invocations were allow-listed, every new `sed` in a pipeline drew a
+fresh prompt, and because a compound command requires every subcommand to match independently,
+one unlisted `sed` blocked the whole pipeline. Verbatim capture also silently widens a rule,
+because a stored command containing a shell glob turns those characters into permission
+wildcards; the harness warns about this only when the star precedes the subcommand, and a
+trailing star is never flagged and is often broader.
+
+The escape hatches worth denying, each verified by executing it against a settings file that
+allowed only the parent command. Under a broad `node` or `python3` allow, the inline-code flags
+(`-e`, `--eval`, `-p`, `--print`, `-c`) run code with no shell operators, so operator splitting
+never engages. Under a broad `git` allow, `git -c alias.zz='!<cmd>' zz` executed; the harness's
+own validator warns that `-c` and `--exec-path` can run arbitrary commands. Under a broad `psql`
+allow, a backslash-bang inside the SQL string ran a shell command. Two caveats carry into the
+rule. A deny needs the interior form as well as the bare one, because a rule naming only the
+leading flag misses `node --experimental-strip-types -e '<code>'`. And a pattern has to be
+executed rather than reasoned about: a naive `psql` shell-escape deny looks like it would also
+catch SQL containing an inequality operator, and the backslash-bang form does not, but that was
+settled by running it.
+
+This is a shape, not a boundary, and the rule says so. With the tool allowed broadly,
+`<interpreter> - <<'EOF'` and a piped `echo` still execute. They are deliberately left open,
+because the heredoc is also the ergonomic replacement for the flag just denied, so closing it
+buys daily friction and produces no boundary. The boundary is the sandbox. The deny list's value
+is that it blocks the first-reach form at no cost. Do not grow it chasing completeness either:
+`awk 'BEGIN{system()}'`, `find -exec`, and `xargs` were all blocked in testing despite `awk`
+being allowed broadly, by a layer beneath rule matching that is real, undocumented, and
+command-specific. Neither rely on it nor try to replicate it by hand.
+
+One asymmetry decides who makes the edit. An agent cannot apply the allow half to its own
+settings while auto mode is on, because editing a settings file to grant a permission is a hard
+deny; removing or restricting rules is permitted. The deny half is therefore an agent's to
+write, and the broad allow half is the operator's.
+
 Native floor, as of 2026-09-02: permission lists merging across scopes rather than overriding
 (https://code.claude.com/docs/en/settings#combine-settings-across-scopes), the allow and deny
 wildcard asymmetry on MCP tool names

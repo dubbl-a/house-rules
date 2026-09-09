@@ -112,7 +112,11 @@ Allow-list network fetches per domain rather than blanket, and pin the servers a
 Reach for a deny rule when you want the blanket, since a deny can wildcard across every tool of every server while an allow has to name its server, and keep a parameter-scoped rule on a server tool out of a settings file, because the loader skips it and says so only in the doctor output.
 Keep the wide accreted list in `settings.local.json`, gitignored and free of machine paths, and forward-declare a script you are about to add so its first run needs no prompt.
 Prune it on a cadence, because permission lists merge across every scope rather than override, so one broad grant supersedes every careful narrow one and a stale entry outlives the rename that orphaned it.
-Anchor: `plugins/house/templates/settings.json` ships the narrow committed allowlist with no hooks block, and `/house-rules:sync` refuses a managed file that was edited locally.
+Shape the list rather than only pruning it: allow a tool broadly and deny its escape hatches, because a deny enumerates hazards, which are finite and stable per tool, while an allow would enumerate safe invocations, which are unbounded and grow by one verbatim command every time you approve one.
+Write each deny in both the leading and the interior form, and run it against the invocation it must block and the innocent one it might catch, because a pattern's reach is not what reading it suggests.
+Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are left open because the heredoc is the ergonomic replacement for the flag just denied, and never grow the deny list chasing completeness.
+Leave the allow half to the operator, because an agent can tighten a settings file but cannot grant itself a permission in one.
+Anchor: `plugins/house/templates/settings.json` ships the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags, and `/house-rules:sync` refuses a managed file that was edited locally.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 
 ## Read a resume file as a harness artifact, not a handoff
@@ -154,6 +158,7 @@ Don't keep correcting the same failure past the second attempt in one context.
 Don't trust the branch you read at session start.
 Don't rebase another session's branch, and don't force-clean a checkout you do not own.
 Don't commit a wide allowlist, and don't let the local one accrete unpruned.
+Don't enumerate safe invocations where a deny on the escape hatch would do, and don't ship a deny pattern you have not run.
 Don't read a checkpoint file as a handoff.
 Don't drive shared external state before checking for a peer session.
 Anchor: each prohibition above is the negative of a rule in this file; that rule names the enforcement.

@@ -6,6 +6,22 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+- **The settings rule now names the shape that stops a permission list accreting, and the
+  settings template ships a deny list.** "Keep the committed settings narrow and the local
+  settings local" already said to prune on a cadence; it did not say why the list grows or what
+  shape stops it. The harness writes an allow rule from the verbatim command text, so the list
+  grows one exact invocation at a time and never converges. The rule now says to allow a tool
+  broadly and deny its escape hatches, to write each deny in both the leading and the interior
+  form, to run a pattern against both the invocation it must block and the innocent one it might
+  catch, and to say in the file that this is a shape rather than a boundary. It also records that
+  an agent can tighten a settings file but cannot grant itself a permission in one, which decides
+  who makes each half of the edit. `plugins/house/templates/settings.json` now carries a
+  `permissions.deny` block naming the inline-code flags on `node` and `python3`, `-c` and
+  `--exec-path` on `git`, and the `psql` shell escape. The template is a reference exemplar and
+  is not scaffolded into a repo by `house render`, so no existing adopter's settings change; copy
+  the block by hand if you want it. The matching handbook chapter carries the evidence.
+
 ### Fixed
 - **The branch guard no longer refuses a commit because of the directory's name.** The flag
   stripper in `plugins/house/hooks/no-direct-master.sh` matched its `-m`/`--message`/`-F`/
