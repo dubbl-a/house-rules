@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-08
+
+Two rules earned by failures this cycle: one for a publisher whose key stopped spanning its source's grain, one for the text a guard rewrites before it decides (minor under ADR 0011: rule content only, no config slot, hook contract, or layout moved).
+
 ### Added
 - **New `data-pipelines` rule: "Key a projection on its source's whole grain, and prove that grain
   with a constraint".** A migration widened what makes a row unique in a source table; the
