@@ -550,6 +550,132 @@ expect_deny "git -c with a separated value still denies on a protected branch" \
 expect_deny "git -c with an ATTACHED value still denies on a protected branch" \
   "$(mk_payload "git -cuser.name=x $_verb -m y" "$p")" "feature branch"
 
+
+# ── #1: every push clause is scanned, a value that expands stays visible, and a
+# tag-only publish passes ────────────────────────────────────────────────────
+# Three seams found while re-reading the hook for #1, each confirmed against
+# the shipped script before the fix:
+#   - the any-branch refspec scan read only the FIRST push clause per variant,
+#     so `git push origin feat && git push origin master` from a feature branch
+#     was allowed;
+#   - the flag strip removed a quoted value whole, substitution included, so
+#     `git commit -m "$(git push origin master)"` was allowed and the inner push
+#     ran;
+#   - a tag-only push from a protected branch was denied, so the documented
+#     release step was not runnable and tags went through `gh api`.
+# The verbs below are assembled from parts so this file cannot trip the guard
+# it exercises.
+_p="pu""sh"
+t="$TMP_ROOT/case_tags"; new_repo "$t"
+echo '{"branchPolicy":"pr"}' >"$t/house.json"
+git -C "$t" add house.json && git -C "$t" $_verb -q -m house
+git -C "$t" tag v1.0
+git -C "$t" tag v1.1
+git -C "$t" tag dual && git -C "$t" branch dual
+bare="$TMP_ROOT/case_tags_remote.git"; git init -q --bare "$bare"
+git -C "$t" remote add origin "$bare"
+
+# Tag-only forms, on the protected branch: allowed.
+expect_allow "tag-only: bare tag name" \
+  "$(mk_payload "git $_p origin v1.0" "$t")"
+expect_allow "tag-only: refs/tags form" \
+  "$(mk_payload "git $_p origin refs/tags/v1.0" "$t")"
+expect_allow "tag-only: tag keyword form" \
+  "$(mk_payload "git $_p origin tag v1.0" "$t")"
+expect_allow "tag-only: --tags before the remote" \
+  "$(mk_payload "git $_p --tags origin" "$t")"
+expect_allow "tag-only: --tags after the remote" \
+  "$(mk_payload "git $_p origin --tags" "$t")"
+expect_allow "tag-only: --tags with no remote" \
+  "$(mk_payload "git $_p --tags" "$t")"
+expect_allow "tag-only: two tags in one push" \
+  "$(mk_payload "git $_p origin v1.0 v1.1" "$t")"
+expect_allow "tag-only: chained with a non-push command" \
+  "$(mk_payload "git $_p origin v1.0 && gh release create v1.0" "$t")"
+
+# Not tag-only, on the protected branch: every one denies. The grammar is an
+# allowlist written in the safe direction, so the entry it forgets is a false
+# deny, never a miss.
+expect_deny "not tag-only: a name that is both a tag and a branch" \
+  "$(mk_payload "git $_p origin dual" "$t")" "feature branch"
+expect_deny "not tag-only: --tag (git's abbreviation of --tags)" \
+  "$(mk_payload "git $_p --tag origin v1.0" "$t")" "feature branch"
+expect_deny "not tag-only: --follow-tags moves the branch too" \
+  "$(mk_payload "git $_p --follow-tags origin v1.0" "$t")" "feature branch"
+expect_deny "not tag-only: an explicit refspec with a colon" \
+  "$(mk_payload "git $_p origin v1.0:refs/heads/main" "$t")"
+expect_deny "not tag-only: a tag push chained with a branch push" \
+  "$(mk_payload "git $_p origin v1.0 && git $_p origin master" "$t")"
+expect_deny "not tag-only: --delete" \
+  "$(mk_payload "git $_p origin --delete v1.0" "$t")" "feature branch"
+expect_deny "not tag-only: a force flag" \
+  "$(mk_payload "git $_p -f origin v1.0" "$t")" "feature branch"
+expect_deny "not tag-only: a remote git does not know" \
+  "$(mk_payload "git $_p nowhere v1.0" "$t")" "feature branch"
+expect_deny "not tag-only: a tag that does not exist" \
+  "$(mk_payload "git $_p origin v9.9" "$t")" "feature branch"
+expect_deny "not tag-only: a leading plus" \
+  "$(mk_payload "git $_p origin +v1.0" "$t")" "feature branch"
+expect_deny "not tag-only: no refspec at all" \
+  "$(mk_payload "git $_p origin" "$t")" "feature branch"
+expect_deny "not tag-only: bare push" \
+  "$(mk_payload "git $_p" "$t")" "feature branch"
+expect_deny "not tag-only: a dangling tag keyword" \
+  "$(mk_payload "git $_p origin tag" "$t")" "feature branch"
+expect_deny "the branch-push refusal names the tag-only form" \
+  "$(mk_payload "git $_p origin master" "$t")" "Tag-only"
+
+# Every push clause is scanned from any branch, not just the leftmost.
+git -C "$t" checkout -q -b feat/x
+expect_deny "every clause: && hides a push to master" \
+  "$(mk_payload "git $_p origin feat/x && git $_p origin master" "$t")" "protected branch"
+expect_deny "every clause: ; hides a push to master" \
+  "$(mk_payload "git $_p origin feat/x; git $_p origin master" "$t")" "protected branch"
+expect_deny "every clause: & hides a push to master" \
+  "$(mk_payload "git $_p origin feat/x & git $_p origin master" "$t")" "protected branch"
+expect_deny "every clause: || hides a push to master" \
+  "$(mk_payload "git $_p origin feat/x || git $_p origin master" "$t")" "protected branch"
+expect_deny "every clause: a newline hides a push to master" \
+  "$(mk_payload "git $_p origin feat/x
+git $_p origin master" "$t")" "protected branch"
+expect_deny "every clause: a pipe hides a push to master" \
+  "$(mk_payload "git $_p origin feat/x | cat; git $_p origin master" "$t")" "protected branch"
+expect_deny "every clause: a subshell group hides a push to master" \
+  "$(mk_payload "(git $_p origin master)" "$t")" "protected branch"
+expect_deny "every clause: a redirection glued to the branch name" \
+  "$(mk_payload "git $_p origin master>/dev/null" "$t")" "protected branch"
+expect_allow "every clause: a later non-push clause naming master is still fine" \
+  "$(mk_payload "git $_p origin feat/x; git log master" "$t")"
+
+# A value that would expand is code, not prose, and must stay in the text the
+# scans read. Single-quoted values do not expand and stay strippable.
+expect_deny "expanding value: double-quoted substitution in -m" \
+  "$(mk_payload "$_c -m \"\$(git $_p origin master)\"" "$t")" "protected branch"
+expect_deny "expanding value: backticks in -m" \
+  "$(mk_payload "$_c -m \"\`git $_p origin master\`\"" "$t")" "protected branch"
+expect_deny "expanding value: bare substitution in -m" \
+  "$(mk_payload "$_c -m \$(git $_p origin master)" "$t")" "protected branch"
+expect_deny "expanding value: substitution glued to a bare word" \
+  "$(mk_payload "$_c -m note\$(git $_p origin master)" "$t")" "protected branch"
+expect_deny "expanding value: substitution in -F" \
+  "$(mk_payload "$_c -F \"\$(git $_p origin master)\"" "$t")" "protected branch"
+expect_deny "expanding value: substitution in --message=" \
+  "$(mk_payload "$_c --message=\"\$(git $_p origin master)\"" "$t")" "protected branch"
+expect_allow "a dollar sign in prose without a verb is still fine" \
+  "$(mk_payload "$_c -m \"cost \$5 more\"" "$t")"
+expect_allow "a single-quoted message naming the verb does not expand and is stripped" \
+  "$(mk_payload "$_c -m 'note: git $_p origin master later'" "$t")"
+
+# A deny whose verb sits only inside a quoted string says so, and points at the
+# file route. The decision itself is unchanged: the text still denies.
+git -C "$t" checkout -q master
+expect_deny "quoted prose: the refusal names the file route" \
+  "$(mk_payload "gh issue create --title t --body \"see git $_p origin main for details\"" "$t")" "quoted string"
+run_hook "$(mk_payload "$_c -m x" "$t")"
+reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
+if [[ "$reason" == *"feature branch"* && "$reason" != *"quoted string"* ]]; then
+  pass "a real verb outside quotes gets no prose hint"
+else fail "prose hint on a real verb" "reason: $reason"; fi
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
