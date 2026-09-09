@@ -41,6 +41,8 @@ authority (CITED). REUSE and BORROW are the two that carry an ongoing rule:
 | github.com/skill-bench/skill-eval-action | 2026-08-24 | MIT | BORROW (idea only) | mandatory negative trigger case; upsert-one-PR-comment reporting | none |
 | github.com/antfu/eslint-config | 2026-09-01 | MIT | INFORMED | the README's opening contract (personal opinionated config; review the diff on every update, or fork) and the loose pole of the breaking-change policy (rule changes are not breaking) | on the next README rewrite |
 | typescript-eslint.io/users/versioning | 2026-09-01 | docs | INFORMED | the strict pole ADR 0011 weighed (preset and default changes are breaking) | re-read on an ADR 0011 revisit |
+| github.com/npm/node-semver | 2026-09-09 | docs | CITED | the 0.x caret-range rule ADR 0012 adopts: `^0.2.3` resolves to `>=0.2.3 <0.3.0`, patch-only compatibility below 1.0 | re-read on an ADR 0012 revisit |
+| doc.rust-lang.org/cargo/reference/specifying-dependencies | 2026-09-09 | docs | CITED | Cargo's matching 0.x caret-requirement rule ADR 0012 adopts: `0.2.3` resolves to `>=0.2.3, <0.3.0` | re-read on an ADR 0012 revisit |
 | prettier.io/docs/option-philosophy | 2026-09-01 | docs | INFORMED | why `modules.docs.config.emDash` is a small fixed surface (three modes, two lists) rather than a knob per exception | re-read on republication |
 | eslint.org/docs/latest/extend/shareable-configs | 2026-09-01 | docs | INFORMED | later-wins overrides as the model for per-repo config over package defaults | re-read on republication |
 | github.com/tsconfig/bases | 2026-09-01 | MIT | CONSULTED (not adopted) | runtime-tracking versions and automated daily publishing; this package keeps semver and manual releases | re-read on a tsconfig/bases major |

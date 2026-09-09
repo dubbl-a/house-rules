@@ -29,7 +29,7 @@ body:
     attributes:
       label: Plugin version
       description: Output of `claude plugin list`.
-      placeholder: "house-rules@house-rules  0.6.0"
+      placeholder: "house-rules@house-rules  0.8.0"
     validations:
       required: true
 

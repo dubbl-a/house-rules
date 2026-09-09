@@ -5,6 +5,8 @@ date: 2026-09-01
 
 # Ship a rule-content change as a minor, and reserve major for the named surface
 
+> Amended by [0012](0012-below-one-spend-the-minor-on-the-breaking-class.md) on 2026-09-09: the digit mapping below 1.0. The classes below stand.
+
 ## Context and problem statement
 
 `docs/handbook/conventions.md` enumerates this package's public surface under "Versioning the package, and what a bump is promising": the rule headings a consuming repo cites by name, the hook contracts, and the `house.json` schema including its module config slots. What that paragraph never says is which bump a change to the prose *inside* a rule file earns. Rule bodies are the bulk of what a consumer vendors and every release so far has rewritten some of them, so a strict reading makes almost every release breaking, and a version number that says "breaking" every time says nothing. The package is about to be readable by strangers, who will answer this question from the changelog rather than from the person who wrote both sides of it.

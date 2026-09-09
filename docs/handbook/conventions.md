@@ -162,9 +162,10 @@ heading, tightening what the hook denies, or removing a config slot is a breakin
 consumer even when no consumer's file changed; reordering prose inside a rule, adding a new
 module default-off, or adding an optional schema key is not. A released version is never
 modified in place, on the same reasoning that a decided record is never edited: the way to
-change a released version is the next one. Which bump each class of change earns, minor for
-rule content and major for the surface above, is decided in
-`docs/decisions/0011-rule-content-changes-are-minor.md`.
+change a released version is the next one. The classes, rule content minor and the surface
+above breaking, are decided in `docs/decisions/0011-rule-content-changes-are-minor.md`; which
+digit each class earns below 1.0, the breaking class the minor and everything else the patch,
+is decided in `docs/decisions/0012-below-one-spend-the-minor-on-the-breaking-class.md`.
 
 The honest limit on all of this is that SemVer was written for libraries, where the surface is
 an API and a compiler can tell you when it moved. Here the surface is behavioral, nothing
