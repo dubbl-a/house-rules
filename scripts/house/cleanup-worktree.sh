@@ -62,21 +62,30 @@ resolve_default_branch() {
   echo main
 }
 
-# resolve_kill_list: house.json's github.worktreeKillProcesses config slot,
-# else the default ["node", "npm"]. Prints one name per line. Mirrors
-# resolve_default_branch's jq-with-fallback pattern: the `//` in the jq
-# filter itself supplies the default when the slot is absent or null, and
-# the bash-level fallback below only fires when jq or house.json is
-# unavailable.
+# resolve_kill_list: house.json's github.worktreeKillProcesses config
+# slot, else the default ["node", "npm"]. Prints one name per line, empty
+# when the slot is an explicit empty array (or an array with no string
+# entries); that means "kill nothing" and is honored rather than
+# overridden back to the default. A slot that is present but not an
+# array falls back to the default and warns on stderr, since that is a
+# misconfiguration rather than an unset slot. Mirrors
+# resolve_default_branch's jq-with-fallback pattern: the bash-level
+# fallback also fires when jq or house.json itself is unavailable.
 resolve_kill_list() {
-  local repo_root house_json names
+  local repo_root house_json raw_type names
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   house_json="$repo_root/house.json"
   if [[ -f "$house_json" ]] && command -v jq >/dev/null 2>&1; then
-    names="$(jq -r '(.modules.github.config.worktreeKillProcesses // ["node","npm"]) | .[]' "$house_json" 2>/dev/null || true)"
-    if [[ -n "$names" ]]; then
-      printf '%s\n' "$names"
-      return
+    raw_type="$(jq -r '(.modules.github.config.worktreeKillProcesses // null) | type' "$house_json" 2>/dev/null || true)"
+    if [[ "$raw_type" == "array" ]]; then
+      names="$(jq -r '.modules.github.config.worktreeKillProcesses | map(select(type=="string")) | .[]' "$house_json" 2>/dev/null || true)"
+      if [[ -n "$names" ]]; then
+        printf '%s\n' "$names"
+      fi
+      return 0
+    fi
+    if [[ -n "$raw_type" && "$raw_type" != "null" ]]; then
+      echo "cleanup-worktree.sh: worktreeKillProcesses in house.json is not an array; using the default (node, npm)" >&2
     fi
   fi
   printf '%s\n' node npm

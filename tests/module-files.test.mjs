@@ -505,3 +505,58 @@ test('cleanup-worktree.sh: resolve_kill_list falls back to the default without j
   assert.equal(res.status, 0, res.stderr);
   assert.equal(res.stdout, 'node\nnpm\n');
 });
+
+test('cleanup-worktree.sh: resolve_kill_list falls back to the default and warns when the slot is not an array', () => {
+  const { work } = makeRepoWithOrigin('main');
+  writeFileSync(join(work, 'house.json'), JSON.stringify({
+    modules: { github: { config: { worktreeKillProcesses: { not: 'an array' } } } },
+  }));
+
+  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
+  if (!hasJq) {
+    console.log('  (jq not installed, skipping non-array kill-list resolution check)');
+    return;
+  }
+
+  const res = sourceAndResolveKillList(work);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, 'node\nnpm\n');
+  assert.match(res.stderr, /worktreeKillProcesses/);
+});
+
+test('cleanup-worktree.sh: resolve_kill_list honors an explicit empty array as "kill nothing"', () => {
+  const { work } = makeRepoWithOrigin('main');
+  writeFileSync(join(work, 'house.json'), JSON.stringify({
+    modules: { github: { config: { worktreeKillProcesses: [] } } },
+  }));
+
+  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
+  if (!hasJq) {
+    console.log('  (jq not installed, skipping empty-array kill-list resolution check)');
+    return;
+  }
+
+  const res = sourceAndResolveKillList(work);
+  assert.equal(res.status, 0, res.stderr);
+  // Empty output, not the default: an explicit [] is not overridden, and
+  // the scan loop's read-loop then has nothing to match, so the kill step
+  // is a no-op.
+  assert.equal(res.stdout, '');
+});
+
+test('cleanup-worktree.sh: resolve_kill_list keeps only the string entries of a mixed-type array', () => {
+  const { work } = makeRepoWithOrigin('main');
+  writeFileSync(join(work, 'house.json'), JSON.stringify({
+    modules: { github: { config: { worktreeKillProcesses: ['node', 123, 'npm', false] } } },
+  }));
+
+  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
+  if (!hasJq) {
+    console.log('  (jq not installed, skipping mixed-type kill-list resolution check)');
+    return;
+  }
+
+  const res = sourceAndResolveKillList(work);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, 'node\nnpm\n');
+});
