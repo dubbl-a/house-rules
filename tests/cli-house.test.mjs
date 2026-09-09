@@ -97,8 +97,12 @@ function buildFixturePlugin() {
       defaultPaths: ['src/**', 'scripts/**'],
     }, null, 2)}\n`,
     'modules/alpha/rules/alpha.md': ALPHA_BODY,
+    // `depth` declares a non-empty default (3) and nothing in defaultPaths
+    // ever reads it; it exists so a test can prove init writes {} even for a
+    // slot whose own spec says its default is not an empty array.
     'modules/beta/module.json': `${JSON.stringify({
-      name: 'beta', default: 'detect', rules: ['rules/beta.md'], files: [], configSlots: ['slot'],
+      name: 'beta', default: 'detect', rules: ['rules/beta.md'], files: [],
+      configSlots: ['slot', { name: 'depth', default: 3 }],
       defaultPaths: ['$slot'],
     }, null, 2)}\n`,
     'modules/beta/rules/beta.md': BETA_BODY,
@@ -205,10 +209,27 @@ test('init --apply writes a schema-shaped house.json with probed modules', () =>
   assert.deepEqual(data.modules.alpha.config, {});
 
   // beta is default "detect" with an unrecognized module name (not
-  // "deployment"/"database"): no known probe, so it defaults to disabled
-  // with its glob slot left empty for the operator to fill in.
+  // "deployment"/"database"): no known probe, so it defaults to disabled.
+  // Its config is {}, not its declared slot defaults (`slot: []`, `depth: 3`):
+  // a future default reaches this repo instead of freezing today's value.
   assert.equal(data.modules.beta.enabled, false);
-  assert.deepEqual(data.modules.beta.config, { slot: [] });
+  assert.deepEqual(data.modules.beta.config, {});
+});
+
+test('init --apply writes {} config even for a module declaring a slot with a non-empty default', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const { code } = runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(code, 0);
+  const data = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+
+  // alpha declares no configSlots at all.
+  assert.deepEqual(data.modules.alpha.config, {});
+  // beta declares `depth` with default 3 and `slot` with default []; init
+  // writes neither. Render (buildRenderPlan) is what spreads slotDefaults(m.json)
+  // under this empty config, so a repo that never touches `depth` still
+  // behaves as if it were 3 until the module's own default changes.
+  assert.deepEqual(data.modules.beta.config, {});
 });
 
 // ── render ───────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@
   "required": ["version", "defaultBranch", "branchPolicy", "modules"],
   "additionalProperties": false,
   "properties": {
-    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "description": "The plugin version this repo's vendored rules were rendered from. Bumped by /house-rules:sync, never by hand." },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "description": "Written by house render --apply from the plugin's plugin.json, never by hand." },
     "defaultBranch": { "type": "string", "minLength": 1 },
     "branchPolicy": { "enum": ["pr", "direct"], "description": "direct requires a deviations entry with a why." },
     "protectedBranches": { "type": "array", "items": { "type": "string", "minLength": 1 }, "default": ["master", "main"] },
