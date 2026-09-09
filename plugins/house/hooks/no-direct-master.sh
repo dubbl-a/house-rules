@@ -615,22 +615,31 @@ git_split() {
 # git_next reloads GV_* from what follows the verb just read; it returns 1
 # when nothing is left.
 git_next() { git_split "${GV_ARGS//$'\n'/ }"; }
+# verb_in_text VERB TEXT: split TEXT into clauses and read every git command
+# in every clause (git_next walks a clause holding more than one), returning
+# 0 the moment VERB turns up as a verb anywhere. Shared by any_clause_verb
+# (one text per scan variant) and blind_has_verb (one fixed text, cmd_blind).
+verb_in_text() {
+  local verb="$1" text="$2" clause
+  split_clauses "$text"
+  while IFS= read -r clause; do
+    if git_split "$clause"; then
+      while :; do
+        [[ "$GV_VERB" == "$verb" ]] && return 0
+        git_next || break
+      done
+    fi
+  done <<<"$CLAUSES"
+  return 1
+}
 # any_clause_verb VERB: does any clause of any scan variant run git with this
 # verb? Decided per clause and per git command within it, over every variant,
 # so a verb hidden behind any separator or any global option is read like one
 # in front.
 any_clause_verb() {
-  local v clause
+  local v
   for v in "${scan_variants[@]}"; do
-    split_clauses "$v"
-    while IFS= read -r clause; do
-      if git_split "$clause"; then
-        while :; do
-          [[ "$GV_VERB" == "$1" ]] && return 0
-          git_next || break
-        done
-      fi
-    done <<<"$CLAUSES"
+    verb_in_text "$1" "$v" && return 0
   done
   return 1
 }
@@ -742,17 +751,7 @@ cmd_blind=$(strip_message_args "$cmd" | sed -E "
   s/\"[^\"]*\"//g;
   s/(^|[[:space:]])#.*\$//")
 blind_has_verb() {
-  local clause
-  split_clauses "$cmd_blind"
-  while IFS= read -r clause; do
-    if git_split "$clause"; then
-      while :; do
-        [[ "$GV_VERB" == "$1" ]] && return 0
-        git_next || break
-      done
-    fi
-  done <<<"$CLAUSES"
-  return 1
+  verb_in_text "$1" "$cmd_blind"
 }
 quoted_only_hint() {
   # A quoted span holding a substitution or a backtick is code that runs, not
