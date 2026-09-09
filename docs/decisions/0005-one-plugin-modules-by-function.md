@@ -35,7 +35,7 @@ Chosen option: one plugin, modules by function. Every module owns its own rule f
 
 ### Confirmation
 
-`docs/handbook/manifest.json`'s `counts.rules: 8` must match exactly one rule file per module under `plugins/house/modules/<module>/rules/`. `claude plugin validate --strict ./plugins/house` validates the whole tree as one plugin. A module's graduation is confirmed only by a new, explicit marketplace entry naming it, never inferred from growth alone.
+`npm run check:traceability` reads every rule file under `plugins/house/modules/<module>/rules/` and prints the count it found, so one rule file per module is confirmed by a command that runs. This record originally pointed instead at a hand-kept `counts.rules` tally in `docs/handbook/manifest.json`; nothing ever read that field, it had drifted from the tree by the time anyone checked, and it has been removed. `claude plugin validate --strict ./plugins/house` validates the whole tree as one plugin. A module's graduation is confirmed only by a new, explicit marketplace entry naming it, never inferred from growth alone.
 
 ## More information
 
