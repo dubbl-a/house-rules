@@ -68,7 +68,12 @@
 # context (verified against this bash), and skipping `-e` means a stray
 # failure BEFORE the trap is armed (see below) just falls through to the
 # final `exit 0`, i.e. fails open, which is what steps 2-3 want anyway.
-set -Euo pipefail
+# `-f`: no pathname expansion anywhere in this script. Nothing here needs it
+# (carve-out globs are matched by `case`, which -f does not touch), and an
+# unquoted `$push_clause` token such as `m?ster` or `ma[s]ter` used to expand
+# against the hook's own cwd, so the decision depended on which files happened
+# to be there (#1, review round 3).
+set -Euf -o pipefail
 
 payload=$(cat)
 
@@ -106,14 +111,33 @@ fi
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null || echo "")
 
 # Backslashes go first, the way the shell reads them: a backslash-newline is a
-# line continuation and vanishes, and every other backslash escapes the next
-# character, which stays. Done to the whole command before any scan or strip,
-# because a backslash anywhere in a word hid that word from every reader here:
-# `gi\t commit`, `git co\mmit`, `git \`+newline+`commit` and `mas\ter` were all
-# invisible (#1, adversarial round 2). Deleting a backslash can only merge
-# characters into a word the scans then see, never split one apart.
+# line continuation and vanishes; an escaped quote is a literal character that
+# must NOT re-pair with the quotes around it, so it vanishes whole (leaving the
+# bare quote behind re-paired `-m "a\" cd <sibling> && x"` into a stripped
+# `"a"` and a live `cd <sibling> &&`, which steered target resolution); and
+# every other backslash escapes the next character, which stays. Done to the
+# whole command before any scan or strip, because a backslash anywhere in a
+# word hid that word from every reader here: `gi\t commit`, `git co\mmit`,
+# `git \`+newline+`commit` and `mas\ter` were all invisible (#1, adversarial
+# round 2). Deleting a backslash can only merge characters into a word the
+# scans then see, never split one apart.
 cmd="${cmd//\\$'\n'/}"
+cmd="${cmd//\\\"/}"
+cmd="${cmd//\\\'/}"
 cmd="${cmd//\\/}"
+# Then the expansions this text can predict, on the whole command for the same
+# reason: every spelling of IFS (`$IFS`, `${IFS}`, `${IFS:0:1}`) is what the
+# shell splits on and becomes a space; a parameter expansion with a default or
+# alternate value (`${x:-master}`, `${x:-git} commit`, `git ${x:-} commit`) is
+# read as that value, since the shell may well produce it. Done here rather
+# than in the clause splitter alone, because the verb scans read the unsplit
+# text and `${x:-git} commit` on master was invisible to them (#1, adversarial
+# round 3). What this text cannot predict (`$BR`, `pu${x}sh`) is refused
+# further down as computed rather than guessed at.
+cmd=$(printf '%s' "$cmd" | sed -E '
+  s/\$\{IFS[^}]*\}/ /g;
+  s/\$IFS/ /g;
+  s/\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+=?]([^}]*)\}/\1/g')
 
 # Precise re-check on the parsed field (the raw-text prefilter above can
 # false-positive, e.g. a cwd path containing "git" with a non-git command).
@@ -227,8 +251,11 @@ _strip_flag_args() {
   printf '%s' "$2" | sed -E "
     s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"\`\$]*\"/\1/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$]+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(]+/\1/g"
 }
+# The bare class above also stops at `(`: a process substitution `-F <(git
+# push origin master)` is code too, and stripping `<(git` as a bare value left
+# `push origin master)` with no `git` before it (#1, review round 3).
 # Full strip for the verb scans: message flags expand-aware, -c BLIND. The
 # expand-aware rule is right only for a flag that sits AFTER the verb, where a
 # residue can add a match but never break one. git's -c sits BEFORE the verb:
@@ -267,11 +294,10 @@ strip_message_args_for_target() { _strip_flag_args_blind '-m|--message|-F|--file
 # see it; stripping it blinded them to every interpreter since v0.2.2 (#1).
 # git's own `git -c key=value commit` with a space-free value still denies
 # through the full strip, so scanning the UNION of the two variants can only
-# add denials, never remove one. Known still-open (#1, NOT closed here): a
-# quoted -c value containing spaces (`git -c a='b c' commit`) survives the
-# bare-value rule and a -c body that changes directory into another repo is
-# target-blind. Those are the parser seams #1 warns against chasing; this
-# change closes only the direct-interpreter case.
+# add denials, never remove one. Known still-open (#1, NOT closed here): a -c
+# body that changes directory into another repo is target-blind. That is the
+# parser seam #1 warns against chasing; the quoted -c value with spaces was
+# closed later by the blind whole-word strip below.
 strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; }
 
 # Resolve the target git directory:
@@ -485,8 +511,12 @@ matches_any() {
   for v in "${scan_variants[@]}"; do grep -qE "$1" <<<"$v" && return 0; done
   return 1
 }
-re_commit='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?commit([[:space:]]|$)'
-re_push='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([[:space:]]|$)'
+# The verb may be followed by whitespace, the end, or any non-word character:
+# `git push;` and `git push>/dev/null` are pushes of the current branch, and a
+# tail of `([[:space:]]|$)` let both through the protected-branch block (#1,
+# review round 3).
+re_commit='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?commit([^[:alnum:]_-]|$)'
+re_push='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([^[:alnum:]_-]|$)'
 
 # One clause per line: the text split on every shell separator, so a scan
 # that walks the clauses reads ALL of them. The refspec scan below used to
@@ -503,18 +533,11 @@ re_push='(^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+
 # expansion rather than sed: BSD sed has no `\n` in a replacement.
 #
 # Before the split: `&>`, `>&`, `<&` are redirections, not the `&` separator,
-# and become spaces (`2>&1 master` used to end the clause at the `&`); every
-# spelling of IFS (`$IFS`, `${IFS}`, `${IFS:0:1}`) is what the shell splits on
-# and becomes a space here too; and a parameter expansion with a default or
-# alternate value (`${x:-master}`) is read as that value, since the shell may
-# well produce it. Each of these can only add a token the scans see.
-# Backslashes were already handled on the whole command, above.
+# and become spaces (`2>&1 master` used to end the clause at the `&`). Each
+# of these can only add a token the scans see. Backslashes, IFS and parameter
+# defaults were already handled on the whole command, above.
 split_clauses() {
   local c="$1"
-  c=$(printf '%s' "$c" | sed -E '
-    s/\$\{IFS[^}]*\}/ /g;
-    s/\$IFS/ /g;
-    s/\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+=?]([^}]*)\}/\1/g')
   c="${c//&>/ }"
   c="${c//>&/ }"
   c="${c//<&/ }"
@@ -604,10 +627,12 @@ push_clause_is_tag_only() {
 # carve-out in the reverted attempt read the first clause only, so a branch
 # publish rode in behind a tag publish.
 #
-# A clause the recogniser does not read but that still carries the word
-# `push` (`git --git-dir=x/ push origin master`) is refused outright: the
-# carve-out must never turn a form the scans cannot see into an escape from
-# the protected-branch block (#1, review round 1).
+# Any other clause that carries a `git` token, or the word `push`, refuses the
+# carve-out outright: a push the recogniser cannot read (`git --git-dir=x/
+# push origin master`, `git pu${x}sh origin master`) must never ride through
+# the protected-branch block behind a tag push (#1, review rounds 1 and 3).
+# The cost is one push per call: a tag push chained with any other git command
+# is refused, and the refusal says so.
 all_push_clauses_tag_only() {
   local v clause seen=0
   for v in "${scan_variants[@]}"; do
@@ -615,7 +640,7 @@ all_push_clauses_tag_only() {
       if [[ "$clause" =~ (^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([^\&\;\|]*) ]]; then
         seen=1
         push_clause_is_tag_only "${BASH_REMATCH[3]}" || return 1
-      elif [[ "$clause" =~ (^|[^[:alnum:]])push([[:space:]]|$) ]]; then
+      elif [[ "$clause" =~ (^|[^[:alnum:]])(git|push)([^[:alnum:]_-]|$) ]]; then
         return 1
       fi
     done < <(split_clauses "$v")
@@ -646,6 +671,15 @@ quoted_only_hint() {
   fi
 }
 
+# On any branch: a `-c` key can redirect a push without a refspec after the
+# verb. `-c remote.origin.push=+refs/heads/feat:refs/heads/master push origin`
+# and `-c push.default=matching push origin` both moved master while the
+# refspec scan below read an empty clause (#1, review round 3). The check runs
+# on the -c-retaining variant, where the key is still visible.
+if grep -qE '(^|[[:space:]])-c=?[[:space:]]*(push\.|remote\.[^[:space:]=]*\.push=)' <<<"$cmd_safe2"; then
+  deny "Refusing: a -c push or remote.<name>.push setting can redirect a push to a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR."
+fi
+
 if is_protected_branch "$branch"; then
   if matches_any "$re_commit"; then
     staged=$(git "${git_dir_arg[@]}" diff --cached --name-only 2>/dev/null || true)
@@ -664,7 +698,7 @@ if is_protected_branch "$branch"; then
     # A tag-only publish moves no branch ref. It is not exited here: the
     # any-branch refspec scan below still reads every clause of it.
     if ! all_push_clauses_tag_only; then
-      deny "Refusing to push from '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. Push a feature branch and open a PR instead. Tag-only pushes are allowed from here: git push origin v1.2.3, git push origin refs/tags/v1.2.3, or git push --tags origin, with no other flag, no refspec colon, and no branch push chained after it.$carve_out_reason_suffix$(quoted_only_hint "$re_push")"
+      deny "Refusing to push from '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. Push a feature branch and open a PR instead. A tag-only push is allowed from here: git push origin v1.2.3, git push origin refs/tags/v1.2.3, or git push --tags origin, as the only git command in the call, with no other flag, no refspec colon, the tag already created in an earlier call, and no other clause mentioning git or push.$carve_out_reason_suffix$(quoted_only_hint "$re_push")"
     fi
   fi
 fi
@@ -687,31 +721,75 @@ fi
 # Every clause is read, not just the first match: the loop walks the command
 # one clause at a time (split_clauses), so a push hidden behind &&, ;, &, ||,
 # |, or a newline is scanned like the one in front of it.
+#
+# A verb the hook cannot read is refused too. `git pu${x}sh origin master`
+# matches no recogniser, so it reached neither this scan nor the protected-
+# branch block, while the shell handed git `push`. The verb is the first token
+# after `git` that is not a flag (with `-c` and `-C` taking a value); if it
+# holds a `$`, a backtick, a brace, or a quote, the shell computes it and this
+# text cannot (#1, review round 3). Spelling the verb costs nothing.
+git_verb_is_computed() {
+  local toks=() i=0 n tok
+  IFS=$' \t\n' read -r -a toks <<<"$1"
+  n="${#toks[@]}"
+  [[ "$n" -gt 0 ]] || return 1
+  while [[ "$i" -lt "$n" ]]; do
+    tok="${toks[$i]}"
+    i=$((i + 1))
+    if [[ "$tok" == git || "$tok" == */git ]]; then
+      while [[ "$i" -lt "$n" ]]; do
+        tok="${toks[$i]}"
+        i=$((i + 1))
+        case "$tok" in
+          -c|-C|--git-dir|--work-tree|--namespace) i=$((i + 1)) ;;
+          -*) ;;
+          *'$'*|*'`'*|*'{'*|*'"'*|*"'"*) return 0 ;;
+          *) return 1 ;;
+        esac
+      done
+      return 1
+    fi
+  done
+  return 1
+}
 for scan_cmd in "${scan_variants[@]}"; do
   while IFS= read -r clause; do
+    if git_verb_is_computed "$clause"; then
+      deny "Refusing: the git verb in this command is computed by the shell, so the branch guard cannot read it (house.json at $toplevel). Spell the verb plainly and retry."
+    fi
     if [[ "$clause" =~ (^|[^[:alnum:]])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([^\&\;\|]*) ]]; then
       push_clause="${BASH_REMATCH[3]}"
-      # `read -a`, not `for tok in $push_clause`: a literal `*` token must
-      # reach the check below as itself, not as the files in the cwd.
+      # `read -a`, not `for tok in $push_clause`, so a token reaches the
+      # checks below as itself (pathname expansion is also off, see `set -f`).
       local_toks=()
       IFS=$' \t\n' read -r -a local_toks <<<"$push_clause"
       [[ "${#local_toks[@]}" -gt 0 ]] || continue
       for tok in "${local_toks[@]}"; do
         # A push that names no branch can still move a protected one: --all
-        # and --mirror push every branch, --prune deletes what the remote has
-        # and the refspec lacks, and a wildcard refspec (`refs/heads/*`)
-        # matches the protected name without spelling it. git accepts any
-        # unambiguous abbreviation of a long option, so the prefixes are
-        # listed down to the shortest git would take (#1, adversarial round).
+        # (and its git 2.42 alias --branches) and --mirror push every branch,
+        # --prune deletes what the remote has and the refspec lacks, and a
+        # glob (`refs/heads/*`, `m?ster`, `ma[s]ter`) matches the protected
+        # name without spelling it. git accepts any unambiguous abbreviation
+        # of a long option, so each is refused from its shortest prefix; the
+        # ambiguous `--a` and `--pr` are refused too, since git rejects them
+        # anyway (#1, adversarial and review rounds).
+        #
+        # A ref the shell computes (`$b`, `mast${x}er`, `{feat,master}`,
+        # backticks) is refused for the same reason as a computed verb: this
+        # text cannot know what it becomes, and the protected name is one of
+        # the things it can become. Spell the branch name.
         case "$tok" in
-          --al|--all|--m|--mi|--mir|--mirr|--mirro|--mirror|--pr|--pru|--prun|--prune)
+          --a|--al*|--m*|--pr*|--br*)
             deny "Refusing: '$tok' can move a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
-          *'*'*)
+          *'*'*|*'?'*|*'['*)
             deny "Refusing: a wildcard refspec ('$tok') can match a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR." ;;
+          *'$'*|*'`'*|*'{'*)
+            deny "Refusing: the ref '$tok' is computed by the shell, so the branch guard cannot read it (house.json at $toplevel). Spell the branch name and retry." ;;
         esac
         for part in ${tok//:/ }; do
           part="${part#+}"
           part="${part#refs/heads/}"
+          part="${part#heads/}"
           if is_protected_branch "$part"; then
             deny "Refusing: command targets protected branch '$part' directly (house.json at $toplevel). Push a feature branch and open a PR.$(quoted_only_hint "$re_push")"
           fi

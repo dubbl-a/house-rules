@@ -623,7 +623,7 @@ expect_deny "not tag-only: bare push" \
 expect_deny "not tag-only: a dangling tag keyword" \
   "$(mk_payload "git $_p origin tag" "$t")" "feature branch"
 expect_deny "the branch-push refusal names the tag-only form" \
-  "$(mk_payload "git $_p origin master" "$t")" "Tag-only"
+  "$(mk_payload "git $_p origin master" "$t")" "tag-only push"
 
 # Every push clause is scanned from any branch, not just the leftmost.
 git -C "$t" checkout -q -b feat/x
@@ -682,8 +682,8 @@ else fail "prose hint on a real verb" "reason: $reason"; fi
 # character out of the push clause, so a push to master with a substitution
 # or a redirection BEFORE the ref was never read. They are spaces now.
 git -C "$t" checkout -q feat/x
-expect_deny "round 1: a substitution before the ref is still scanned" \
-  "$(mk_payload "git $_p \$(echo origin) master" "$t")" "protected branch"
+expect_deny "round 1: a substitution before the ref is still scanned (now refused as computed)" \
+  "$(mk_payload "git $_p \$(echo origin) master" "$t")" "cannot read"
 expect_deny "round 1: backticks before the ref are still scanned" \
   "$(mk_payload "git $_p \`echo origin\` master" "$t")" "protected branch"
 expect_deny "round 1: a redirection before the ref is still scanned" \
@@ -806,6 +806,75 @@ expect_allow "adversarial 2: a Windows path in a message is still fine" \
 expect_allow "adversarial 2: a feature push after the backslash handling is still fine" \
   "$(mk_payload "git $_p origin feat/x" "$t")"
 git -C "$t" checkout -q master
+
+# ── #1 review round 3: escaped quotes, computed words, config-driven pushes ──
+# An escaped quote is data, not structure: it vanishes whole so it cannot
+# re-pair with the quotes around it, which let a message strip swallow a real
+# chained command.
+git -C "$t" checkout -q feat/x
+expect_deny "round 3: an escaped quote cannot open a span that swallows a push" \
+  "$(mk_payload "$_c -m \\\"a && git $_p origin master && echo \\\"b" "$t")" "protected branch"
+expect_deny "round 3: the single-quote form of the same" \
+  "$(mk_payload "$_c -m \\'a && git $_p origin master && echo \\'b" "$t")" "protected branch"
+expect_deny "round 3: --message= form of the same" \
+  "$(mk_payload "$_c --message=\\\"a && git $_p origin master && echo \\\"b" "$t")" "protected branch"
+git -C "$t" checkout -q master
+expect_deny "round 3: an escaped quote in a non-git word cannot swallow a commit" \
+  "$(mk_payload "echo -m \\\"a && $_c -m x && echo \\\"b" "$t")" "feature branch"
+expect_deny "round 3: an escaped quote cannot re-pair a message to steer the target" \
+  "$(mk_payload "$_c -m \"a\\\" cd $t2 && x\"" "$t")" "feature branch"
+# A word the shell computes is refused, not guessed at.
+expect_deny "round 3: an empty parameter default between git and the verb" \
+  "$(mk_payload "git \${x:-} $_verb -m y" "$t")" "feature branch"
+expect_deny "round 3: a parameter default that spells git" \
+  "$(mk_payload "\${x:-git} $_verb -m y" "$t")" "feature branch"
+expect_deny "round 3: a separator glued to the verb" \
+  "$(mk_payload "git $_p;" "$t")" "feature branch"
+expect_deny "round 3: a redirection glued to the verb" \
+  "$(mk_payload "git $_p>/dev/null" "$t")" "feature branch"
+expect_deny "round 3: && glued to the verb" \
+  "$(mk_payload "git $_p&&true" "$t")" "feature branch"
+expect_deny "round 3: a glued separator on commit" \
+  "$(mk_payload "$_c;" "$t")" "feature branch"
+expect_deny "round 3: a tag push chained with a computed verb" \
+  "$(mk_payload "git $_p origin v1.0 && git pu\${x}sh origin master" "$t")" "feature branch"
+expect_deny "round 3: a tag push chained with any other git command is refused and says why" \
+  "$(mk_payload "git tag v2.0 && git $_p origin v2.0" "$t")" "earlier call"
+git -C "$t" checkout -q feat/x
+expect_deny "round 3: a computed verb" \
+  "$(mk_payload "git pu\${x}sh origin master" "$t")" "computed"
+expect_deny "round 3: a computed ref" \
+  "$(mk_payload "git $_p origin mast\${x}er" "$t")" "computed"
+expect_deny "round 3: a variable ref" \
+  "$(mk_payload "git $_p origin \$b" "$t")" "computed"
+_br='{feat/x,master}'   # a variable: bash brace-expands even inside a quoted $( )
+expect_deny "round 3: a brace-expanded ref" \
+  "$(mk_payload "git $_p origin $_br" "$t")" "computed"
+expect_deny "round 3: a ? glob ref" \
+  "$(mk_payload "git $_p origin m?ster" "$t")" "wildcard"
+expect_deny "round 3: a [ ] glob ref" \
+  "$(mk_payload "git $_p origin ma[s]ter" "$t")" "wildcard"
+expect_deny "round 3: --branches is --all on git 2.42" \
+  "$(mk_payload "git $_p --branches origin" "$t")" "without naming it"
+expect_deny "round 3: heads/master is a valid destination spelling" \
+  "$(mk_payload "git $_p origin HEAD:heads/master" "$t")" "protected branch"
+expect_deny "round 3: a -c remote push refspec redirects the push" \
+  "$(mk_payload "git -c remote.origin.push=+refs/heads/feat/x:refs/heads/master $_p origin" "$t")" "redirect"
+expect_deny "round 3: a -c push.default redirects the push" \
+  "$(mk_payload "git -c push.default=matching $_p origin" "$t")" "redirect"
+expect_deny "round 3: a process substitution in -F is code" \
+  "$(mk_payload "$_c -F <(git $_p origin master)" "$t")" "protected branch"
+expect_deny "round 3: a process substitution in --file= is code" \
+  "$(mk_payload "$_c --file=<(git $_p origin master)" "$t")" "protected branch"
+expect_allow "round 3: a substitution inside a message on a feature branch is still fine" \
+  "$(mk_payload "$_c -m \"\$(date)\"" "$t")"
+expect_allow "round 3: -u before the remote is still fine" \
+  "$(mk_payload "git $_p -u origin feat/x" "$t")"
+expect_allow "round 3: prose naming a tag push in a message is still fine" \
+  "$(mk_payload "$_c -m \"release: git $_p origin v1.0 later\"" "$t")"
+git -C "$t" checkout -q master
+expect_allow "round 3: a format string with a variable after a read-only verb is still fine" \
+  "$(mk_payload "git log --format=\"%h \$x\" -1" "$t")"
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then

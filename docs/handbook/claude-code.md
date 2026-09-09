@@ -216,7 +216,7 @@ every time a hook, because the instruction file is advisory context
 
 The text-handling half of "fail it closed" was earned on 2026-09-08, and it is the part that
 reads as an ergonomics detail until it is not. The branch guard strips flag-borne values out of a
-command before matching, so a commit message cannot trigger or defeat the patterns. That stripper
+command before matching, so the prose of a commit message cannot trigger or defeat the patterns (a value the shell would expand is left in view since 0.9.0, because it is code). That stripper
 matched its flag alternation anywhere in the command, including inside a word, so a worktree whose
 directory name held a segment beginning `-c`, `-m`, or `-F` lost the rest of that segment, target
 resolution parsed out a path that does not exist, and a commit from a good feature branch was
