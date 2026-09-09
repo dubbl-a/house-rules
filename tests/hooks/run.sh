@@ -881,6 +881,50 @@ expect_allow "round 3: --progress is not --prune" \
 expect_allow "round 3: --push-option is not --prune" \
   "$(mk_payload "git $_p --push-option=ci.skip origin feat/x" "$t")"
 git -C "$t" checkout -q master
+
+# ── #1 adversarial round 4: global options, config-key case, prose, redirects ──
+# The verb is found by walking tokens, so no global option can sit between
+# `git` and the verb unread.
+expect_deny "adversarial 4: --no-pager between git and the verb" \
+  "$(mk_payload "git --no-pager $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 4: --exec-path= between git and the verb" \
+  "$(mk_payload "git --exec-path=/usr/libexec/git-core $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 4: -P between git and the verb" \
+  "$(mk_payload "git -P $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 4: a full path to git" \
+  "$(mk_payload "/usr/bin/git --no-pager $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 4: --git-dir and --work-tree with separate values" \
+  "$(mk_payload "git --git-dir $t/.git --work-tree $t $_verb -m x" "$t")" "feature branch"
+expect_deny "adversarial 4: a tag push chained with a --no-pager push" \
+  "$(mk_payload "git $_p origin v1.0 && git --no-pager $_p origin master" "$t")" "feature branch"
+expect_allow "adversarial 4: --tags with a trailing redirect is still tag-only" \
+  "$(mk_payload "git $_p --tags origin >/dev/null 2>&1" "$t")"
+git -C "$t" checkout -q feat/x
+expect_deny "adversarial 4: -p before a forced push to master" \
+  "$(mk_payload "git -p $_p --force origin master" "$t")" "protected branch"
+expect_deny "adversarial 4: --literal-pathspecs before a push to master" \
+  "$(mk_payload "git --literal-pathspecs $_p origin master" "$t")" "protected branch"
+expect_deny "adversarial 4: an upper-case remote push key" \
+  "$(mk_payload "git -c remote.origin.PUSH=+refs/heads/feat/x:refs/heads/master $_p origin" "$t")" "redirect"
+expect_deny "adversarial 4: a mixed-case push.default key" \
+  "$(mk_payload "git -c Push.Default=matching $_p origin" "$t")" "redirect"
+expect_deny "adversarial 4: a computed verb in an interpreter body is still refused" \
+  "$(mk_payload "bash -c \"git \$CMD origin master\"" "$t")" "computed"
+expect_allow "adversarial 4: git in argument position with a variable is prose" \
+  "$(mk_payload "echo \"git \$CMD\" > notes.txt" "$t")"
+expect_allow "adversarial 4: an issue body naming git with a variable is prose" \
+  "$(mk_payload "gh issue create --title t --body \"see git \$branch notes\"" "$t")"
+expect_allow "adversarial 4: a -c push key on a non-push verb is fine" \
+  "$(mk_payload "git -c push.default=simple log --oneline -1" "$t")"
+expect_allow "adversarial 4: a push option value with a variable is not a ref" \
+  "$(mk_payload "git $_p --push-option=id=\$CI origin feat/x" "$t")"
+expect_allow "adversarial 4: -o with a separate value holding a variable is not a ref" \
+  "$(mk_payload "git $_p -o id=\$CI origin feat/x" "$t")"
+expect_allow "adversarial 4: a feature push with a trailing redirect" \
+  "$(mk_payload "git $_p origin feat/x >/dev/null 2>&1" "$t")"
+expect_deny "adversarial 4: a redirect target does not hide the ref before it" \
+  "$(mk_payload "git $_p origin master >/dev/null" "$t")" "protected branch"
+git -C "$t" checkout -q master
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
