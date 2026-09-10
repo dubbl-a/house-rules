@@ -4,6 +4,14 @@ house-rules ships prose rule files, a checker script, a branch-guard hook, and t
 skills that drive both. This repo also adopts its own package (see `CLAUDE.md`), so most of what
 binds a contributor here is exactly what the package ships to everyone else.
 
+## What is welcome, and how to start
+
+A rule with the receipt that earned it, a bug in the checker, a hook, or a skill, and an adopter's
+report that a rule keeps getting ignored are what is welcome here. An issue labelled good first
+issue is the easiest place to start. Clone the repo (there are no npm packages to fetch) and run
+`npm run verify` once on `main` before you branch, so the first red you see is yours. Node 22 or
+newer, `git`, bash, the GitHub CLI, and the `claude` CLI are the prerequisites; `README.md` lists them.
+
 ## Branch and PR for every change
 
 Every change lands on its own branch and through its own pull request, reviewed before merge.

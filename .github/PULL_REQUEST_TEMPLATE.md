@@ -9,7 +9,7 @@
 ## Docs check
 <!-- README + CLAUDE.md ride along with the code that changes them. Confirm one: -->
 - [ ] README.md / CLAUDE.md updates included in this PR
-- [ ] No docs change needed (refactor / bug fix restoring documented behavior / dep bump / etc.) — reason:
+- [ ] No docs change needed (refactor / bug fix restoring documented behavior / dep bump / etc.), reason:
 
 ## Changelog check
 <!-- Only when the changelog module is on. Confirm one: -->
