@@ -3,45 +3,45 @@
 [![ci](https://github.com/dubbl-a/house-rules/actions/workflows/ci.yml/badge.svg)](https://github.com/dubbl-a/house-rules/actions/workflows/ci.yml)
 [![license: MIT and CC BY 4.0](https://img.shields.io/badge/license-MIT%20and%20CC%20BY%204.0-blue.svg)](NOTICE)
 
-**Repository conventions a Claude Code session actually follows, and a checker that tells you when
-they stop being true.** For anyone running Claude Code against a repo they intend to keep. What you
-write in a `CLAUDE.md` is advice nothing checks, so it goes stale and the model drifts with it.
-house-rules copies a set of rule files into your repo and locks them with hashes. A checker fails CI
-when a rule is hand-edited, a doc names a script that no longer exists, or a file grows past its
-budget. A branch guard hook refuses a commit or push to a protected branch in every session, and
-every update arrives as a diff a person approves.
+## What it is
 
-It is a Claude Code plugin, installed from this repository with the `claude` CLI. Nothing is
-published to npm or GitHub Packages, and an adopting repo needs no registry: it carries its own
-copy of the checker and the rules.
+Claude Code will build almost anything you describe. Two things it will not do on its own: ask for
+the safeguards you did not know to ask for, and check that the instructions you gave it last month
+still hold. house-rules does both. It is a set of written working rules for a project built with
+Claude Code (how a change lands, how stored data is protected, how documents stay true, how what a
+session learns is kept), copied into your project as ordinary files, plus a checker that reads the
+project back and reports where the rules and the project have stopped matching, and a guard that
+refuses a change straight onto the main line.
+
+## Who it helps
+
+**If you are not an engineer**, the rules do the asking for you. Each one is something the
+assistant now does, or refuses to do, without you thinking to ask: a backup before a change to
+stored data, a separate copy to try a fix on, no command written into your instructions unless it
+exists. Each rule gives its reason in the same breath, so you learn the discipline as you go and
+can argue with any of them. Start with the plain-language guide, which explains every technical
+word where it first appears: https://house-rules-guide.vercel.app
+
+**If you are an engineer**, this is a Claude Code plugin. Nine rule modules render into
+`.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
+enforces it, and a receipt. `.house/lock.json` hashes every managed file. `node .house/check.mjs`,
+wired into CI, fails on a hand-edited rule, a doc naming a script that no longer exists, a file over
+its line ceiling, or too many rules loading for one path. A PreToolUse hook refuses a commit or push
+to a protected branch in every session. The next version arrives as a diff you approve, and a
+locally modified managed file is refused with its diff rather than overwritten. It installs from
+this repository with the `claude` CLI; nothing is on npm or GitHub Packages, and an adopting repo
+needs no registry because it carries its own copy of the checker and the rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
 keep changing, so read each update as a dependency bump, take the parts you want, and fork for the
 last word. A repo never imports house-rules; it adopts a fixed copy made at that moment, not a link.
 
-New here, or not an engineer? Read the plain-language guide first: https://house-rules-guide.vercel.app
+## Where the reasons live
 
-## What you get
-
-- **Vendored rule files** copied byte for byte, so a session reads them from your own checkout.
-- **A lock file and a drift and tamper checker**: `.house/lock.json` hashes every managed file, and
-  `node .house/check.mjs` catches a hand-edit, a stale doc reference, and a file over its ceiling.
-- **A module manifest**, `house.json`, plus a deviations ledger and per-file ratchets: declining a
-  default or raising a limit costs a dated, written reason the checker reads back on every run.
-- **Paired behavioral evals**, `plugins/house/evals/`: a positive and a negative control per gate,
-  holding a session to the rules under a real task.
-- **Upstream-first sync**: the next version arrives as a plan you approve, and a locally modified
-  managed file is refused with its diff rather than overwritten.
-
-## The two tiers
-
-**Rule files** are vendored byte-for-byte into a consuming repo's `.claude/rules/house/` by
-`/house-rules:sync`. They are what a session reads: an imperative heading, a one-clause why, an
-`Anchor:` line naming what enforces it, and a `Receipts:` pointer. Nothing explains itself at length.
-
-**Handbook receipts** live here, in `docs/handbook/`, one chapter per rule file with a same-named
-section for every heading it carries: the incident, the worked example, or the rejected alternative
-that earned the rule. `docs/decisions/` holds the numbered ADRs for a call made once, not per repo.
+A rule file says nothing at length. Its receipts live here, in `docs/handbook/`, one chapter per
+rule file with a same-named section for every heading it carries: the incident, the worked example,
+or the rejected alternative that earned the rule. `docs/decisions/` holds the numbered ADRs for a
+call made once, not per repo.
 
 ## How this sits next to other tools
 
