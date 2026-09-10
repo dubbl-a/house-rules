@@ -317,8 +317,13 @@ function pluginDeclaresInstructionsLoaded() {
 // .house/lock.json: every rule file always lands at
 // .claude/rules/house/<basename> (render's own fixed destination, never a
 // config slot), so filtering the lock's paths on that prefix is exact.
+// One definition of where a vendored rule lands, read by both the dest filter
+// and the line that prints an unseen rule's basename, so the two cannot
+// disagree about what prefix to strip.
+const VENDORED_RULE_PREFIX = '.claude/rules/house/';
+
 function vendoredRuleDests(repoRoot) {
-  return [...loadPriorLock(repoRoot).keys()].filter((p) => p.startsWith('.claude/rules/house/') && p.endsWith('.md'));
+  return [...loadPriorLock(repoRoot).keys()].filter((p) => p.startsWith(VENDORED_RULE_PREFIX) && p.endsWith('.md'));
 }
 
 // Evidence comes from the log itself: the max timestamp seen, and how many
@@ -367,7 +372,31 @@ function instructionsLoadedProbe(repoRoot) {
       }
     }
   } catch { /* no log yet for this checkout */ }
-  return { source, logPath, lastLoadAt, vendoredSeen: seen.size, vendoredTotal: vendored.length };
+  return {
+    source, logPath, lastLoadAt, vendoredSeen: seen.size, vendoredTotal: vendored.length,
+    vendoredUnseen: vendored.filter((d) => !seen.has(d)).sort(),
+  };
+}
+
+// The count alone ends the report exactly where the diagnosis starts: "4 of 5
+// vendored rules seen" says something is wrong and not which file to open, so
+// the reader greps the log by hand to learn what the probe already knew. A
+// vendored rule that never loads is indistinguishable from a rule that does
+// nothing, which is the failure this whole control exists to surface, so name
+// the files rather than making the reader derive them.
+//
+// Says "not seen in this log" and never "never loaded": the log self-trims at
+// CAP_BYTES (see instructions-loaded.mjs), so a rule that loaded long enough
+// ago can have been trimmed out of it. The honest claim is about the log's
+// contents, and it fails toward under-claiming: this line can miss a rule that
+// really has gone dead, never assert one is dead when it is not.
+//
+// Basenames only, since every dest shares the .claude/rules/house/ prefix that
+// the reader already knows from the line above.
+function unseenVendoredSuffix(probe) {
+  if (!probe.vendoredUnseen.length) return '';
+  const names = probe.vendoredUnseen.map((p) => p.slice(VENDORED_RULE_PREFIX.length)).join(', ');
+  return `; not seen in this log: ${names}`;
 }
 
 // A repo-local guard the hook would actually defer to: a NON-EMPTY PreToolUse
@@ -1219,7 +1248,7 @@ function cmdDoctor(args) {
       console.log('rule-load positive control: repo (.claude/settings.json)');
     } else if (ruleLoadProbe.source === 'plugin') {
       console.log(ruleLoadProbe.lastLoadAt
-        ? `rule-load positive control: plugin hook; log ${ruleLoadProbe.logPath}: last load ${ruleLoadProbe.lastLoadAt}, ${ruleLoadProbe.vendoredSeen} of ${ruleLoadProbe.vendoredTotal} vendored rules seen`
+        ? `rule-load positive control: plugin hook; log ${ruleLoadProbe.logPath}: last load ${ruleLoadProbe.lastLoadAt}, ${ruleLoadProbe.vendoredSeen} of ${ruleLoadProbe.vendoredTotal} vendored rules seen${unseenVendoredSuffix(ruleLoadProbe)}`
         : 'rule-load positive control: plugin hook declared; no log yet for this checkout (start a session here, then re-run doctor)');
       console.log(`  caveat: ${PLUGIN_ENABLEMENT_CAVEAT}`);
     } else {
