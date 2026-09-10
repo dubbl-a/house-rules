@@ -5,24 +5,50 @@
 
 ## What it is
 
-Claude Code will build almost anything you describe. Two things it will not do on its own: ask for
-the safeguards you did not know to ask for, and check that the instructions you gave it last month
-still hold. house-rules does both. It is a set of written working rules for a project built with
-Claude Code (how a change lands, how stored data is protected, how documents stay true, how what a
-session learns is kept), copied into your project as ordinary files, plus a checker that reads the
-project back and reports where the rules and the project have stopped matching, and a guard that
-refuses a change straight onto the main line.
+Claude Code is a program that builds and changes software from what you describe in plain words.
+It is good at building. It is weaker at two things: it does not ask for the safeguards you did not
+know to ask for, and it does not check that the instructions you wrote for it last month are still
+true. house-rules is a set of written rules that do both. They are copied into your project as
+ordinary files, where Claude Code reads them every time it works, and a checker reads your project
+back and tells you when a rule and the project have stopped matching.
+
+## What the rules cover
+
+Nine sets of rules, called modules. Five are on unless you switch them off:
+
+- **claude-code**: the assistant's own setup: what it reads each time, how long that may be, and
+  where a new fact belongs.
+- **docs**: the written record, so no document points at something that no longer exists.
+- **engineering**: how code gets written, checked, and reported day to day.
+- **github**: how a change travels: a separate copy to work on, a review before it joins the main
+  copy, and no passwords or keys in the project.
+- **testing**: what "done" may claim, and what a passing test proves.
+
+Four turn on when your project looks like it needs them:
+
+- **database**: stored data, with a backup taken and proven before any change that could lose it.
+- **deployment**: putting something live, deliberately, with a backup restored for real from time
+  to time rather than assumed to work.
+- **data-pipelines**: scheduled jobs that move data in bulk, which refuse to delete more than a
+  little without asking.
+- **llm-output**: text a model produced, kept aside until a person has checked it, so nothing a
+  model wrote is read as fact by accident.
+
+Every rule was earned rather than invented. `docs/handbook/` records, for each one, the incident
+from one of the five real projects these rules came out of, or the published practice they borrowed
+with its source named, and `docs/handbook/inventory.md` traces every harvested practice to the rule
+that carries it. A rule you disagree with is argued on its evidence, not worked around.
 
 ## Who it helps
 
-**If you are not an engineer**, the rules do the asking for you. Each one is something the
-assistant now does, or refuses to do, without you thinking to ask: a backup before a change to
-stored data, a separate copy to try a fix on, no command written into your instructions unless it
-exists. Each rule gives its reason in the same breath, so you learn the discipline as you go and
-can argue with any of them. Start with the plain-language guide, which explains every technical
-word where it first appears: https://house-rules-guide.vercel.app
+**If you are not an engineer**, you do not yet know what to ask for, and these rules ask for you.
+Before the assistant changes stored data, it takes a backup and proves the backup works. Before it
+fixes something, it tries the fix on a separate copy. It never writes an instruction for itself
+that names a command that does not exist. You get the safeguard without knowing its name, and each
+rule says why in the same breath, so you learn as you go. Start with the plain-language guide,
+which explains every technical word where it first appears: https://house-rules-guide.vercel.app
 
-**If you are an engineer**, this is a Claude Code plugin. Nine rule modules render into
+**If you are an engineer**, this is a Claude Code plugin. The nine modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
 enforces it, and a receipt. `.house/lock.json` hashes every managed file. `node .house/check.mjs`,
 wired into CI, fails on a hand-edited rule, a doc naming a script that no longer exists, a file over
@@ -35,13 +61,6 @@ needs no registry because it carries its own copy of the checker and the rules.
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
 keep changing, so read each update as a dependency bump, take the parts you want, and fork for the
 last word. A repo never imports house-rules; it adopts a fixed copy made at that moment, not a link.
-
-## Where the reasons live
-
-A rule file says nothing at length. Its receipts live here, in `docs/handbook/`, one chapter per
-rule file with a same-named section for every heading it carries: the incident, the worked example,
-or the rejected alternative that earned the rule. `docs/decisions/` holds the numbered ADRs for a
-call made once, not per repo.
 
 ## How this sits next to other tools
 
