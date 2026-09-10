@@ -1,16 +1,27 @@
 # house-rules
 
-One maintainer's opinionated conventions for working in a repository with Claude Code, published so
-other people can adopt them and shipped as a Claude Code plugin and marketplace. They keep changing,
-and nothing reaches your repo without a person approving the diff, so read each update as you would a
-dependency bump, take the parts you want, and fork the package for the last word. A repo never
-imports house-rules; it adopts a rendered snapshot.
+[![ci](https://github.com/dubbl-a/house-rules/actions/workflows/ci.yml/badge.svg)](https://github.com/dubbl-a/house-rules/actions/workflows/ci.yml)
+[![license: MIT and CC BY 4.0](https://img.shields.io/badge/license-MIT%20and%20CC%20BY%204.0-blue.svg)](NOTICE)
+
+**Repository conventions a Claude Code session actually follows, and a checker that tells you when
+they stop being true.** For anyone running Claude Code against a repo they intend to keep. What you
+write in a `CLAUDE.md` is advice nothing checks, so it goes stale and the model drifts with it.
+house-rules copies a set of rule files into your repo and locks them with hashes. A checker fails CI
+when a rule is hand-edited, a doc names a script that no longer exists, or a file grows past its
+budget. A branch guard hook refuses a commit or push to a protected branch in every session, and
+every update arrives as a diff a person approves.
+
+It is a Claude Code plugin, installed from this repository with the `claude` CLI. Nothing is
+published to npm or GitHub Packages, and an adopting repo needs no registry: it carries its own
+copy of the checker and the rules.
+
+These are one maintainer's opinionated conventions, published so other people can adopt them. They
+keep changing, so read each update as a dependency bump, take the parts you want, and fork for the
+last word. A repo never imports house-rules; it adopts a fixed copy made at that moment, not a link.
 
 New here, or not an engineer? Read the plain-language guide first: https://house-rules-guide.vercel.app
 
 ## What you get
-
-No single piece below is novel. What this package puts together is the whole loop.
 
 - **Vendored rule files** copied byte for byte, so a session reads them from your own checkout.
 - **A lock file and a drift and tamper checker**: `.house/lock.json` hashes every managed file, and
@@ -105,11 +116,18 @@ examples inside documentation are MIT wherever the surrounding prose sits. The S
 the repository is `MIT AND CC-BY-4.0`; `NOTICE` lists which paths fall under which and names every
 upstream that contributed text, structure, or a working method.
 
-## Contributing and security
+## Contributing
 
-`CONTRIBUTING.md` covers the branch-and-PR flow, the upstream-first rule, how to record a deviation
-or raise a limit, and `npm run verify`, the local gate. `SECURITY.md` is how to report a
-vulnerability privately, and `CODE_OF_CONDUCT.md` applies wherever this project runs.
+Three kinds of contribution fit here. A rule, through the rule-proposal issue form: the incident or
+receipt that earned it matters more than its wording, because every rule ships with a handbook
+section that argues for it. A bug in the checker, a hook, or a skill, through the bug-report form,
+with the command and its output. And an adopter's report that a rule kept getting ignored or a
+check fired wrongly, which is how rules get cut. Questions fit
+[Discussions](https://github.com/dubbl-a/house-rules/discussions) better than an issue, and issues
+labelled good first issue are scoped for a first pull request. `CONTRIBUTING.md` covers the
+branch-and-PR flow, the upstream-first rule, the two escape hatches, licensing (inbound is outbound,
+no CLA), and `npm run verify`, the local gate. `SECURITY.md` is how to report a vulnerability
+privately, and `CODE_OF_CONDUCT.md` applies wherever this project runs.
 
 ## Standing on other people's work
 
@@ -139,8 +157,3 @@ directly: [Ruler](https://github.com/intellectronica/ruler),
 
 `docs/handbook/upstreams.md` is the full ledger, dated and licensed; `NOTICE` says exactly what was
 borrowed and how.
-
-## Where to look next
-
-`docs/handbook/` for why a rule reads the way it does, `docs/decisions/` for a call this package
-made once, and `plugins/house/evals/` for the cases that hold a session to these rules under a task.
