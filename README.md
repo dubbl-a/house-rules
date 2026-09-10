@@ -3,45 +3,75 @@
 [![ci](https://github.com/dubbl-a/house-rules/actions/workflows/ci.yml/badge.svg)](https://github.com/dubbl-a/house-rules/actions/workflows/ci.yml)
 [![license: MIT and CC BY 4.0](https://img.shields.io/badge/license-MIT%20and%20CC%20BY%204.0-blue.svg)](NOTICE)
 
-**Repository conventions a Claude Code session actually follows, and a checker that tells you when
-they stop being true.** For anyone running Claude Code against a repo they intend to keep. What you
-write in a `CLAUDE.md` is advice nothing checks, so it goes stale and the model drifts with it.
-house-rules copies a set of rule files into your repo and locks them with hashes. A checker fails CI
-when a rule is hand-edited, a doc names a script that no longer exists, or a file grows past its
-budget. A branch guard hook refuses a commit or push to a protected branch in every session, and
-every update arrives as a diff a person approves.
+## What it is
 
-It is a Claude Code plugin, installed from this repository with the `claude` CLI. Nothing is
-published to npm or GitHub Packages, and an adopting repo needs no registry: it carries its own
-copy of the checker and the rules.
+Claude Code is a program that builds and changes software from what you describe in plain words.
+It is good at building. What it does not bring on its own is the working knowledge an experienced
+team carries, such as taking a proven backup before a change to stored data, or trying a fix on a
+separate copy before touching the shared one. You would have to know to ask. house-rules is that
+expertise, researched and written down as rules across nine areas: working with Claude Code itself,
+documentation, engineering, GitHub, testing, databases, deployment, data pipelines, and text a model
+produced. Each rule comes from what went wrong on a real project or from a practice the wider
+engineering community has already settled, with its source named, so you do not have to research
+it yourself.
+
+The rules are also how your instructions to Claude Code are managed, and that matters because
+whatever you write for it is advice: nothing checks that a session followed it, that it is still
+true after the project changed, or that it stayed short enough to be followed at all. house-rules
+puts the rules in your project as ordinary files that Claude Code reads every time it works, keeps
+each one scoped to the files it concerns and under a length ceiling, locks each with a fingerprint
+so a hand edit shows, and runs a checker that reads the project back and tells you when a rule and
+the project have stopped matching.
+
+## What the rules cover
+
+Nine sets of rules, called modules, each the researched practice for one area. Five are on unless
+you switch them off:
+
+- **claude-code**: the assistant's own setup: what it reads each time, how long that may be, and
+  where a new fact belongs.
+- **docs**: the written record, so no document points at something that no longer exists.
+- **engineering**: how code gets written, checked, and reported day to day.
+- **github**: how a change travels: a separate copy to work on, a review before it joins the main
+  copy, and no passwords or keys in the project.
+- **testing**: what "done" may claim, and what a passing test proves.
+
+Four turn on when your project looks like it needs them:
+
+- **database**: stored data, with a backup taken and proven before any change that could lose it.
+- **deployment**: putting something live, deliberately, with a backup restored for real from time
+  to time rather than assumed to work.
+- **data-pipelines**: scheduled jobs that move data in bulk, which refuse to delete more than a
+  little without asking.
+- **llm-output**: text a model produced, kept aside until a person has checked it, so nothing a
+  model wrote is read as fact by accident.
+
+Every rule was earned or borrowed, never invented: `docs/handbook/` records the incident or the
+published practice behind each one, `docs/handbook/inventory.md` traces every harvested practice to
+the rule that carries it, and `docs/handbook/upstreams.md` is the ledger of sources. A rule you
+disagree with is argued on its evidence, not worked around.
+
+## Who it helps
+
+**If you are not an engineer**, these rules carry what you would otherwise have to learn the hard
+way or go and research: the practice an experienced team would already know, applied without you
+knowing its name, and each rule says why in the same breath, so you learn the reasoning as you go.
+Start with the plain-language guide, which explains every technical word where it first appears:
+https://house-rules-guide.vercel.app
+
+**If you are an engineer**, this is a Claude Code plugin. The nine modules render into
+`.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
+enforces it, and a receipt. `.house/lock.json` hashes every managed file. `node .house/check.mjs`,
+wired into CI, fails on a hand-edited rule, a doc naming a script that no longer exists, a file over
+its line ceiling, or too many rules loading for one path. A PreToolUse hook refuses a commit or push
+to a protected branch in every session. The next version arrives as a diff you approve, and a
+locally modified managed file is refused with its diff rather than overwritten. It installs from
+this repository with the `claude` CLI; nothing is on npm or GitHub Packages, and an adopting repo
+needs no registry because it carries its own copy of the checker and the rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
 keep changing, so read each update as a dependency bump, take the parts you want, and fork for the
 last word. A repo never imports house-rules; it adopts a fixed copy made at that moment, not a link.
-
-New here, or not an engineer? Read the plain-language guide first: https://house-rules-guide.vercel.app
-
-## What you get
-
-- **Vendored rule files** copied byte for byte, so a session reads them from your own checkout.
-- **A lock file and a drift and tamper checker**: `.house/lock.json` hashes every managed file, and
-  `node .house/check.mjs` catches a hand-edit, a stale doc reference, and a file over its ceiling.
-- **A module manifest**, `house.json`, plus a deviations ledger and per-file ratchets: declining a
-  default or raising a limit costs a dated, written reason the checker reads back on every run.
-- **Paired behavioral evals**, `plugins/house/evals/`: a positive and a negative control per gate,
-  holding a session to the rules under a real task.
-- **Upstream-first sync**: the next version arrives as a plan you approve, and a locally modified
-  managed file is refused with its diff rather than overwritten.
-
-## The two tiers
-
-**Rule files** are vendored byte-for-byte into a consuming repo's `.claude/rules/house/` by
-`/house-rules:sync`. They are what a session reads: an imperative heading, a one-clause why, an
-`Anchor:` line naming what enforces it, and a `Receipts:` pointer. Nothing explains itself at length.
-
-**Handbook receipts** live here, in `docs/handbook/`, one chapter per rule file with a same-named
-section for every heading it carries: the incident, the worked example, or the rejected alternative
-that earned the rule. `docs/decisions/` holds the numbered ADRs for a call made once, not per repo.
 
 ## How this sits next to other tools
 
