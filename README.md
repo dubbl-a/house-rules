@@ -61,13 +61,10 @@ https://house-rules-guide.vercel.app
 
 **If you are an engineer**, this is a Claude Code plugin. The nine modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
-enforces it, and a receipt. `.house/lock.json` hashes every managed file. `node .house/check.mjs`,
-wired into CI, fails on a hand-edited rule, a doc naming a script that no longer exists, a file over
-its line ceiling, or too many rules loading for one path. A PreToolUse hook refuses a commit or push
-to a protected branch in every session. The next version arrives as a diff you approve, and a
-locally modified managed file is refused with its diff rather than overwritten. It installs from
-this repository with the `claude` CLI; nothing is on npm or GitHub Packages, and an adopting repo
-needs no registry because it carries its own copy of the checker and the rules.
+enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs`
+runs in CI; a PreToolUse hook refuses a commit or push to a protected branch in every session; the
+next version arrives as a diff you approve. It installs from this repository with the `claude` CLI.
+Nothing is on npm or GitHub Packages; an adopting repo carries its own copy of the checker and rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
 keep changing, so read each update as a dependency bump, take the parts you want, and fork for the
@@ -75,22 +72,18 @@ last word. A repo never imports house-rules; it adopts a fixed copy made at that
 
 ## How this sits next to other tools
 
-Skill packs teach a session a procedure while it works; this runs alongside one, not in place of it.
-It covers the half that persists: conventions that live in a repository, with something that enforces
-them. Rules are rendered and vendored into your repo because the Claude Code plugin format has no
-rules component and a `CLAUDE.md` at a plugin root is not loaded (`docs/handbook/origins.md`), so your
-own checkout is the only place a rule reliably lives. Cross-tool sync tools fan one source out to many
-agents and copy-paste collections hand you a starting text; both finish at delivery, which is where
-this package starts.
+Skill packs teach a session a procedure while it works; this covers the half that persists, the
+conventions that live in a repository with something enforcing them. Rules are vendored into your
+repo because the plugin format has no rules component and a `CLAUDE.md` at a plugin root is not
+loaded (`docs/handbook/origins.md`). Sync tools and copy-paste collections finish at delivery.
 
 ## Prerequisites
 
-Node 22 or newer, `git`, and bash. The GitHub CLI (`gh`) is a requirement of the pull-request workflow
-these rules assume rather than of the checker: the worktree cleanup script, the deploy guards, and the
-handoff skill shell out to it. No language or framework is assumed. The docs gate resolves `npm run`
-tokens against `package.json` scripts only where that file exists: the header comment on
-`plugins/house/payload/check.mjs` says a checked repo may or may not have one, so without it they are
-skipped, not failed. `bareScriptAllowlist` and `packageRoots` tune the rest.
+Node 22 or newer, `git`, and bash, plus the GitHub CLI (`gh`) for the pull-request workflow the
+rules assume: the worktree cleanup script, the deploy guards, and the handoff skill shell out to it.
+No language or framework is assumed. The docs gate resolves `npm run` tokens against `package.json`
+scripts only where that file exists, as the header of `plugins/house/payload/check.mjs` says, so
+without one they are skipped, not failed; `bareScriptAllowlist` and `packageRoots` tune the rest.
 
 ## Adopting house-rules in a repo
 
@@ -99,45 +92,30 @@ Install the plugin once per machine:
     claude plugin marketplace add dubbl-a/house-rules
     claude plugin install house-rules@house-rules --scope user
 
-Inside the target repo, run `/house-rules:bootstrap`. It probes the repo, proposes a `house.json`,
+Inside the target repo, run `/house-rules:bootstrap`: it probes the repo, proposes a `house.json`,
 and on approval writes the vendored rules, templates, `.house/check.mjs`, `.house/lock.json`, and
-`.house/INDEX.md`. Run `/house-rules:sync` later, after this package or the repo's `house.json` changes.
-
-Wire the checker in by hand: add `"check:docs": "node .house/check.mjs --only=drift,todo"` and
-`"check:house": "node .house/check.mjs"` to `package.json`'s scripts, and run `node .house/check.mjs`
-as a CI step.
-
-## house.json, in one line each
-
-- **modules**: which of `claude-code`, `docs`, `engineering`, `github`, `testing`, `database`,
-  `deployment`, `data-pipelines`, `llm-output` are on or off, plus each one's config; bootstrap
-  probes the repo for the modules whose package default is `detect`.
-- **deviations**: the dated ledger of what this repo declined from a house default and why; required
-  whenever a default-on module is off, `branchPolicy` is not `pr`, a `carveOuts` glob is added, or
-  `maxCoLoadLines` is raised above the default (kind `coload-ceiling`).
-- **ratchet**: per-file line ceilings the checker tightens on its own whenever a file shrinks;
-  raising one takes a written, dated reason in `ratchetRaises`, applied on a run with `--accept-lengths`.
-- **guard**: optional dated record that the plugin supplies the branch guard, clearing that warning.
+`.house/INDEX.md`. Run `/house-rules:sync` after this package or the repo's `house.json` changes.
+Wire the checker in by hand: add `"check:house": "node .house/check.mjs"` and
+`"check:docs": "node .house/check.mjs --only=drift,todo"` to `package.json`'s scripts, and run
+`node .house/check.mjs` as a CI step. `house.json` records which modules are on, a dated ledger of
+what the repo declined and why, per-file line ceilings that tighten as files shrink, and the guard
+record; `plugins/house/schema/house.schema.json` describes every key.
 
 ## The checker
 
-`node .house/check.mjs` runs ten families: `drift`, `todo`, `tamper`, `behind`, `shape`, `lengths`,
-`coload`, `manifest`, `minutes`, `guard`; scope a run with `--only=fam,fam`. Exit 0 is clean (warnings
-still print), 1 means findings, and 2 means an unusable `house.json` reached a family that needs one
-(`tamper`, `manifest`, `coload`, `guard`); the rest fall back to defaults instead. The full config
-vocabulary each family reads is in the header comment atop `plugins/house/payload/check.mjs`.
+`node .house/check.mjs` runs ten families (`drift`, `todo`, `tamper`, `behind`, `shape`, `lengths`,
+`coload`, `manifest`, `minutes`, `guard`), scoped with `--only=fam,fam`. Exit 0 is clean with
+warnings printed, 1 is findings, 2 is an unusable `house.json` reaching a family that needs one.
+Each family's config vocabulary heads `plugins/house/payload/check.mjs`.
 
 ## Versioning and breaking changes
 
 Three classes, per `docs/decisions/0011-rule-content-changes-are-minor.md`: rule content is minor,
 the named surface (a rule heading, a config slot, the guard's deny set, the `house.json` or
-`.house/` layout, the Node floor) is breaking, and a fix is patch. No rule byte reaches your
-checkout until you run `/house-rules:sync` and approve the plan it prints.
-
-Below 1.0 there is no major slot to spend, so the breaking class takes the minor and every other
-change takes the patch, giving a `^0.x` pin the semver it expects. At 1.0 the mapping returns to
-major, minor, and patch as 0011 states them. The full mapping is in
-`docs/decisions/0012-below-one-spend-the-minor-on-the-breaking-class.md`.
+`.house/` layout, the Node floor) is breaking, and a fix is patch. Below 1.0 the breaking class
+takes the minor and everything else the patch, so a `^0.x` pin gets the semver it expects
+(`docs/decisions/0012-below-one-spend-the-minor-on-the-breaking-class.md`). No rule byte reaches
+your checkout until you run `/house-rules:sync` and approve the plan it prints.
 
 ## License
 
@@ -148,22 +126,20 @@ upstream that contributed text, structure, or a working method.
 
 ## Contributing
 
-Three kinds of contribution fit here. A rule, through the rule-proposal issue form: the incident or
-receipt that earned it matters more than its wording, because every rule ships with a handbook
-section that argues for it. A bug in the checker, a hook, or a skill, through the bug-report form,
-with the command and its output. And an adopter's report that a rule kept getting ignored or a
-check fired wrongly, which is how rules get cut. Questions fit
-[Discussions](https://github.com/dubbl-a/house-rules/discussions) better than an issue, and issues
+Three kinds of contribution fit here: a rule, through the rule-proposal issue form, where the
+incident or receipt that earned it matters more than its wording; a bug in the checker, a hook, or
+a skill, through the bug-report form, with the command and its output; and an adopter's report that
+a rule kept getting ignored or a check fired wrongly, which is how rules get cut. Questions fit
+[Discussions](https://github.com/dubbl-a/house-rules/discussions) better than an issue; issues
 labelled good first issue are scoped for a first pull request. `CONTRIBUTING.md` covers the
-branch-and-PR flow, the upstream-first rule, the two escape hatches, licensing (inbound is outbound,
-no CLA), and `npm run verify`, the local gate. `SECURITY.md` is how to report a vulnerability
-privately, and `CODE_OF_CONDUCT.md` applies wherever this project runs.
+branch-and-PR flow, the upstream-first rule, the escape hatches, licensing (inbound is outbound, no
+CLA), and `npm run verify`. `SECURITY.md` is how to report a vulnerability privately;
+`CODE_OF_CONDUCT.md` applies wherever this project runs.
 
 ## Standing on other people's work
 
-This package borrowed ideas, structure, and in a few places actual text before it wrote a line of
-its own rules. The people and projects below are named plainly rather than folded into one credits
-line, because each one shaped something specific.
+This package borrowed ideas, structure, and in places actual text before it wrote a line of its own
+rules. Each is named plainly rather than folded into one credits line, because each shaped something:
 
 - [superpowers](https://github.com/obra/superpowers) (obra), for the in-session discipline this
   package complements and for the starting text behind its worktree and finish-branch guidance.
@@ -171,19 +147,14 @@ line, because each one shaped something specific.
   this README opens with.
 - [typescript-eslint's versioning policy](https://typescript-eslint.io/users/versioning/), for the
   strict pole weighed against antfu's loose one, and [Prettier's option
-  philosophy](https://prettier.io/docs/option-philosophy), for why the em dash setting is a small,
-  fixed set of options rather than a knob per exception.
+  philosophy](https://prettier.io/docs/option-philosophy), for the em dash setting being a small fixed set.
 - [cruft](https://cruft.github.io/cruft/), for proving the update, check, and skip-list shape this
   package's own checker follows.
-- [MADR](https://github.com/adr/madr), for the decision-record template this package's ADRs still
-  carry.
+- [MADR](https://github.com/adr/madr), for the decision-record template this package's ADRs carry.
 - the [Contributor Covenant](https://www.contributor-covenant.org), for `CODE_OF_CONDUCT.md`.
 
-Four more names sharpened where this package chose to sit, without contributing text taken
-directly: [Ruler](https://github.com/intellectronica/ruler),
-[AgentSync](https://github.com/yelmuratoff/agent_sync),
+Four more names sharpened where this package chose to sit, without text taken directly:
+[Ruler](https://github.com/intellectronica/ruler), [AgentSync](https://github.com/yelmuratoff/agent_sync),
 [awesome-cursorrules](https://github.com/PatrickJS/awesome-cursorrules), and
-[config-drift-checker](https://github.com/jameskomo/config-drift-checker).
-
-`docs/handbook/upstreams.md` is the full ledger, dated and licensed; `NOTICE` says exactly what was
-borrowed and how.
+[config-drift-checker](https://github.com/jameskomo/config-drift-checker). `docs/handbook/upstreams.md`
+is the full ledger, dated and licensed; `NOTICE` says exactly what was borrowed and how.

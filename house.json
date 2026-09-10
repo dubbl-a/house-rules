@@ -82,7 +82,7 @@
         ],
         "lengthLimits": {
           "CLAUDE.md": 40,
-          "README.md": 190,
+          "README.md": 160,
           ".claude/rules/house/*.md": 200
         },
         "maxCoLoadLines": 400,
@@ -144,13 +144,6 @@
       "to": 160,
       "why": "a public README carries positioning, prerequisites, licensing, contributing pointers, and acknowledgements that the private one did not, and 160 leaves headroom so each honest addition does not renegotiate the budget",
       "decided": "2026-09-02"
-    },
-    {
-      "path": "README.md",
-      "from": 160,
-      "to": 190,
-      "why": "the opening now has to say what Claude Code does not do on its own, name what each of the nine modules covers in plain words, state where the rules came from, and address a non-technical and a technical reader separately before anything else, which does not fit in 160 with the acknowledgements kept in full",
-      "decided": "2026-09-10"
     }
   ]
 }
