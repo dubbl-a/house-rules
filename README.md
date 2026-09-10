@@ -7,14 +7,21 @@
 
 Claude Code is a program that builds and changes software from what you describe in plain words.
 It is good at building. What it does not bring on its own is the working knowledge an experienced
-team carries: how to change stored data without losing it, how to put something live so it can be
-undone, what a passing test is allowed to prove, how a change should travel from your machine to
-the shared copy. You would have to know to ask, and know what to ask for. house-rules is that
-expertise, researched and written down as rules: what went wrong across real projects, and what
-the wider engineering community has already settled, each drawn from a named source, so you do not
-have to research it yourself. The rules are copied into your project as ordinary files, where
-Claude Code reads them every time it works. And because written advice goes stale, a checker reads
-your project back and tells you when a rule and the project have stopped matching.
+team carries, such as taking a proven backup before a change to stored data, or trying a fix on a
+separate copy before touching the shared one. You would have to know to ask. house-rules is that
+expertise, researched and written down as rules across nine areas: working with Claude Code itself,
+documentation, engineering, GitHub, testing, databases, deployment, data pipelines, and text a model
+produced. Each rule comes from what went wrong on a real project or from a practice the wider
+engineering community has already settled, with its source named, so you do not have to research
+it yourself.
+
+The rules are also how your instructions to Claude Code are managed, and that matters because
+whatever you write for it is advice: nothing checks that a session followed it, that it is still
+true after the project changed, or that it stayed short enough to be followed at all. house-rules
+puts the rules in your project as ordinary files that Claude Code reads every time it works, keeps
+each one scoped to the files it concerns and under a length ceiling, locks each with a fingerprint
+so a hand edit shows, and runs a checker that reads the project back and tells you when a rule and
+the project have stopped matching.
 
 ## What the rules cover
 
@@ -39,21 +46,18 @@ Four turn on when your project looks like it needs them:
 - **llm-output**: text a model produced, kept aside until a person has checked it, so nothing a
   model wrote is read as fact by accident.
 
-Every rule was earned or borrowed, never invented. `docs/handbook/` records, for each one, the
-incident from one of the five real projects these rules came out of, or the published practice it
-borrowed with its source named; `docs/handbook/inventory.md` traces every harvested practice to the
-rule that carries it, and `docs/handbook/upstreams.md` is the ledger of sources. A rule you
+Every rule was earned or borrowed, never invented: `docs/handbook/` records the incident or the
+published practice behind each one, `docs/handbook/inventory.md` traces every harvested practice to
+the rule that carries it, and `docs/handbook/upstreams.md` is the ledger of sources. A rule you
 disagree with is argued on its evidence, not worked around.
 
 ## Who it helps
 
 **If you are not an engineer**, these rules carry what you would otherwise have to learn the hard
-way or go and research: the practice an experienced team would already know, written so it applies
-without you knowing its name. Before the assistant changes stored data, it takes a backup and proves
-the backup works. Before it fixes something, it tries the fix on a separate copy. It never writes
-an instruction for itself that names a command that does not exist. Each rule says why in the same
-breath, so you learn the reasoning as you go. Start with the plain-language guide, which explains
-every technical word where it first appears: https://house-rules-guide.vercel.app
+way or go and research: the practice an experienced team would already know, applied without you
+knowing its name, and each rule says why in the same breath, so you learn the reasoning as you go.
+Start with the plain-language guide, which explains every technical word where it first appears:
+https://house-rules-guide.vercel.app
 
 **If you are an engineer**, this is a Claude Code plugin. The nine modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
