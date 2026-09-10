@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+- **The rule-load positive control names the rules it has not seen.** `house doctor` reported `<n> of <m> vendored rules seen` and stopped, which announces a problem without saying which file to open, so the reader greps the log by hand for something the probe already knew. The line now continues `; not seen in this log: <names>` whenever the count is short, and `--json` carries the same list as `ruleLoadProbe.vendoredUnseen`. The wording is deliberate: the log self-trims at its cap, so absence from it is evidence about the log and not proof a rule is dead, and the line fails toward under-claiming rather than calling a healthy rule broken. A positive control plants one unseen rule beside one seen rule and asserts the seen one is not named; the negative control asserts the suffix is absent entirely when every rule is accounted for. Both were shown failing against the previous line. Found in this repo, where the control read `4 of 5` for days: the unnamed rule was `github.md`, which never loads here despite a `paths:` list whose globs match tracked files, and a byte-identical copy of the same file loads from any other path, so the cause sits in rule registration and outside anything this package controls.
+
 ## [0.9.1] - 2026-09-09
 
 The InstructionsLoaded logger stops losing lines when rules load together, so doctor's count can be trusted; `house init` stops freezing slot defaults into the adopter's manifest; a public repo can mark its Actions minutes unmetered; and the github module gains a rule for the community files the platform looks for. Patch under ADR 0012: a hook fix, an init change, rule content, and a widened slot value, none of which removes or renames a named surface.

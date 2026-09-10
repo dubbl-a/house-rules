@@ -572,6 +572,7 @@ test('doctor: rule-load positive control reports none wired when nothing declare
     lastLoadAt: null,
     vendoredSeen: 0,
     vendoredTotal: 0,
+    vendoredUnseen: [],
   });
 });
 
@@ -648,13 +649,66 @@ test('doctor: plugin hook with a log reports the last load and how many vendored
   assert.equal(r.code, 0);
   assert.match(r.out, /rule-load positive control: plugin hook; log .*: last load 2026-09-08T10:05:00\.000Z, 1 of 1 vendored rules seen/);
   assert.match(r.out, /caveat: assumes the house plugin is installed and enabled/);
+  // Negative control for the unseen-rule line below: every vendored rule is
+  // in the log here, so the suffix must be absent entirely rather than
+  // printed empty. A line that always ends in "not seen in this log:" would
+  // read as a finding on a healthy repo.
+  assert.doesNotMatch(r.out, /not seen in this log/);
 
   const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
   assert.equal(j.ruleLoadProbe.source, 'plugin');
   assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:05:00.000Z');
   assert.equal(j.ruleLoadProbe.vendoredSeen, 1);
   assert.equal(j.ruleLoadProbe.vendoredTotal, 1);
+  assert.deepEqual(j.ruleLoadProbe.vendoredUnseen, []);
   assert.equal(j.ruleLoadProbe.logPath, join(configDir, 'house', 'instructions-loaded', `${instructionsLoadedKey(repo)}.jsonl`));
+});
+
+// Positive control for the same line: the count said "1 of 2" and stopped,
+// which is where a real diagnosis begins. Found in this repo, where doctor
+// reported 4 of 5 for days while the reader had no way to learn from that
+// line which of the five was dead.
+test('doctor: the rule-load line names the vendored rules the log has not seen', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  // beta's defaultPaths is the single `$slot` entry, so it renders only when
+  // the slot names a glob that matches a tracked file: two vendored rules is
+  // the whole point of this case, and one of them has to be beta.
+  const repo = buildTargetRepo({
+    'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n', 'tests/t.mjs': '//t\n',
+  });
+  writeHouseJson(repo, {
+    ...BASE_HOUSE_JSON,
+    modules: { alpha: { enabled: true, config: {} }, beta: { enabled: true, config: { slot: ['tests/**'] } } },
+  });
+  const rendered = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(rendered.code, 0, rendered.out + rendered.err);
+  const lock = JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'));
+  const dests = lock.files.filter((e) => e.path.startsWith('.claude/rules/house/')).map((e) => e.path);
+  assert.equal(dests.length, 2, `expected two vendored rules, got ${JSON.stringify(dests)}`);
+
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  // Only the first dest appears in the log; the second is the planted
+  // violation this control exists to catch.
+  const [seenDest, unseenDest] = dests;
+  writeInstructionsLoadedLog(configDir, repo, [
+    { ts: '2026-09-08T10:00:00.000Z', file_path: join(repo, seenDest), load_reason: 'path_glob_match', session_id: 's1' },
+  ]);
+  const env = { CLAUDE_CONFIG_DIR: configDir };
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo], env);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /1 of 2 vendored rules seen; not seen in this log: /);
+  const unseenBase = unseenDest.slice('.claude/rules/house/'.length);
+  assert.match(r.out, new RegExp(`not seen in this log: ${unseenBase.replace('.', '\\.')}$`, 'm'));
+  // The rule that DID load must not be named, or the line stops discriminating.
+  assert.doesNotMatch(r.out.split('not seen in this log:')[1], new RegExp(seenDest.slice('.claude/rules/house/'.length).replace('.', '\\.')));
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
+  assert.deepEqual(j.ruleLoadProbe.vendoredUnseen, [unseenDest]);
+  assert.equal(j.ruleLoadProbe.vendoredSeen, 1);
+  assert.equal(j.ruleLoadProbe.vendoredTotal, 2);
 });
 
 test('doctor: lastLoadAt is the max timestamp seen, not the last line in file order (#37 concurrent appends land in completion order)', () => {
