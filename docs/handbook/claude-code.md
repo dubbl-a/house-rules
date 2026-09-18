@@ -188,6 +188,19 @@ Native floor, as of 2026-09-02: the print-mode `--max-budget-usd` ceiling (`clau
 the managed `availableModels` list, which is applied as given rather than merged with a
 project's own (https://code.claude.com/docs/en/settings#combine-settings-across-scopes).
 
+Bundled workflows inherit the session model on every agent, 2026-09-18: `/deep-research` in
+Claude Code v2.1.276 names no model on any of its five stages and takes only a question string as
+args, so a Fable session ran its roughly 100-agent fan-out on Fable. The public docs confirm the
+Workflow tool has no model field (`WorkflowInput` at
+https://code.claude.com/docs/en/agent-sdk/typescript) and that `CLAUDE_CODE_SUBAGENT_MODEL` is the
+only session-wide default (https://code.claude.com/docs/en/model-config); per-call `model` and
+`effort` options exist only in the bundled `/workflow-authoring` reference. The fork is not
+vendored as text, because the script is Anthropic's and this repo is public; instead
+`check-deep-research-upstream.mjs` reads it out of the installed binary, applies five model pins
+and an args map, and refuses if any pin anchor no longer matches exactly once. Sunset: the check
+exits 2 when native agent() calls carry a model or native args accept an object, and the fork
+guidance leaves the rule that day.
+
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
 repo-c's `.claude/settings.json` scopes its hook entry with a declarative `"if": "Bash(git *)"`
