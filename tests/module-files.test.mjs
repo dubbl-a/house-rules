@@ -13,7 +13,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync,
+  mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, existsSync,
 } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -559,4 +559,124 @@ test('cleanup-worktree.sh: resolve_kill_list keeps only the string entries of a 
   const res = sourceAndResolveKillList(work);
   assert.equal(res.status, 0, res.stderr);
   assert.equal(res.stdout, 'node\nnpm\n');
+});
+
+// ── claude-code/check-deep-research-upstream.mjs ────────────────────────────
+// No installed Claude Code binary is required: each test plants a fake binary
+// holding a template-literal-escaped copy of a minimal deep-research body.
+
+const DR_CHECK = join(ROOT, 'plugins/house/modules/claude-code/files/check-deep-research-upstream.mjs');
+
+/** A minimal native body carrying every anchor the fork's pins rely on. */
+function fakeNativeBody(overrides = {}) {
+  const questionLine = overrides.questionLine ?? 'const QUESTION = (typeof args === "string" && args.trim()) || ""';
+  const scope = overrides.scope ?? '{ label: "scope", schema: SCOPE_SCHEMA }';
+  return [
+    '// deep-research: Scope \\u2192 pipeline(Search)',
+    'const URL_HOST_PATTERN = /^[a-z][a-z0-9+.-]*:\\\\/\\\\/(?:www\\\\.)?([^/:?#@\\\\\\\\]+)/i',
+    questionLine,
+    `const scope = await agent("q", ${scope})`,
+    'agent(SEARCH_PROMPT(angle), {',
+    '    label: "search:" + angle.label, phase: "Search", schema: SEARCH_SCHEMA',
+    '  })',
+    'agent(FETCH_PROMPT(source, a), {',
+    '          schema: EXTRACT_SCHEMA,',
+    '        })',
+    'agent(VERIFY_PROMPT(claim, v), {',
+    '          schema: VERDICT_SCHEMA,',
+    '        })',
+    'const report = await agent("s", { label: "synthesize", schema: REPORT_SCHEMA })',
+    'return {',
+    '    agentCalls: 1 + scope.angles.length,',
+    '  },',
+    '}',
+  ].join('\n');
+}
+
+function fakeBinary(dir, body) {
+  const p = join(dir, '2.1.999');
+  writeFileSync(p, Buffer.concat([Buffer.from('\x00junk before `'), Buffer.from(body), Buffer.from('`\x00junk after')]));
+  return p;
+}
+
+async function unescapedShaOf(body) {
+  const mod = await import(pathToFileURL(DR_CHECK).href);
+  return mod.sha256(mod.extractNativeBody(Buffer.from(body)));
+}
+
+function runDrCheck(args) {
+  return spawnSync(process.execPath, [DR_CHECK, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_BINARY: '' } });
+}
+
+test('deep-research check: unchanged native body against its own baseline exits 0 (negative control)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, '--json']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const j = JSON.parse(res.stdout);
+  assert.equal(j.version, '2.1.999');
+  assert.match(j.verdict, /unchanged/);
+});
+
+test('deep-research check: a drifted native body exits 1 and names --rebuild (positive control)', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody());
+  const res = runDrCheck([`--binary=${bin}`, '--baseline=0000000000000000000000000000000000000000000000000000000000000000']);
+  assert.equal(res.status, 1, res.stdout + res.stderr);
+  assert.match(res.stdout, /drifted/);
+  assert.match(res.stdout, /--rebuild/);
+});
+
+test('deep-research check: native agent() calls carrying a model reach the sunset and exit 2', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody({ scope: '{ label: "scope", schema: SCOPE_SCHEMA, model: "sonnet" }' });
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`]);
+  assert.equal(res.status, 2, res.stdout + res.stderr);
+  assert.match(res.stdout, /SUNSET/);
+  assert.match(res.stdout, /carry a model/);
+});
+
+test('deep-research check: native args accepting an object reach the sunset and exit 2', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody({ questionLine: 'const QUESTION = (typeof args === "object" && args.question) || ""' });
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`]);
+  assert.equal(res.status, 2, res.stdout + res.stderr);
+  assert.match(res.stdout, /accept an object/);
+});
+
+test('deep-research check: --rebuild writes a fork with five model pins, a MODELS map, and unescaped regex', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  assert.equal((fork.match(/model: MODELS\./g) || []).length, 5);
+  assert.match(fork, /name: 'deep-research-pinned'/);
+  assert.match(fork, /ARGS_OBJ\.models/);
+  assert.ok(fork.includes(':\\/\\/(?:www\\.)?'), 'template-literal escaping undone');
+  assert.ok(!fork.includes('\\\\/'), 'no doubled backslashes remain');
+});
+
+test('deep-research check: --rebuild refuses when a pin anchor no longer matches exactly once', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ scope: '{ label: "scope", schema: SCOPE_SCHEMA, effort: "high" }' }));
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /rebuild refused/);
+  assert.match(res.stdout, /SCOPE_SCHEMA/);
+  assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: a binary without the bundled script exits 1, not 0', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, '// nothing here');
+  const res = runDrCheck([`--binary=${bin}`]);
+  assert.equal(res.status, 1, res.stdout + res.stderr);
+  assert.match(res.stdout, /not found in binary/);
 });

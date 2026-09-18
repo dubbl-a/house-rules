@@ -4,7 +4,12 @@
   "rules": [
     "rules/claude-code.md"
   ],
-  "files": [],
+  "files": [
+    {
+      "src": "files/check-deep-research-upstream.mjs",
+      "dest": "scripts/house/check-deep-research-upstream.mjs"
+    }
+  ],
   "configSlots": [
     "claudeWorkflowGlobs",
     {
