@@ -211,6 +211,24 @@ pins already locate, or native args read a per-stage model map (`args.models`); 
 object alone no longer counts, since the Workflow tool has always accepted object args and that
 proves nothing about models by itself.
 
+The fan-out is fixed, not the model, 2026-09-20: twelve `/deep-research` run records on this
+machine (2026-08-31 to 2026-09-18) show the same shape whatever the question. The native
+script hard-codes three votes on the top 25 claims, so any question that yields 25 claims spends
+75 verifier agents, and its fetch cap of 15 only applies to medium and low relevance, so
+high-relevance hits overshoot it (23 to 28 fetched in every run). Every full run therefore lands
+at 100 to 111 agents; the 2026-09-18 legal run on the pinned fork was 111 agents and 6.37M
+tokens with the pins working (109 on Sonnet, 2 on Opus), and 70 percent of the tokens were the 75
+verifiers at a median 57K each, since each one runs its own web searches. The two runs near 200
+were a hand-edited copy with the claim cap raised to 55 (227 agents, 10.5M tokens, 2026-09-09)
+and an older record format that wrote two meta files per agent. The fork now replaces the four
+constants with a depth preset (`args.depth`: light, standard, deep; any field via
+`args.budget`) and bounds the bypass, so the caller sizes the run to the question and the run
+logs its ceiling before it starts. The session-side floor is `CLAUDE_CODE_SUBAGENT_MODEL` in
+user settings: the docs put it third in resolution order, after a per-call model and an agent
+definition's own, for subagents, teammates, and workflow agents alike
+(https://code.claude.com/docs/en/sub-agents), so with it set to the tier below the session's an
+omitted model no longer lands on the session model, and a pinned call is unaffected.
+
 The "fail loudly" floor the rule once stated does not hold on v2.1.278. The same binary's strings
 show the real behavior: "Subagent model … is not in the availableModels allowlist; using the newest
 allowed model in its family" and, on the workflows doc, "that agent runs on a substituted model
