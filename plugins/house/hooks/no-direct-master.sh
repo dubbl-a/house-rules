@@ -525,7 +525,18 @@ decide_for_target() {
     # key count, even a string's length), and a malformed settings.json that
     # Claude Code itself ignores must not disarm this guard. Require the real
     # shape: a non-empty ARRAY, the same predicate the checker uses.
-    if jq -e '(.hooks.PreToolUse | type == "array") and ((.hooks.PreToolUse | length) > 0)' "$toplevel/.claude/settings.json" >/dev/null 2>&1; then
+    #
+    # And the entry has to be able to see a git command (2026-09-20 audit,
+    # the one refuted conflict): a PreToolUse hook whose matcher names other
+    # tools (`Edit|Write`) guards something else, and standing down for it
+    # gave up real enforcement for nothing. So an entry counts only when its
+    # matcher is absent, empty, `*`, or a regex that matches `Bash`, and its
+    # own hooks array is non-empty. A matcher jq cannot read as a regex fails
+    # the test, which leaves THIS hook armed: the safe direction.
+    if jq -e '[.hooks.PreToolUse[]? | objects
+               | select((.hooks | type) == "array" and (.hooks | length) > 0)
+               | . as $e | select(($e.matcher // "") == "" or $e.matcher == "*" or ("Bash" | test($e.matcher)))]
+              | length > 0' "$toplevel/.claude/settings.json" >/dev/null 2>&1; then
       return 0
     fi
   fi
@@ -929,7 +940,7 @@ if is_protected_branch "$branch"; then
     if carve_out_satisfied "$staged"; then
       exit 0
     fi
-    deny "Refusing to commit on '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. For anything that renders or runs in parallel with another session, spin up a worktree (git worktree add -b kind/short-name ../<repo>-kind-short-name) in a SEPARATE call, then commit in a call of its own: a target this same command creates does not exist yet when this check runs, so the chained one-liner is refused. For a small, single-commit change with nothing else in flight, a branch in this checkout (git checkout -b kind/short-name) is fine. Commit there and open a PR.$carve_out_reason_suffix$(quoted_only_hint commit)"
+    deny "Refusing to commit on '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. Work in a worktree: git worktree add -b kind/short-name ../<repo>-kind-short-name, in a SEPARATE call, then commit there in a call of its own (a target this same command creates does not exist yet when this check runs, so the chained one-liner is refused). A branch in this checkout (git checkout -b kind/short-name) is for a single-commit change only, and only when the agent list and git worktree list show no peer session in flight, because this checkout is the one every other session shares. Commit there and open a PR.$carve_out_reason_suffix$(quoted_only_hint commit)"
   fi
   if any_clause_verb push; then
     unpushed=$(git "${git_dir_arg[@]}" diff '@{push}..' --name-only 2>/dev/null \

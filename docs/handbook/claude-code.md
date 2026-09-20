@@ -320,7 +320,12 @@ planning has real overhead; and `/clear` after two failed corrections on the sam
 
 repo-b's CLAUDE.md states the rule almost verbatim: "Git state is SHARED across sessions here."
 A `git checkout` elsewhere moves your branch mid-run and strands uncommitted work; the mitigation
-is to ask first, prefer a worktree, and commit early.
+is to ask first, work in a worktree, and commit early. The worktree became the default rather
+than the preference after parallel sessions kept colliding on branches made in the main
+checkout: a rubric that lets each session judge whether anyone else is in flight is one
+that every session answers in its own favor, so the rule now names the two lists to read
+(the running agents and `git worktree list`) and reserves the main-checkout branch for a
+single-commit change when both are empty of peers.
 
 A repo-a memory item dates the concrete failure that produced the read-before-every-commit
 half of this rule: on 2026-06-05, a peer session moved the branch mid-run on a shared checkout,

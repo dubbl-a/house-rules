@@ -396,6 +396,35 @@ if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision'
   pass "a non-array PreToolUse value does not disarm the guard"
 else fail "non-array PreToolUse deferral" "expected deny: a malformed settings.json must not disarm"; fi
 
+# 2026-09-20 audit, the one CONFLICT claim, downgraded to this narrow bug: a
+# PreToolUse entry whose matcher names other tools never sees a git command,
+# so deferring to it gave up enforcement for nothing. Only an entry whose
+# matcher covers Bash, with a non-empty hooks array, defers.
+for _m in 'Edit|Write' 'Edit' 'Read' 'mcp__.*' 'bash' '('; do
+  printf '{"hooks":{"PreToolUse":[{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" > "$repo_d/.claude/settings.json"
+  run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
+  if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
+    pass "a PreToolUse entry with matcher '$_m' cannot see Bash and does not disarm the guard"
+  else fail "matcher $_m deferral" "expected deny: a hook scoped to other tools is not a branch guard"; fi
+done
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}' > "$repo_d/.claude/settings.json"
+run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
+if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
+  pass "a Bash-matching entry with an empty hooks array does not disarm the guard"
+else fail "empty hooks array deferral" "expected deny"; fi
+for _m in 'Bash|Edit' '.*' '' '*' 'Ba.h'; do
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"y"}]},{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" > "$repo_d/.claude/settings.json"
+  run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
+  if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" != "deny" ]; then
+    pass "a PreToolUse entry with matcher '$_m' covers Bash and defers"
+  else fail "matcher $_m deferral" "expected allow: this entry can see a git command"; fi
+done
+echo '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"x"}]}]}}' > "$repo_d/.claude/settings.json"
+run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
+if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" != "deny" ]; then
+  pass "a PreToolUse entry with no matcher at all covers every tool and defers"
+else fail "absent matcher deferral" "expected allow"; fi
+
 # ADR 0009: house.json's guard record is a CHECKER signal only; the hook never
 # reads it. A repo carrying the record, with no repo-local guard, still denies
 # a protected-branch commit.
