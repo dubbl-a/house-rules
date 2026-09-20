@@ -44,6 +44,14 @@
           "plugins/house/skills/**",
           "plugins/house/evals/**",
           {
+            "path": "plugins/house/agents/**",
+            "why": "subagent definitions the harness loads; their tokens name tools and models, not this tree"
+          },
+          {
+            "path": "plugins/house/orchestration/**",
+            "why": "session-start context the hook injects; its tokens name agents and tiers, not this tree"
+          },
+          {
             "path": "docs/handbook/sources/**",
             "why": "package-authored survey material; its tokens describe surveyed repos, not this tree"
           },

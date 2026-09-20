@@ -1,5 +1,5 @@
 {
-  "description": "House branch guard: denies commits and pushes on protected branches in repos that opt in via house.json. Also logs InstructionsLoaded events, the rule-load positive control `house doctor` reads.",
+  "description": "House branch guard: denies commits and pushes on protected branches in repos that opt in via house.json. Also logs InstructionsLoaded events, the rule-load positive control `house doctor` reads, and injects the orchestration defaults (roster, model tier, briefs, verification) at session start.",
   "hooks": {
     "PreToolUse": [
       {
@@ -13,6 +13,14 @@
       {
         "hooks": [
           { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/instructions-loaded.mjs", "timeout": 5 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs", "timeout": 5 }
         ]
       }
     ]

@@ -14,6 +14,7 @@
     "check:house": "node .house/check.mjs",
     "test:smoke": "bash tests/smoke-bootstrap.sh",
     "check:plugin": "claude plugin validate --strict ./plugins/house",
+    "check:kit": "node scripts/check-orchestration-kit-upstream.mjs",
     "verify": "npm test && npm run test:hooks && npm run check:traceability && npm run check:house && npm run test:smoke && npm run check:plugin"
   }
 }

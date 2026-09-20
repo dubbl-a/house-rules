@@ -201,6 +201,18 @@ evaluated, and rejected without copying, is docs/handbook/upstreams.md.
    distributed under CC BY-SA 4.0. The credit is kept in that chapter's
    Sources list and in the ledger.
 
+8. github.com/SirRuggie/claude-code-orchestration-kit.
+   Licensed under the MIT License, Copyright (c) 2026 SirRuggie.
+
+   plugins/house/agents/ (scout, researcher, builder, refuter, debugger) and
+   plugins/house/orchestration/ORCHESTRATION.md are adaptations of that
+   kit's core/agents/ and core/CLAUDE.md at its commit of 2026-09-13. The
+   roster's names, model tiers, tool lists, output contracts, and the
+   six-section brief are taken from it; the wording is rewritten in house
+   style, the task-bucket bookkeeping and the /task command are left out,
+   and the text is delivered by a session-start hook rather than by
+   replacing the user's own CLAUDE.md.
+
 The remaining ledger rows contributed no text, structure, or schema and are
 recorded there rather than here: ai-rulez and Packmind for ideas and framing,
 ctxlint for one check whose idea was reimplemented in this package's own code
