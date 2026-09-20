@@ -949,6 +949,122 @@ expect_allow "breaker: a computed verb with harmless arguments on a feature bran
 expect_allow "breaker: a computed verb aimed at the feature branch itself" \
   "$(mk_payload "git pu\${x}sh origin feat/x" "$t")"
 git -C "$t" checkout -q master
+
+# ── #34: the seams 0.9.0 left open ───────────────────────────────────────────
+# Each was probed against the 0.9.1 hook before the fix and the deny cases
+# below were shown failing (allowed) there. Two adopted repos: one on master,
+# one on a feature branch, so a redirect from one to the other is visible.
+_p="pu""sh"
+_verb="com""mit"
+pm="$TMP_ROOT/seam_master"; new_repo "$pm"
+echo '{"branchPolicy":"pr"}' >"$pm/house.json"
+git -C "$pm" add house.json && git -C "$pm" $_verb -q -m house
+pf="$TMP_ROOT/seam_feature"; new_repo "$pf"
+echo '{"branchPolicy":"pr"}' >"$pf/house.json"
+git -C "$pf" add house.json && git -C "$pf" $_verb -q -m house
+git -C "$pf" checkout -q -b feat/x
+seam_bare="$TMP_ROOT/seam_remote.git"; git init -q --bare "$seam_bare"
+git -C "$pm" remote add origin "$seam_bare"
+git -C "$pf" remote add origin "$seam_bare"
+
+# Seam 2: an environment prefix or a --git-dir/--work-tree option redirects
+# the target, so the check has to follow it the way it follows -C.
+expect_deny "seam 2: GIT_DIR and GIT_WORK_TREE aim a commit at the master repo" \
+  "$(mk_payload "GIT_DIR=$pm/.git GIT_WORK_TREE=$pm git $_verb -m x" "$pf")" "master"
+expect_deny "seam 2: env(1) carrying the same prefix" \
+  "$(mk_payload "env GIT_WORK_TREE=$pm GIT_DIR=$pm/.git git $_verb -m x" "$pf")" "master"
+expect_deny "seam 2: GIT_DIR alone aims at the master repo's HEAD" \
+  "$(mk_payload "GIT_DIR=$pm/.git git $_verb -m x" "$pf")" "master"
+expect_deny "seam 2: --git-dir= and --work-tree= options" \
+  "$(mk_payload "git --git-dir=$pm/.git --work-tree=$pm $_verb -m x" "$pf")" "master"
+expect_deny "seam 2: --work-tree and --git-dir with separate values" \
+  "$(mk_payload "git --work-tree $pm --git-dir $pm/.git $_verb -m x" "$pf")" "master"
+expect_allow "seam 2: the prefix aiming at the feature repo is no longer a false deny" \
+  "$(mk_payload "GIT_DIR=$pf/.git GIT_WORK_TREE=$pf git $_verb -m x" "$pm")"
+expect_deny "seam 2: the prefix does not hide a refspec aimed at master" \
+  "$(mk_payload "GIT_DIR=$pf/.git GIT_WORK_TREE=$pf git $_p origin master" "$pm")" "protected branch"
+expect_deny "seam 2: a prefix naming a non-repo falls back to the real cwd" \
+  "$(mk_payload "GIT_DIR=/nonexistent/.git git $_verb -m x" "$pm")" "master"
+expect_allow "seam 2: a prefix naming a non-repo with a harmless verb" \
+  "$(mk_payload "GIT_DIR=/nonexistent/.git git status" "$pm")"
+expect_deny "seam 2: config injected through the environment is refused" \
+  "$(mk_payload "GIT_CONFIG_PARAMETERS=\"'push.default=matching'\" git $_p origin" "$pf")" "environment"
+expect_deny "seam 2: GIT_CONFIG_COUNT injection is refused" \
+  "$(mk_payload "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.default GIT_CONFIG_VALUE_0=matching git $_p origin" "$pf")" "environment"
+
+# Seam 3: a cd inside an interpreter's -c body changes the target. Every
+# directory the command names is now a candidate, and any candidate on a
+# protected branch refuses the whole command.
+expect_deny "seam 3: cd to the master repo inside a bash -c body" \
+  "$(mk_payload "bash -c 'cd $pm && git $_verb -m x'" "$pf")" "master"
+expect_deny "seam 3: cd with a semicolon inside an sh -c body" \
+  "$(mk_payload "sh -c \"cd $pm; git $_verb -m x\"" "$pf")" "master"
+expect_allow "seam 3: cd to the feature repo inside a -c body" \
+  "$(mk_payload "bash -c 'cd $pf && git $_verb -m x'" "$pf")"
+expect_deny "seam 3: a second cd later in the command is read too" \
+  "$(mk_payload "cd $pf && git status && cd $pm && git $_verb -m x" "$pf")" "master"
+expect_deny "seam 3: a second -C later in the command is read too" \
+  "$(mk_payload "git -C $pf status && git -C $pm $_verb -m x" "$pf")" "master"
+expect_allow "seam 3: two feature-branch targets in one command" \
+  "$(mk_payload "git -C $pf status && cd $pf && git $_verb -m x" "$pm")"
+
+# Seam 1: a ref that arrives as data. The arguments of a git command fed by
+# xargs come from stdin, which this text cannot read, so a push through xargs
+# and a git whose verb comes from xargs are refused from any branch.
+expect_deny "seam 1: a push whose ref arrives through xargs" \
+  "$(mk_payload "echo master | xargs git $_p origin" "$pf")" "xargs"
+expect_deny "seam 1: xargs with its own option before the push" \
+  "$(mk_payload "echo master | xargs -n1 git $_p origin" "$pf")" "xargs"
+expect_deny "seam 1: a git whose verb arrives through xargs" \
+  "$(mk_payload "echo '$_p origin master' | xargs git" "$pf")" "xargs"
+expect_deny "seam 1: a push through xargs is refused even toward the feature branch" \
+  "$(mk_payload "echo feat/x | xargs git $_p origin" "$pf")" "xargs"
+expect_allow "seam 1: xargs feeding a harmless verb is left alone" \
+  "$(mk_payload "git ls-files | xargs git add" "$pf")"
+expect_allow "seam 1: xargs feeding a harmless verb on the protected branch" \
+  "$(mk_payload "git ls-files | xargs git add" "$pm")"
+
+# Seam 4: a git alias is a verb this text cannot read, so the hook asks git.
+# A plain alias is read as the verb it expands to; a shell alias that runs
+# git is refused; an alias defined on the same command line, or a verb git
+# does not know, is refused because it cannot be looked up.
+git -C "$pm" config alias.ci "$_verb"
+git -C "$pm" config alias.st status
+git -C "$pf" config alias.pm "$_p origin master"
+git -C "$pf" config alias.p "$_p"
+git -C "$pf" config alias.sh2 "!git $_p origin master"
+git -C "$pf" config alias.hello '!echo hi'
+expect_deny "seam 4: a plain alias for commit on master" \
+  "$(mk_payload "git ci -m x" "$pm")" "master"
+expect_allow "seam 4: a plain alias for status on master" \
+  "$(mk_payload "git st" "$pm")"
+expect_deny "seam 4: an alias carrying a whole push to master" \
+  "$(mk_payload "git pm" "$pf")" "protected branch"
+expect_deny "seam 4: an alias for push with the ref on the command line" \
+  "$(mk_payload "git p origin master" "$pf")" "protected branch"
+expect_deny "seam 4: a shell alias that runs git" \
+  "$(mk_payload "git sh2" "$pf")" "alias"
+expect_allow "seam 4: a shell alias that does not run git" \
+  "$(mk_payload "git hello" "$pf")"
+expect_deny "seam 4: an alias defined on the command line with -c" \
+  "$(mk_payload "git -c alias.x=$_verb x -m y" "$pm")" "alias"
+expect_deny "seam 4: an alias defined and used in the same command" \
+  "$(mk_payload "git config alias.zz '!git $_p origin master' && git zz" "$pf")" "unknown"
+expect_deny "seam 4: a verb git does not know" \
+  "$(mk_payload "git frobnicate origin master" "$pf")" "unknown"
+expect_allow "seam 4: a push with no refspec under the default push config" \
+  "$(mk_payload "git $_p origin" "$pf")"
+git -C "$pf" config push.default matching
+expect_deny "seam 4: push.default=matching in the repo config moves master without naming it" \
+  "$(mk_payload "git $_p origin" "$pf")" "config"
+git -C "$pf" config --unset push.default
+git -C "$pf" config remote.origin.push "+refs/heads/feat/x:refs/heads/master"
+expect_deny "seam 4: a remote.<name>.push refspec in the repo config" \
+  "$(mk_payload "git $_p origin" "$pf")" "config"
+git -C "$pf" config --unset remote.origin.push
+expect_allow "seam 4: a named feature push is unaffected by the config checks" \
+  "$(mk_payload "git $_p origin feat/x" "$pf")"
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
