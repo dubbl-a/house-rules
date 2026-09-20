@@ -2049,9 +2049,10 @@ function checkMinutes(ctx) {
 // installed and enabled in every session, which the repo alone cannot verify;
 // that is a warning, not a hard finding, because a correctly-installed plugin
 // really does guard it. "Reachable guard" means exactly what the hook's own
-// deferral means (plugins/house/hooks/no-direct-master.sh): a NON-EMPTY
-// PreToolUse array in .claude/settings.json. A hooks key alone or a
-// PostToolUse logging hook is not a branch guard, and settings.local.json is
+// deferral means (plugins/house/hooks/no-direct-master.sh): a PreToolUse
+// entry in .claude/settings.json whose matcher covers Bash and whose hooks
+// array is non-empty. A hooks key alone, a PostToolUse logging hook, or a
+// PreToolUse hook matching only other tools is not a branch guard, and settings.local.json is
 // per-machine and gitignored, so the hook never reads it and neither does
 // this; a guard that does not travel with the repo is not the repo's guard.
 function settingsHasPreToolUseHook(repoRoot) {
@@ -2059,7 +2060,22 @@ function settingsHasPreToolUseHook(repoRoot) {
   if (!existsSync(p)) return false;
   let j;
   try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { return false; }
-  return isPlainObject(j) && isPlainObject(j.hooks) && Array.isArray(j.hooks.PreToolUse) && j.hooks.PreToolUse.length > 0;
+  if (!(isPlainObject(j) && isPlainObject(j.hooks) && Array.isArray(j.hooks.PreToolUse))) return false;
+  return j.hooks.PreToolUse.some(preToolUseEntryCoversBash);
+}
+// An entry counts only when it can see a git command: its own hooks array is
+// non-empty and its matcher is absent, empty, `*`, or a regex matching `Bash`.
+// A hook scoped to other tools (`Edit|Write`) guards something else, and
+// certifying it reported protection the repo did not have (2026-09-20 audit).
+// The plugin hook applies the same test with jq; a matcher that is not a
+// readable regex fails it in both, which is the direction that leaves the
+// plugin hook armed and this family warning.
+function preToolUseEntryCoversBash(e) {
+  if (!isPlainObject(e) || !Array.isArray(e.hooks) || e.hooks.length === 0) return false;
+  const m = e.matcher;
+  if (m === undefined || m === '' || m === '*') return true;
+  if (typeof m !== 'string') return false;
+  try { return new RegExp(m).test('Bash'); } catch { return false; }
 }
 
 // ADR 0009: the recorded plugin-guard choice, house.json's top-level `guard`

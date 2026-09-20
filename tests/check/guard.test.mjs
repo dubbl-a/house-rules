@@ -47,6 +47,31 @@ test('guard: a hooks key alone, PostToolUse only, or an empty PreToolUse array i
   }
 });
 
+// 2026-09-20 audit: the one CONFLICT claim, downgraded to a narrow bug. A
+// PreToolUse entry whose matcher names other tools cannot see a git command,
+// so certifying it reported protection the repo did not have. The predicate
+// now reads the matcher, the same way the hook does.
+test('guard: a PreToolUse entry whose matcher cannot match Bash is NOT a guard (warning, matching the hook)', () => {
+  for (const matcher of ['Edit|Write', 'Edit', 'Read', 'mcp__.*', 'bash', '(']) {
+    const settings = { hooks: { PreToolUse: [{ matcher, hooks: [{ type: 'command', command: 'x' }] }] } };
+    const dir = sandbox({ 'house.json': houseJson(), '.claude/settings.json': JSON.stringify(settings) });
+    const { code, json } = run(dir, ['--only=guard', '--json']);
+    assert.equal(code, 0);
+    assert.equal(guardWarnings(json).length, 1, `matcher ${JSON.stringify(matcher)} must warn`);
+  }
+  const noHooks = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [] }] } };
+  const dir = sandbox({ 'house.json': houseJson(), '.claude/settings.json': JSON.stringify(noHooks) });
+  assert.equal(guardWarnings(run(dir, ['--only=guard', '--json']).json).length, 1, 'an entry with an empty hooks array must warn');
+});
+
+test('guard: a PreToolUse entry whose matcher covers Bash IS a guard, whatever else it also matches (no warning)', () => {
+  for (const entry of [{ matcher: 'Bash|Edit' }, { matcher: '.*' }, { matcher: '' }, { matcher: '*' }, {}, { matcher: 'Ba.h' }]) {
+    const settings = { hooks: { PreToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'y' }] }, { ...entry, hooks: [{ type: 'command', command: 'x' }] }] } };
+    const dir = sandbox({ 'house.json': houseJson(), '.claude/settings.json': JSON.stringify(settings) });
+    assert.equal(guardWarnings(run(dir, ['--only=guard', '--json']).json).length, 0, `${JSON.stringify(entry)} must count`);
+  }
+});
+
 test('guard: a PreToolUse hook only in settings.local.json does not count (the hook never reads it)', () => {
   const dir = sandbox({ 'house.json': houseJson(), '.claude/settings.local.json': JSON.stringify(PRE) });
   const { json } = run(dir, ['--only=guard', '--json']);

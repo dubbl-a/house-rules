@@ -14,10 +14,27 @@
 #     `-c push.*` or `remote.<name>.push=` key
 #   - a git verb the shell computes (`git pu${x}sh`): refused on a protected
 #     branch, and read as a push from any branch
+#   - from any branch, a push whose meaning lives outside the text (#34): a
+#     push or a verb handed to git by xargs; a push that names no refspec
+#     while the repo's config carries `push.default=matching` or a
+#     `remote.<name>.push`; a `-c alias.*` or a git config variable passed
+#     through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT); a
+#     shell alias (`!...`); a verb that is neither a command git lists nor
+#     an alias it can find. A plain alias is read as the verb it expands to.
+#   - a commit or push whose directory the shell computes (`cd -`, `cd $X`,
+#     `git -C "$dir"`, a glob, `CDPATH=`): refused, since the guard cannot
+#     tell which checkout it lands in
+#   - a commit or push in the same call as a checkout, switch, or
+#     symbolic-ref onto a protected or computed branch, a config write to a
+#     push, remote push, upstream, or alias key, a worktree add of a
+#     protected branch, or a clone: refused, since the branch and config
+#     are read once before any clause runs
 #
 # The command is read by one token walker (git_split), not by adjacency: a
 # global option between `git` and the verb, a nested git command inside an
-# argument, and every clause behind a separator are all read.
+# argument, and every clause behind a separator are all read. Each verb is
+# looked up in the target repo's git config so an alias is read as what it
+# expands to.
 #
 # Fails OPEN (allow, exit 0) whenever:
 #   - the payload/command isn't a git invocation
@@ -47,9 +64,25 @@
 # the trap below). Those are the only two deny-without-a-specific-rule
 # paths; every other deny names the offending branch and rule source.
 #
-# Worktree-aware: parses the command for `git -C <path>`, `cd <path> &&`,
-# and `cd <path> ;` so a command targeting a sibling worktree is checked
-# against THAT worktree's branch and toplevel, not the hook's own cwd.
+# Worktree-aware: every `git -C <path>`, `cd <path> &&`, `cd <path> ;`
+# (a `cd` inside an interpreter's -c body included), and every
+# `GIT_DIR=`/`GIT_WORK_TREE=` prefix or `--git-dir`/`--work-tree` option in
+# the command is a candidate target, and the whole command is decided once
+# per candidate against THAT repo's branch and toplevel, not the hook's own
+# cwd. Any candidate that refuses, refuses the call (#34).
+#
+# Out of reach by construction: a git command that lives in a file this
+# command runs (`bash run.sh`, a Makefile target, an npm script) never
+# appears in the text, and reading every file a command might execute is
+# not a text scan. That boundary is the sandbox's and the remote ruleset's.
+# Likewise a computed target from a cwd that has not adopted house: the
+# computed-target refusal runs inside an adopted repo's policy, because ADR
+# 0002 promises the hook changes nothing in a repo that never adopted it.
+#
+# Still open by decision (#34, item 5): a git verb inside a quoted value that
+# is prose (`--body "... git push ..."`) is refused on a protected branch,
+# and the refusal names the file route. Scanning text rather than parsing
+# shell cannot tell that prose from code, and the file route costs nothing.
 #
 # Quote-aware: strips single- and double-quoted string contents (and shell
 # comments) before pattern matching, so `git commit -m "fix master bug"`
@@ -314,111 +347,361 @@ strip_message_args_for_target() { _strip_flag_args_blind '-m|--message|-F|--file
 # closed later by the blind whole-word strip below.
 strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; }
 
-# Resolve the target git directory:
-#   1. `git -C <path> ...`         -> use <path>
-#   2. `cd <path> && git ...`      -> use <path>
-#   3. `cd <path> ; git ...`       -> use <path>
-#   4. otherwise                   -> use the payload's top-level cwd,
-#      falling back to "." (the hook process's own cwd)
-# Resolved against the BLIND-stripped command: text inside a commit message
-# (`-m "note: cd /nonexistent && push"`) must not be able to point the check
-# at a non-repo path, because a non-repo path is a deliberate fail-open below
-# and quoted prose would turn it into a disarm. Blind, not expand-aware: a
-# value holding `$` has to vanish here too, or it steers (see
-# strip_message_args_for_target).
-cmd_for_target=$(strip_message_args_for_target "$cmd")
-target_dir=""
-if [[ "$cmd_for_target" =~ git[[:space:]]+-C[[:space:]]+([^[:space:]]+) ]]; then
-  target_dir="${BASH_REMATCH[1]}"
-elif [[ "$cmd_for_target" =~ (^|[^[:alnum:]])cd[[:space:]]+([^[:space:]&;|]+)[[:space:]]*(\&\&|;) ]]; then
-  target_dir="${BASH_REMATCH[2]}"
-fi
-
-# Where the target came from matters below: a path parsed OUT OF THE COMMAND
-# is a guess, and a wrong guess must not be allowed to stand in for the real
-# working directory.
-target_from_command=0
-[[ -n "$target_dir" ]] && target_from_command=1
-
-target_dir="${target_dir/#\~/$HOME}"
-target_dir="${target_dir%\"}"; target_dir="${target_dir#\"}"
-target_dir="${target_dir%\'}"; target_dir="${target_dir#\'}"
-
+# ── Target candidates ─────────────────────────────────────────────────────
+# Every directory the command names is a candidate target, and the whole
+# command is decided once per candidate; any candidate that refuses, refuses
+# the call. Until 0.10.0 the FIRST `git -C <path>` or `cd <path> &&` won and
+# everything else was invisible (#34): a `cd` inside an interpreter's -c body
+# was stripped before resolution, so `bash -c 'cd ../main-repo && git commit'`
+# from a feature-branch cwd was checked against the feature branch; a second
+# `cd` behind the first was never read; and an environment prefix
+# (`GIT_DIR=<other>/.git GIT_WORK_TREE=<other> git commit`) or the same pair
+# as `--git-dir`/`--work-tree` options redirected git to a repo the check
+# never looked at. Reading every candidate is the safe direction: the cost is
+# a false deny when one directory in a chain is on a protected branch and the
+# guarded verb was meant for another, and the refusal names the branch.
+#
+# Candidates come from the BLIND-stripped command (message values gone, so
+# prose cannot steer) plus a second text that keeps -c values (an
+# interpreter's body is code, and the `cd` in it is real). A path that is
+# not a repo is a wrong guess and falls back to the payload cwd, as before.
+#   1. `git -C <path> ...`, composed      -> dir <path>, for that git command
+#   2. `cd <path>`, `pushd <path>`         -> dir <path>, for every later clause
+#   3. `GIT_DIR=<g> GIT_WORK_TREE=<w>` or `--git-dir <g>` / `--work-tree <w>`
+#                                        -> env <g> <w>, handed to git as its
+#                                           own --git-dir/--work-tree so git
+#                                           resolves them the way it will
+#   4. a git command with none of these  -> the payload's cwd
+# Whitespace inside a quoted VALUE of one of git's own path or config options
+# (`-C "path with spaces"`, `-c "user.name=Jane Q Public"`, `--git-dir "x y"`)
+# becomes a marker byte before the quote characters are removed, so the value
+# stays one token: the regression round found the walker reading `Q` as the
+# verb and refusing it as unknown on any branch. Only those values: a quoted
+# span anywhere else (an interpreter's `-c` body, a message holding a
+# substitution) is code the scans must keep reading word by word, and the
+# first version of this protected every quoted span and blinded them. The
+# option has to belong to a git command (the clause's first word is git), so
+# `bash -c '...'` is untouched. The marker turns back into a space wherever a
+# path is resolved (unquote_path).
+# The same walk turns a LITERAL parenthesis inside quotes (`echo ")"`, `'('`)
+# into a placeholder byte, so only a structural paren reaches the clause
+# splitter and the paren stack: round 5 ended a subshell early with a quoted
+# `)` and hid a commit behind one inside a substitution. Inside double
+# quotes a `$(` opens a real substitution whose own `)` is structural, so
+# those are counted and kept.
+# A protected flag value keeps its parentheses as placeholders as well, so
+# `-C "$(git rev-parse --show-toplevel)"` and the same unquoted stay ONE
+# token that the walk reads as computed: the regression round found the
+# unquoted form leaking `git` into the verb search (rev-parse became the
+# verb and the commit vanished) and the quoted form fragmenting into an
+# unknown verb. The substitution's body is read separately, from the raw
+# command, see extract_substitutions.
+SP=$'\x01'; LP=$'\x02'; RP=$'\x03'
+protect_quoted_spaces() {
+  local s="$1" out='' q='' ch i n cur='' prev='' saw_git=0 protect=0 depth=0 pdepth=0
+  n="${#s}"
+  for ((i = 0; i < n; i++)); do
+    ch="${s:$i:1}"
+    if [[ "$pdepth" -gt 0 ]]; then
+      # Inside an unquoted flag-value substitution: one token until it closes.
+      case "$ch" in
+        '(') pdepth=$((pdepth + 1)); ch="$LP" ;;
+        ')') pdepth=$((pdepth - 1)); ch="$RP" ;;
+        ' '|$'\t') ch="$SP" ;;
+      esac
+      [[ "$pdepth" -eq 0 ]] && cur+='x'
+    elif [[ -n "$q" ]]; then
+      if [[ "$ch" == "$q" && "$depth" -eq 0 ]]; then
+        # A protected backtick value keeps its backticks as markers too, or
+        # the clause splitter turns them into spaces and splits the token.
+        [[ "$q" == '`' && "$protect" -eq 1 ]] && ch="$SP"
+        q=''
+      elif [[ "$protect" -eq 1 ]]; then
+        case "$ch" in ' '|$'\t') ch="$SP" ;; '(') ch="$LP" ;; ')') ch="$RP" ;; esac
+      elif [[ "$q" == '`' ]]; then
+        : # a backtick span outside a flag value is code; left as written
+      elif [[ "$ch" == '(' ]]; then
+        if [[ "$q" == '"' && "$i" -gt 0 && "${s:$((i - 1)):1}" == '$' ]]; then depth=$((depth + 1))
+        elif [[ "$q" == '"' && "$depth" -gt 0 ]]; then depth=$((depth + 1))
+        else ch="$LP"; fi
+      elif [[ "$ch" == ')' ]]; then
+        if [[ "$q" == '"' && "$depth" -gt 0 ]]; then depth=$((depth - 1)); else ch="$RP"; fi
+      fi
+    elif [[ "$ch" == '(' && "$cur" == *'$' && "$saw_git" -eq 1 ]] && case "$prev" in -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) true ;; *) false ;; esac; then
+      pdepth=1; ch="$LP"
+    elif [[ "$ch" == '"' || "$ch" == "'" || "$ch" == '`' ]]; then
+      q="$ch"; protect=0
+      # The option belongs to a git command when a git word came earlier in
+      # this clause, whatever launcher or assignment sits in front of it
+      # (`env git`, `time git`, `FOO=1 git`; round 4 found each unprotected
+      # when only the clause's first word was read). The quote may open
+      # mid-value (`-c a="$(x)"`, a backtick value), so the word before the
+      # value is what is read, not whether the value has started.
+      if [[ "$saw_git" -eq 1 ]]; then
+        case "$prev" in
+          -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) protect=1 ;;
+        esac
+        case "$cur" in
+          -C*|-c*|--git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|--attr-source=*) protect=1 ;;
+        esac
+      fi
+      [[ "$ch" == '`' && "$protect" -eq 1 ]] && ch="$SP"
+    elif [[ "$ch" == ' ' || "$ch" == $'\t' ]]; then
+      if [[ -n "$cur" ]]; then
+        [[ "$cur" == git || "$cur" == */git ]] && saw_git=1
+        prev="$cur"; cur=''
+      fi
+    elif [[ "$ch" == ';' || "$ch" == '|' || "$ch" == '&' || "$ch" == $'\n' || "$ch" == '(' || "$ch" == ')' ]]; then
+      cur=''; prev=''; saw_git=0
+    else
+      cur+="$ch"
+    fi
+    out+="$ch"
+  done
+  printf '%s' "$out"
+}
+cmd_for_target=$(protect_quoted_spaces "$(strip_message_args_for_target "$cmd")")
+cmd_for_target_c=$(protect_quoted_spaces "$(_strip_flag_args_blind '-m|--message|-F|--file' "$cmd")")
 payload_cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null || echo "")
-if [[ -z "$target_dir" ]]; then
-  target_dir="$payload_cwd"
-fi
-[[ -z "$target_dir" ]] && target_dir="."
 
-# Successive -C compose, and an absolute second path still wins, so this
-# resolves a RELATIVE guess (`cd ../other-repo`) against the directory the
-# command actually runs in rather than against whatever cwd the hook process
-# happens to have. Without it a perfectly valid relative target reads as "not
-# a repo" and gets redirected to the session repo.
-git_dir_arg=(-C "${payload_cwd:-.}" -C "$target_dir")
-
-# A target parsed out of the command is a GUESS, and a guess that turns out
-# not to be a repo used to fall straight through to the fail-open below. That
-# is what let prose disarm the guard: any text naming a path that does not
-# exist (a heredoc body, a commit message, a quoted string) pointed the check
-# at nothing, and a real commit on a protected branch was allowed. Confirmed
-# against this hook before the fix, on a protected branch:
-#   `cat <<'EOF' > n.md` / `see cd /nonexistent && for details` / `EOF`
-#   followed by a real commit  ->  allowed.
+# One candidate per line, fields joined by a unit separator (a tab would
+# collapse an empty field under `read`): kind, path, second path, base, and
+# the clause the git command sits in. The clause is what the protected-branch
+# verb check reads for that candidate: the regression round found the
+# documented release flow refused (commit in a worktree, come back to the
+# shared checkout, git status), because every candidate was checked against
+# every verb in the command. A verb belongs to the directory its own command
+# runs in; the any-branch scans (refspec, config key, computed verb) still
+# read the whole command, since they do not depend on which checkout it is.
+US=$'\x1f'
+CANDIDATES=''
+add_candidate() { CANDIDATES+="$1"$'\n'; }
+# compose BASE PATH: where PATH lands when the shell or git resolves it from
+# BASE. An absolute or home-relative PATH wins outright; a relative one is
+# joined; an empty BASE means the payload cwd, which decide_for_target
+# supplies. Successive `-C` compose the same way (git's own rule).
+compose_path() {
+  local base="$1" p="$2"
+  case "$p" in
+    /*|'~'*) printf '%s' "$p" ;;
+    *) if [[ -n "$base" ]]; then printf '%s/%s' "$base" "$p"; else printf '%s' "$p"; fi ;;
+  esac
+}
+# collect_candidates TEXT: walk the clauses in order and record, for every git
+# command, the directory it will actually run in. This is the shell's own
+# reading: a `cd` or `pushd` clause moves every later clause, `pushd` and
+# `popd` keep a stack, a `git -C <p>` applies to its own clause only and
+# successive `-C` compose, `env -C <p>` (or `--chdir`) applies to its own
+# command, a `GIT_DIR=`/`GIT_WORK_TREE=` assignment in front of a command,
+# with or without `env`, applies to that command, an `export` of either
+# persists, and `--git-dir`/`--work-tree` apply to their own git command. A
+# git command with none of these runs in the current directory, so the
+# payload cwd is a candidate whenever any git clause carries no target of
+# its own: the adversarial round found that a harmless `git -C <elsewhere>
+# status &&` in front of a bare `git commit` deleted the cwd from the check
+# entirely, and that `git -C a -C b` was read as `a`.
 #
-# The fix is deliberately NOT more parsing. Parsing the command better is what
-# three reverted attempts tried; every added rule opened a new seam. Instead a
-# wrong guess now falls back to the directory the command actually runs in,
-# which is the safe default, so the guard no longer depends on the guess being
-# right. Only a target that is genuinely not a repo still fails open.
-if [[ "$target_from_command" -eq 1 ]] \
-   && ! git "${git_dir_arg[@]}" rev-parse --show-toplevel >/dev/null 2>&1; then
-  target_dir="${payload_cwd:-.}"
-  git_dir_arg=(-C "$target_dir")
-fi
-# Known cost of the fallback, accepted rather than parsed around: a target
-# this command is about to CREATE (a worktree, a clone, a fresh init) does not
-# resolve yet either, so those deny on a protected branch and have to be run
-# as two calls. Recognizing creation would mean reading the command again,
-# which is what three reverted attempts did; the deny message below says
-# "separate call" instead so the guidance and the behavior agree.
+# A target this text cannot read (`cd -`, `cd $OLDPWD`, `cd "$dir"`,
+# `cd $(pwd)/..`, a function argument, an xargs placeholder, a `CDPATH=`
+# in front of a relative cd) is not guessed at: the second adversarial round
+# fed each of those to the walk, watched the bogus path fail to resolve, and
+# watched the fallback go to the payload cwd, discarding the real cd earlier
+# in the chain. The walk now marks the directory unknown and sets
+# TARGET_COMPUTED; run_scans refuses a guarded verb under it, the same way a
+# computed ref or verb is refused, and the refusal says to spell the path.
+PO="__PAREN_${$}_${RANDOM}_O__"; PC="__PAREN_${$}_${RANDOM}_C__"
+TARGET_COMPUTED=0
+path_is_computed() {
+  case "$1" in
+    -|*'$'*|*'`'*|*'{'*|*'}'*|*'*'*|*'?'*|*'['*) return 0 ;;
+  esac
+  return 1
+}
+collect_candidates() {
+  local text="$1" dir='' sticky_gd='' sticky_wt='' last_gd='' last_wt='' clause unknown=0
+  local toks i n tok gd wt cdir is_export envdir cl
+  local stack=()
+  # Quote characters go, the way the verb scans drop them: an interpreter's
+  # body arrives as `-c 'cd <p> && git ...'` and the `cd` sits behind the
+  # quote. Message values were removed whole before this, so prose stays out.
+  text="${text//\"/}"; text="${text//\'/}"
+  # A directory change inside a subshell or a substitution does not outlive
+  # it: `(cd <open>) ; git commit` runs the commit in the cwd, and round 4
+  # found the walk attributing it to <open>. The clause splitter turns
+  # parentheses into spaces, so they become marker words first, and the
+  # walk saves the directory at `(` and restores it at `)`. A brace group
+  # is not a subshell and its cd persists, which the walk already models.
+  # A process substitution's paren is structural too, and its `<` would be
+  # read as a redirection that eats the marker word after it, so the pair
+  # goes first. The marker words carry a per-process nonce so typed text
+  # cannot move the stack (round 5 typed them).
+  text="${text//<\(/ $PO }"; text="${text//>\(/ $PO }"
+  text="${text//\(/ $PO }"; text="${text//\)/ $PC }"
+  local pstack=()
+  split_clauses "$text"
+  while IFS= read -r clause; do
+    IFS=$' \t\n' read -r -a toks <<<"$clause"
+    n="${#toks[@]}"
+    [[ "$n" -gt 0 ]] || continue
+    i=0; gd="$sticky_gd"; wt="$sticky_wt"; is_export=0; envdir=''
+    # `export`, `declare -x`, and `typeset -x` all export; a bare `export
+    # GIT_DIR` exports the value an earlier assignment-only clause set.
+    case "${toks[0]}" in
+      export) is_export=1; i=1 ;;
+      declare|typeset)
+        is_export=1; i=1
+        while [[ "$i" -lt "$n" && "${toks[$i]}" == -* ]]; do i=$((i + 1)); done ;;
+    esac
+    if [[ "$is_export" -eq 1 ]]; then
+      for tok in "${toks[@]:$i}"; do
+        case "$tok" in
+          GIT_DIR=*) gd="${tok#GIT_DIR=}" ;;
+          GIT_WORK_TREE=*) wt="${tok#GIT_WORK_TREE=}" ;;
+          GIT_DIR) gd="$last_gd" ;;
+          GIT_WORK_TREE) wt="$last_wt" ;;
+        esac
+      done
+      sticky_gd="$gd"; sticky_wt="$wt"; continue
+    fi
+    if [[ "${toks[0]}" == unset ]]; then
+      for tok in "${toks[@]}"; do
+        case "$tok" in GIT_DIR) sticky_gd='' ;; GIT_WORK_TREE) sticky_wt='' ;; esac
+      done
+      continue
+    fi
+    # Leading assignments, and the ones `env` carries; `env -C <p>` moves
+    # its own command and `CDPATH=` makes every relative cd unreadable.
+    while [[ "$i" -lt "$n" ]]; do
+      tok="${toks[$i]}"
+      case "$tok" in
+        GIT_DIR=*) gd="${tok#GIT_DIR=}"; i=$((i + 1)) ;;
+        GIT_WORK_TREE=*) wt="${tok#GIT_WORK_TREE=}"; i=$((i + 1)) ;;
+        CDPATH=*) TARGET_COMPUTED=1; i=$((i + 1)) ;;
+        [A-Za-z_]*=*) i=$((i + 1)) ;;
+        env) i=$((i + 1)) ;;
+        -C|--chdir)
+          if [[ $((i + 1)) -lt "$n" ]]; then envdir="${toks[$((i + 1))]}"; fi
+          i=$((i + 2)) ;;
+        --chdir=*) envdir="${tok#--chdir=}"; i=$((i + 1)) ;;
+        # `env -S "<string>"` re-splits the string into the command, so the
+        # walk reads on from it rather than skipping it (round 3 found
+        # `env -S "git -C <repo> commit"` invisible).
+        -S|--split-string) i=$((i + 1)) ;;
+        -u|--unset) i=$((i + 2)) ;;
+        -*) i=$((i + 1)) ;;
+        *) break ;;
+      esac
+    done
+    # An assignment-only clause (`GIT_DIR=x;`) sets nothing for later
+    # clauses until exported, but a later bare `export GIT_DIR` reads it.
+    if [[ "$i" -ge "$n" ]]; then
+      [[ "$gd" != "$sticky_gd" ]] && last_gd="$gd"
+      [[ "$wt" != "$sticky_wt" ]] && last_wt="$wt"
+      continue
+    fi
+    if [[ -n "$envdir" ]]; then
+      if path_is_computed "$envdir"; then TARGET_COMPUTED=1; fi
+    fi
+    while [[ "$i" -lt "$n" ]]; do
+      tok="${toks[$i]}"
+      i=$((i + 1))
+      case "$tok" in
+        cd|pushd)
+          # A flag before the path (`cd -P <p>`, `cd -L`, `cd --`) is not the
+          # path; round 5 found the path after a flag read as a bare word.
+          while [[ "$i" -lt "$n" && "${toks[$i]}" != - && "${toks[$i]}" == -* ]]; do i=$((i + 1)); done
+          if [[ "$i" -lt "$n" ]]; then
+            if path_is_computed "${toks[$i]}"; then
+              TARGET_COMPUTED=1; unknown=1
+            else
+              [[ "$tok" == pushd ]] && stack+=("$dir")
+              dir=$(compose_path "$dir" "${toks[$i]}"); unknown=0
+            fi
+            i=$((i + 1))
+          else
+            [[ "$tok" == pushd ]] && stack+=("$dir")
+            dir='~'; unknown=0
+          fi
+          continue ;;
+        popd)
+          if [[ "${#stack[@]}" -gt 0 ]]; then
+            dir="${stack[$((${#stack[@]} - 1))]}"; unset "stack[$((${#stack[@]} - 1))]"
+          else
+            dir=''
+          fi
+          unknown=0
+          continue ;;
+        "$PO") pstack+=("$dir"); continue ;;
+        "$PC")
+          if [[ "${#pstack[@]}" -gt 0 ]]; then
+            dir="${pstack[$((${#pstack[@]} - 1))]}"; unset "pstack[$((${#pstack[@]} - 1))]"; unknown=0
+          fi
+          continue ;;
+        git|*/git) ;;
+        *) continue ;;
+      esac
+      # A git command: read its global options for a target of its own.
+      cdir="$dir"
+      [[ -n "$envdir" ]] && cdir=$(compose_path "$cdir" "$envdir")
+      while [[ "$i" -lt "$n" ]]; do
+        tok="${toks[$i]}"
+        case "$tok" in
+          -C)
+            if [[ $((i + 1)) -lt "$n" ]]; then
+              if path_is_computed "${toks[$((i + 1))]}"; then TARGET_COMPUTED=1; unknown=1
+              else cdir=$(compose_path "$cdir" "${toks[$((i + 1))]}"); fi
+            fi
+            i=$((i + 2)) ;;
+          --git-dir=*) gd="${tok#--git-dir=}"; i=$((i + 1)) ;;
+          --work-tree=*) wt="${tok#--work-tree=}"; i=$((i + 1)) ;;
+          --git-dir) [[ $((i + 1)) -lt "$n" ]] && gd="${toks[$((i + 1))]}"; i=$((i + 2)) ;;
+          --work-tree) [[ $((i + 1)) -lt "$n" ]] && wt="${toks[$((i + 1))]}"; i=$((i + 2)) ;;
+          -c|--namespace|--super-prefix|--config-env|--attr-source) i=$((i + 2)) ;;
+          -*) i=$((i + 1)) ;;
+          *) break ;;
+        esac
+      done
+      cl="${clause//$PO/ }"; cl="${cl//$PC/ }"
+      if [[ "$unknown" -eq 1 ]]; then
+        # The directory is unreadable here: decide the cwd, where the
+        # computed-target refusal fires under a guarded verb.
+        add_candidate "dir${US}${US}${US}${US}${cl}"
+      elif [[ -n "$gd$wt" ]]; then
+        add_candidate "env${US}${gd}${US}${wt}${US}${cdir}${US}${cl}"
+      else
+        add_candidate "dir${US}${cdir}${US}${US}${US}${cl}"
+      fi
+      # Walk on: a second git in the same clause (inside a substitution) is
+      # its own command and gets its own candidate.
+    done
+  done <<<"$CLAUSES"
+  return 0
+}
+unquote_path() {
+  local p="$1"
+  p="${p//$SP/ }"
+  p="${p/#\~/$HOME}"
+  p="${p%\"}"; p="${p#\"}"
+  p="${p%\'}"; p="${p#\'}"
+  printf '%s' "$p"
+}
 
-# Deliberate fail-open, not an error: a non-repo dir is not our business.
-toplevel=$(git "${git_dir_arg[@]}" rev-parse --show-toplevel 2>/dev/null) || exit 0
-[[ -z "$toplevel" ]] && exit 0
+# The git commands this hook can name, for the alias seam below: a verb that
+# is neither on this list nor an alias git can look up is refused, since git
+# itself would fail on it and an alias defined earlier in the same call is
+# exactly what it would otherwise be. Empty on a git too old to list its
+# commands, in which case only the alias lookup runs.
+known_cmds=$(git --list-cmds=builtins,main,others 2>/dev/null || true)
+verb_is_known() {
+  [[ -n "$known_cmds" ]] || return 0
+  case $'\n'"$known_cmds"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+  esac
+  return 1
+}
 
-branch=$(git "${git_dir_arg[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-
-# POLICY: <toplevel>/house.json. Absent means the repo has not adopted
-# house; that is fail-open, not an error.
-house_json="$toplevel/house.json"
-[[ -f "$house_json" ]] || exit 0
-
-# An adopted repo whose manifest cannot be parsed gets a refusal, not a
-# silently disarmed guard: existence signals adoption, so unreadable policy
-# is treated like a crash (refuse rather than guess). The loud fix surface
-# is `node .house/check.mjs` (manifest family), which names the parse error.
-if ! jq empty "$house_json" >/dev/null 2>&1; then
-  deny "house.json exists but is not valid JSON, so the branch policy cannot be read. Refusing rather than guessing. Fix house.json (node .house/check.mjs names the error), then retry."
-fi
-
-branch_policy=$(jq -r '.branchPolicy // "pr"' "$house_json" 2>/dev/null || echo "pr")
-[[ "$branch_policy" == "direct" ]] && exit 0
-
-# Repo-local guard present: defer to it during migration onto house. Either
-# a repo-local hook script, or a repo-local .claude/settings.json that
-# declares its own "hooks" key.
-#
-# #1: deference used to be by mere file EXISTENCE, which made an empty or
-# no-op `exit 0` file a complete disarm -- and `checkGuard` certified that same
-# file by bare existsSync, so the checker reported the repo as protected while
-# nothing was enforcing anything. Protection reported, none present, is worse
-# than no guard at all.
-#
-# So require substance, with the predicate failing toward DENY: a local guard
-# whose shape we do not recognize leaves THIS hook armed, which costs a branch
-# creation, never a miss. That is the direction #1 asks every allowlist here
-# to fail in. The checker shares this definition.
+# True when a repo-local guard file has at least one line that is not blank,
+# a comment, or a bare `exit`/`exit 0`; shared definition with the checker.
 local_hook_is_substantive() {
   local f="$1" line
   [[ -s "$f" ]] || return 1
@@ -433,53 +716,176 @@ local_hook_is_substantive() {
   done < "$f"
   return 1
 }
-local_hook="$toplevel/.claude/hooks/no-direct-master.sh"
-if [[ -f "$local_hook" ]] && local_hook_is_substantive "$local_hook"; then
-  exit 0
-fi
-if [[ -f "$toplevel/.claude/settings.json" ]]; then
-  # Defer only to a repo-local PreToolUse hook, which is the only kind that can
-  # actually guard a git command. A settings.json carrying only PostToolUse,
-  # SessionStart, or other events is not a branch guard, so it must NOT disarm
-  # this one (the failure mode: an unrelated logging hook silently removes all
-  # branch protection).
-  # `length > 0` alone is satisfied by any non-empty value (an object's
-  # key count, even a string's length), and a malformed settings.json that
-  # Claude Code itself ignores must not disarm this guard. Require the real
-  # shape: a non-empty ARRAY, the same predicate the checker uses.
-  if jq -e '(.hooks.PreToolUse | type == "array") and ((.hooks.PreToolUse | length) > 0)' "$toplevel/.claude/settings.json" >/dev/null 2>&1; then
-    exit 0
+
+# decide_for_target KIND PATH PATH2: resolve one candidate, read the policy
+# it lands in, and run every scan against it. Returns 0 to let the call
+# through for THIS candidate; a refusal exits the process from inside deny.
+decide_for_target() {
+  local kind="$1" p1 p2 p3 from_command=1
+  p1=$(unquote_path "$2"); p2=$(unquote_path "$3"); p3=$(unquote_path "${4:-}")
+  CAND_TEXT="${5:-$cmd_safe}"
+  # Disarmed while resolving: a bad guess here is a fail-open by design, and
+  # the trap armed by an earlier candidate must not turn it into a crash-deny.
+  trap - ERR
+
+  # An empty dir path is the payload cwd itself: a git command that names no
+  # target runs where the session is, and that is never a guess.
+  case "$kind" in
+    dir)
+      if [[ -z "$p1" ]]; then
+        from_command=0; git_dir_arg=(-C "${payload_cwd:-.}")
+      else
+        # Successive -C compose, and an absolute second path still wins, so
+        # this resolves a RELATIVE guess (`cd ../other-repo`) against the
+        # directory the command actually runs in rather than against
+        # whatever cwd the hook process happens to have.
+        git_dir_arg=(-C "${payload_cwd:-.}" -C "$p1")
+      fi ;;
+    env)
+      # A git dir with no work tree makes git treat the cwd as the work
+      # tree, so the toplevel (where house.json is read) was the cwd while
+      # the branch came from the git dir: round 5 committed on master from
+      # a non-adopted cwd that way. The policy belongs to the git dir's own
+      # repo, so its parent stands in for the work tree.
+      if [[ -n "$p1" && -z "$p2" ]]; then
+        p2="${p1%/.git}"; [[ "$p2" == "$p1" ]] && p2="${p1%/*}"
+      fi
+      git_dir_arg=(-C "${payload_cwd:-.}")
+      [[ -n "$p3" ]] && git_dir_arg+=(-C "$p3")
+      [[ -n "$p1" ]] && git_dir_arg+=("--git-dir=$p1")
+      [[ -n "$p2" ]] && git_dir_arg+=("--work-tree=$p2") ;;
+  esac
+
+  # A target parsed out of the command is a GUESS, and a guess that turns out
+  # not to be a repo used to fall straight through to the fail-open below. That
+  # is what let prose disarm the guard: any text naming a path that does not
+  # exist (a heredoc body, a commit message, a quoted string) pointed the check
+  # at nothing, and a real commit on a protected branch was allowed. Confirmed
+  # against this hook before the fix, on a protected branch:
+  #   `cat <<'EOF' > n.md` / `see cd /nonexistent && for details` / `EOF`
+  #   followed by a real commit  ->  allowed.
+  #
+  # The fix is deliberately NOT more parsing. Parsing the command better is what
+  # three reverted attempts tried; every added rule opened a new seam. Instead a
+  # wrong guess now falls back to the directory the command actually runs in,
+  # which is the safe default, so the guard no longer depends on the guess being
+  # right. Only a target that is genuinely not a repo still fails open.
+  if [[ "$from_command" -eq 1 ]] \
+     && ! git "${git_dir_arg[@]}" rev-parse --show-toplevel >/dev/null 2>&1; then
+    git_dir_arg=(-C "${payload_cwd:-.}")
   fi
-fi
+  # Known cost of the fallback, accepted rather than parsed around: a target
+  # this command is about to CREATE (a worktree, a clone, a fresh init) does not
+  # resolve yet either, so those deny on a protected branch and have to be run
+  # as two calls. Recognizing creation would mean reading the command again,
+  # which is what three reverted attempts did; the deny message below says
+  # "separate call" instead so the guidance and the behavior agree.
 
-# From here on, the repo has adopted house, wants "pr" enforcement, and has
-# no repo-local guard taking precedence. Arm the crash trap: an unexpected
-# failure from this point forward denies with a message that says so,
-# instead of exiting non-zero (which Claude Code treats as non-blocking,
-# i.e. the guard would silently vanish exactly when it matters most).
-trap crashed ERR
+  # Deliberate fail-open, not an error: a non-repo dir is not our business.
+  toplevel=$(git "${git_dir_arg[@]}" rev-parse --show-toplevel 2>/dev/null) || return 0
+  [[ -z "$toplevel" ]] && return 0
 
-protected_list=$(jq -r '(.protectedBranches // ["master","main"])[]' "$house_json" 2>/dev/null)
-if [[ -z "$protected_list" ]]; then
-  protected_list=$'master\nmain'
-fi
+  branch=$(git "${git_dir_arg[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 
-# carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
-# in plugins/house/schema/house.schema.json.
-carve_outs=$(jq -r '(.carveOuts // [])[]' "$house_json" 2>/dev/null)
+  # POLICY: <toplevel>/house.json. Absent means the repo has not adopted
+  # house; that is fail-open, not an error.
+  house_json="$toplevel/house.json"
+  [[ -f "$house_json" ]] || return 0
 
-carve_out_reason_suffix=""
-if [[ -n "$carve_outs" ]]; then
-  carve_out_list=$(printf '%s' "$carve_outs" | tr '\n' ' ')
-  carve_out_reason_suffix=" (paths matching a house.json carveOuts glob are exempt: ${carve_out_list% })"
-fi
+  # An adopted repo whose manifest cannot be parsed gets a refusal, not a
+  # silently disarmed guard: existence signals adoption, so unreadable policy
+  # is treated like a crash (refuse rather than guess). The loud fix surface
+  # is `node .house/check.mjs` (manifest family), which names the parse error.
+  if ! jq empty "$house_json" >/dev/null 2>&1; then
+    deny "house.json exists but is not valid JSON, so the branch policy cannot be read. Refusing rather than guessing. Fix house.json (node .house/check.mjs names the error), then retry."
+  fi
 
-# TEST HOOK ONLY: lets the test harness plant a deliberate internal
-# failure inside the guarded region, after the policy read, to exercise
-# the ERR trap's crash-deny path. Never set in normal operation.
-if [[ "${HOUSE_TEST_CRASH:-}" == "1" ]]; then
-  false
-fi
+  branch_policy=$(jq -r '.branchPolicy // "pr"' "$house_json" 2>/dev/null || echo "pr")
+  [[ "$branch_policy" == "direct" ]] && return 0
+
+  # Repo-local guard present: defer to it during migration onto house. Either
+  # a repo-local hook script, or a repo-local .claude/settings.json that
+  # declares its own "hooks" key.
+  #
+  # #1: deference used to be by mere file EXISTENCE, which made an empty or
+  # no-op `exit 0` file a complete disarm -- and `checkGuard` certified that same
+  # file by bare existsSync, so the checker reported the repo as protected while
+  # nothing was enforcing anything. Protection reported, none present, is worse
+  # than no guard at all.
+  #
+  # So require substance, with the predicate failing toward DENY: a local guard
+  # whose shape we do not recognize leaves THIS hook armed, which costs a branch
+  # creation, never a miss. That is the direction #1 asks every allowlist here
+  # to fail in. The checker shares this definition.
+  local local_hook="$toplevel/.claude/hooks/no-direct-master.sh"
+  if [[ -f "$local_hook" ]] && local_hook_is_substantive "$local_hook"; then
+    return 0
+  fi
+  if [[ -f "$toplevel/.claude/settings.json" ]]; then
+    # Defer only to a repo-local PreToolUse hook, which is the only kind that can
+    # actually guard a git command. A settings.json carrying only PostToolUse,
+    # SessionStart, or other events is not a branch guard, so it must NOT disarm
+    # this one (the failure mode: an unrelated logging hook silently removes all
+    # branch protection).
+    # `length > 0` alone is satisfied by any non-empty value (an object's
+    # key count, even a string's length), and a malformed settings.json that
+    # Claude Code itself ignores must not disarm this guard. Require the real
+    # shape: a non-empty ARRAY, the same predicate the checker uses.
+    #
+    # And the entry has to be able to see a git command (2026-09-20 audit,
+    # the one refuted conflict): a PreToolUse hook whose matcher names other
+    # tools (`Edit|Write`) guards something else, and standing down for it
+    # gave up real enforcement for nothing. So an entry counts only when its
+    # matcher is absent, empty, `*`, or a regex that matches `Bash`, and its
+    # own hooks array is non-empty. A matcher jq cannot read as a regex fails
+    # the test, which leaves THIS hook armed: the safe direction.
+    if jq -e '[.hooks.PreToolUse[]? | objects
+               | select((.hooks | type) == "array" and (.hooks | length) > 0)
+               | . as $e | select(($e.matcher // "") == "" or $e.matcher == "*" or ("Bash" | test($e.matcher)))]
+              | length > 0' "$toplevel/.claude/settings.json" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  # From here on, the repo has adopted house, wants "pr" enforcement, and has
+  # no repo-local guard taking precedence. Arm the crash trap: an unexpected
+  # failure from this point forward denies with a message that says so,
+  # instead of exiting non-zero (which Claude Code treats as non-blocking,
+  # i.e. the guard would silently vanish exactly when it matters most).
+  trap crashed ERR
+
+  # Every alias the candidate's repo and the user's config define, read
+  # once per candidate rather than once per verb (the per-verb lookup was
+  # most of a six-clause command's two seconds). Read with the trap
+  # disarmed in the subshell, see resolve_alias.
+  ALIAS_CACHE=$(trap - ERR; git "${git_dir_arg[@]}" config --get-regexp '^alias\.' 2>/dev/null || true)
+
+  protected_list=$(jq -r '(.protectedBranches // ["master","main"])[]' "$house_json" 2>/dev/null)
+  if [[ -z "$protected_list" ]]; then
+    protected_list=$'master\nmain'
+  fi
+
+  # carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
+  # in plugins/house/schema/house.schema.json.
+  carve_outs=$(jq -r '(.carveOuts // [])[]' "$house_json" 2>/dev/null)
+
+  carve_out_reason_suffix=""
+  if [[ -n "$carve_outs" ]]; then
+    local carve_out_list
+    carve_out_list=$(printf '%s' "$carve_outs" | tr '\n' ' ')
+    carve_out_reason_suffix=" (paths matching a house.json carveOuts glob are exempt: ${carve_out_list% })"
+  fi
+
+  # TEST HOOK ONLY: lets the test harness plant a deliberate internal
+  # failure inside the guarded region, after the policy read, to exercise
+  # the ERR trap's crash-deny path. Never set in normal operation.
+  if [[ "${HOUSE_TEST_CRASH:-}" == "1" ]]; then
+    false
+  fi
+
+  run_scans
+  return 0
+}
 
 # Strip quoted-string contents and shell comments before pattern matching so
 # commit message text and trailing comments can't trigger false positives.
@@ -498,7 +904,7 @@ fi
 # ignore quoted text; (2) everywhere else, delete the quote CHARACTERS but keep
 # the token, so 'commit' reads as commit and 'master' as master; (3) strip
 # trailing shell comments. Single-pass, not a full shell parser.
-cmd_safe=$(strip_message_args "$cmd" | sed -E "
+cmd_safe=$(protect_quoted_spaces "$(strip_message_args "$cmd")" | sed -E "
   s/['\"]//g;
   s/(^|[[:space:]])#.*\$//")
 # The variants every verb scan tests: the message-stripped command, plus, only
@@ -506,8 +912,58 @@ cmd_safe=$(strip_message_args "$cmd" | sed -E "
 # strip_flag_args_keep_dash_c). A scan denies when ANY variant matches, so the
 # extra variant can only add denials. Skipping it when it is identical keeps the
 # no-`-c` common case (every ordinary git command) off a second sed and scan.
+# The body of every `$(...)` and backtick span, read from the raw command by
+# a quote-aware depth walk (a single-quoted `)` inside does not close it, a
+# nested `$( )` or `$(( ))` is counted, an unclosed span runs to the end).
+# A verb inside a substitution belongs to every candidate and to every
+# any-branch scan: the blind-stripped clause text loses a message value
+# whole, and a protected flag value hides its substitution as one token, so
+# `-m "$(git commit)"` and `-C "$(git push origin master)"` are read here.
+extract_substitutions() {
+  local s="$1" n i ch q='' d=0 body='' out=''
+  n="${#s}"
+  for ((i = 0; i < n; i++)); do
+    ch="${s:$i:1}"
+    if [[ "$d" -gt 0 ]]; then
+      if [[ -n "$q" ]]; then
+        [[ "$ch" == "$q" ]] && q=''
+        body+="$ch"; continue
+      fi
+      case "$ch" in
+        "'") q="'"; body+="$ch" ;;
+        '(') d=$((d + 1)); body+="$ch" ;;
+        ')') d=$((d - 1)); if [[ "$d" -gt 0 ]]; then body+="$ch"; else out+="$body"$'\n'; body=''; fi ;;
+        *) body+="$ch" ;;
+      esac
+      continue
+    fi
+    if [[ -n "$q" ]]; then
+      [[ "$ch" == "$q" ]] && q=''
+      continue
+    fi
+    case "$ch" in
+      "'") q="'" ;;
+      '$') if [[ "${s:$((i + 1)):1}" == '(' ]]; then d=1; i=$((i + 1)); fi ;;
+    esac
+  done
+  [[ "$d" -gt 0 ]] && out+="$body"$'\n'
+  local rest="$1"
+  while [[ "$rest" =~ \`([^\`]*)\` ]]; do
+    out+="${BASH_REMATCH[1]}"$'\n'
+    rest="${rest#*"${BASH_REMATCH[0]}"}"
+  done
+  printf '%s' "$out"
+}
+SUBST_TEXT=$(extract_substitutions "$cmd")
+subst_safe=''
+if [[ -n "$SUBST_TEXT" ]]; then
+  subst_safe=$(protect_quoted_spaces "$(strip_message_args "$SUBST_TEXT")" | sed -E "
+    s/['\"]//g;
+    s/(^|[[:space:]])#.*\$//")
+fi
 scan_variants=("$cmd_safe")
-cmd_safe2=$(strip_flag_args_keep_dash_c "$cmd" | sed -E "
+[[ -n "$subst_safe" ]] && scan_variants+=("$subst_safe")
+cmd_safe2=$(protect_quoted_spaces "$(strip_flag_args_keep_dash_c "$cmd")" | sed -E "
   s/['\"]//g;
   s/(^|[[:space:]])#.*\$//")
 [[ "$cmd_safe2" != "$cmd_safe" ]] && scan_variants+=("$cmd_safe2")
@@ -570,7 +1026,7 @@ split_clauses() {
 # git verb, and git rejects `-C=x` and friends outright.
 GV_VERB=''; GV_ARGS=''; GV_COMPUTED=0
 git_split() {
-  local toks=() i=0 n tok
+  local toks=() i=0 n tok pre_xargs=0
   GV_VERB=''; GV_ARGS=''; GV_COMPUTED=0
   IFS=$' \t\n' read -r -a toks <<<"$1"
   n="${#toks[@]}"
@@ -578,6 +1034,13 @@ git_split() {
   while [[ "$i" -lt "$n" ]]; do
     tok="${toks[$i]}"
     i=$((i + 1))
+    # xargs (and GNU parallel) hand git their arguments from stdin, which this
+    # text cannot read (#34, seam 1): `echo master | xargs git push origin` names no ref in the
+    # push clause, and `echo 'push origin master' | xargs git` names no verb.
+    # Remembered here and acted on once the verb is known: a push, or a git
+    # with no verb after it, is refused; a harmless verb (`xargs git add`) is
+    # left alone.
+    [[ "$tok" == xargs || "$tok" == parallel ]] && pre_xargs=1
     if [[ "$tok" == git || "$tok" == */git ]]; then
       while [[ "$i" -lt "$n" ]]; do
         tok="${toks[$i]}"
@@ -598,13 +1061,71 @@ git_split() {
               GV_ARGS+="${toks[$i]}"$'\n'
               i=$((i + 1))
             done
+            [[ "$GV_COMPUTED" -eq 0 ]] && resolve_alias
+            if [[ "$pre_xargs" -eq 1 && "$GV_VERB" == push ]]; then
+              deny "Refusing: this push takes its arguments from xargs, so the branch guard cannot read the ref it will move (house.json at $toplevel). Spell the remote and the branch on the git command itself."
+            fi
             return 0 ;;
         esac
       done
+      if [[ "$pre_xargs" -eq 1 ]]; then
+        deny "Refusing: xargs supplies this git command's verb from stdin, which the branch guard cannot read (house.json at $toplevel). Spell the git command in full."
+      fi
       return 1
     fi
   done
   return 1
+}
+# A git alias is a verb this text cannot read (#34, seam 4): `git ci` with
+# `alias.ci=commit` in config is not `commit` to the walker. The meaning lives
+# in git's config, so ask git. A plain alias is read as the verb it expands
+# to, its own arguments put in front of the command's, nested up to a few
+# levels; a shell alias (`!...`) runs whatever it likes and is refused from
+# every branch. A verb that is neither a command git lists nor an
+# alias git can find is refused too: git would fail on it anyway, and the one
+# way it could succeed is an alias defined earlier in the same call, which is
+# exactly the case a lookup cannot see. Looked up against the candidate
+# target's config, so an alias in that repo or the user's global config is
+# read; one injected on the command line or through the environment is
+# refused before this runs.
+resolve_alias() {
+  local depth=0 alias_val first rest _al
+  while [[ "$depth" -lt 5 ]]; do
+    # The lookup runs with the trap disarmed inside its own subshell: a
+    # missing alias is git exiting 1, and with the trap armed that exit
+    # would print the crash-deny JSON INTO alias_val (the same seam the
+    # clause splitter records), which then read as a computed verb.
+    alias_val=''
+    if [[ -n "$ALIAS_CACHE" ]]; then
+      while IFS= read -r _al; do
+        case "$_al" in "alias.$GV_VERB "*) alias_val="${_al#alias.$GV_VERB }"; break ;; esac
+      done <<<"$ALIAS_CACHE"
+    fi
+    [[ -n "$alias_val" ]] || break
+    # A shell alias runs whatever it likes, and its body is not readable
+    # text: the first version scanned it for git or push after removing
+    # quotes and backslashes, and the adversarial round spelled both words
+    # with printf hex escapes. Refused from every branch; nothing in a
+    # session needs one.
+    if [[ "$alias_val" == '!'* ]]; then
+      deny "Refusing: 'git $GV_VERB' is a shell alias, which runs a command the branch guard cannot read (house.json at $toplevel). Run the underlying command in full."
+    fi
+    read -r first rest <<<"$alias_val"
+    GV_VERB="$first"
+    if [[ -n "$rest" ]]; then
+      local w prefix=''
+      for w in $rest; do prefix+="$w"$'\n'; done
+      GV_ARGS="$prefix$GV_ARGS"
+    fi
+    case "$GV_VERB" in
+      *'$'*|*'`'*|*'{'*|*'"'*|*"'"*) GV_COMPUTED=1; return 0 ;;
+    esac
+    depth=$((depth + 1))
+  done
+  if ! verb_is_known "$GV_VERB"; then
+    deny "Refusing: '$GV_VERB' is an unknown git command here, neither one git lists nor an alias it can find, so the branch guard cannot read it (house.json at $toplevel). If it is an alias this same command defines, define it in a call of its own; if it is prose, write the text to a file and pass the file (--body-file, -F)."
+  fi
+  return 0
 }
 # A clause can hold more than one git command: a substitution inside an
 # argument (`git commit -m $(git push origin master)`) is a second one, and
@@ -764,15 +1285,158 @@ quoted_only_hint() {
   fi
 }
 
-if is_protected_branch "$branch"; then
-  if any_clause_verb commit; then
+# A command that changes the branch, the config, or the checkout it then
+# commits or pushes under, in the same call (round 3): the branch and the
+# config are read once, before any clause runs, so `git checkout master &&
+# git commit` from a feature branch read as a feature-branch commit, `git
+# config push.default matching && git push origin` as a harmless push, and
+# `git worktree add <dir> master && cd <dir> && git commit` fell back to the
+# cwd because <dir> did not exist yet. Each was executed for real and landed
+# on master. Refused when a guarded verb sits in the same or a later clause:
+# a checkout, switch, or symbolic-ref whose arguments name a protected
+# branch or a ref this text cannot read; a config write to a push, remote
+# push, branch upstream, or alias key; a worktree add naming a protected
+# branch; a clone. Creating a branch (`checkout -b`, `switch -c`,
+# `worktree add -b`), reading config, and a checkout AFTER the push (`git
+# push origin feat && git checkout master`) are left alone. Runs last, so
+# every earlier refusal keeps its own message; sets STATE_REASON.
+STATE_REASON=''
+same_call_state_change() {
+  local v clause tok n state_idx guarded_idx reason
+  for v in "${scan_variants[@]}"; do
+    split_clauses "$v"
+    n=0; state_idx=''; guarded_idx=''
+    while IFS= read -r clause; do
+      n=$((n + 1))
+      git_split "$clause" || continue
+      while :; do
+        reason=''
+        case "$GV_VERB" in
+          commit|push) guarded_idx="$n" ;;
+          checkout|switch|symbolic-ref)
+            while IFS= read -r tok; do
+              [[ -n "$tok" ]] || continue
+              case "$tok" in
+                -) reason="'git $GV_VERB -' moves HEAD to the previous branch before the commit or push runs"; break ;;
+                -b|-B|-c|-C|--orphan) break ;;
+                -*) continue ;;
+              esac
+              tok="${tok#refs/heads/}"; tok="${tok#heads/}"
+              if path_is_computed "$tok" || is_protected_branch "$tok"; then
+                reason="'git $GV_VERB' moves HEAD to '$tok' before the commit or push runs"; break
+              fi
+            done <<<"$GV_ARGS" ;;
+          config)
+            case "$GV_ARGS" in
+              *--get*|*--list*|*-l$'\n'*|*--unset*|*--show-origin*) ;;
+              *)
+                while IFS= read -r tok; do
+                  case "$tok" in
+                    [Pp]ush.*|remote.*.push|branch.*.merge|branch.*.remote|alias.*)
+                      reason="'git config $tok' rewrites what a later push or verb means"; break ;;
+                  esac
+                done <<<"$GV_ARGS" ;;
+            esac ;;
+          worktree)
+            case "$GV_ARGS" in
+              add$'\n'*)
+                case "$GV_ARGS" in *$'\n'-b$'\n'*|*$'\n'-B$'\n'*|*$'\n'--detach$'\n'*) ;;
+                  *)
+                    while IFS= read -r tok; do
+                      [[ -n "$tok" && "$tok" != add && "$tok" != -* ]] || continue
+                      tok="${tok#refs/heads/}"
+                      if is_protected_branch "$tok"; then
+                        reason="'git worktree add' checks out '$tok' into a directory that does not exist yet"; break
+                      fi
+                    done <<<"$GV_ARGS" ;;
+                esac ;;
+            esac ;;
+          clone) reason="'git clone' creates a checkout this call then commits in" ;;
+        esac
+        if [[ -n "$reason" && -z "$state_idx" ]]; then state_idx="$n"; STATE_REASON="$reason"; fi
+        git_next || break
+      done
+    done <<<"$CLAUSES"
+    if [[ -n "$state_idx" && -n "$guarded_idx" && "$guarded_idx" -ge "$state_idx" ]]; then
+      return 0
+    fi
+  done
+  STATE_REASON=''
+  return 1
+}
+
+# run_scans: every decision, against the candidate decide_for_target has
+# resolved (git_dir_arg, toplevel, branch, protected_list, carve_outs).
+run_scans() {
+# Config that arrives through the environment (#34, seam 2) can define an
+# alias, a push key, or a remote refspec that none of the scans below can see,
+# and nothing in a session needs it. Refused outright.
+# Read on the message-stripped text and only at the start of a token, so the
+# same letters inside a commit message are prose (the regression round found
+# `-m "mention HOME=/custom/path"` refused on every branch).
+env_cfg='(^|[[:space:]])(GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_[A-Za-z0-9_]*|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|HOME|XDG_CONFIG_HOME)='
+# On the blind text, every quoted span gone: a message that expands is kept
+# in cmd_safe so a verb inside it stays visible, and round 4 put the letters
+# HOME= beside a `$` in one. An assignment in front of a command is never
+# inside quotes, so the blind text still carries it.
+if [[ "$cmd_blind" =~ $env_cfg ]]; then
+  deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, XDG_CONFIG_HOME) can redefine what this command does, and the branch guard's own config lookups run without it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read."
+fi
+# cand_has_verb VERB: does the git command this candidate was made for run
+# VERB (alias resolved against this candidate's repo)? The protected-branch
+# block reads this rather than the whole command, see the candidate comment.
+# cand_has_verb VERB: the git commands this candidate was made for, plus
+# every substitution body (see extract_substitutions).
+cand_has_verb() {
+  verb_in_text "$1" "$CAND_TEXT" && return 0
+  [[ -n "$subst_safe" ]] && verb_in_text "$1" "$subst_safe" && return 0
+  return 1
+}
+# A target the shell computes (see collect_candidates) with a guarded verb
+# anywhere in the command: refused the way a computed ref or verb is.
+if [[ "$TARGET_COMPUTED" -eq 1 ]] && { any_clause_verb commit || any_clause_verb push; }; then
+  deny "Refusing: the directory this git command runs in is computed by the shell (a cd, pushd, -C, or CDPATH the branch guard cannot read), so it cannot tell which checkout the commit or push lands in (house.json at $toplevel). Spell the path as a literal, absolute where possible, and retry."
+fi
+
+# A branch created earlier in the same call (`git checkout -b x && git
+# commit`) is where the commit lands, so the protected-branch block stands
+# down for it; that is the shape the refusal itself recommends, and the
+# regression round found it refused from the protected branch. A checkout
+# back onto a protected branch afterwards is the same-call state-change
+# refusal, and a push naming a protected branch is the any-branch scan.
+creates_branch_first() {
+  local v clause tok n created='' guarded=''
+  for v in "${scan_variants[@]}"; do
+    split_clauses "$v"
+    n=0; created=''; guarded=''
+    while IFS= read -r clause; do
+      n=$((n + 1))
+      git_split "$clause" || continue
+      while :; do
+        case "$GV_VERB" in
+          commit|push) [[ -z "$guarded" ]] && guarded="$n" ;;
+          checkout|switch)
+            case "$GV_ARGS" in
+              -b$'\n'*|-B$'\n'*|-c$'\n'*|-C$'\n'*|--orphan$'\n'*|*$'\n'-b$'\n'*|*$'\n'-B$'\n'*|*$'\n'-c$'\n'*|*$'\n'-C$'\n'*|*$'\n'--orphan$'\n'*)
+                [[ -z "$created" ]] && created="$n" ;;
+            esac ;;
+        esac
+        git_next || break
+      done
+    done <<<"$CLAUSES"
+    if [[ -n "$created" && -n "$guarded" && "$created" -lt "$guarded" ]]; then return 0; fi
+  done
+  return 1
+}
+if is_protected_branch "$branch" && ! creates_branch_first; then
+  if cand_has_verb commit; then
     staged=$(git "${git_dir_arg[@]}" diff --cached --name-only 2>/dev/null || true)
     if carve_out_satisfied "$staged"; then
       exit 0
     fi
-    deny "Refusing to commit on '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. For anything that renders or runs in parallel with another session, spin up a worktree (git worktree add -b kind/short-name ../<repo>-kind-short-name) in a SEPARATE call, then commit in a call of its own: a target this same command creates does not exist yet when this check runs, so the chained one-liner is refused. For a small, single-commit change with nothing else in flight, a branch in this checkout (git checkout -b kind/short-name) is fine. Commit there and open a PR.$carve_out_reason_suffix$(quoted_only_hint commit)"
+    deny "Refusing to commit on '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. Work in a worktree: git worktree add -b kind/short-name ../<repo>-kind-short-name, in a SEPARATE call, then commit there in a call of its own (a target this same command creates does not exist yet when this check runs, so the chained one-liner is refused). A branch in this checkout (git checkout -b kind/short-name) is for a single-commit change only, and only when the agent list and git worktree list show no peer session in flight, because this checkout is the one every other session shares. Commit there and open a PR.$carve_out_reason_suffix$(quoted_only_hint commit)"
   fi
-  if any_clause_verb push; then
+  if cand_has_verb push; then
     unpushed=$(git "${git_dir_arg[@]}" diff '@{push}..' --name-only 2>/dev/null \
                || git "${git_dir_arg[@]}" diff "origin/${branch}.." --name-only 2>/dev/null \
                || true)
@@ -797,6 +1461,11 @@ fi
 # moved master past the first version of this check).
 if any_clause_verb push && grep -qiE '(^|[[:space:]])-c=?[[:space:]]*(push\.|remote\.[^[:space:]=]*\.push=)' <<<"$cmd_safe2"; then
   deny "Refusing: a -c push or remote.<name>.push setting can redirect a push to a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR."
+fi
+# An alias defined on the command line (#34, seam 4) is a verb the config
+# lookup below cannot see, so it is refused the same way, whatever it names.
+if grep -qiE '(^|[[:space:]])-c=?[[:space:]]*alias\.' <<<"$cmd_safe2"; then
+  deny "Refusing: a -c alias.* setting defines a git verb on the command line, which the branch guard cannot read (house.json at $toplevel). Run the underlying command in full."
 fi
 
 # On any branch, block an explicit push targeting a protected branch.
@@ -841,6 +1510,7 @@ for scan_cmd in "${scan_variants[@]}"; do
     fi
     push_args="$GV_ARGS"
     skip_value=0
+    remote_name=''; positionals=0
     while IFS= read -r tok; do
       [[ -n "$tok" ]] || continue
       if [[ "$skip_value" -eq 1 ]]; then skip_value=0; continue; fi
@@ -868,6 +1538,7 @@ for scan_cmd in "${scan_variants[@]}"; do
         *'$'*|*'`'*|*'{'*)
           deny "Refusing: the ref '$tok' is computed by the shell, so the branch guard cannot read it (house.json at $toplevel). Spell the branch name and retry." ;;
       esac
+      if [[ -z "$remote_name" ]]; then remote_name="$tok"; else positionals=$((positionals + 1)); fi
       for part in ${tok//:/ }; do
         part="${part#+}"
         part="${part#refs/heads/}"
@@ -877,9 +1548,60 @@ for scan_cmd in "${scan_variants[@]}"; do
         fi
       done
     done <<<"$push_args"
+    # A push that names no refspec takes its refspec from the target repo's
+    # config (#34, seam 4): `push.default=matching` pushes every branch the
+    # remote also has, `upstream` (and its old name `tracking`) pushes to
+    # whatever `branch.<name>.merge` says, which can be a protected name,
+    # and a `remote.<name>.push` entry is a refspec the command never
+    # spelled. The hook already refuses both keys on the
+    # command line; this asks git whether the repo carries them. Read with
+    # the trap disarmed, see resolve_alias.
+    if [[ "$positionals" -eq 0 ]]; then
+      push_default=$(trap - ERR; git "${git_dir_arg[@]}" config --get push.default 2>/dev/null || true)
+      remote_push=$(trap - ERR; git "${git_dir_arg[@]}" config --get-all "remote.${remote_name:-origin}.push" 2>/dev/null || true)
+      case "$push_default" in matching|upstream|tracking) push_default=matching ;; esac
+      if [[ "$push_default" == matching || -n "$remote_push" ]]; then
+        deny "Refusing: this push names no refspec and the repo's config (push.default=matching or upstream, or remote.${remote_name:-origin}.push) decides what it moves, which can be a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR."
+      fi
+    fi
     git_next || break
     done
   done <<<"$CLAUSES"
 done
+
+if same_call_state_change; then
+  deny "Refusing: this call changes the state it then commits or pushes under ($STATE_REASON), and the branch guard reads the branch and the config once, before any clause runs (house.json at $toplevel). Run the change and the commit or push as separate calls."
+fi
+}
+
+# ── Decide ────────────────────────────────────────────────────────────────
+collect_candidates "$cmd_for_target"
+collect_candidates "$cmd_for_target_c"
+if [[ -z "$CANDIDATES" ]]; then
+  decide_for_target dir '' '' '' "$cmd_safe"
+else
+  # One decision per distinct target, its clauses joined: the regression
+  # round timed a six-clause command at seconds when every clause was its
+  # own candidate with its own policy read and git lookups.
+  keys=(); texts=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    IFS="$US" read -r kind p1 p2 p3 p4 <<<"$line"
+    key="${kind}${US}${p1}${US}${p2}${US}${p3}"
+    found=''
+    for ((k = 0; k < ${#keys[@]}; k++)); do
+      [[ "${keys[$k]}" == "$key" ]] && { found="$k"; break; }
+    done
+    if [[ -n "$found" ]]; then
+      texts[$found]+=$'\n'"$p4"
+    else
+      keys+=("$key"); texts+=("$p4")
+    fi
+  done <<<"$CANDIDATES"
+  for ((k = 0; k < ${#keys[@]}; k++)); do
+    IFS="$US" read -r kind p1 p2 p3 <<<"${keys[$k]}"
+    decide_for_target "$kind" "$p1" "$p2" "$p3" "${texts[$k]}"
+  done
+fi
 
 exit 0

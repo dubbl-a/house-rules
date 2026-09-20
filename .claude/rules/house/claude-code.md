@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.9.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=ce608795394a8b71c35927e6aae0e80be89093e3b3782185f75d3c5877703ed5 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.9.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=f77a69113299ad02070653985b93ee99673f03aadcb6c94d1c07c0da253aa55b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -112,7 +112,8 @@ Receipts: `docs/handbook/claude-code.md#plan-when-the-approach-is-uncertain-and-
 
 ## Treat git state as shared across sessions
 
-Assume another checkout can move your branch mid-run and strand uncommitted work, so ask before switching, prefer a worktree, and commit early.
+Assume another checkout can move your branch mid-run and strand uncommitted work, so ask before switching and commit early.
+Work in a worktree by default, because a branch in the main checkout is the checkout every peer session also holds; branch there only for a single-commit change when the agent list and the worktree list both show nobody else in flight.
 Read the current branch immediately before every commit and every push instead of trusting what it was at session start.
 Squash-merge another session's branch rather than rebasing it, and never force-clean a checkout you do not own.
 Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees.
