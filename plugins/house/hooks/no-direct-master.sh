@@ -19,9 +19,11 @@
 #     while the repo's config carries `push.default=matching` or a
 #     `remote.<name>.push`; a `-c alias.*` or a git config variable passed
 #     through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT); a
-#     shell alias (`!...`) that runs git, and any shell alias on a protected
-#     branch; a verb that is neither a command git lists nor an alias it
-#     can find. A plain alias is read as the verb it expands to.
+#     shell alias (`!...`); a verb that is neither a command git lists nor
+#     an alias it can find. A plain alias is read as the verb it expands to.
+#   - a commit or push whose directory the shell computes (`cd -`, `cd $X`,
+#     `git -C "$dir"`, `CDPATH=`): refused, since the guard cannot tell
+#     which checkout it lands in
 #
 # The command is read by one token walker (git_split), not by adjacency: a
 # global option between `git` and the verb, a nested git command inside an
@@ -384,20 +386,37 @@ compose_path() {
 }
 # collect_candidates TEXT: walk the clauses in order and record, for every git
 # command, the directory it will actually run in. This is the shell's own
-# reading: a `cd` or `pushd` clause moves every later clause (`popd` moves
-# back to the payload cwd, an approximation of the stack that fails toward
-# the session's own checkout); a `git -C <p>` applies to its own clause only,
-# and successive `-C` compose; a `GIT_DIR=`/`GIT_WORK_TREE=` assignment in
-# front of a command, with or without `env`, applies to that command, and an
-# `export` of either persists; `--git-dir`/`--work-tree` apply to their own
-# git command. A git command with none of these runs in the current
-# directory, so the payload cwd is a candidate whenever any git clause
-# carries no target of its own: the adversarial round found that a harmless
-# `git -C <elsewhere> status &&` in front of a bare `git commit` deleted the
-# cwd from the check entirely, and that `git -C a -C b` was read as `a`.
+# reading: a `cd` or `pushd` clause moves every later clause, `pushd` and
+# `popd` keep a stack, a `git -C <p>` applies to its own clause only and
+# successive `-C` compose, `env -C <p>` (or `--chdir`) applies to its own
+# command, a `GIT_DIR=`/`GIT_WORK_TREE=` assignment in front of a command,
+# with or without `env`, applies to that command, an `export` of either
+# persists, and `--git-dir`/`--work-tree` apply to their own git command. A
+# git command with none of these runs in the current directory, so the
+# payload cwd is a candidate whenever any git clause carries no target of
+# its own: the adversarial round found that a harmless `git -C <elsewhere>
+# status &&` in front of a bare `git commit` deleted the cwd from the check
+# entirely, and that `git -C a -C b` was read as `a`.
+#
+# A target this text cannot read (`cd -`, `cd $OLDPWD`, `cd "$dir"`,
+# `cd $(pwd)/..`, a function argument, an xargs placeholder, a `CDPATH=`
+# in front of a relative cd) is not guessed at: the second adversarial round
+# fed each of those to the walk, watched the bogus path fail to resolve, and
+# watched the fallback go to the payload cwd, discarding the real cd earlier
+# in the chain. The walk now marks the directory unknown and sets
+# TARGET_COMPUTED; run_scans refuses a guarded verb under it, the same way a
+# computed ref or verb is refused, and the refusal says to spell the path.
+TARGET_COMPUTED=0
+path_is_computed() {
+  case "$1" in
+    -|*'$'*|*'`'*|*'{'*|*'}'*) return 0 ;;
+  esac
+  return 1
+}
 collect_candidates() {
-  local text="$1" dir='' sticky_gd='' sticky_wt='' clause
-  local toks i n tok gd wt cdir is_export first
+  local text="$1" dir='' sticky_gd='' sticky_wt='' clause unknown=0
+  local toks i n tok gd wt cdir is_export envdir
+  local stack=()
   # Quote characters go, the way the verb scans drop them: an interpreter's
   # body arrives as `-c 'cd <p> && git ...'` and the `cd` sits behind the
   # quote. Message values were removed whole before this, so prose stays out.
@@ -407,39 +426,72 @@ collect_candidates() {
     IFS=$' \t\n' read -r -a toks <<<"$clause"
     n="${#toks[@]}"
     [[ "$n" -gt 0 ]] || continue
-    i=0; gd="$sticky_gd"; wt="$sticky_wt"; is_export=0
+    i=0; gd="$sticky_gd"; wt="$sticky_wt"; is_export=0; envdir=''
     [[ "${toks[0]}" == export ]] && { is_export=1; i=1; }
-    # Leading assignments, and the ones `env` carries.
+    # Leading assignments, and the ones `env` carries; `env -C <p>` moves
+    # its own command and `CDPATH=` makes every relative cd unreadable.
     while [[ "$i" -lt "$n" ]]; do
       tok="${toks[$i]}"
       case "$tok" in
         GIT_DIR=*) gd="${tok#GIT_DIR=}"; i=$((i + 1)) ;;
         GIT_WORK_TREE=*) wt="${tok#GIT_WORK_TREE=}"; i=$((i + 1)) ;;
+        CDPATH=*) TARGET_COMPUTED=1; i=$((i + 1)) ;;
         [A-Za-z_]*=*) i=$((i + 1)) ;;
         env) i=$((i + 1)) ;;
+        -C|--chdir)
+          if [[ $((i + 1)) -lt "$n" ]]; then envdir="${toks[$((i + 1))]}"; fi
+          i=$((i + 2)) ;;
+        --chdir=*) envdir="${tok#--chdir=}"; i=$((i + 1)) ;;
+        -u|-S|--unset|--split-string) i=$((i + 2)) ;;
+        -*) i=$((i + 1)) ;;
         *) break ;;
       esac
     done
     if [[ "$is_export" -eq 1 ]]; then sticky_gd="$gd"; sticky_wt="$wt"; continue; fi
+    if [[ -n "$envdir" ]]; then
+      if path_is_computed "$envdir"; then TARGET_COMPUTED=1; fi
+    fi
     while [[ "$i" -lt "$n" ]]; do
       tok="${toks[$i]}"
       i=$((i + 1))
       case "$tok" in
         cd|pushd)
-          if [[ "$i" -lt "$n" && "${toks[$i]}" != -* ]]; then
-            dir=$(compose_path "$dir" "${toks[$i]}"); i=$((i + 1))
+          if [[ "$i" -lt "$n" ]]; then
+            if path_is_computed "${toks[$i]}"; then
+              TARGET_COMPUTED=1; unknown=1
+            elif [[ "${toks[$i]}" != -* ]]; then
+              [[ "$tok" == pushd ]] && stack+=("$dir")
+              dir=$(compose_path "$dir" "${toks[$i]}"); unknown=0
+            fi
+            i=$((i + 1))
+          else
+            [[ "$tok" == pushd ]] && stack+=("$dir")
+            dir='~'; unknown=0
           fi
           continue ;;
-        popd) dir=''; continue ;;
+        popd)
+          if [[ "${#stack[@]}" -gt 0 ]]; then
+            dir="${stack[$((${#stack[@]} - 1))]}"; unset "stack[$((${#stack[@]} - 1))]"
+          else
+            dir=''
+          fi
+          unknown=0
+          continue ;;
         git|*/git) ;;
         *) continue ;;
       esac
       # A git command: read its global options for a target of its own.
       cdir="$dir"
+      [[ -n "$envdir" ]] && cdir=$(compose_path "$cdir" "$envdir")
       while [[ "$i" -lt "$n" ]]; do
         tok="${toks[$i]}"
         case "$tok" in
-          -C) [[ $((i + 1)) -lt "$n" ]] && cdir=$(compose_path "$cdir" "${toks[$((i + 1))]}"); i=$((i + 2)) ;;
+          -C)
+            if [[ $((i + 1)) -lt "$n" ]]; then
+              if path_is_computed "${toks[$((i + 1))]}"; then TARGET_COMPUTED=1; unknown=1
+              else cdir=$(compose_path "$cdir" "${toks[$((i + 1))]}"); fi
+            fi
+            i=$((i + 2)) ;;
           --git-dir=*) gd="${tok#--git-dir=}"; i=$((i + 1)) ;;
           --work-tree=*) wt="${tok#--work-tree=}"; i=$((i + 1)) ;;
           --git-dir) [[ $((i + 1)) -lt "$n" ]] && gd="${toks[$((i + 1))]}"; i=$((i + 2)) ;;
@@ -449,7 +501,11 @@ collect_candidates() {
           *) break ;;
         esac
       done
-      if [[ -n "$gd$wt" ]]; then
+      if [[ "$unknown" -eq 1 ]]; then
+        # The directory is unreadable here: decide the cwd, where the
+        # computed-target refusal fires under a guarded verb.
+        add_candidate "dir${US}${US}${US}"
+      elif [[ -n "$gd$wt" ]]; then
         add_candidate "env${US}${gd}${US}${wt}${US}${cdir}"
       else
         add_candidate "dir${US}${cdir}${US}${US}"
@@ -1007,6 +1063,11 @@ case "$cmd" in
   *GIT_CONFIG_PARAMETERS=*|*GIT_CONFIG_COUNT=*|*GIT_CONFIG_KEY_*|*GIT_CONFIG_GLOBAL=*|*GIT_CONFIG_SYSTEM=*|*HOME=*)
     deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, XDG_CONFIG_HOME) (the last also covers XDG_CONFIG_HOME) can redefine what this command does, and the branch guard's own config lookups run without it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read." ;;
 esac
+# A target the shell computes (see collect_candidates) with a guarded verb
+# anywhere in the command: refused the way a computed ref or verb is.
+if [[ "$TARGET_COMPUTED" -eq 1 ]] && { any_clause_verb commit || any_clause_verb push; }; then
+  deny "Refusing: the directory this git command runs in is computed by the shell (a cd, pushd, -C, or CDPATH the branch guard cannot read), so it cannot tell which checkout the commit or push lands in (house.json at $toplevel). Spell the path as a literal, absolute where possible, and retry."
+fi
 
 if is_protected_branch "$branch"; then
   if any_clause_verb commit; then
@@ -1130,15 +1191,18 @@ for scan_cmd in "${scan_variants[@]}"; do
     done <<<"$push_args"
     # A push that names no refspec takes its refspec from the target repo's
     # config (#34, seam 4): `push.default=matching` pushes every branch the
-    # remote also has, and a `remote.<name>.push` entry is a refspec the
-    # command never spelled. The hook already refuses both keys on the
+    # remote also has, `upstream` (and its old name `tracking`) pushes to
+    # whatever `branch.<name>.merge` says, which can be a protected name,
+    # and a `remote.<name>.push` entry is a refspec the command never
+    # spelled. The hook already refuses both keys on the
     # command line; this asks git whether the repo carries them. Read with
     # the trap disarmed, see resolve_alias.
     if [[ "$positionals" -eq 0 ]]; then
       push_default=$(trap - ERR; git "${git_dir_arg[@]}" config --get push.default 2>/dev/null || true)
       remote_push=$(trap - ERR; git "${git_dir_arg[@]}" config --get-all "remote.${remote_name:-origin}.push" 2>/dev/null || true)
+      case "$push_default" in matching|upstream|tracking) push_default=matching ;; esac
       if [[ "$push_default" == matching || -n "$remote_push" ]]; then
-        deny "Refusing: this push names no refspec and the repo's config (push.default=matching or remote.${remote_name:-origin}.push) decides what it moves, which can be a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR."
+        deny "Refusing: this push names no refspec and the repo's config (push.default=matching or upstream, or remote.${remote_name:-origin}.push) decides what it moves, which can be a protected branch (house.json at $toplevel). Push one feature branch by name and open a PR."
       fi
     fi
     git_next || break

@@ -1133,6 +1133,56 @@ expect_allow "adversarial 5: a -C to the feature repo before a cd there" \
 expect_allow "adversarial 5: an env prefix on a non-git command does not steer" \
   "$(mk_payload "GIT_DIR=$pm/.git ls && git -C $pf $_verb -m x" "$pm")"
 
+# Adversarial round 2: a target the shell computes. The first walk composed
+# whatever token followed cd or -C, and when that token was `-`, `$OLDPWD`,
+# `"$dir"`, `$(pwd)/..`, a function argument, or an xargs placeholder, the
+# path resolved nowhere and the fallback went to the payload cwd, discarding
+# every real cd earlier in the chain. The rule is the one computed refs and
+# verbs already follow: with a guarded verb in the command, a target this
+# text cannot read is refused, and the refusal says to spell the path.
+mkdir -p "$pm/sub"
+expect_deny "adversarial 6: cd - returns to a protected checkout" \
+  "$(mk_payload "cd $pm && cd $pf && cd - && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: cd \$OLDPWD" \
+  "$(mk_payload "cd $pm && cd $pf && cd \"\$OLDPWD\" && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: cd through a substitution" \
+  "$(mk_payload "cd $pm/sub && cd \$(pwd)/.. && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: cd through a variable assigned in the same command" \
+  "$(mk_payload "TARGET=$pm && cd \$TARGET && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: cd inside a function defined in the same command" \
+  "$(mk_payload "mycd() { cd \"\$1\"; }; mycd $pm && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: -C through a variable" \
+  "$(mk_payload "dir=$pm; git -C \"\$dir\" $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: CDPATH steers a relative cd" \
+  "$(mk_payload "CDPATH=$pm cd sub && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 6: an xargs placeholder as a cd target" \
+  "$(mk_payload "echo $pm | xargs -I{} sh -c 'cd {} && git $_verb -m x'" "$pf")" "computed"
+expect_allow "adversarial 6: a computed cd with no guarded verb is left alone" \
+  "$(mk_payload "cd \$X && git status" "$pm")"
+expect_allow "adversarial 6: a computed cd with a harmless verb on a feature branch" \
+  "$(mk_payload "cd \"\$OLDPWD\" && git log -1" "$pf")"
+expect_deny "adversarial 6: env -C changes the directory for its command" \
+  "$(mk_payload "env -C $pm git $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 6: env --chdir= changes the directory for its command" \
+  "$(mk_payload "env --chdir=$pm git $_verb -m x" "$pf")" "master"
+expect_allow "adversarial 6: env -C into the feature repo from the protected one" \
+  "$(mk_payload "env -C $pf git $_verb -m x" "$pm")"
+expect_deny "adversarial 6: pushd twice then popd lands in the first target" \
+  "$(mk_payload "pushd $pm && pushd $pf && popd && git $_verb -m x" "$pf")" "master"
+expect_allow "adversarial 6: pushd twice then popd twice returns to the cwd" \
+  "$(mk_payload "pushd $pm && pushd $pf && popd && popd && git $_verb -m x" "$pf")"
+git -C "$pf" config branch.feat/x.remote origin
+git -C "$pf" config branch.feat/x.merge refs/heads/master
+git -C "$pf" config push.default upstream
+expect_deny "adversarial 6: push.default=upstream with an upstream on master" \
+  "$(mk_payload "git $_p origin" "$pf")" "config"
+git -C "$pf" config push.default tracking
+expect_deny "adversarial 6: push.default=tracking is the same setting" \
+  "$(mk_payload "git $_p origin" "$pf")" "config"
+git -C "$pf" config --unset push.default
+git -C "$pf" config --unset branch.feat/x.merge
+git -C "$pf" config --unset branch.feat/x.remote
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
