@@ -30,7 +30,7 @@ Receipts: `docs/handbook/testing.md#split-deterministic-tests-from-model-behavio
 ## Test the guard itself, as its own CI step
 
 Test the hook, the gate, and the guard script that protect the workflow, because code that decides whether a change is allowed to land deserves a test more than the code it guards.
-The harness makes a hook the thing that actually blocks, yet offers only after-the-fact inspection of one, the transcript view and a debug log, so nothing native proves a guard still fires.
+The harness makes a hook the thing that actually blocks, and the eval runner will load a plugin's own hooks inside an isolated run, yet nothing native asserts that a hook still returns its blocking decision, so the guard's own test is the only standing proof that it still fires.
 Run the guard's own test as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red; the gate's step list is github.md's.
 Ship a guard with its own test in the change that introduces it, and build the guard's literal trigger tokens inside the test instead of writing them out, so the test cannot trip the guard it is exercising.
 Anchor: `tests/hooks/run.sh`, wired as its own step beside the suite in the pr-checks template, plus the main-module guard that ships with its own test.

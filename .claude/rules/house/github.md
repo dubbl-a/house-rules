@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.9.1 module=github source=modules/github/rules/github.md body-sha256=3a6897a6f358a5e743ba12501ee0d0a1dcd1cc62c86829389bb0e3de07a5b8c9 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.9.1 module=github source=modules/github/rules/github.md body-sha256=74b5fb8b46eed741c3019585c095cd69986c8871bc241aeb7b5289ad8c77a36d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -25,7 +25,7 @@ Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credenti
 Declare read-only `permissions:` on every workflow and grant write per job, because anyone with write access to the repo can read every secret configured for it. Write the reason for the permission set beside the block.
 Pin every third-party action to a full-length commit SHA, the only immutable reference a tag cannot fake.
 Never interpolate event data straight into a `run:` block; route it through an intermediate variable, and never check out untrusted code in a privileged trigger.
-Anchor: the rendered `.github/workflows/pr-checks.yml` ships the read-only default and the SHA pins; copy it when you add a workflow.
+Anchor: the rendered `.github/workflows/pr-checks.yml` ships the read-only default and the SHA pins; copy it when you add a workflow. A workflow the agent platform's own setup command installs is a workflow in this repo too, so give it the same permissions block and the same SHA pins rather than merging it as shipped.
 Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin-every-action-by-sha`
 
 ## Budget Actions minutes as account-wide money
@@ -73,7 +73,7 @@ Receipts: `docs/handbook/github.md#never-put-a-closing-keyword-beside-an-issue-n
 
 Ship a multi-phase change as commits on one PR when there is one reviewer, because a PR per step buys review nobody is performing.
 After merging a stack's parent, confirm each child re-targeted its base, and fix forward from the leaf when a merge landed on a feature branch instead.
-Anchor: none (because PR granularity is a judgment call, and the base-retarget confirmation is a look at the open PR list).
+Anchor: none (because PR granularity is a judgment call, and the base-retarget confirmation is a look at the open PR list). A background session commits, pushes, and opens a draft pull request on its own, and the parallel-change command opens one per unit, so say which shape phased work takes before dispatching it that way.
 Receipts: `docs/handbook/github.md#ship-phased-work-as-commits-on-one-pr`
 
 ## Stage explicit paths, never everything at once

@@ -12,7 +12,7 @@
 - Make a procedure a skill, not a rule
   Move a multi-step procedure and its reference material into a skill, where only the description costs context every session.
 - Keep a skill body short, its references one level deep, and its name equal to its directory
-  Hold the body under the documented cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
+  Hold the body under its configured cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
 - Disable model invocation on a skill with side effects
   Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so nothing in the session can fire it on its own and its body costs nothing until a caller names it.
 - Set the model explicitly on every subagent and workflow agent

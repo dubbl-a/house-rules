@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.9.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=58838566b1aa7da2d533be88e4f77e8150588a1be6696a76b667ed0436e62d19 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.9.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=ce608795394a8b71c35927e6aae0e80be89093e3b3782185f75d3c5877703ed5 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -39,7 +39,8 @@ Receipts: `docs/handbook/claude-code.md#give-a-domain-rule-a-paths-list-and-neve
 ## Make a procedure a skill, not a rule
 
 Move a multi-step procedure and its reference material into a skill, where only the description costs context every session.
-The harness already says a multi-step procedure belongs in a skill rather than an instruction file; what it does not say is what the skill then owes you.
+A skill costs only its listed description and trigger text each session, and the harness truncates even that listing, while an instruction file pays for its whole body every time it loads.
+Where the harness points a growing instruction file is a path-scoped rule, and it stops there; what it never says is what a skill then owes you.
 Give its description one sentence naming its exact inputs and the filter it applies, then disclose the rest on demand: references read when needed, scripts whose output alone enters context.
 Give the skill a hazards section naming what has actually gone wrong, and say when an edit to it takes effect.
 Keep personal rules in a separate instruction file so the mechanics stay portable, and write a few evaluations before the prose so you fix real gaps instead of imagined ones.
@@ -48,17 +49,19 @@ Receipts: `docs/handbook/claude-code.md#make-a-procedure-a-skill-not-a-rule`
 
 ## Keep a skill body short, its references one level deep, and its name equal to its directory
 
-Hold the body under the documented cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
+Hold the body under its configured cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
+No documented cap covers the body itself; what the harness documents is a truncated listing and a compaction pass that re-attaches only each skill's opening slice and drops the least recent outright, so a long body is the part that stops surviving.
 Open any reference past the length threshold with a table of contents, so a partial read still shows scope.
 Write the description in third person, saying both what the skill does and when to use it, and offer a default with an escape hatch rather than a menu.
 Keep time-sensitive facts out of the method; the full rule on that lives in docs.md.
-The harness treats a personal or project skill's frontmatter name as a display label only and still invokes the skill by its directory name, so a mismatch is legal and quietly confusing; here it is an error.
-Anchor: check.mjs `lengths` caps the skill body, and `shape` fails a frontmatter name that differs from its directory.
+The harness treats a personal or project skill's frontmatter name as a display label only and still invokes the skill by its directory name, while a plugin skill's name replaces the last segment of its namespaced command; a mismatch is legal either way and quietly confusing, so here it is an error in both.
+Anchor: check.mjs `lengths` caps the skill body, and `shape` fails any skill whose frontmatter name differs from its directory, holding a plugin skill to the directory the harness would let its name override.
 Receipts: `docs/handbook/claude-code.md#keep-a-skill-body-short-its-references-one-level-deep-and-its-name-equal-to-its-directory`
 
 ## Disable model invocation on a skill with side effects
 
 Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so nothing in the session can fire it on its own and its body costs nothing until a caller names it.
+The harness offers the field for exactly this case, blocks a model-initiated call to a skill that sets it, and keeps a scheduled prompt from firing one, so treat that as the floor; what it cannot decide is which effects count as side effects, which is why writing, deploying, and spending are named here.
 Remember that a print-mode run expands a skill named in the prompt string before the turn starts, so the gate is the caller who wrote that string and not a person watching a prompt.
 Make the later phases of a procedure explicit opt-in gates rather than an automatic continuation.
 Expect an automatic mode to route a production deploy through a classifier rather than through you, and answer that with explicit intent rather than a route around it.
@@ -71,7 +74,7 @@ Name the model on every agent call, because an omitted one silently inherits the
 Match the tier to the task: mechanical joins and receipt checks at the small tier, code and prose in the middle, judgment and adjudication at the top.
 Expect a managed model list to be applied as given rather than merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail when that happens, stepping a blocked call down to the newest allowed model in its family and noting only a warning in the run's own view: a pinned tier is a request the run can silently step down from, and the checker plus the fork's explicit model map are what make that request visible.
-State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced rather than only stated.
+State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced rather than only stated, remembering that the figure it enforces against is the session's own estimate of spend and not the bill.
 When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each Claude Code upgrade: read its verdict by name, since each outcome is its own exit code, unchanged, drifted or missing (a missing binary or missing bundled script counts as drift; rebuild the fork), a bad argument (fix the call), and SUNSET (the native workflow now sets its own models or reads a per-stage model map, so delete the fork).
 Anchor: the eval pair at `plugins/house/evals/explicit-model-tier/`, whose arms differ only in whether each call sets a model.
 Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subagent-and-workflow-agent`
@@ -81,6 +84,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 Turn a rule that must hold every time into a hook, because a rule file is advisory context and only a pre-tool hook stops the action.
 Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a session started bare, in safe mode, or in restricted mode never loads project hooks at all, so anything that must survive those needs a deny rule in managed settings beside it.
 Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, because a silent exit reads as no decision and never as approval.
+Know where that exit stops binding: only the pre-tool event reads a failing exit as a block, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, because text left in can only add denials while text wrongly removed hides the verb and is a bypass. Pin both directions in the tests, since the tidier-looking pattern is usually the one that removes too much.
 Keep the decision in the script rather than in a hook's fine-grained filter, which the harness documents as best-effort and unfit for a hard allow or deny.
 Escalate as autonomy rises, from a prompt, to a check the agent runs before you walk away, to a hook, to a verification subagent.
@@ -118,6 +122,7 @@ Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-session
 
 Commit an allowlist covering the repo's own script surface and read-side platform commands and nothing broader, and authorize deploy and egress verbs through a skill instead.
 Allow-list network fetches per domain rather than blanket, and pin the servers and services the project enables by name rather than inheriting whatever is installed, because a print-mode run loads the project's servers with no approval prompt at all.
+Pin them from the deny side too, since the disable list binds in every session type including a checkout nobody has trusted, and give a scripted run the strict server-config flag so it connects only the servers it was handed.
 Reach for a deny rule when you want the blanket, since a deny can wildcard across every tool of every server while an allow has to name its server, and keep a parameter-scoped rule on a server tool out of a settings file, because the loader skips it and says so only in the doctor output.
 Keep the wide accreted list in `settings.local.json`, gitignored and free of machine paths, and forward-declare a script you are about to add so its first run needs no prompt.
 Prune it on a cadence, because permission lists merge across every scope rather than override, so one broad grant supersedes every careful narrow one and a stale entry outlives the rename that orphaned it.

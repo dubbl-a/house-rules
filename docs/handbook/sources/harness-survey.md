@@ -1,5 +1,5 @@
-<!-- docs-drift-ignore-file: point-in-time survey captured 2026-09-02; anchors record what was true on that date -->
-# Source: harness-survey (survey agent output, 2026-09-02)
+<!-- docs-drift-ignore-file: point-in-time surveys captured 2026-09-02 and 2026-09-20; anchors record what was true on each date -->
+# Source: harness-survey (survey agent output, 2026-09-02, re-surveyed 2026-09-20)
 
 Surveyed 2026-09-02 against the official Claude Code documentation and the CLI's help output; re-run when a Claude Code major ships.
 
@@ -771,3 +771,39 @@ Copied from section 8 of `audit-report.md`, the eight questions the audit could 
 6. **The narrow-matcher example.** The docs' worked example for a PermissionRequest auto-approve hook advises keeping the matcher as narrow as possible, which sits awkwardly beside claude-code.md's guidance to keep a deny hook's matcher broad. Both are defensible for their own event, but the package has not stated the split explicitly.
 7. **The GitHub App's fixed permission set.** github.md's workflow-permissions rule was left UNIQUE, but installing the app grants broad repository read and write that no workflow `permissions:` block narrows. Whether to surface that adjacency in the rule is an editorial call the docs cannot make.
 8. **Citation freshness has no policy.** These rewords pin house rules to external harness documentation that changes without notice. Nothing in ADR 0011 or the drift family covers re-verifying a native-floor citation, and the audit could not settle how often that should happen or what fails when a cited behavior changes.
+
+## Re-survey, 2026-09-20 (Claude Code 2.1.278)
+
+Re-run against 2.1.278 with two multi-agent workflows: one over the nine module rule files and the package's own mechanisms, one over five areas the first pass never researched (MCP, output styles, plan mode, headless mode, observability) plus the one docs rule the first pass skipped.
+
+### Result
+
+136 items classified: 0 confirmed duplicates, 0 confirmed conflicts, 85 complements, 51 uniques, 1 downgraded claim. The single CONFLICT filed, the branch guard standing down on any non-empty local `PreToolUse` array, was refuted by both skeptics and downgraded to COMPLEMENT. What survives is a narrow defect, that the stand-down should test the local entry's matcher rather than the array's emptiness, and it ships on its own pull request against the hook.
+
+### Where the bank lives
+
+`/Users/DoubleA/Documents/house-rules-harness-research/2026-09-20/`: `facts/*.json` are the cited harness facts, `classifications/*.json` the per-module dispositions, `verifications/*.json` the two skeptic readings, `main-synthesize-report.md` the disposition report, `gap-addendum.md` the second run. `INDEX.tsv` maps each workflow step to its artifact.
+
+### Corrected citation
+
+The multi-hook combination fact (every matching hook runs to completion, and for a PreToolUse permission decision the most restrictive answer applies in the order deny, defer, ask, allow) belongs to the hooks guide page, `https://code.claude.com/docs/en/hooks-guide.md`, not the hooks reference page. Open question 2 of the 2026-09-02 list above, which recorded the two skeptics reading the reference page differently, closes on that citation.
+
+### Open questions answered
+
+1. Print mode does have a cost ceiling: `--max-budget-usd`, documented as print-only, compared against the session's own running cost figure, which is a client-side estimate and not the bill. The claude-code rule now says so.
+2. A print run without bare mode does load the project's `.mcp.json` servers, with no workspace-trust dialog and no per-server approval prompt. The rule's claim held; it now also names the deny side, which binds in every session type including an untrusted checkout, and the strict server-config flag.
+4. All three mode names are real on 2.1.278: `--bare`, `--safe-mode`, and `--restricted` each appear in `claude --help` and each keeps project hooks out of the session. The rule text stands unchanged.
+5. No documented cap covers a skill body. What is documented is a truncated skill listing and a compaction pass that re-attaches only each skill's opening slice and drops the least recent outright. The rule now names the repo's own cap and cites that floor instead of a cap that does not exist.
+6. `shape` fails any tracked SKILL.md whose frontmatter name differs from its directory, plugin skills included, so it does not scope the way the report's draft Anchor assumed. The Anchor now describes the check as it is and says plainly that the repo holds a plugin skill to the directory the harness would let its name override, which keeps that change minor.
+7. All four eval frontmatter spellings are confirmed: `runs` and `allowed_tools` from the eval docs, `max_turns` and `timeout_seconds` from `claude plugin eval --help`.
+10. `database.md`'s `Don't` anchor claimed every prohibition was caught by the anchor of the rule it inverts, untrue for the two prohibitions inverting "Back up before a destructive migration, and diff after it". It now says that rule names no anchor and leaves the runbook step and the pasted post-migration diff as the control.
+
+Questions 3, 8, 9, and 11 of the 2026-09-20 report are unchanged and still open.
+
+### One correction with nowhere else to land
+
+The audit's render-and-vendor description adds a fifth count against native symlink distribution: a symlinked rules directory outside the working directory loads only the rules with no `paths:` field, and only once the project has approved external imports, so it cannot deliver a path-scoped rule at all. ADR 0001 lists four counts and is immutable, and `origins.md` is a point-in-time record, so the fact is recorded here rather than edited into either. The `drift` and `shape` family descriptions and the upstream-first sync text were read against the audit and left alone, because none of them claims something the audit corrected.
+
+### The vendored github.md registration defect no longer reproduces
+
+Reported upstream on 2026-09-10, after `house doctor` read `4 of 5 vendored rules seen` for days in this repo's main checkout with `github.md` the unnamed one. On 2.1.278 the rule loads: `~/.claude/house/instructions-loaded/` records `.claude/rules/house/github.md` with `load_reason: path_glob_match` on 2026-09-20, where every 2026-09-10 entry names only the probe copy at `.claude/rules/probe/github.md`.
