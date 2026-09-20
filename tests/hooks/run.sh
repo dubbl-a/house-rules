@@ -1183,6 +1183,35 @@ git -C "$pf" config --unset push.default
 git -C "$pf" config --unset branch.feat/x.merge
 git -C "$pf" config --unset branch.feat/x.remote
 
+# Regression round: everyday shapes the per-candidate decision must keep
+# allowing. The first version scanned the whole command's verbs for every
+# candidate, so the documented release flow (commit in a worktree, come back
+# to the shared checkout, git status) was refused on the shared checkout.
+expect_allow "regression: commit in the feature worktree, then status back in the protected checkout" \
+  "$(mk_payload "cd $pf && git $_verb -m x && cd $pm && git status" "$pm")"
+expect_allow "regression: -C into the feature worktree, then log in the protected checkout" \
+  "$(mk_payload "git -C $pf $_verb -m x && git log -1" "$pm")"
+expect_deny "regression: the reverse order still refuses" \
+  "$(mk_payload "cd $pm && git status && cd $pf && git status && git -C $pm $_verb -m x" "$pf")" "master"
+sp="$TMP_ROOT/seam with space"; new_repo "$sp"
+echo '{"branchPolicy":"pr"}' >"$sp/house.json"
+git -C "$sp" add house.json && git -C "$sp" $_verb -q -m house
+git -C "$sp" checkout -q -b feat/sp
+expect_allow "regression: a quoted -C path with spaces is one token" \
+  "$(mk_payload "git -C \"$sp\" $_verb -m x" "$pm")"
+expect_deny "regression: a quoted cd path with spaces into the protected checkout" \
+  "$(mk_payload "cd \"$TMP_ROOT/seam_master\" && git $_verb -m x" "$sp")" "master"
+expect_allow "regression: a quoted -c value with spaces before a read-only verb" \
+  "$(mk_payload "git -c \"user.name=Jane Q Public\" status" "$pf")"
+expect_deny "regression: a quoted -c value with spaces before a commit on master still refuses for the branch" \
+  "$(mk_payload "git -c \"user.name=Jane Q Public\" $_verb -m x" "$pm")" "master"
+expect_allow "regression: HOME= inside a commit message is prose" \
+  "$(mk_payload "git $_verb -m \"docs: mention HOME=/custom/path in the README\"" "$pf")"
+expect_deny "regression: HOME= inside a commit message on master refuses for the branch, not the environment" \
+  "$(mk_payload "git $_verb -m \"docs: mention HOME=/custom/path\"" "$pm")" "master"
+expect_deny "regression: HOME= as a real prefix is still refused" \
+  "$(mk_payload "HOME=/tmp/evil git $_p origin" "$pf")" "environment"
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then

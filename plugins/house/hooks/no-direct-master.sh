@@ -364,12 +364,63 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 #                                           own --git-dir/--work-tree so git
 #                                           resolves them the way it will
 #   4. a git command with none of these  -> the payload's cwd
-cmd_for_target=$(strip_message_args_for_target "$cmd")
-cmd_for_target_c=$(_strip_flag_args_blind '-m|--message|-F|--file' "$cmd")
+# Whitespace inside a quoted VALUE of one of git's own path or config options
+# (`-C "path with spaces"`, `-c "user.name=Jane Q Public"`, `--git-dir "x y"`)
+# becomes a marker byte before the quote characters are removed, so the value
+# stays one token: the regression round found the walker reading `Q` as the
+# verb and refusing it as unknown on any branch. Only those values: a quoted
+# span anywhere else (an interpreter's `-c` body, a message holding a
+# substitution) is code the scans must keep reading word by word, and the
+# first version of this protected every quoted span and blinded them. The
+# option has to belong to a git command (the clause's first word is git), so
+# `bash -c '...'` is untouched. The marker turns back into a space wherever a
+# path is resolved (unquote_path).
+SP=$'\x01'
+protect_quoted_spaces() {
+  local s="$1" out='' q='' ch i n cur='' prev='' first='' protect=0
+  n="${#s}"
+  for ((i = 0; i < n; i++)); do
+    ch="${s:$i:1}"
+    if [[ -n "$q" ]]; then
+      if [[ "$ch" == "$q" ]]; then q=''
+      elif [[ "$protect" -eq 1 && ( "$ch" == ' ' || "$ch" == $'\t' ) ]]; then ch="$SP"; fi
+    elif [[ "$ch" == '"' || "$ch" == "'" ]]; then
+      q="$ch"; protect=0
+      if [[ "$first" == git || "$first" == */git ]]; then
+        case "$prev" in
+          -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) [[ -z "$cur" ]] && protect=1 ;;
+        esac
+        case "$cur" in
+          -C*|-c*|--git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|--attr-source=*) protect=1 ;;
+        esac
+      fi
+    elif [[ "$ch" == ' ' || "$ch" == $'\t' ]]; then
+      if [[ -n "$cur" ]]; then
+        [[ -z "$first" ]] && first="$cur"
+        prev="$cur"; cur=''
+      fi
+    elif [[ "$ch" == ';' || "$ch" == '|' || "$ch" == '&' || "$ch" == $'\n' || "$ch" == '(' || "$ch" == ')' ]]; then
+      cur=''; prev=''; first=''
+    else
+      cur+="$ch"
+    fi
+    out+="$ch"
+  done
+  printf '%s' "$out"
+}
+cmd_for_target=$(protect_quoted_spaces "$(strip_message_args_for_target "$cmd")")
+cmd_for_target_c=$(protect_quoted_spaces "$(_strip_flag_args_blind '-m|--message|-F|--file' "$cmd")")
 payload_cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null || echo "")
 
 # One candidate per line, fields joined by a unit separator (a tab would
-# collapse an empty field under `read`): kind, path, second path, base.
+# collapse an empty field under `read`): kind, path, second path, base, and
+# the clause the git command sits in. The clause is what the protected-branch
+# verb check reads for that candidate: the regression round found the
+# documented release flow refused (commit in a worktree, come back to the
+# shared checkout, git status), because every candidate was checked against
+# every verb in the command. A verb belongs to the directory its own command
+# runs in; the any-branch scans (refspec, config key, computed verb) still
+# read the whole command, since they do not depend on which checkout it is.
 US=$'\x1f'
 CANDIDATES=''
 add_candidate() { CANDIDATES+="$1"$'\n'; }
@@ -504,11 +555,11 @@ collect_candidates() {
       if [[ "$unknown" -eq 1 ]]; then
         # The directory is unreadable here: decide the cwd, where the
         # computed-target refusal fires under a guarded verb.
-        add_candidate "dir${US}${US}${US}"
+        add_candidate "dir${US}${US}${US}${US}${clause}"
       elif [[ -n "$gd$wt" ]]; then
-        add_candidate "env${US}${gd}${US}${wt}${US}${cdir}"
+        add_candidate "env${US}${gd}${US}${wt}${US}${cdir}${US}${clause}"
       else
-        add_candidate "dir${US}${cdir}${US}${US}"
+        add_candidate "dir${US}${cdir}${US}${US}${US}${clause}"
       fi
       # Walk on: a second git in the same clause (inside a substitution) is
       # its own command and gets its own candidate.
@@ -518,6 +569,7 @@ collect_candidates() {
 }
 unquote_path() {
   local p="$1"
+  p="${p//$SP/ }"
   p="${p/#\~/$HOME}"
   p="${p%\"}"; p="${p#\"}"
   p="${p%\'}"; p="${p#\'}"
@@ -561,6 +613,7 @@ local_hook_is_substantive() {
 decide_for_target() {
   local kind="$1" p1 p2 p3 from_command=1
   p1=$(unquote_path "$2"); p2=$(unquote_path "$3"); p3=$(unquote_path "${4:-}")
+  CAND_TEXT="${5:-$cmd_safe}"
   # Disarmed while resolving: a bad guess here is a fail-open by design, and
   # the trap armed by an earlier candidate must not turn it into a crash-deny.
   trap - ERR
@@ -727,7 +780,7 @@ decide_for_target() {
 # ignore quoted text; (2) everywhere else, delete the quote CHARACTERS but keep
 # the token, so 'commit' reads as commit and 'master' as master; (3) strip
 # trailing shell comments. Single-pass, not a full shell parser.
-cmd_safe=$(strip_message_args "$cmd" | sed -E "
+cmd_safe=$(protect_quoted_spaces "$(strip_message_args "$cmd")" | sed -E "
   s/['\"]//g;
   s/(^|[[:space:]])#.*\$//")
 # The variants every verb scan tests: the message-stripped command, plus, only
@@ -736,7 +789,7 @@ cmd_safe=$(strip_message_args "$cmd" | sed -E "
 # extra variant can only add denials. Skipping it when it is identical keeps the
 # no-`-c` common case (every ordinary git command) off a second sed and scan.
 scan_variants=("$cmd_safe")
-cmd_safe2=$(strip_flag_args_keep_dash_c "$cmd" | sed -E "
+cmd_safe2=$(protect_quoted_spaces "$(strip_flag_args_keep_dash_c "$cmd")" | sed -E "
   s/['\"]//g;
   s/(^|[[:space:]])#.*\$//")
 [[ "$cmd_safe2" != "$cmd_safe" ]] && scan_variants+=("$cmd_safe2")
@@ -1059,10 +1112,17 @@ run_scans() {
 # Config that arrives through the environment (#34, seam 2) can define an
 # alias, a push key, or a remote refspec that none of the scans below can see,
 # and nothing in a session needs it. Refused outright.
-case "$cmd" in
-  *GIT_CONFIG_PARAMETERS=*|*GIT_CONFIG_COUNT=*|*GIT_CONFIG_KEY_*|*GIT_CONFIG_GLOBAL=*|*GIT_CONFIG_SYSTEM=*|*HOME=*)
-    deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, XDG_CONFIG_HOME) (the last also covers XDG_CONFIG_HOME) can redefine what this command does, and the branch guard's own config lookups run without it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read." ;;
-esac
+# Read on the message-stripped text and only at the start of a token, so the
+# same letters inside a commit message are prose (the regression round found
+# `-m "mention HOME=/custom/path"` refused on every branch).
+env_cfg='(^|[[:space:]])(GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_[A-Za-z0-9_]*|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|HOME|XDG_CONFIG_HOME)='
+if [[ "$cmd_safe" =~ $env_cfg || "$cmd_safe2" =~ $env_cfg ]]; then
+  deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, XDG_CONFIG_HOME) can redefine what this command does, and the branch guard's own config lookups run without it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read."
+fi
+# cand_has_verb VERB: does the git command this candidate was made for run
+# VERB (alias resolved against this candidate's repo)? The protected-branch
+# block reads this rather than the whole command, see the candidate comment.
+cand_has_verb() { verb_in_text "$1" "$CAND_TEXT"; }
 # A target the shell computes (see collect_candidates) with a guarded verb
 # anywhere in the command: refused the way a computed ref or verb is.
 if [[ "$TARGET_COMPUTED" -eq 1 ]] && { any_clause_verb commit || any_clause_verb push; }; then
@@ -1070,14 +1130,14 @@ if [[ "$TARGET_COMPUTED" -eq 1 ]] && { any_clause_verb commit || any_clause_verb
 fi
 
 if is_protected_branch "$branch"; then
-  if any_clause_verb commit; then
+  if cand_has_verb commit; then
     staged=$(git "${git_dir_arg[@]}" diff --cached --name-only 2>/dev/null || true)
     if carve_out_satisfied "$staged"; then
       exit 0
     fi
     deny "Refusing to commit on '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. Work in a worktree: git worktree add -b kind/short-name ../<repo>-kind-short-name, in a SEPARATE call, then commit there in a call of its own (a target this same command creates does not exist yet when this check runs, so the chained one-liner is refused). A branch in this checkout (git checkout -b kind/short-name) is for a single-commit change only, and only when the agent list and git worktree list show no peer session in flight, because this checkout is the one every other session shares. Commit there and open a PR.$carve_out_reason_suffix$(quoted_only_hint commit)"
   fi
-  if any_clause_verb push; then
+  if cand_has_verb push; then
     unpushed=$(git "${git_dir_arg[@]}" diff '@{push}..' --name-only 2>/dev/null \
                || git "${git_dir_arg[@]}" diff "origin/${branch}.." --name-only 2>/dev/null \
                || true)
@@ -1216,15 +1276,15 @@ done
 collect_candidates "$cmd_for_target"
 collect_candidates "$cmd_for_target_c"
 if [[ -z "$CANDIDATES" ]]; then
-  decide_for_target dir '' '' ''
+  decide_for_target dir '' '' '' "$cmd_safe"
 else
   seen=''
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$seen" in *"|$line|"*) continue ;; esac
     seen+="|$line|"
-    IFS="$US" read -r kind p1 p2 p3 <<<"$line"
-    decide_for_target "$kind" "$p1" "$p2" "$p3"
+    IFS="$US" read -r kind p1 p2 p3 p4 <<<"$line"
+    decide_for_target "$kind" "$p1" "$p2" "$p3" "$p4"
   done <<<"$CANDIDATES"
 fi
 
