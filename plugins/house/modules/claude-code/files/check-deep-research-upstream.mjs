@@ -8,8 +8,12 @@
 // on any agent() call and takes only a question string as args, so every one
 // of its ~100 agents inherits the session model. Until the native workflow
 // takes a model, the fix is a fork of its script with `model:` on each call.
-// This tool keeps that fork honest without vendoring Anthropic's script text
-// into a repo: it reads the script out of the locally installed binary.
+// The fork also replaces the native's fixed fan-out (3 votes x 25 claims, a
+// fetch cap that high-relevance results bypass) with a depth preset the
+// caller picks per question: args.depth "light" | "standard" | "deep", any
+// field overridable via args.budget. This tool keeps that fork honest without
+// vendoring Anthropic's script text into a repo: it reads the script out of
+// the locally installed binary.
 //
 // Usage:
 //   node scripts/house/check-deep-research-upstream.mjs [--binary=<path>] [--baseline=<sha256>] [--json]
@@ -55,9 +59,45 @@ export const PINS = [
   ['schema: VERDICT_SCHEMA,\n', 'schema: VERDICT_SCHEMA,\n          model: MODELS.verify,\n'],
   ['{ label: "synthesize", schema: REPORT_SCHEMA }', '{ label: "synthesize", schema: REPORT_SCHEMA, model: MODELS.synthesize }'],
 ];
+// The four fan-out constants the fork replaces with a depth-scaled budget.
+// Native fixes them, so every non-trivial question costs the same ~110
+// agents: 3 votes x 25 claims is 75 verifiers whatever the question, and the
+// fetch cap only binds medium/low relevance, so high-relevance hits overshoot
+// it (28 fetched against a cap of 15 on 2026-09-18). The block must match
+// exactly once or the rebuild refuses, like the model pins.
+export const BUDGET_LINE = 'const VOTES_PER_CLAIM = 3\nconst REFUTATIONS_REQUIRED = 2\nconst MAX_FETCH = 15\nconst MAX_VERIFY_CLAIMS = 25\n';
+const BUDGET_REPLACEMENT = `const ARGS_OBJ = (args && typeof args === "object" && !Array.isArray(args)) ? args : {}
+// Depth presets scale the fan-out to the question. Agents ~= 1 + angles +
+// fetched + votes * verified + 1: light ~35, standard ~70, deep ~130 (native
+// is ~110 on every question). Pick via args.depth; override any field via
+// args.budget. fetchOverflow is how far past maxFetch a high-relevance result
+// may still be fetched; native lets it run unbounded.
+const DEPTH_PRESETS = {
+  light: { maxFetch: 8, fetchOverflow: 2, maxVerifyClaims: 8, votes: 2, refutationsRequired: 2 },
+  standard: { maxFetch: 15, fetchOverflow: 5, maxVerifyClaims: 15, votes: 3, refutationsRequired: 2 },
+  deep: { maxFetch: 25, fetchOverflow: 8, maxVerifyClaims: 30, votes: 3, refutationsRequired: 2 },
+}
+const DEPTH = Object.prototype.hasOwnProperty.call(DEPTH_PRESETS, ARGS_OBJ.depth) ? ARGS_OBJ.depth : "standard"
+const BUDGET = Object.assign({}, DEPTH_PRESETS[DEPTH], ARGS_OBJ.budget || {})
+for (const k of Object.keys(DEPTH_PRESETS.standard)) {
+  if (!Number.isInteger(BUDGET[k]) || BUDGET[k] < 0) return { error: "args.budget." + k + " must be a non-negative integer, got " + JSON.stringify(BUDGET[k]) }
+}
+if (BUDGET.votes < 1 || BUDGET.refutationsRequired < 1 || BUDGET.refutationsRequired > BUDGET.votes) {
+  return { error: "args.budget: need 1 <= refutationsRequired <= votes, got votes=" + BUDGET.votes + " refutationsRequired=" + BUDGET.refutationsRequired }
+}
+const VOTES_PER_CLAIM = BUDGET.votes
+const REFUTATIONS_REQUIRED = BUDGET.refutationsRequired
+const MAX_FETCH = BUDGET.maxFetch
+const MAX_VERIFY_CLAIMS = BUDGET.maxVerifyClaims
+log("Depth: " + DEPTH + " (fetch<=" + (MAX_FETCH + BUDGET.fetchOverflow) + ", verify<=" + MAX_VERIFY_CLAIMS + " claims x " + VOTES_PER_CLAIM + " votes; at most ~" + (7 + MAX_FETCH + BUDGET.fetchOverflow + MAX_VERIFY_CLAIMS * VOTES_PER_CLAIM) + " agents)")
+`;
+// The fetch budget's bypass: native lets any high-relevance result through
+// once the slots are spent, so the cap is soft. The fork bounds the overshoot.
+export const FETCH_BYPASS_LINE = '      if (fetchSlots <= 0 && relRank[r.relevance] >= 1) {\n';
+const FETCH_BYPASS_REPLACEMENT = '      if (fetchSlots <= 0 && (relRank[r.relevance] >= 1 || fetchSlots <= -BUDGET.fetchOverflow)) {\n';
+
 const QUESTION_LINE = 'const QUESTION = (typeof args === "string" && args.trim()) || ""';
-const QUESTION_REPLACEMENT = `const ARGS_OBJ = (args && typeof args === "object" && !Array.isArray(args)) ? args : {}
-const QUESTION = (typeof args === "string" && args.trim()) || (typeof ARGS_OBJ.question === "string" && ARGS_OBJ.question.trim()) || ""
+const QUESTION_REPLACEMENT = `const QUESTION = (typeof args === "string" && args.trim()) || (typeof ARGS_OBJ.question === "string" && ARGS_OBJ.question.trim()) || ""
 // Per-stage model pins. Conservative by default: the wide fan-out (search,
 // fetch, verify) runs on the middle tier; judgment (scope, synthesize) on the
 // top tier below the session's. Override any stage via args.models.
@@ -69,9 +109,9 @@ log("Models: scope=" + MODELS.scope + " search=" + MODELS.search + " fetch=" + M
 
 const META = (version, sha) => `export const meta = {
   name: 'deep-research-pinned',
-  description: 'Deep research harness with per-stage model pins: fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.',
-  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). Run by scriptPath. args: a question string, or {question, models: {scope, search, fetch, verify, synthesize}}. Retire when check-deep-research-upstream.mjs exits 2.',
-  phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle"},{"title":"Fetch","detail":"URL-dedup, fetch top 15 sources, extract falsifiable claims"},{"title":"Verify","detail":"3-vote adversarial verification per claim (need 2/3 refutes to kill)"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
+  description: 'Deep research harness with per-stage model pins and a depth-scaled budget: fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.',
+  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). Run by scriptPath. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, votes, refutationsRequired}}. Retire when check-deep-research-upstream.mjs exits 2.',
+  phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle"},{"title":"Fetch","detail":"URL-dedup, fetch the top sources the depth allows, extract falsifiable claims"},{"title":"Verify","detail":"Adversarial vote per claim, count and quorum set by the depth"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
 
 `;
@@ -176,8 +216,12 @@ export function sunsetReached(body) {
 
 export function rebuild(body, version) {
   let s = body;
-  if (s.split(QUESTION_LINE).length !== 2) throw new Error(`anchor not found exactly once: ${QUESTION_LINE}`);
-  s = s.replace(QUESTION_LINE, QUESTION_REPLACEMENT);
+  // Order matters: the budget block defines ARGS_OBJ, which the question
+  // replacement reads, and both sit above the first use in the native body.
+  for (const [from, to] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT]]) {
+    if (s.split(from).length !== 2) throw new Error(`anchor not found exactly once: ${from.trim().split('\n')[0]}`);
+    s = s.replace(from, to);
+  }
   for (const [from, to] of PINS) {
     const n = s.split(from).length - 1;
     if (n !== 1) throw new Error(`anchor matched ${n} times, expected 1: ${JSON.stringify(from)}`);

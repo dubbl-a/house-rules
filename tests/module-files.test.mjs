@@ -571,10 +571,25 @@ const DR_CHECK = join(ROOT, 'plugins/house/modules/claude-code/files/check-deep-
 function fakeNativeBody(overrides = {}) {
   const questionLine = overrides.questionLine ?? 'const QUESTION = (typeof args === "string" && args.trim()) || ""';
   const scope = overrides.scope ?? '{ label: "scope", schema: SCOPE_SCHEMA }';
+  // The four fan-out constants and the fetch budget's bypass, the anchors the
+  // depth-scaled budget replaces. `budget: false` drops them, for the refusal.
+  const budgetLines = overrides.budget === false ? [] : [
+    'const VOTES_PER_CLAIM = 3',
+    'const REFUTATIONS_REQUIRED = 2',
+    'const MAX_FETCH = 15',
+    'const MAX_VERIFY_CLAIMS = 25',
+  ];
+  const bypassLines = overrides.budget === false ? [] : [
+    '      if (fetchSlots <= 0 && relRank[r.relevance] >= 1) {',
+    '        return false',
+    '      }',
+  ];
   const lines = [
     '// deep-research: Scope \\u2192 pipeline(Search)',
+    ...budgetLines,
     'const URL_HOST_PATTERN = /^[a-z][a-z0-9+.-]*:\\\\/\\\\/(?:www\\\\.)?([^/:?#@\\\\\\\\]+)/i',
     questionLine,
+    ...bypassLines,
   ];
   // A prose mention of "model:" living outside any agent() option object
   // (e.g. inside a prompt string), for the negative control on trigger 1.
@@ -699,6 +714,76 @@ test('deep-research check: --rebuild refuses when a pin anchor no longer matches
   assert.match(res.stdout, /rebuild refused/);
   assert.match(res.stdout, /SCOPE_SCHEMA/);
   assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: --rebuild replaces the fixed fan-out with depth presets and bounds the fetch bypass', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  assert.match(fork, /const DEPTH_PRESETS = \{/);
+  assert.match(fork, /const VOTES_PER_CLAIM = BUDGET\.votes/);
+  assert.match(fork, /const MAX_VERIFY_CLAIMS = BUDGET\.maxVerifyClaims/);
+  assert.ok(!/const VOTES_PER_CLAIM = 3/.test(fork), 'native constant still present');
+  assert.ok(!/const MAX_VERIFY_CLAIMS = 25/.test(fork), 'native constant still present');
+  assert.match(fork, /fetchSlots <= -BUDGET\.fetchOverflow/);
+  assert.ok(!fork.includes('if (fetchSlots <= 0 && relRank[r.relevance] >= 1) {'), 'unbounded bypass still present');
+  assert.ok(fork.indexOf('const ARGS_OBJ') < fork.indexOf('const QUESTION ='), 'ARGS_OBJ must be defined before QUESTION reads it');
+  assert.equal((fork.match(/const ARGS_OBJ/g) || []).length, 1, 'ARGS_OBJ defined exactly once');
+  assert.match(fork, /args\.depth|depth: "light"/);
+});
+
+test('deep-research check: --rebuild refuses when the fan-out constants no longer match exactly once', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ budget: false }));
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /rebuild refused/);
+  assert.match(res.stdout, /VOTES_PER_CLAIM/);
+  assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: the rebuilt budget block resolves depth, overrides, and rejects a bad budget', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  // Run just the budget block the way the workflow runtime would: as a
+  // function body with `args` and `log` in scope and a top-level return.
+  const start = fork.indexOf('const ARGS_OBJ');
+  const end = fork.indexOf('\n', fork.indexOf('log("Depth: '));
+  const block = fork.slice(start, end);
+  const run = (args) => {
+    const logs = [];
+    const r = new Function('args', 'log', `${block}\nreturn { DEPTH, BUDGET, VOTES_PER_CLAIM, REFUTATIONS_REQUIRED, MAX_FETCH, MAX_VERIFY_CLAIMS }`)(args, (m) => logs.push(m));
+    return { ...r, logs };
+  };
+  const std = run('a plain question string');
+  assert.equal(std.DEPTH, 'standard');
+  assert.equal(std.VOTES_PER_CLAIM, 3);
+  assert.equal(std.MAX_VERIFY_CLAIMS, 15);
+  assert.match(std.logs[0], /^Depth: standard/);
+  const light = run({ question: 'q', depth: 'light' });
+  assert.equal(light.VOTES_PER_CLAIM, 2);
+  assert.equal(light.MAX_FETCH, 8);
+  const deep = run({ question: 'q', depth: 'deep' });
+  assert.equal(deep.MAX_VERIFY_CLAIMS, 30);
+  assert.ok(deep.MAX_VERIFY_CLAIMS * deep.VOTES_PER_CLAIM > std.MAX_VERIFY_CLAIMS * std.VOTES_PER_CLAIM, 'deep verifies more than standard');
+  assert.equal(run({ question: 'q', depth: 'bogus' }).DEPTH, 'standard', 'unknown depth falls back to standard');
+  assert.equal(run({ question: 'q', depth: 'constructor' }).DEPTH, 'standard', 'prototype key is not a preset');
+  const over = run({ question: 'q', depth: 'light', budget: { maxVerifyClaims: 40 } });
+  assert.equal(over.MAX_VERIFY_CLAIMS, 40, 'args.budget overrides a preset field');
+  assert.equal(over.VOTES_PER_CLAIM, 2, 'unlisted fields keep the preset');
+  assert.match(run({ question: 'q', budget: { votes: 1, refutationsRequired: 2 } }).error, /refutationsRequired <= votes/);
+  assert.match(run({ question: 'q', budget: { maxFetch: -1 } }).error, /maxFetch/);
+  assert.match(run({ question: 'q', budget: { votes: '3' } }).error, /votes/);
 });
 
 test('deep-research check: a binary without the bundled script exits 1, not 0', () => {
