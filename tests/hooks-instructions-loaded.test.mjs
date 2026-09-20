@@ -9,7 +9,9 @@
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
+} from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -190,6 +192,86 @@ test('cap rewrite: a log past 256 KB rewrites down to roughly its last half, kee
   assert.ok(Buffer.byteLength(finalRaw, 'utf8') < Buffer.byteLength(`${seedLines.join('\n')}\n`, 'utf8'), 'the file itself must be smaller than the seeded content');
 });
 
+// ── stale temp sweep (#46) ──────────────────────────────────────────────
+//
+// trimIfOversized() writes its own trimmed copy to a pid-named temp file
+// beside the log before renaming it into place. A process that dies
+// between that write and the rename leaves the temp file behind forever,
+// since nothing else in the hook ever looks at that directory. This plants
+// three siblings ahead of a real over-cap trim: one named for a dead pid,
+// one named for a live pid but with an old mtime, and one (the negative
+// control) named for a live pid with a fresh mtime, then asserts the sweep
+// removes exactly the two stale ones and leaves the live, fresh one alone.
+test('trimIfOversized sweeps stale .tmp siblings for a dead pid or an old mtime, but leaves a live pid with a fresh mtime alone', async () => {
+  const configDir = sandboxConfigDir();
+  const cwd = '/repo/stale-tmp-test';
+  const key = cwd.replace(/\//g, '-');
+  const dir = join(configDir, 'house', 'instructions-loaded');
+  mkdirSync(dir, { recursive: true });
+  const logPath = join(dir, `${key}.jsonl`);
+  const base = `${key}.jsonl`;
+
+  // Seed the log past the 256 KB cap so this run's append triggers a trim.
+  const filler = 'x'.repeat(500);
+  const seedLines = [];
+  let size = 0;
+  let i = 0;
+  while (size < 256 * 1024 + 2000) {
+    const line = JSON.stringify({
+      ts: `seed-${i}`, file_path: filler, load_reason: 'session_start', session_id: 's',
+    });
+    seedLines.push(line);
+    size += Buffer.byteLength(line, 'utf8') + 1;
+    i += 1;
+  }
+  writeFileSync(logPath, `${seedLines.join('\n')}\n`, 'utf8');
+
+  // A dead pid: not live in this or any environment, so the sweep must
+  // treat it as stale regardless of its mtime (left fresh here on purpose).
+  const deadPidPath = join(dir, `.${base}.999999.tmp`);
+  writeFileSync(deadPidPath, 'dead pid, fresh mtime\n', 'utf8');
+
+  // A live pid whose temp file is old enough to count as stale on mtime
+  // alone: a real, currently-running child process, so the pid-liveness
+  // check by itself would call this one live and only the mtime check
+  // catches it.
+  const liveChild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);
+  await new Promise((resolve, reject) => {
+    liveChild.once('spawn', resolve);
+    liveChild.once('error', reject);
+  });
+  const oldMtimePath = join(dir, `.${base}.${liveChild.pid}.tmp`);
+  writeFileSync(oldMtimePath, 'live pid, old mtime\n', 'utf8');
+  const oldTime = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes ago, past the 5-minute window
+  utimesSync(oldMtimePath, oldTime, oldTime);
+
+  // Negative control: a live pid (this test runner itself) with a fresh
+  // mtime must survive, the same way a trim still genuinely mid-flight
+  // would; a sweep that removed this would delete out from under a
+  // trimmer that had not died at all.
+  const freshPath = join(dir, `.${base}.${process.pid}.tmp`);
+  writeFileSync(freshPath, 'live pid, fresh mtime\n', 'utf8');
+
+  try {
+    const payload = JSON.stringify({
+      session_id: 'newest', cwd, file_path: 'newest.md', load_reason: 'compact',
+    });
+    const { code } = runHook(payload, { CLAUDE_CONFIG_DIR: configDir });
+    assert.equal(code, 0);
+
+    assert.ok(!existsSync(deadPidPath), 'a temp file for a dead pid must be swept');
+    assert.ok(!existsSync(oldMtimePath), 'a temp file older than the staleness window must be swept, even for a live pid');
+    assert.ok(existsSync(freshPath), 'a live pid with a fresh mtime must never be swept');
+
+    const finalRaw = readFileSync(logPath, 'utf8');
+    const finalLines = finalRaw.trim().split('\n');
+    assert.ok(finalLines.length < seedLines.length + 1, 'the log must still have trimmed down');
+    assert.equal(JSON.parse(finalLines.at(-1)).session_id, 'newest', 'the newly appended line survives the sweep and the trim');
+  } finally {
+    liveChild.kill();
+  }
+});
+
 test('a repo whose cwd derives an empty key (missing cwd) writes nothing, rather than guessing a log path', () => {
   const payload = JSON.stringify({ session_id: 's', file_path: 'x', load_reason: 'session_start' });
   const { code, out, configDir } = runHook(payload);
@@ -251,4 +333,105 @@ test('16 concurrent hook processes across 3 rounds each land all 16 lines, none 
     assert.equal(parsedCount, PROCS_PER_ROUND, `round ${round}: expected exactly ${PROCS_PER_ROUND} lines, got ${parsedCount}`);
     assert.deepEqual(seenFilePaths, expectedFilePaths, `round ${round}: the logged file_path set must match every process that ran`);
   }
+});
+
+// ── trim direction under concurrency (#45) ────────────────────────────────
+//
+// The round above proves every append lands when 16 processes race but
+// none of them cross CAP_BYTES. This test fires the same kind of burst
+// across a cap crossing instead, where trimIfOversized's own comment states
+// the residual window this repo has chosen to accept:
+//
+//   "every appendLine that lands between this function's readFileSync and
+//   its renameSync is lost, so a burst of concurrent appends crossing the
+//   cap at once can drop several lines, not just one ... The loss is
+//   confined to a cap crossing and is undercount-only: it can drop a load
+//   that happened, never fabricate one that did not."
+//
+// That is a claim about direction, not a count, so this test does not
+// assert how many lines survive; the whole point of the claim is that the
+// count is exactly what the code does not promise once a burst crosses the
+// cap. What it does promise, and what this asserts, is that whatever
+// survives is real: every surviving line parses as JSON, every surviving
+// file_path traces to something this test actually seeded or wrote (the
+// subset check below is the phantom check: it would catch a rename-order
+// bug that started fabricating a file_path nobody wrote), the file is left
+// non-empty, and the newest surviving timestamp is a real, parseable one.
+// A future change to the trim, a lock or a different rename order, should
+// fail this test the moment it starts fabricating or corrupting a line,
+// even though it is free to change how many lines survive.
+test('a burst crossing the cap under concurrency never fabricates or corrupts a surviving line', async () => {
+  const configDir = sandboxConfigDir();
+  const cwd = '/repo/cap-crossing-burst';
+  const key = cwd.replace(/\//g, '-');
+  const dir = join(configDir, 'house', 'instructions-loaded');
+  mkdirSync(dir, { recursive: true });
+  const logPath = join(dir, `${key}.jsonl`);
+
+  // Seed just under the cap, a few hundred bytes short of it, so the burst
+  // below is what actually crosses CAP_BYTES (the cap-rewrite test above
+  // shows the same seeding shape, aimed at just past the cap instead).
+  const seedFilePaths = [];
+  const seedLines = [];
+  let size = 0;
+  let i = 0;
+  const TARGET_UNDER_CAP = 256 * 1024 - 400;
+  while (size < TARGET_UNDER_CAP) {
+    const filePath = `/repo/seed-${i}.md`;
+    seedFilePaths.push(filePath);
+    const line = JSON.stringify({
+      ts: `seed-${i}`, file_path: filePath, load_reason: 'session_start', session_id: 's-seed',
+    });
+    seedLines.push(line);
+    size += Buffer.byteLength(line, 'utf8') + 1;
+    i += 1;
+  }
+  writeFileSync(logPath, `${seedLines.join('\n')}\n`, 'utf8');
+  assert.ok(size < 256 * 1024, 'the seed itself must land under CAP_BYTES so the burst is what crosses it');
+
+  const PROCS = 16;
+  const burstFilePaths = [];
+  const runs = [];
+  for (let n = 0; n < PROCS; n += 1) {
+    const filePath = `/repo/burst-${n}.md`;
+    burstFilePaths.push(filePath);
+    const payload = JSON.stringify({
+      session_id: `s-burst-${n}`, cwd, file_path: filePath, load_reason: 'path_glob_match',
+    });
+    runs.push(runHookAsync(payload, { CLAUDE_CONFIG_DIR: configDir }));
+  }
+  const results = await Promise.all(runs);
+
+  for (const r of results) {
+    assert.equal(r.code, 0, `every process must exit 0 (stderr=${r.err})`);
+    assert.equal(r.out, '', 'every process must write nothing to stdout');
+  }
+
+  const allowedFilePaths = new Set([...seedFilePaths, ...burstFilePaths]);
+  const finalRaw = readFileSync(logPath, 'utf8');
+  assert.ok(finalRaw.length > 0, 'the log must not be left empty by a cap crossing under concurrency');
+
+  const survivingFilePaths = new Set();
+  let newestRealTs = null;
+  for (const line of finalRaw.split('\n')) {
+    if (!line.trim()) continue;
+    let rec;
+    try {
+      rec = JSON.parse(line);
+    } catch (err) {
+      assert.fail(`every surviving line must parse as JSON, got a parse error on ${JSON.stringify(line)}: ${err.message}`);
+    }
+    survivingFilePaths.add(rec.file_path);
+    const parsed = Date.parse(rec.ts);
+    if (!Number.isNaN(parsed) && (newestRealTs === null || parsed > newestRealTs)) {
+      newestRealTs = parsed;
+    }
+  }
+
+  // Phantom check: nothing may survive that this test did not itself seed
+  // or have a burst process write.
+  for (const filePath of survivingFilePaths) {
+    assert.ok(allowedFilePaths.has(filePath), `surviving file_path ${filePath} must trace to a seed or burst write, never a phantom`);
+  }
+  assert.ok(newestRealTs !== null, 'at least one surviving line must carry a real, parseable timestamp');
 });

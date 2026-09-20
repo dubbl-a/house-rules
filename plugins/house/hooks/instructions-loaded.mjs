@@ -21,8 +21,14 @@
 // CLAUDE_CONFIG_DIR, else this payload's own `cwd` with every "/" turned
 // into "-". `house doctor` derives the same key from the resolved repo
 // root instead, since that is all doctor ever has.
+//
+// Past CAP_BYTES the log rewrites itself down to roughly its last half
+// (trimIfOversized below); before that rewrite, the same function sweeps
+// this log's own `.<key>.jsonl.<pid>.tmp` siblings for ones a prior trim
+// left behind after dying before its rename, best effort, so a directory
+// that only ever grows never becomes this hook's problem to notice later.
 import {
-  readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync, renameSync, unlinkSync,
+  readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync, renameSync, unlinkSync, readdirSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -50,12 +56,59 @@ function appendLine(logPath, line) {
   appendFileSync(logPath, `${line}\n`, 'utf8');
 }
 
+// A trim's own temp file that outlives this window without being renamed
+// into place is presumed abandoned by a writer that died mid-trim, rather
+// than still in flight.
+const STALE_TEMP_MS = 5 * 60 * 1000;
+
+function escapeForRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Removes this log's own stale `.<basename>.<pid>.tmp` siblings, best
+// effort: a directory read failure, a stat failure, or an unlink failure on
+// any one entry never stops the sweep or escapes this function. Matches
+// only the exact pattern for THIS log's basename, so a sweep for one repo's
+// log can never touch another repo's temp file even though every log under
+// instructions-loaded/ shares one directory.
+//
+// A sibling counts as stale when its pid is no longer a live process
+// (process.kill(pid, 0) throws ESRCH) or its mtime is older than
+// STALE_TEMP_MS, whichever fires first. Fail direction: a live trimmer's
+// own temp file fails both checks (its pid is live and its mtime is
+// fresh-written seconds ago), so it is never removed out from under it; a
+// file that does match is only ever litter from a trim that already lost
+// its rename race, so removing one loses nothing a reader could still
+// recover.
+function sweepStaleTemp(logPath) {
+  const dir = path.dirname(logPath);
+  const base = path.basename(logPath);
+  const pattern = new RegExp(`^\\.${escapeForRegExp(base)}\\.(\\d+)\\.tmp$`);
+  let entries;
+  try { entries = readdirSync(dir); } catch { return; }
+  const now = Date.now();
+  for (const name of entries) {
+    const match = pattern.exec(name);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const full = path.join(dir, name);
+    try {
+      let live = true;
+      try { process.kill(pid, 0); } catch (err) { live = err.code !== 'ESRCH'; }
+      const stale = !live || (now - statSync(full).mtimeMs) > STALE_TEMP_MS;
+      if (stale) unlinkSync(full);
+    } catch { /* best effort: one bad entry never stops the sweep */ }
+  }
+}
+
 // Runs only when the file has actually grown past CAP_BYTES, so the
-// whole-file rewrite this does is rare rather than once per event. Reads the
-// log, halves it, and writes the result to a temp file beside the log (same
-// directory, so the rename below is on the same filesystem and atomic)
-// before renameSync over the original, so no reader ever observes a
-// half-written file.
+// whole-file rewrite this does is rare rather than once per event. Before
+// writing this run's own temp file, sweeps this log's directory for stale
+// siblings left by an earlier trim that died before its rename (see
+// sweepStaleTemp above). Reads the log, halves it, and writes the result to
+// a temp file beside the log (same directory, so the rename below is on the
+// same filesystem and atomic) before renameSync over the original, so no
+// reader ever observes a half-written file.
 //
 // Fail direction: every appendLine that lands between this function's
 // readFileSync and its renameSync is lost, so a burst of concurrent appends
@@ -70,6 +123,7 @@ function trimIfOversized(logPath) {
   if (size <= CAP_BYTES) return;
 
   const tmpPath = path.join(path.dirname(logPath), `.${path.basename(logPath)}.${process.pid}.tmp`);
+  try { sweepStaleTemp(logPath); } catch { /* best effort, never blocks this run's own trim */ }
   try {
     const content = readFileSync(logPath, 'utf8');
     const lines = content.split('\n').filter((l) => l.length > 0);
