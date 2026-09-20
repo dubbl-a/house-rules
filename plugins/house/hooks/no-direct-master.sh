@@ -22,8 +22,13 @@
 #     shell alias (`!...`); a verb that is neither a command git lists nor
 #     an alias it can find. A plain alias is read as the verb it expands to.
 #   - a commit or push whose directory the shell computes (`cd -`, `cd $X`,
-#     `git -C "$dir"`, `CDPATH=`): refused, since the guard cannot tell
-#     which checkout it lands in
+#     `git -C "$dir"`, a glob, `CDPATH=`): refused, since the guard cannot
+#     tell which checkout it lands in
+#   - a commit or push in the same call as a checkout, switch, or
+#     symbolic-ref onto a protected or computed branch, a config write to a
+#     push, remote push, upstream, or alias key, a worktree add of a
+#     protected branch, or a clone: refused, since the branch and config
+#     are read once before any clause runs
 #
 # The command is read by one token walker (git_split), not by adjacency: a
 # global option between `git` and the verb, a nested git command inside an
@@ -70,6 +75,9 @@
 # command runs (`bash run.sh`, a Makefile target, an npm script) never
 # appears in the text, and reading every file a command might execute is
 # not a text scan. That boundary is the sandbox's and the remote ruleset's.
+# Likewise a computed target from a cwd that has not adopted house: the
+# computed-target refusal runs inside an adopted repo's policy, because ADR
+# 0002 promises the hook changes nothing in a repo that never adopted it.
 #
 # Still open by decision (#34, item 5): a git verb inside a quoted value that
 # is prose (`--body "... git push ..."`) is refused on a protected branch,
@@ -460,7 +468,7 @@ compose_path() {
 TARGET_COMPUTED=0
 path_is_computed() {
   case "$1" in
-    -|*'$'*|*'`'*|*'{'*|*'}'*) return 0 ;;
+    -|*'$'*|*'`'*|*'{'*|*'}'*|*'*'*|*'?'*|*'['*) return 0 ;;
   esac
   return 1
 }
@@ -479,6 +487,12 @@ collect_candidates() {
     [[ "$n" -gt 0 ]] || continue
     i=0; gd="$sticky_gd"; wt="$sticky_wt"; is_export=0; envdir=''
     [[ "${toks[0]}" == export ]] && { is_export=1; i=1; }
+    if [[ "${toks[0]}" == unset ]]; then
+      for tok in "${toks[@]}"; do
+        case "$tok" in GIT_DIR) sticky_gd='' ;; GIT_WORK_TREE) sticky_wt='' ;; esac
+      done
+      continue
+    fi
     # Leading assignments, and the ones `env` carries; `env -C <p>` moves
     # its own command and `CDPATH=` makes every relative cd unreadable.
     while [[ "$i" -lt "$n" ]]; do
@@ -493,7 +507,11 @@ collect_candidates() {
           if [[ $((i + 1)) -lt "$n" ]]; then envdir="${toks[$((i + 1))]}"; fi
           i=$((i + 2)) ;;
         --chdir=*) envdir="${tok#--chdir=}"; i=$((i + 1)) ;;
-        -u|-S|--unset|--split-string) i=$((i + 2)) ;;
+        # `env -S "<string>"` re-splits the string into the command, so the
+        # walk reads on from it rather than skipping it (round 3 found
+        # `env -S "git -C <repo> commit"` invisible).
+        -S|--split-string) i=$((i + 1)) ;;
+        -u|--unset) i=$((i + 2)) ;;
         -*) i=$((i + 1)) ;;
         *) break ;;
       esac
@@ -1106,6 +1124,86 @@ quoted_only_hint() {
   fi
 }
 
+# A command that changes the branch, the config, or the checkout it then
+# commits or pushes under, in the same call (round 3): the branch and the
+# config are read once, before any clause runs, so `git checkout master &&
+# git commit` from a feature branch read as a feature-branch commit, `git
+# config push.default matching && git push origin` as a harmless push, and
+# `git worktree add <dir> master && cd <dir> && git commit` fell back to the
+# cwd because <dir> did not exist yet. Each was executed for real and landed
+# on master. Refused when a guarded verb sits in the same or a later clause:
+# a checkout, switch, or symbolic-ref whose arguments name a protected
+# branch or a ref this text cannot read; a config write to a push, remote
+# push, branch upstream, or alias key; a worktree add naming a protected
+# branch; a clone. Creating a branch (`checkout -b`, `switch -c`,
+# `worktree add -b`), reading config, and a checkout AFTER the push (`git
+# push origin feat && git checkout master`) are left alone. Runs last, so
+# every earlier refusal keeps its own message; sets STATE_REASON.
+STATE_REASON=''
+same_call_state_change() {
+  local v clause tok n state_idx guarded_idx reason
+  for v in "${scan_variants[@]}"; do
+    split_clauses "$v"
+    n=0; state_idx=''; guarded_idx=''
+    while IFS= read -r clause; do
+      n=$((n + 1))
+      git_split "$clause" || continue
+      while :; do
+        reason=''
+        case "$GV_VERB" in
+          commit|push) guarded_idx="$n" ;;
+          checkout|switch|symbolic-ref)
+            while IFS= read -r tok; do
+              [[ -n "$tok" ]] || continue
+              case "$tok" in
+                -) reason="'git $GV_VERB -' moves HEAD to the previous branch before the commit or push runs"; break ;;
+                -b|-B|-c|-C|--orphan) break ;;
+                -*) continue ;;
+              esac
+              tok="${tok#refs/heads/}"; tok="${tok#heads/}"
+              if path_is_computed "$tok" || is_protected_branch "$tok"; then
+                reason="'git $GV_VERB' moves HEAD to '$tok' before the commit or push runs"; break
+              fi
+            done <<<"$GV_ARGS" ;;
+          config)
+            case "$GV_ARGS" in
+              *--get*|*--list*|*-l$'\n'*|*--unset*|*--show-origin*) ;;
+              *)
+                while IFS= read -r tok; do
+                  case "$tok" in
+                    [Pp]ush.*|remote.*.push|branch.*.merge|branch.*.remote|alias.*)
+                      reason="'git config $tok' rewrites what a later push or verb means"; break ;;
+                  esac
+                done <<<"$GV_ARGS" ;;
+            esac ;;
+          worktree)
+            case "$GV_ARGS" in
+              add$'\n'*)
+                case "$GV_ARGS" in *$'\n'-b$'\n'*|*$'\n'-B$'\n'*|*$'\n'--detach$'\n'*) ;;
+                  *)
+                    while IFS= read -r tok; do
+                      [[ -n "$tok" && "$tok" != add && "$tok" != -* ]] || continue
+                      tok="${tok#refs/heads/}"
+                      if is_protected_branch "$tok"; then
+                        reason="'git worktree add' checks out '$tok' into a directory that does not exist yet"; break
+                      fi
+                    done <<<"$GV_ARGS" ;;
+                esac ;;
+            esac ;;
+          clone) reason="'git clone' creates a checkout this call then commits in" ;;
+        esac
+        if [[ -n "$reason" && -z "$state_idx" ]]; then state_idx="$n"; STATE_REASON="$reason"; fi
+        git_next || break
+      done
+    done <<<"$CLAUSES"
+    if [[ -n "$state_idx" && -n "$guarded_idx" && "$guarded_idx" -ge "$state_idx" ]]; then
+      return 0
+    fi
+  done
+  STATE_REASON=''
+  return 1
+}
+
 # run_scans: every decision, against the candidate decide_for_target has
 # resolved (git_dir_arg, toplevel, branch, protected_list, carve_outs).
 run_scans() {
@@ -1270,6 +1368,9 @@ for scan_cmd in "${scan_variants[@]}"; do
   done <<<"$CLAUSES"
 done
 
+if same_call_state_change; then
+  deny "Refusing: this call changes the state it then commits or pushes under ($STATE_REASON), and the branch guard reads the branch and the config once, before any clause runs (house.json at $toplevel). Run the change and the commit or push as separate calls."
+fi
 }
 
 # ── Decide ────────────────────────────────────────────────────────────────

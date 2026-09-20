@@ -1212,6 +1212,46 @@ expect_deny "regression: HOME= inside a commit message on master refuses for the
 expect_deny "regression: HOME= as a real prefix is still refused" \
   "$(mk_payload "HOME=/tmp/evil git $_p origin" "$pf")" "environment"
 
+# Adversarial round 3: a command that changes the branch, the config, or the
+# checkout it then commits or pushes under, in the same call. The branch and
+# the config are read once, before any clause runs, so `git checkout master
+# && git commit` from a feature branch was read as a feature-branch commit,
+# and `git config push.default matching && git push origin` as a harmless
+# push. Each was executed for real and landed on master. Refused whenever a
+# guarded verb follows in the same call; split into separate calls.
+expect_deny "adversarial 7: checkout of a protected branch then commit" \
+  "$(mk_payload "git checkout master && git $_verb -m x" "$pf")" "separate"
+expect_deny "adversarial 7: switch to a protected branch then commit" \
+  "$(mk_payload "git switch master && git $_verb -m x" "$pf")" "separate"
+expect_deny "adversarial 7: symbolic-ref onto a protected branch then commit" \
+  "$(mk_payload "git symbolic-ref HEAD refs/heads/master && git $_verb -m x" "$pf")" "separate"
+expect_deny "adversarial 7: checkout of a computed branch then commit" \
+  "$(mk_payload "git checkout - && git $_verb -m x" "$pf")" "separate"
+expect_allow "adversarial 7: creating a branch then committing on it is fine" \
+  "$(mk_payload "git checkout -b feat/y && git $_verb -m x" "$pf")"
+expect_allow "adversarial 7: switch -c then commit is fine" \
+  "$(mk_payload "git switch -c feat/z && git $_verb -m x" "$pf")"
+expect_deny "adversarial 7: a push config written then used in the same call" \
+  "$(mk_payload "git config push.default matching && git $_p origin" "$pf")" "separate"
+expect_deny "adversarial 7: an upstream written then used in the same call" \
+  "$(mk_payload "git config branch.feat/x.merge refs/heads/master && git config push.default upstream && git $_p origin" "$pf")" "separate"
+expect_allow "adversarial 7: reading a config key before a named push is fine" \
+  "$(mk_payload "git config --get push.default; git $_p origin feat/x" "$pf")"
+expect_allow "adversarial 7: writing a harmless key before a commit is fine" \
+  "$(mk_payload "git config user.name x && git $_verb -m y" "$pf")"
+expect_deny "adversarial 7: a glob in a cd target is computed" \
+  "$(mk_payload "cd $TMP_ROOT/seam_mas* && git $_verb -m x" "$pf")" "computed"
+expect_deny "adversarial 7: env -S splices a whole git command" \
+  "$(mk_payload "env -S \"git -C $pm $_verb -m x\"" "$pf")" "master"
+expect_deny "adversarial 7: worktree add on a protected branch then commit there" \
+  "$(mk_payload "git worktree add $TMP_ROOT/wt-new master && cd $TMP_ROOT/wt-new && git $_verb -m x" "$pf")" "separate"
+expect_deny "adversarial 7: clone then commit in the clone" \
+  "$(mk_payload "git clone $pm $TMP_ROOT/cl && cd $TMP_ROOT/cl && git $_verb -m x" "$pf")" "separate"
+expect_allow "adversarial 7: worktree add of a new branch then a commit elsewhere is fine" \
+  "$(mk_payload "git worktree add -b feat/w $TMP_ROOT/wt-w && git $_verb -m x" "$pf")"
+expect_allow "adversarial 7: unset clears an exported GIT_DIR" \
+  "$(mk_payload "export GIT_DIR=$pm/.git; unset GIT_DIR; git $_verb -m x" "$pf")"
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
