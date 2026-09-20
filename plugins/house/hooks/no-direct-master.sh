@@ -385,7 +385,7 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 # path is resolved (unquote_path).
 SP=$'\x01'
 protect_quoted_spaces() {
-  local s="$1" out='' q='' ch i n cur='' prev='' first='' protect=0
+  local s="$1" out='' q='' ch i n cur='' prev='' saw_git=0 protect=0
   n="${#s}"
   for ((i = 0; i < n; i++)); do
     ch="${s:$i:1}"
@@ -394,7 +394,11 @@ protect_quoted_spaces() {
       elif [[ "$protect" -eq 1 && ( "$ch" == ' ' || "$ch" == $'\t' ) ]]; then ch="$SP"; fi
     elif [[ "$ch" == '"' || "$ch" == "'" ]]; then
       q="$ch"; protect=0
-      if [[ "$first" == git || "$first" == */git ]]; then
+      # The option belongs to a git command when a git word came earlier in
+      # this clause, whatever launcher or assignment sits in front of it
+      # (`env git`, `time git`, `FOO=1 git`; round 4 found each unprotected
+      # when only the clause's first word was read).
+      if [[ "$saw_git" -eq 1 ]]; then
         case "$prev" in
           -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) [[ -z "$cur" ]] && protect=1 ;;
         esac
@@ -404,11 +408,11 @@ protect_quoted_spaces() {
       fi
     elif [[ "$ch" == ' ' || "$ch" == $'\t' ]]; then
       if [[ -n "$cur" ]]; then
-        [[ -z "$first" ]] && first="$cur"
+        [[ "$cur" == git || "$cur" == */git ]] && saw_git=1
         prev="$cur"; cur=''
       fi
     elif [[ "$ch" == ';' || "$ch" == '|' || "$ch" == '&' || "$ch" == $'\n' || "$ch" == '(' || "$ch" == ')' ]]; then
-      cur=''; prev=''; first=''
+      cur=''; prev=''; saw_git=0
     else
       cur+="$ch"
     fi
@@ -474,12 +478,20 @@ path_is_computed() {
 }
 collect_candidates() {
   local text="$1" dir='' sticky_gd='' sticky_wt='' clause unknown=0
-  local toks i n tok gd wt cdir is_export envdir
+  local toks i n tok gd wt cdir is_export envdir cl
   local stack=()
   # Quote characters go, the way the verb scans drop them: an interpreter's
   # body arrives as `-c 'cd <p> && git ...'` and the `cd` sits behind the
   # quote. Message values were removed whole before this, so prose stays out.
   text="${text//\"/}"; text="${text//\'/}"
+  # A directory change inside a subshell or a substitution does not outlive
+  # it: `(cd <open>) ; git commit` runs the commit in the cwd, and round 4
+  # found the walk attributing it to <open>. The clause splitter turns
+  # parentheses into spaces, so they become marker words first, and the
+  # walk saves the directory at `(` and restores it at `)`. A brace group
+  # is not a subshell and its cd persists, which the walk already models.
+  text="${text//\(/ __PAREN_OPEN__ }"; text="${text//\)/ __PAREN_CLOSE__ }"
+  local pstack=()
   split_clauses "$text"
   while IFS= read -r clause; do
     IFS=$' \t\n' read -r -a toks <<<"$clause"
@@ -546,6 +558,12 @@ collect_candidates() {
           fi
           unknown=0
           continue ;;
+        __PAREN_OPEN__) pstack+=("$dir"); continue ;;
+        __PAREN_CLOSE__)
+          if [[ "${#pstack[@]}" -gt 0 ]]; then
+            dir="${pstack[$((${#pstack[@]} - 1))]}"; unset "pstack[$((${#pstack[@]} - 1))]"; unknown=0
+          fi
+          continue ;;
         git|*/git) ;;
         *) continue ;;
       esac
@@ -570,14 +588,15 @@ collect_candidates() {
           *) break ;;
         esac
       done
+      cl="${clause//__PAREN_OPEN__/ }"; cl="${cl//__PAREN_CLOSE__/ }"
       if [[ "$unknown" -eq 1 ]]; then
         # The directory is unreadable here: decide the cwd, where the
         # computed-target refusal fires under a guarded verb.
-        add_candidate "dir${US}${US}${US}${US}${clause}"
+        add_candidate "dir${US}${US}${US}${US}${cl}"
       elif [[ -n "$gd$wt" ]]; then
-        add_candidate "env${US}${gd}${US}${wt}${US}${cdir}${US}${clause}"
+        add_candidate "env${US}${gd}${US}${wt}${US}${cdir}${US}${cl}"
       else
-        add_candidate "dir${US}${cdir}${US}${US}${US}${clause}"
+        add_candidate "dir${US}${cdir}${US}${US}${US}${cl}"
       fi
       # Walk on: a second git in the same clause (inside a substitution) is
       # its own command and gets its own candidate.
@@ -1214,13 +1233,39 @@ run_scans() {
 # same letters inside a commit message are prose (the regression round found
 # `-m "mention HOME=/custom/path"` refused on every branch).
 env_cfg='(^|[[:space:]])(GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_[A-Za-z0-9_]*|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|HOME|XDG_CONFIG_HOME)='
-if [[ "$cmd_safe" =~ $env_cfg || "$cmd_safe2" =~ $env_cfg ]]; then
+# On the blind text, every quoted span gone: a message that expands is kept
+# in cmd_safe so a verb inside it stays visible, and round 4 put the letters
+# HOME= beside a `$` in one. An assignment in front of a command is never
+# inside quotes, so the blind text still carries it.
+if [[ "$cmd_blind" =~ $env_cfg ]]; then
   deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, XDG_CONFIG_HOME) can redefine what this command does, and the branch guard's own config lookups run without it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read."
 fi
 # cand_has_verb VERB: does the git command this candidate was made for run
 # VERB (alias resolved against this candidate's repo)? The protected-branch
 # block reads this rather than the whole command, see the candidate comment.
-cand_has_verb() { verb_in_text "$1" "$CAND_TEXT"; }
+# A verb inside a substitution anywhere in the command belongs to every
+# candidate: the candidate's clause comes from the blind-stripped text, where
+# a message value vanishes whole, and round 4 hid `$(git commit)` inside a
+# `-m` value on a read-only verb. SUBST_TEXT holds the body of every `$(...)`
+# and backtick span, read from the expand-aware text where they survive.
+SUBST_TEXT=''
+_rest="$cmd_safe"
+# The closing paren may be gone, eaten with a bare value the strip removed
+# (`-m done)`), so an unclosed span runs to the end of the text.
+while [[ "$_rest" =~ \$\(([^()]*)(\)|$) ]]; do
+  SUBST_TEXT+="${BASH_REMATCH[1]}"$'\n'
+  _rest="${_rest#*"${BASH_REMATCH[0]}"}"
+done
+_rest="$cmd"
+while [[ "$_rest" =~ \`([^\`]*)\` ]]; do
+  SUBST_TEXT+="${BASH_REMATCH[1]}"$'\n'
+  _rest="${_rest#*"${BASH_REMATCH[0]}"}"
+done
+cand_has_verb() {
+  verb_in_text "$1" "$CAND_TEXT" && return 0
+  [[ -n "$SUBST_TEXT" ]] && verb_in_text "$1" "$SUBST_TEXT" && return 0
+  return 1
+}
 # A target the shell computes (see collect_candidates) with a guarded verb
 # anywhere in the command: refused the way a computed ref or verb is.
 if [[ "$TARGET_COMPUTED" -eq 1 ]] && { any_clause_verb commit || any_clause_verb push; }; then

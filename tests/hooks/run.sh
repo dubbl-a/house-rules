@@ -1252,6 +1252,36 @@ expect_allow "adversarial 7: worktree add of a new branch then a commit elsewher
 expect_allow "adversarial 7: unset clears an exported GIT_DIR" \
   "$(mk_payload "export GIT_DIR=$pm/.git; unset GIT_DIR; git $_verb -m x" "$pf")"
 
+# Adversarial round 4, against the per-clause verb check and the quoted
+# value protection. A verb inside a message substitution was invisible to
+# the candidate's clause (the blind strip removes the value whole); a cd
+# inside a subshell was read as persisting; the quoted -C value was only
+# protected when git was the clause's first word; and a message carrying a
+# `$` and the letters HOME= tripped the environment refusal.
+expect_deny "adversarial 8: a commit inside a message substitution on master" \
+  "$(mk_payload "git status -m \"\$(git $_verb -m done)\"" "$pm")" "master"
+expect_deny "adversarial 8: a subshell cd does not persist, the commit runs in the cwd" \
+  "$(mk_payload "(cd $pf) ; git $_verb -m x" "$pm")" "master"
+expect_deny "adversarial 8: a subshell cd before a push from the cwd" \
+  "$(mk_payload "(cd $pf) ; git $_p origin master" "$pm")" "master"
+expect_allow "adversarial 8: a subshell that cds into the protected checkout for a read leaves the outer commit alone" \
+  "$(mk_payload "(cd $pm && git status); git $_verb -m x" "$pf")"
+expect_deny "adversarial 8: a cd inside a subshell with the commit also inside" \
+  "$(mk_payload "(cd $pm && git $_verb -m x)" "$pf")" "master"
+ps="$TMP_ROOT/prot secret"; new_repo "$ps"
+echo '{"branchPolicy":"pr"}' >"$ps/house.json"
+git -C "$ps" add house.json && git -C "$ps" $_verb -q -m house
+expect_deny "adversarial 8: env before git with a quoted -C path with spaces" \
+  "$(mk_payload "env git -C \"$ps\" $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 8: time before git with a quoted -C path with spaces" \
+  "$(mk_payload "time git -C \"$ps\" $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 8: an assignment before git with a quoted -C path with spaces" \
+  "$(mk_payload "FOO=1 git -C \"$ps\" $_verb -m x" "$pf")" "master"
+expect_allow "adversarial 8: env before git with a quoted -C path and a read-only verb" \
+  "$(mk_payload "env git -C \"$sp\" status" "$pm")"
+expect_allow "adversarial 8: a message with a variable and the letters HOME= is prose" \
+  "$(mk_payload "git $_verb -m \"note \$UNRELATED and also HOME=/nothing/special\"" "$pf")"
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
