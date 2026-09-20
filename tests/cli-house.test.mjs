@@ -1116,6 +1116,26 @@ test('#58 render without --apply only promises the move ("would move"), classifi
   assert.deepEqual(j.migrations, [{ from: '.githooks/pre-commit', to: '.githooks/pre-commit.d/20-secrets' }]);
 });
 
+// A lock that never recorded the dispatcher (a rebase onto a lock written
+// before the floor, or a hand-deleted lock) must not read the dispatcher
+// itself as an adopter's old hook and "migrate" it into the .d directory.
+test('#58 render leaves a .githooks/pre-commit that is already the managed dispatcher alone, even with no lock entry for it', () => {
+  const { cliPath, dir } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.githooks'), { recursive: true });
+  copyFileSync(join(dir, 'modules', 'github', 'files', 'githooks', 'pre-commit'), join(repo, '.githooks', 'pre-commit'));
+
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.doesNotMatch(dry.out, /would move|Moved/);
+  const j = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.migrations, []);
+
+  const applied = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(applied.code, 0, applied.out + applied.err);
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-commit.d', '15-local')), 'the dispatcher is not parked as a local hook');
+});
+
 // R2: the other file that lives at that path. A repo's own pre-commit hook is
 // not a copy of anything of ours, so it goes to 15-local -- after the branch
 // guard, before the secrets backstop -- and the line says whose file it is.

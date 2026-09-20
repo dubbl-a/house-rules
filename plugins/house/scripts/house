@@ -887,6 +887,9 @@ function planOldPreCommitMigration(repoRoot, houseData, modules, priorLock) {
   if (!existsSync(fromAbs)) return null;
   let body = '';
   try { body = readFileSync(fromAbs, 'utf8'); } catch { return null; }
+  // Already the managed dispatcher (a lock that never recorded it, as after a
+  // rebase onto a lock from before the floor): nothing to migrate.
+  try { if (body === readFileSync(path.join(__dirname, '..', 'modules', 'github', 'files', 'githooks', 'pre-commit'), 'utf8')) return null; } catch { /* no source: fall through */ }
   const to = body.includes(OLD_TEMPLATE_MARKER) ? SECRETS_SCAFFOLD_DEST : LOCAL_PRE_COMMIT_DEST;
   if (existsSync(path.join(repoRoot, to))) return null;
   return { from: OLD_PRE_COMMIT, to };

@@ -14,20 +14,18 @@
         "hooks": [
           { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/arm-git-hooks.sh", "timeout": 10 }
         ]
+      },
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs", "timeout": 5 }
+        ]
       }
     ],
     "InstructionsLoaded": [
       {
         "hooks": [
           { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/instructions-loaded.mjs", "timeout": 5 }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "startup|clear|compact",
-        "hooks": [
-          { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs", "timeout": 5 }
         ]
       }
     ]

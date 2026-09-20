@@ -4,25 +4,25 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "f62024c7cb706c9889347939945339c3640d4d62d31309f8e9d4416c8b27d179"
+      "bodySha256": "156d067b91961899754338f44839ef0e93967519327f476c69f7d59495224f7b"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
       "module": "claude-code",
       "source": "modules/claude-code/files/check-deep-research-upstream.mjs",
-      "bodySha256": "600ef204dd45f7f6a8ec40d0d45a944bcb02104f427dca7c0be2161a231b3def"
+      "bodySha256": "4a9632eab3786c232b87cb6080ed29556fb8b742cfe38cbb5ca74f1e41418d88"
     },
     {
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "084505d04ef672154db3d613db9f0aeba997fed490d40ef34d3058ea5a6a7be6"
+      "bodySha256": "e20cb2a4ee1ad224b9fd4536a78601cec6f868bf5936975da6e8d64e0edfd2b6"
     },
     {
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "12509755aff2ae5053cb201a7f3adea2c8d7896f2a4a845aa700a8bab025e0b0"
+      "bodySha256": "b24fa7feab006a9b227dc93435285cc460bf3ab7dc6b2911c984072152f7c886"
     },
     {
       "path": "scripts/house/is-main.mjs",
@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "a0c8a09a31917d44e953be64af957791d55990aa727f90d5366ec855e12d6233"
+      "bodySha256": "fc51618924c45cb731d330a6ef0032c6682753835478ad4992c52de67baa1268"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -94,7 +94,7 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "f2d14372c93cc30b4a6918ab9072ecb56a902539f21b8128fc63ec50b7a4e769"
+      "bodySha256": "fe806a81a0f5fed8887f49c4ef0fe74ae1d798505a2aaf82c1865ba617542f8d"
     },
     {
       "path": ".house/check.mjs",

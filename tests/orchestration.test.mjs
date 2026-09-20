@@ -93,8 +93,10 @@ test('session-start hook with the text missing emits nothing and still exits 0 (
 
 test('hooks.json declares the SessionStart entry on startup, clear and compact', () => {
   const h = JSON.parse(readFileSync(join(ROOT, 'plugins/house/hooks/hooks.json'), 'utf8'));
-  const entry = h.hooks.SessionStart?.[0];
-  assert.ok(entry, 'SessionStart array present');
+  // #58 adds a second SessionStart entry (the git-hook arming script), so find
+  // this one by its command rather than by position.
+  const entry = (h.hooks.SessionStart || []).find((e) => e.hooks?.some((x) => /session-start\.mjs/.test(x.command)));
+  assert.ok(entry, 'SessionStart entry for session-start.mjs present');
   assert.equal(entry.matcher, 'startup|clear|compact');
   assert.match(entry.hooks[0].command, /session-start\.mjs/);
 });
