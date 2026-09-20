@@ -13,19 +13,26 @@
 //
 // Usage:
 //   node scripts/house/check-deep-research-upstream.mjs [--binary=<path>] [--baseline=<sha256>] [--json]
-//   node scripts/house/check-deep-research-upstream.mjs --rebuild=<out.js> [--binary=<path>]
+//   node scripts/house/check-deep-research-upstream.mjs --rebuild=<out.js> [--force] [--binary=<path>]
 //
 // Exit codes (the three-way contract a caller must read, never "non-zero = bad"):
 //   0  native script unchanged since the recorded baseline; keep the fork
-//   1  native script drifted (or the binary/script was not found); re-derive the fork with --rebuild
-//   2  SUNSET: the native workflow now sets per-agent models or takes object args; delete the fork
-//   3  usage or rebuild failure (an anchor the pins rely on no longer matches exactly once)
+//   1  native script drifted, or no binary/no bundled script was found; re-derive the fork with --rebuild
+//   2  SUNSET: the native workflow now sets per-agent models or reads a per-stage model map; delete the fork
+//   3  bad argument, or a --rebuild failure (an anchor the pins rely on no longer matches exactly once)
+//
+// The binary locator assumes a POSIX shell and an XDG-style install layout
+// (`sh -c 'command -v claude'`, `~/.local/share/claude/versions/`), so it does
+// not resolve an install on Windows. An npm-global install names its binary
+// with no version in the filename, so versionOf() reports it as "unknown"
+// rather than guessing wrong.
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, realpathSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // Baseline: sha256 of the unescaped native script body (from `// deep-research:`
 // through the closing brace of its final return) as shipped in the version named.
@@ -71,10 +78,20 @@ const META = (version, sha) => `export const meta = {
 
 export function sha256(s) { return createHash('sha256').update(s).digest('hex'); }
 
-/** Find the installed Claude Code binary: --binary, $CLAUDE_BINARY, `claude` on PATH, else the newest versions/ entry. */
+/**
+ * Find the installed Claude Code binary: --binary, $CLAUDE_BINARY, `claude` on
+ * PATH, else the newest versions/ entry. An explicit --binary is never mixed
+ * into the fallback chain: given and invalid, it throws rather than silently
+ * reporting on a different binary.
+ */
 export function locateBinary(explicit) {
+  if (explicit !== undefined) {
+    let isFile = false;
+    try { isFile = statSync(explicit).isFile(); } catch { /* not found */ }
+    if (!isFile) throw new Error(`--binary path is not a readable file: ${explicit}`);
+    return explicit;
+  }
   const candidates = [];
-  if (explicit) candidates.push(explicit);
   if (process.env.CLAUDE_BINARY) candidates.push(process.env.CLAUDE_BINARY);
   try {
     const onPath = execFileSync('sh', ['-c', 'command -v claude'], { encoding: 'utf8' }).trim();
@@ -116,11 +133,44 @@ export function extractNativeBody(bytes) {
   return body;
 }
 
+// A model-map read on args: `args.models`, `args?.models`, `args["models"]`,
+// or a `{ models }` destructure off args. Reading merely `typeof args ===
+// "object"` proves nothing by itself: the Workflow tool has always accepted
+// object args, so that alone cannot signal a native model pin.
+const MODEL_MAP_READ = /\bargs\s*\??\.\s*models\b|\bargs\s*\[\s*(['"])models\1\s*\]|\{[^{}]*\bmodels\b[^{}]*\}\s*=\s*args\b/;
+
+/**
+ * Slice out just the five agent() option-object regions the PINS anchors
+ * locate, keyed on each pin's SCHEMA constant at its call site (`schema:
+ * X_SCHEMA`, not the `const X_SCHEMA =` definition). Works whether or not a
+ * `model:` property has already been added, which is exactly what
+ * sunsetReached needs to check without a false hit from a prose "model:" in a
+ * prompt string elsewhere in the body.
+ */
+function agentOptionRegions(body) {
+  const regions = [];
+  for (const [from] of PINS) {
+    const schemaName = from.match(/([A-Z][A-Z0-9_]*_SCHEMA)/)?.[1];
+    if (!schemaName) continue;
+    const anchor = new RegExp(`schema\\s*:\\s*${schemaName}\\b`).exec(body);
+    if (!anchor) continue;
+    const open = body.lastIndexOf('{', anchor.index);
+    const close = body.indexOf('}', anchor.index);
+    if (open < 0 || close < 0) continue;
+    regions.push(body.slice(open, close + 1));
+  }
+  return regions;
+}
+
 /** True when the native workflow no longer needs the fork. */
 export function sunsetReached(body) {
   const reasons = [];
-  if (/\bmodel\s*:/.test(body)) reasons.push('native agent() calls now carry a model');
-  if (/typeof args === "object"/.test(body)) reasons.push('native args now accept an object (a model map can be passed)');
+  if (agentOptionRegions(body).some((region) => /\bmodel\s*:/.test(region))) {
+    reasons.push('native agent() calls now carry a model');
+  }
+  if (/typeof args === "object"/.test(body) && MODEL_MAP_READ.test(body)) {
+    reasons.push('native args now read a per-stage model map (args.models)');
+  }
   return reasons;
 }
 
@@ -137,12 +187,13 @@ export function rebuild(body, version) {
 }
 
 function parseArgs(argv) {
-  const out = { json: false };
+  const out = { json: false, force: false };
   for (const a of argv) {
     if (a.startsWith('--binary=')) out.binary = a.slice(9);
     else if (a.startsWith('--baseline=')) out.baseline = a.slice(11);
     else if (a.startsWith('--rebuild=')) out.rebuild = a.slice(10);
     else if (a === '--json') out.json = true;
+    else if (a === '--force') out.force = true;
     else { console.error(`unknown argument: ${a}`); process.exit(3); }
   }
   return out;
@@ -150,14 +201,19 @@ function parseArgs(argv) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const binary = locateBinary(opts.binary);
-  const report = { binary, version: binary ? versionOf(binary) : null, baseline: opts.baseline || BASELINE.sha256, baselineVersion: BASELINE.version };
+  const report = { binary: null, version: null, baseline: opts.baseline || BASELINE.sha256, baselineVersion: BASELINE.version };
   const emit = (status, verdict, detail) => {
     Object.assign(report, { status, verdict, detail });
     if (opts.json) console.log(JSON.stringify(report));
     else console.log(`deep-research upstream: ${verdict}${detail ? ` (${detail})` : ''}`);
     process.exit(status);
   };
+  let binary;
+  try {
+    binary = locateBinary(opts.binary);
+  } catch (e) { report.binary = opts.binary; emit(3, 'invalid --binary', e.message); }
+  report.binary = binary;
+  report.version = binary ? versionOf(binary) : null;
   if (!binary) emit(1, 'binary not found', 'pass --binary=<path> or set CLAUDE_BINARY');
   const body = extractNativeBody(readFileSync(binary));
   if (!body) emit(1, 'bundled deep-research script not found in binary', `${binary}; the workflow may have moved or been removed, which is itself a reason to revisit the fork`);
@@ -165,7 +221,11 @@ function main() {
   const reasons = sunsetReached(body);
   if (reasons.length) emit(2, 'SUNSET: delete the fork and run the bundled workflow by name', reasons.join('; '));
   if (opts.rebuild) {
+    if (existsSync(opts.rebuild) && !opts.force) {
+      emit(3, 'rebuild refused', `refusing to overwrite an existing file without --force: ${opts.rebuild}`);
+    }
     try {
+      mkdirSync(dirname(opts.rebuild), { recursive: true });
       writeFileSync(opts.rebuild, rebuild(body, report.version));
       report.rebuilt = opts.rebuild;
     } catch (e) { emit(3, 'rebuild refused', e.message); }
@@ -176,4 +236,4 @@ function main() {
   emit(0, `native script unchanged since ${BASELINE.version}`, opts.rebuild ? `fork rebuilt at ${opts.rebuild}` : `installed ${report.version}`);
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(new URL(import.meta.url).pathname)) main();
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main();

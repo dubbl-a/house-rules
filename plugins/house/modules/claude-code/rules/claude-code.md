@@ -63,9 +63,10 @@ Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with
 
 Name the model on every agent call, because an omitted one silently inherits the session's and a wide fan-out then runs at whatever tier you happened to be in.
 Match the tier to the task: mechanical joins and receipt checks at the small tier, code and prose in the middle, judgment and adjudication at the top.
-Expect a managed model list to be applied as given rather than merged with yours, so a named tier can be unavailable and the call has to fail loudly rather than quietly fall back.
+Expect a managed model list to be applied as given rather than merged with yours, so a named tier can be unavailable.
+Expect the harness to substitute and warn rather than fail when that happens, stepping a blocked call down to the newest allowed model in its family and noting only a warning in the run's own view: a pinned tier is a request the run can silently step down from, and the checker plus the fork's explicit model map are what make that request visible.
 State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced rather than only stated.
-When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each Claude Code upgrade: it rebuilds the fork from the installed binary, and its exit 2 is the sunset, meaning the native workflow now sets its own models and the fork is deleted.
+When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each Claude Code upgrade: read its verdict by name, since each outcome is its own exit code, unchanged, drifted or missing (a missing binary or missing bundled script counts as drift; rebuild the fork), a bad argument (fix the call), and SUNSET (the native workflow now sets its own models or reads a per-stage model map, so delete the fork).
 Anchor: the eval pair at `plugins/house/evals/explicit-model-tier/`, whose arms differ only in whether each call sets a model.
 Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subagent-and-workflow-agent`
 
