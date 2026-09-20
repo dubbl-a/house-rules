@@ -571,10 +571,15 @@ const DR_CHECK = join(ROOT, 'plugins/house/modules/claude-code/files/check-deep-
 function fakeNativeBody(overrides = {}) {
   const questionLine = overrides.questionLine ?? 'const QUESTION = (typeof args === "string" && args.trim()) || ""';
   const scope = overrides.scope ?? '{ label: "scope", schema: SCOPE_SCHEMA }';
-  return [
+  const lines = [
     '// deep-research: Scope \\u2192 pipeline(Search)',
     'const URL_HOST_PATTERN = /^[a-z][a-z0-9+.-]*:\\\\/\\\\/(?:www\\\\.)?([^/:?#@\\\\\\\\]+)/i',
     questionLine,
+  ];
+  // A prose mention of "model:" living outside any agent() option object
+  // (e.g. inside a prompt string), for the negative control on trigger 1.
+  if (overrides.prose) lines.push(overrides.prose);
+  lines.push(
     `const scope = await agent("q", ${scope})`,
     'agent(SEARCH_PROMPT(angle), {',
     '    label: "search:" + angle.label, phase: "Search", schema: SEARCH_SCHEMA',
@@ -590,7 +595,8 @@ function fakeNativeBody(overrides = {}) {
     '    agentCalls: 1 + scope.angles.length,',
     '  },',
     '}',
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 function fakeBinary(dir, body) {
@@ -638,13 +644,35 @@ test('deep-research check: native agent() calls carrying a model reach the sunse
   assert.match(res.stdout, /carry a model/);
 });
 
-test('deep-research check: native args accepting an object reach the sunset and exit 2', async () => {
+test('deep-research check: native args reading a per-stage model map reach the sunset and exit 2', async () => {
   const dir = mktemp('house-dr-');
-  const body = fakeNativeBody({ questionLine: 'const QUESTION = (typeof args === "object" && args.question) || ""' });
+  const body = fakeNativeBody({
+    questionLine: 'const QUESTION = (typeof args === "object" && args.question) || ""\nconst modelOverrides = args.models || {}',
+  });
   const bin = fakeBinary(dir, body);
   const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`]);
   assert.equal(res.status, 2, res.stdout + res.stderr);
-  assert.match(res.stdout, /accept an object/);
+  assert.match(res.stdout, /model map/);
+});
+
+test('deep-research check: object args alone, with no model-map read, does NOT sunset (negative control)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody({ questionLine: 'const QUESTION = (typeof args === "object" && args.question) || ""' });
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, '--json']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const j = JSON.parse(res.stdout);
+  assert.match(j.verdict, /unchanged/);
+});
+
+test('deep-research check: a prose "model:" mention in a prompt string does NOT sunset (negative control)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody({ prose: '"Explain the target model: pick the one that fits the audience.",' });
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, '--json']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const j = JSON.parse(res.stdout);
+  assert.match(j.verdict, /unchanged/);
 });
 
 test('deep-research check: --rebuild writes a fork with five model pins, a MODELS map, and unescaped regex', async () => {
@@ -679,4 +707,71 @@ test('deep-research check: a binary without the bundled script exits 1, not 0', 
   const res = runDrCheck([`--binary=${bin}`]);
   assert.equal(res.status, 1, res.stdout + res.stderr);
   assert.match(res.stdout, /not found in binary/);
+});
+
+test('deep-research check: running from a directory whose path contains a space does not crash (ENOENT regression)', async () => {
+  const dir = mktemp('house dr with space-');
+  assert.match(dir, / /, 'fixture sanity: the temp dir must actually contain a space');
+  const copy = join(dir, 'check-deep-research-upstream.mjs');
+  copyFileSync(DR_CHECK, copy);
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const res = spawnSync(process.execPath, [copy, `--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, '--json'], {
+    encoding: 'utf8',
+    env: { ...process.env, CLAUDE_BINARY: '' },
+  });
+  assert.ok(!/ENOENT/.test(res.stderr), `unexpected ENOENT crash:\n${res.stderr}`);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const j = JSON.parse(res.stdout);
+  assert.match(j.verdict, /unchanged/);
+});
+
+test('deep-research check: --binary pointing at a missing path exits 3 and names the path, never silently falling back', () => {
+  const missing = '/definitely/not/a/real/deep-research-fixture-path';
+  const res = runDrCheck([`--binary=${missing}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /invalid --binary/);
+  assert.ok(res.stdout.includes(missing), res.stdout);
+});
+
+test('deep-research check: --binary pointing at a directory exits 3 and names the path', () => {
+  const dir = mktemp('house-dr-dir-');
+  const res = runDrCheck([`--binary=${dir}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.ok(res.stdout.includes(dir), res.stdout);
+});
+
+test('deep-research check: --rebuild refuses to overwrite an existing file without --force', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'existing-fork.js');
+  writeFileSync(out, 'PRIOR CONTENT');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /--force/);
+  assert.equal(readFileSync(out, 'utf8'), 'PRIOR CONTENT', 'existing file must be left untouched');
+});
+
+test('deep-research check: --rebuild overwrites an existing file when --force is passed', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'existing-fork.js');
+  writeFileSync(out, 'PRIOR CONTENT');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`, '--force']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  assert.notEqual(fork, 'PRIOR CONTENT');
+  assert.match(fork, /name: 'deep-research-pinned'/);
+});
+
+test('deep-research check: --rebuild creates missing parent directories', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'nested', 'deeper', 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.ok(existsSync(out), 'rebuild must create the missing parent directory');
 });

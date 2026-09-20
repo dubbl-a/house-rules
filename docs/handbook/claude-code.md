@@ -192,14 +192,34 @@ Bundled workflows inherit the session model on every agent, 2026-09-18: `/deep-r
 Claude Code v2.1.276 names no model on any of its five stages and takes only a question string as
 args, so a Fable session ran its roughly 100-agent fan-out on Fable. The public docs confirm the
 Workflow tool has no model field (`WorkflowInput` at
-https://code.claude.com/docs/en/agent-sdk/typescript) and that `CLAUDE_CODE_SUBAGENT_MODEL` is the
-only session-wide default (https://code.claude.com/docs/en/model-config); per-call `model` and
-`effort` options exist only in the bundled `/workflow-authoring` reference. The fork is not
-vendored as text, because the script is Anthropic's and this repo is public; instead
+https://code.claude.com/docs/en/agent-sdk/typescript). `CLAUDE_CODE_SUBAGENT_MODEL` is a
+session-wide default, but re-verified against the installed v2.1.278 binary (`strings` on
+`~/.local/share/claude/versions/2.1.278`) it is no longer the only one: `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`
+also exists, and when set it makes the harness drop the `model` on every subagent and workflow-agent
+call and warn ("Workflow agent model … ignored: CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set"), forcing
+every one of them to inherit the session model regardless of what a script or an `Agent` call pins
+(https://code.claude.com/docs/en/model-config). Per-call `model` and `effort` options are also no
+longer documented only in the bundled `/workflow-authoring` reference: the public workflows doc
+now covers them too, under its Cost section ("Claude Code picks each workflow agent's model in the
+same order it uses for subagents… A model the script names for a stage counts as the per-invocation
+model in that order", https://code.claude.com/docs/en/workflows#cost). The fork is not vendored as
+text, because the script is Anthropic's and this repo is public; instead
 `check-deep-research-upstream.mjs` reads it out of the installed binary, applies five model pins
 and an args map, and refuses if any pin anchor no longer matches exactly once. Sunset: the check
-exits 2 when native agent() calls carry a model or native args accept an object, and the fork
-guidance leaves the rule that day.
+exits 2 when native agent() calls carry a model inside one of the five agent-option regions the
+pins already locate, or native args read a per-stage model map (`args.models`); accepting an
+object alone no longer counts, since the Workflow tool has always accepted object args and that
+proves nothing about models by itself.
+
+The "fail loudly" floor the rule once stated does not hold on v2.1.278. The same binary's strings
+show the real behavior: "Subagent model … is not in the availableModels allowlist; using the newest
+allowed model in its family" and, on the workflows doc, "that agent runs on a substituted model
+instead… The run's progress view in `/workflows` shows a warning naming both the requested and
+substituted models" (https://code.claude.com/docs/en/workflows#cost). A blocked or unavailable
+model is silently stepped down and only warned about, in the `/workflows` progress view for a
+workflow agent or the session transcript for a subagent, never failed. That is why the rule now
+reads a pinned tier as a request the run can silently step down from, with the checker and the
+fork's explicit model map as what makes that request visible again.
 
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
