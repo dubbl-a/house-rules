@@ -63,11 +63,43 @@ scan is short and literal rather than open-ended.
 * Bad, because a foreign hook manager (husky, pre-commit, lefthook) and this floor both want the
   single `core.hooksPath` slot, so arming has to detect and refuse rather than overwrite silently.
 
+The first adversarial round against this shape (2026-09-20, after the first commit) found that
+the disable list was itself a text scan guarding the floor's off switch, and that the policy file
+was the one thing neither layer protected. Two structural changes answer that, and neither is a
+new literal:
+
+* **Policy is read from HEAD.** Every guard reads `HEAD:house.json` (`pre-push` reads the
+  remote's own commit where it has one), and the working-tree file counts only in a repo that
+  has not committed one yet. A `Write` that flips `branchPolicy` therefore does nothing until it
+  lands on the protected branch through a PR, which is the review the policy exists to force.
+* **"Armed" means "intact", verified against the plugin's own source.** The PreToolUse hook
+  treats a repo as armed only when `core.hooksPath` resolves to the floor (git resolves
+  `include.path` for it), every vendored hook file is byte-identical to the plugin's copy and
+  executable, and `.githooks/` carries no untracked or modified file. A hook edited by any tool,
+  deleted by any spelling, shadowed by an unmanaged `.d` file, or pointed away by a config
+  include reads as unarmed on the next call, whatever the command that did it looked like.
+  Unarmed, the hook refuses every verb it cannot read as a literal git command and every push it
+  cannot read as a literal refspec, and names the arming command.
+
+Residue left open by decision, reported rather than chased: a disable and a push in the same
+Bash call (the integrity check runs before the call); a git command inside a script whose text
+never says `git`; a push from a second clone the session made earlier, whose `HEAD:house.json`
+the session controls; and git older than 2.28, where `--no-verify` inside a script skips the
+whole floor. The remote ruleset is the ceiling for all four, and `house doctor` names the git
+version. Two smaller ones: the ADR 0002 deference files (`.claude/settings.json`, a repo-local
+guard hook) are still read from the working tree, so a session can write a Bash-matching
+PreToolUse entry and stand this hook down for its later calls in an unarmed repo (an armed one
+never defers); and a floor that `house render --apply` has written but nobody has committed reads
+as not intact, because the integrity test requires a clean `.githooks/`, so the floor counts once
+it is committed, not once it is rendered.
+
 ### Confirmation
 
 `tests/githooks/run.sh` runs real commits and real pushes against a bare remote and fixture repos,
 so no text trick can fool it. `tests/hooks/run.sh` pins the PreToolUse hook's disable list, one
-case per literal and its innocent neighbor. The `guard` family in `plugins/house/payload/check.mjs`
+case per literal and its innocent neighbor, and the integrity test: an edited, deleted, or
+shadowed floor file and a config include that moves `core.hooksPath` each read as unarmed on the
+next call, and a tag push, a feature push, and a linked worktree each stay allowed. The `guard` family in `plugins/house/payload/check.mjs`
 carries a floor verdict beside the three it already reports: a warning when the vendored hook
 files are missing, and a finding when a present file is not executable or not substantive.
 

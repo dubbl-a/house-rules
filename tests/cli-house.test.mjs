@@ -20,7 +20,7 @@ import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync,
   chmodSync, existsSync, statSync, rmSync, realpathSync,
 } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1039,7 +1039,25 @@ function floorDir(repo) { return join(realpathSync(repo), '.githooks'); }
 
 function modeOf(p) { return statSync(p).mode & 0o777; }
 
-const ADOPTER_PRE_COMMIT = '#!/usr/bin/env bash\n# an adopter\'s own copy, with a line house never wrote\necho "custom secret scan"\nexit 0\n';
+// Two very different files live at `.githooks/pre-commit` in the wild, and the
+// migration has to tell them apart: house's own secrets template, which an
+// adopter installed by hand and may have edited, and an adopter's own hook,
+// which house never wrote a line of. `PIIPATTERNS=(` is the template's marker
+// (the array of regexes it scans with) and nothing else declares it. Round 1
+// moved both to `20-secrets` and told both repos it was "your unmanaged copy of
+// the old template", which is a false claim about somebody's own lint runner
+// and an invitation to delete it.
+const ADOPTER_PRE_COMMIT = [
+  '#!/usr/bin/env bash',
+  '# house secrets backstop -- an adopter\'s copy, with a line they added',
+  'PIIPATTERNS=(',
+  '  "AKIA[0-9A-Z]{16}"',
+  ')',
+  'echo "custom secret scan"',
+  'exit 0',
+  '',
+].join('\n');
+const OWN_PRE_COMMIT = '#!/usr/bin/env bash\n# this repo\'s own hook; house never wrote a line of it\nnpm run lint-staged\n';
 
 test('#58 render --apply moves an adopter\'s unmanaged .githooks/pre-commit into pre-commit.d/20-secrets and writes the dispatcher over it', () => {
   const { cliPath } = buildFloorFixture();
@@ -1098,6 +1116,41 @@ test('#58 render without --apply only promises the move ("would move"), classifi
   assert.deepEqual(j.migrations, [{ from: '.githooks/pre-commit', to: '.githooks/pre-commit.d/20-secrets' }]);
 });
 
+// R2: the other file that lives at that path. A repo's own pre-commit hook is
+// not a copy of anything of ours, so it goes to 15-local -- after the branch
+// guard, before the secrets backstop -- and the line says whose file it is.
+test('#58 render --apply moves a repo\'s OWN unmanaged pre-commit to pre-commit.d/15-local, and still offers the secrets scaffold', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.githooks'), { recursive: true });
+  writeFileSync(join(repo, '.githooks', 'pre-commit'), OWN_PRE_COMMIT);
+  chmodSync(join(repo, '.githooks', 'pre-commit'), 0o755);
+
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /would move \.githooks\/pre-commit \(your own pre-commit hook\) to \.githooks\/pre-commit\.d\/15-local; the house dispatcher now runs it after the branch guard/);
+  assert.doesNotMatch(dry.out, /old template/, 'a repo\'s own hook must never be described as a copy of house\'s template');
+
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^Moved \.githooks\/pre-commit \(your own pre-commit hook\) to \.githooks\/pre-commit\.d\/15-local; the house dispatcher now runs it after the branch guard$/m);
+
+  // Their hook survives verbatim, one step ahead of the secrets backstop.
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '15-local'), 'utf8'), OWN_PRE_COMMIT);
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-commit.d', '15-local')), 0o755);
+  // And because this repo never had our template, it is still offered one: the
+  // scaffold record must NOT have been pointed at 15-local.
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets'), 'utf8'), SECRETS_TEMPLATE_BODY);
+  const lock = JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'));
+  assert.deepEqual(lock.scaffolds.find((e) => e.template === 'pre-commit.d/20-secrets'),
+    { template: 'pre-commit.d/20-secrets', path: '.githooks/pre-commit.d/20-secrets' });
+
+  // Idempotent, like the other destination.
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.doesNotMatch(again.out, /Moved|would move/);
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '15-local'), 'utf8'), OWN_PRE_COMMIT);
+});
+
 test('#58 render --apply writes every .githooks file executable, and restores a mode bit a later chmod dropped', () => {
   const { cliPath } = buildFloorFixture();
   const repo = buildFloorRepo();
@@ -1120,6 +1173,23 @@ test('#58 render --apply writes every .githooks file executable, and restores a 
   assert.equal(modeOf(join(repo, '.githooks', 'pre-push')), 0o755, 'a clean file that lost the execute bit was not restored');
 });
 
+// R3: restoring the execute bit is not permission to widen the file. A 0600
+// hook is somebody's deliberate choice (a shared machine, a tight umask), and
+// git only needs the OWNER to be able to run it, so the bit is added per class
+// that already has read: 0600 becomes 0700, never 0755.
+test('#58 render --apply adds the execute bit per class that can read, and never widens a 0600 hook to 0755', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+
+  chmodSync(join(repo, '.githooks', 'pre-push'), 0o600);
+  chmodSync(join(repo, '.githooks', 'pre-commit'), 0o640);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-push')), 0o700, 'a 0600 hook must come back as 0700, not 0755');
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-commit')), 0o750, 'the group could read, so the group gets execute; other still gets nothing');
+});
+
 test('#58 render --apply arms the floor: core.hooksPath points at this repo\'s own .githooks', () => {
   const { cliPath } = buildFloorFixture();
   const repo = buildFloorRepo();
@@ -1133,6 +1203,42 @@ test('#58 render --apply arms the floor: core.hooksPath points at this repo\'s o
   // Already armed: silent on the next render, so the line means something.
   const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.doesNotMatch(again.out, /armed git hooks/);
+});
+
+// R1: SessionStart fires the arming script, and sessions start in bunches (a
+// window per worktree, a render running beside them). They all reach for
+// .git/config at once, one wins the lock, and the losers used to announce
+// "the git-hook floor is NOT armed" about a repo that had just been armed --
+// seven false alarms in ten concurrent runs. A loser now re-reads the setting
+// before it says anything, because the question is whether the repo is armed,
+// not whether THIS process is the one that armed it.
+test('#58 arming is concurrency-safe: eight simultaneous runs never report NOT armed', async () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  execFileSync('git', ['-C', repo, 'config', '--unset', 'core.hooksPath']);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), '', 'precondition: every run starts from unarmed');
+
+  const runs = await Promise.all(Array.from({ length: 8 }, () => new Promise((resolve) => {
+    const p = spawn('bash', [REAL_ARM_SCRIPT, '--repo', repo], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    let err = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => resolve({ code, out, err }));
+  })));
+
+  for (const r of runs) {
+    assert.equal(r.code, 0, `arming must never exit non-zero: ${r.err}`);
+    assert.doesNotMatch(r.out, /NOT armed/, `a losing run reported the repo unarmed: ${r.out}`);
+    assert.doesNotMatch(r.out, /could not set core\.hooksPath/, r.out);
+  }
+  // One value, and it is the floor: the losers wrote nothing and claimed nothing.
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), floorDir(repo));
+  assert.equal(
+    execFileSync('git', ['-C', repo, 'config', '--get-all', 'core.hooksPath'], { encoding: 'utf8' }).trim().split('\n').length,
+    1, 'core.hooksPath must not be written twice',
+  );
 });
 
 test('#58 render --apply refuses to arm a repo whose .git/hooks already holds a foreign executable hook, and names it', () => {
@@ -1234,11 +1340,28 @@ test('#58 doctor reports the git-hook floor in every state, in text and as gitHo
     ? /reference-transaction: supported by git .* \(>= 2\.28\)/
     : /reference-transaction: inert on git .* \(needs 2\.28\)/);
 
+  assert.deepEqual(aj.gitHookFloor.missing, [], 'a complete floor reports nothing missing');
+
   // 2) Adopted (branchPolicy pr) but never rendered.
   const unrendered = buildFloorRepo();
   const u = runCli(cliPath, ['doctor', '--repo', unrendered]);
   assert.match(u.out, /git-hook floor: not rendered here/);
-  assert.equal(JSON.parse(runCli(cliPath, ['doctor', '--repo', unrendered, '--json']).out).gitHookFloor.rendered, false);
+  const uj = JSON.parse(runCli(cliPath, ['doctor', '--repo', unrendered, '--json']).out);
+  assert.equal(uj.gitHookFloor.rendered, false);
+  assert.deepEqual(uj.gitHookFloor.missing.slice().sort(), FLOOR_FILES.slice().sort(), 'every floor file is reported missing');
+  for (const rel of FLOOR_FILES) assert.ok(u.out.includes(`.githooks/${rel}`), `doctor must name .githooks/${rel}`);
+
+  // 2b) R4: rendered EXCEPT the library every guard sources. `rendered` is all
+  // seven or nothing, because a floor missing only house-lib.sh fails every
+  // commit closed and "rendered: true" would send the reader to the wrong file.
+  const halfRendered = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', halfRendered, '--apply']).code, 0);
+  rmSync(join(halfRendered, '.githooks', 'house-lib.sh'));
+  const h = runCli(cliPath, ['doctor', '--repo', halfRendered]);
+  assert.match(h.out, /git-hook floor: not rendered here \(missing: \.githooks\/house-lib\.sh;/);
+  const hj = JSON.parse(runCli(cliPath, ['doctor', '--repo', halfRendered, '--json']).out);
+  assert.equal(hj.gitHookFloor.rendered, false);
+  assert.deepEqual(hj.gitHookFloor.missing, ['house-lib.sh']);
 
   // 3) Rendered but not armed: the floor is on disk and inert, which is the
   // state every fresh clone starts in and the one the checker cannot see.

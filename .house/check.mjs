@@ -2141,12 +2141,23 @@ function hookBodyIsSubstantive(body) {
 // #58 / ADR 0013: the three verdicts above describe the session-time text
 // scan, which only ever sees a command a model typed. The floor that holds
 // when no session is in the loop is the vendored git hooks, so the guard
-// family checks those too: the six files the github module renders under
+// family checks those too: the seven files the github module renders under
 // `.githooks/`, each tracked, executable in the index, and not a stub.
-// `house-lib.sh` is vendored beside them but is sourced, never run, and a
-// missing one makes the guards exit non-zero rather than fail open, so the
-// floor verdict is about these six.
+//
+// `house-lib.sh` is in the list even though it is sourced rather than run.
+// Every guard sources it and exits non-zero when the source fails, so a floor
+// missing only the library fails every commit CLOSED: a repo in that state is
+// not quietly unguarded, it is unable to commit at all, which is a defect the
+// checker should name rather than a gap it should shrug at.
+//
+// THE FLOOR IS THESE SEVEN FILES, and three places have to say so: this list,
+// `FLOOR_FILES` in plugins/house/hooks/arm-git-hooks.sh, and the `.githooks/`
+// dests in plugins/house/modules/github/module.json. A list that drifted would
+// let the checker call a floor complete that the arming script calls
+// unrendered, so `tests/check/guard.test.mjs` reads all three and asserts they
+// are the same set. Add a file to the floor in all three, or in none.
 const GUARD_FLOOR_FILES = [
+  '.githooks/house-lib.sh',
   '.githooks/pre-commit',
   '.githooks/pre-commit.d/10-house-branch',
   '.githooks/pre-push',
@@ -2173,12 +2184,21 @@ function checkGuardFloor(ctx, d) {
   const modes = gitIndexModes(ctx.repoRoot, GUARD_FLOOR_FILES);
   const present = GUARD_FLOOR_FILES.filter((p) => modes.has(p) && existsSync(join(ctx.repoRoot, p)));
   const missing = GUARD_FLOOR_FILES.filter((p) => !present.includes(p));
-  // Absent is a WARNING, not a finding: every repo adopted before the floor
-  // shipped has none of these, and a warning is what tells that repo to
-  // re-render without failing its gate on the day it upgrades.
-  if (missing.length) {
+  // A floor that is entirely absent is a WARNING: every repo adopted before
+  // the floor shipped has none of these, and a warning is what tells that repo
+  // to re-render without failing its gate on the day it upgrades.
+  //
+  // A floor that is PARTLY there is a FINDING. The files arrive together, from
+  // one render, so a repo holding some of them was rendered and has since lost
+  // the rest: a deleted `house-lib.sh` fails every commit closed, a deleted
+  // `pre-push.d/10-house-branch` leaves the push path open, and neither is the
+  // "has not upgraded yet" state the warning exists to be kind about.
+  if (missing.length && present.length === 0) {
     warnings.push(mk('guard', '.githooks', null, 'floor',
       `branchPolicy is "pr" but the git-hook floor is not vendored here: ${missing.map((p) => `\`${p}\``).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing from the index. Those hooks are what refuses a commit or a push on a protected branch when no session is watching (ADR 0013), and a repo rendered before the floor shipped has none of them. Run \`house render --apply\` to vendor them, then arm them once per clone: \`git config core.hooksPath "$(pwd)/.githooks"\` (render and every session start arm them too; \`house doctor\` reports whether this clone is armed).`));
+  } else if (missing.length) {
+    findings.push(mk('guard', '.githooks', null, 'floor',
+      `the git-hook floor is vendored here but incomplete: ${missing.map((p) => `\`${p}\``).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing from the index while the rest of the floor is present. One render writes all ${GUARD_FLOOR_FILES.length} files, so this repo had them and lost some. Each one is load-bearing: \`house-lib.sh\` is sourced by all three guards, which exit non-zero when the source fails, so a missing library fails every commit closed; a missing \`.d/10-house-branch\` leaves that path silently open. Restore them with \`house render --apply\` and commit the result.`));
   }
   for (const p of present) {
     const mode = modes.get(p);

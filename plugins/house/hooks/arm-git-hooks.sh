@@ -53,12 +53,48 @@ p4-pre-submit post-index-change"
 # The seven paths the github module vendors under .githooks/. git silently
 # ignores a hook without the execute bit (githooks(5)), so a lost mode bit is a
 # fail-open, not a cosmetic problem.
+#
+# THE FLOOR IS THESE SEVEN FILES, and three places have to say so: this list,
+# `GUARD_FLOOR_FILES` in plugins/house/payload/check.mjs, and the `.githooks/`
+# dests in plugins/house/modules/github/module.json. A list that drifted would
+# let a checker call a floor complete that this script calls unrendered, so
+# `tests/check/guard.test.mjs` reads all three and asserts they are the same
+# set. Add a file to the floor in all three, or in none.
 FLOOR_FILES="pre-commit pre-push reference-transaction house-lib.sh \
 pre-commit.d/10-house-branch pre-push.d/10-house-branch \
 reference-transaction.d/10-house-branch"
 
+# JSON forbids a raw control character inside a string, and this output is
+# parsed by `house doctor` with JSON.parse: a path holding a newline or a tab
+# (git config values and branch names can) used to produce a document doctor
+# silently reported as "unknown" instead of a floor state. Backslash and quote
+# first, then the five short escapes, then anything left in 0x00 to 0x1f as
+# \u00XX. The loop only runs when a control byte survived the substitutions.
 json_escape() {
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+  local s="$1" out rest ch
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  s=${s//$'\b'/\\b}
+  s=${s//$'\f'/\\f}
+  case "$s" in
+    *[[:cntrl:]]*)
+      out=""
+      rest="$s"
+      while [ -n "$rest" ]; do
+        ch="${rest%"${rest#?}"}"
+        rest="${rest#?}"
+        case "$ch" in
+          [[:cntrl:]]) out="$out$(printf '\\u%04x' "'$ch")" ;;
+          *) out="$out$ch" ;;
+        esac
+      done
+      s="$out"
+      ;;
+  esac
+  printf '%s' "$s"
 }
 
 json_array() {
@@ -155,7 +191,7 @@ TOPLEVEL=$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null)
 if [ -z "$TOPLEVEL" ]; then
   # Not a git repository (or a bare one): nothing to arm, nothing to report.
   if [ "$PROBE" = "1" ] && [ "$JSON" = "1" ]; then
-    printf '{"applicable": false, "rendered": false, "linkedWorktree": false, "hooksPath": null, "hooksPathScope": null, "armed": false, "foreignHooks": [], "nonExecutable": [], "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
+    printf '{"applicable": false, "rendered": false, "missing": [], "linkedWorktree": false, "hooksPath": null, "hooksPathScope": null, "armed": false, "foreignHooks": [], "nonExecutable": [], "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
       "$(json_string_or_null "$GIT_VERSION")" "$(json_bool "$REF_TXN_SUPPORTED")"
   fi
   exit 0
@@ -171,8 +207,18 @@ if [ -f "$TOPLEVEL/house.json" ]; then
   [ "$POLICY" = "pr" ] && APPLICABLE=1
 fi
 
+# Rendered means ALL SEVEN are on disk, not just the dispatcher. house-lib.sh
+# is the one that matters most to get right here: every guard sources it and
+# exits non-zero when the source fails, so a floor missing only the library
+# fails every commit closed rather than failing open, and "rendered" has to be
+# false so the report says which file to bring back.
+MISSING=""
+for rel in $FLOOR_FILES; do
+  [ -f "$FLOOR_DIR/$rel" ] || MISSING="$MISSING $rel"
+done
+MISSING="${MISSING# }"
 RENDERED=0
-[ -f "$FLOOR_DIR/pre-commit" ] && RENDERED=1
+[ -z "$MISSING" ] && RENDERED=1
 
 # ── current hooksPath and its scope ──────────────────────────────────────
 #
@@ -223,14 +269,24 @@ MAIN_FLOOR_DIR=""
 # .githooks satisfies just as well as this worktree's: the hooks ask git for
 # the toplevel themselves, so a worktree running the main checkout's copy still
 # reads the worktree's own house.json and branch.
-ARMED=0
-if [ -n "$HOOKS_PATH" ]; then
-  RESOLVED=$(normalize_dir "$HOOKS_PATH" "$TOPLEVEL")
+#
+# One predicate, because the arming write below has to ask the same question a
+# second time: when two SessionStart hooks race, one of them loses .git/config
+# to the other's lock, and a loser that reported "NOT armed" would be lying
+# about a repo the winner had just armed.
+path_is_floor() {
+  local value="$1" resolved cand
+  [ -n "$value" ] || return 1
+  resolved=$(normalize_dir "$value" "$TOPLEVEL")
   for cand in "$FLOOR_DIR" "$MAIN_FLOOR_DIR"; do
     [ -n "$cand" ] || continue
-    [ "$RESOLVED" = "$(normalize_dir "$cand" "$TOPLEVEL")" ] && ARMED=1
+    [ "$resolved" = "$(normalize_dir "$cand" "$TOPLEVEL")" ] && return 0
   done
-fi
+  return 1
+}
+
+ARMED=0
+path_is_floor "$HOOKS_PATH" && ARMED=1
 
 # ── foreign hooks in the repo's own hooks directory ──────────────────────
 
@@ -258,11 +314,13 @@ NON_EXEC="${NON_EXEC# }"
 
 if [ "$PROBE" = "1" ]; then
   if [ "$JSON" = "1" ]; then
-    # FOREIGN and NON_EXEC are space-separated lists; the splitting is the point.
+    # MISSING, FOREIGN and NON_EXEC are space-separated lists; the splitting is
+    # the point.
     # shellcheck disable=SC2086
-    printf '{"applicable": %s, "rendered": %s, "linkedWorktree": %s, "hooksPath": %s, "hooksPathScope": %s, "armed": %s, "foreignHooks": %s, "nonExecutable": %s, "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
+    printf '{"applicable": %s, "rendered": %s, "missing": %s, "linkedWorktree": %s, "hooksPath": %s, "hooksPathScope": %s, "armed": %s, "foreignHooks": %s, "nonExecutable": %s, "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
       "$(json_bool "$APPLICABLE")" \
       "$(json_bool "$RENDERED")" \
+      "$(json_array $MISSING)" \
       "$(json_bool "$LINKED")" \
       "$(json_string_or_null "$HOOKS_PATH")" \
       "$(json_string_or_null "$HOOKS_PATH_SCOPE")" \
@@ -272,7 +330,8 @@ if [ "$PROBE" = "1" ]; then
       "$(json_string_or_null "$GIT_VERSION")" \
       "$(json_bool "$REF_TXN_SUPPORTED")"
   else
-    printf 'applicable=%s rendered=%s armed=%s hooksPath=%s\n' "$APPLICABLE" "$RENDERED" "$ARMED" "${HOOKS_PATH:-<unset>}"
+    printf 'applicable=%s rendered=%s armed=%s hooksPath=%s missing=%s\n' \
+      "$APPLICABLE" "$RENDERED" "$ARMED" "${HOOKS_PATH:-<unset>}" "${MISSING:-none}"
   fi
   exit 0
 fi
@@ -282,7 +341,10 @@ fi
 [ "$APPLICABLE" = "1" ] || exit 0
 
 if [ "$RENDERED" != "1" ]; then
-  printf 'house: git-hook floor not rendered here (run: node %s/scripts/house render --apply)\n' "$PLUGIN_ROOT"
+  # MISSING is a space-separated list; the splitting is the point.
+  # shellcheck disable=SC2086
+  printf 'house: git-hook floor not rendered here (missing:%s; run: node %s/scripts/house render --apply)\n' \
+    "$(printf ' %s' $MISSING)" "$PLUGIN_ROOT"
   exit 0
 fi
 
@@ -333,8 +395,42 @@ if [ -n "$FOREIGN" ]; then
   exit 0
 fi
 
-if git -C "$TOPLEVEL" config core.hooksPath "$FLOOR_DIR" 2>/dev/null; then
+# A losing write is the ordinary case, not the exceptional one. SessionStart
+# fires this script for every window, and `house render --apply` runs it too,
+# so several copies reach for .git/config.lock at the same instant; git does not
+# queue, it just fails the ones that did not get the lock. Ten concurrent runs
+# produced thirty-nine "NOT armed" lines about a repo that was being armed.
+#
+# So a failed write asks two more questions before it says anything. Is the
+# floor armed NOW (the winner finished, and whoever armed it, this run has
+# nothing to report)? And if not, is it worth waiting a moment and trying again
+# (the winner is mid-write, holding the lock it has not renamed yet)? Only a
+# run that still cannot see an armed floor after that reports a failure.
+ARM_RESULT=""
+ARM_TRY=1
+while :; do
+  if git -C "$TOPLEVEL" config core.hooksPath "$FLOOR_DIR" 2>/dev/null; then
+    ARM_RESULT="self"
+    break
+  fi
+  HOOKS_PATH=$(git -C "$TOPLEVEL" config --get core.hooksPath 2>/dev/null)
+  if path_is_floor "$HOOKS_PATH"; then
+    ARM_RESULT="other"
+    break
+  fi
+  [ "$ARM_TRY" -ge 8 ] && break
+  ARM_TRY=$((ARM_TRY + 1))
+  # Fractional sleep is a BSD/GNU extension both platforms have; a shell whose
+  # sleep rejects it simply retries immediately, which is still better than
+  # reporting a floor unarmed because another process was writing it.
+  sleep 0.05 2>/dev/null || true
+done
+
+if [ "$ARM_RESULT" = "self" ]; then
   printf 'house: armed git hooks (core.hooksPath=%s)%s\n' "$FLOOR_DIR" "$FIXED_SUFFIX"
+elif [ "$ARM_RESULT" = "other" ]; then
+  # Armed by a concurrent run: silent, except for a mode bit this one restored.
+  [ -n "$FIXED" ] && printf 'house: restored the execute bit on the git-hook floor:%s\n' "${FIXED_SUFFIX#; restored the execute bit on:}"
 else
   printf 'house: could not set core.hooksPath to %s (git config refused); the git-hook floor is NOT armed%s\n' "$FLOOR_DIR" "$FIXED_SUFFIX"
 fi

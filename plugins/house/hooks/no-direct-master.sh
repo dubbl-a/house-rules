@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash, Edit, Write, MultiEdit) for repos that have adopted
-# house and opted a policy in via <toplevel>/house.json. ADR 0013 carries the
-# reasoning; this header states the contract.
+# house and opted a policy in via house.json. ADR 0013 carries the reasoning;
+# this header states the contract.
 #
 # Since #58 this hook is NOT the branch guard. The guard is the git-hook floor
 # the github module vendors (.githooks/pre-commit, pre-push,
@@ -12,60 +12,101 @@
 # known where git resolves it, not in the command's characters.
 #
 # What is left here is the small, enumerable set the floor cannot see, all of
-# them ways to turn the floor OFF, plus one courtesy refusal:
+# them ways to turn the floor OFF, plus the refusals that stand in for the
+# floor while it is not there:
 #   A. a disable literal: --no-verify and its abbreviations, -n on a commit,
-#      any spelling of core.hooksPath, git config injected through the
-#      environment (GIT_CONFIG_*, --config-env, --exec-path, GIT_EXEC_PATH),
-#      HUSKY=0, LEFTHOOK=0, a mutation of the floor's own files, and the
-#      ref-writing plumbing that moves a protected branch (update-ref,
-#      symbolic-ref, branch -f/-D, push --delete)
-#   B. an Edit/Write/MultiEdit whose file_path is a managed .githooks file
-#      (listed in <toplevel>/.house/lock.json), .git/config, or .git/hooks/*
+#      any spelling of core.hooksPath, include.path / includeIf (a config
+#      include can set hooksPath from outside the repo), git config injected
+#      through the environment (GIT_CONFIG_*, --config-env, --exec-path,
+#      GIT_EXEC_PATH), HUSKY=0, LEFTHOOK=0, a mutation of the floor's own
+#      files, and the ref-writing plumbing that moves a protected branch
+#      (update-ref, symbolic-ref including a refs/remotes spoof, branch -f/-M,
+#      push --delete)
+#   B. an Edit/Write/MultiEdit whose file_path is anywhere under the repo's
+#      .githooks/ or under its git directory
 #   C. a commit on a protected branch, refused here so the agent reads one
-#      sentence instead of a git hook's stderr, and, only while the floor is
-#      NOT armed in this checkout, a push as well
+#      sentence instead of a git hook's stderr; and, only while the floor is
+#      NOT intact and armed in this checkout, the rest of the branch-moving
+#      surface (push, merge, rebase, cherry-pick, revert, am, commit-tree) by
+#      a literal grammar that refuses what it cannot read
+#   D. a commit or push whose `-C`, `--git-dir` or `GIT_DIR=` target is
+#      computed, missing, or a bare repository, refused in BOTH modes: a bare
+#      mirror has no working tree, no house.json and no floor, and a directory
+#      the shell builds cannot be checked at all
+#
+# "Armed" (floor_is_armed) is verified against the plugin's own copy of the
+# floor, never against literals in the command: core.hooksPath must resolve to
+# this checkout's (or, in a linked worktree, the main checkout's) .githooks;
+# each of the seven vendored files there must be executable and byte-identical
+# to the plugin source; and `git status` must report the hooks directory clean,
+# untracked files included. A missing, stale, edited, symlinked or uncommitted
+# floor is not a floor. That is why the disable list below is fast feedback
+# only: the integrity check is the real guard.
+#
+# POLICY IS READ FROM HEAD, not the working tree: one Write to house.json used
+# to turn every layer off. `git show HEAD:house.json` decides, and the
+# working-tree file is consulted only when HEAD carries none (a repo adopting
+# house before its first commit). A working-tree edit is then harmless until it
+# lands on the protected branch through a PR, which is the whole point.
 #
 # Fails OPEN (allow, exit 0), as ADR 0002 requires, whenever: the tool is not
 # one of the four; the payload names no git, hook, HUSKY or LEFTHOOK text at
-# all; the target is not inside a git repo; <toplevel>/house.json is absent
-# (the repo has not adopted house); house.json sets "branchPolicy": "direct";
-# or the target repo has its own substantive .claude/hooks/no-direct-master.sh
-# or a .claude/settings.json PreToolUse entry whose matcher can see Bash (the
-# repo-local guard wins during migration onto house; an entry scoped to other
-# tools, or carrying only other events, is not a branch guard and does not
-# defer this one). Deference is a deliberate choice here, not something the
-# harness requires: every matching PreToolUse hook runs and the most
-# restrictive decision wins. It also fails open silently wherever it never
-# runs at all, which a bare, safe or restricted session and every non-Bash
-# route (Cowork, MCP) do. That gap is why the floor exists.
+# all; the target is not inside a git repo; house.json is absent from HEAD and
+# from the working tree (the repo has not adopted house); it sets
+# "branchPolicy": "direct"; or the target repo has its own substantive
+# .claude/hooks/no-direct-master.sh or a .claude/settings.json PreToolUse entry
+# whose matcher can see Bash (the repo-local guard wins during migration onto
+# house; an entry scoped to other tools, or carrying only other events, is not
+# a branch guard and does not defer this one). Deference is a deliberate choice
+# here, not something the harness requires: every matching PreToolUse hook runs
+# and the most restrictive decision wins. It also fails open silently wherever
+# it never runs at all, which a bare, safe or restricted session and every
+# non-Bash route (Cowork, MCP) do. That gap is why the floor exists.
 #
 # Fails CLOSED (deny) when jq is missing (cannot parse the payload, so cannot
-# tell a safe command from a dangerous one) and on an unexpected internal
-# failure after the policy has been read (the ERR trap below). Those are the
-# only two deny-without-a-specific-rule paths.
+# tell a safe command from a dangerous one), when the policy JSON will not
+# parse, and on an unexpected internal failure after the policy has been read
+# (the ERR trap below).
 #
 # Accepted false denies, all in the safe direction, all pinned in
-# tests/hooks/run.sh: reading core.hooksPath is refused along with writing it
-# (ask `house doctor` instead); any `-n`-bearing short flag in a clause that
-# also holds the word `commit`; a redirection in a clause that also names
-# .githooks; GIT_CONFIG_NOSYSTEM. Deliberately NOT chased, because the floor
-# covers it: a computed verb (`git ${v} -m x`), a computed directory
-# (`cd "$d"`), a `popd`, an alias, a refspec the config supplies, xargs, and a
-# git command inside a file this command runs. Each was a scan here before #58
-# and each cost a seam.
+# tests/hooks/run.sh:
+#   1. reading core.hooksPath is refused along with writing it (ask
+#      `house doctor` instead)
+#   2. reading include.path / includeIf is refused along with writing it
+#   3. any `-n`-bearing short flag in a clause that also holds the word
+#      `commit`
+#   4. a redirection in a clause that also names .githooks
+#   5. GIT_CONFIG_NOSYSTEM (harmless, but it is a GIT_CONFIG_ prefix)
+#   6. while the floor is not armed: every git verb that is not one of git's
+#      own command names, so a personal alias (`git lg`) is refused until the
+#      floor is armed, even when it only reads
+#   7. while the floor is not armed: a push with no refspec from a protected
+#      branch, including `git push --tags` and `--follow-tags`
+#   8. a `git branch -f <protected>` quoted inside the message of a clause
+#      that also holds the word `branch`: the plumbing scan gets a second pass
+#      over text that kept -m, so that `git branch -m master old` (a rename of
+#      a protected branch, whose argument the -m strip otherwise eats) is seen
+# Deliberately NOT chased, because the floor covers it: a computed working
+# directory (`cd "$d"`), a `popd`, a refspec the config supplies, xargs, and a
+# git command inside a file this command runs. While the floor IS armed, a
+# computed verb and an alias are not chased either. (A computed directory
+# after `git -C` is different: on a commit or a push it is refused outright,
+# see D.) Each was a scan here before #58 and each cost a seam.
 #
 # Worktree-aware: the payload cwd plus every LITERAL path after `git -C`, `cd`
 # or `pushd` is a candidate target, and the command is decided once per
 # candidate against THAT repo's toplevel, house.json and branch, over the
 # clauses whose git command runs there. Any candidate that refuses, refuses
-# the call. Quote-aware: a message-bearing flag's value goes, then the quote
-# characters, so `git commit -m "fix master bug"` on a feature branch cannot
-# false-positive on the word "master" (the strip's direction is load-bearing,
-# see _strip_flag_args). Carve-out aware: on a protected branch a commit or
-# push is allowed anyway when EVERY path in the relevant diff matches one of
-# house.json's `carveOuts` globs under shell `case` semantics (`*` crosses
-# `/`); an empty diff never satisfies one, since "nothing staged" is not
-# evidence the change is carve-out-only.
+# the call. A linked worktree reads core.hooksPath from the main checkout's
+# config, so the arming advice names the main checkout. Quote-aware: a
+# message-bearing flag's value goes, then the quote characters, so
+# `git commit -m "fix master bug"` on a feature branch cannot false-positive on
+# the word "master" (the strip's direction is load-bearing, see
+# _strip_flag_args). Carve-out aware: on a protected branch a commit is allowed
+# anyway when EVERY path in the staged diff matches one of house.json's
+# `carveOuts` globs under shell `case` semantics (`*` crosses `/`); an empty
+# diff never satisfies one, since "nothing staged" is not evidence the change
+# is carve-out-only.
 #
 # Reads the standard Claude Code PreToolUse JSON payload on stdin and emits a
 # `permissionDecision: deny` object (exit 0) to refuse the tool call, or
@@ -113,12 +154,69 @@ EOF
   exit 0
 fi
 
-tool_name=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null || echo "")
-payload_cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null || echo "")
-cmd=''; file_path=''
+# The plugin's own copy of the floor: what an armed checkout's .githooks must
+# be byte-identical to. Sits beside this hook inside the plugin, so a stale
+# render (a floor from an older plugin version) reads as not armed.
+SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || echo '')
+FLOOR_SRC="$SELF_DIR/../modules/github/files/githooks"
+# The seven vendored floor paths, relative to the hooks directory. Kept in
+# step with the github module's files[] entries and with the checker's
+# GUARD_FLOOR_FILES; a change to one is a change to all three.
+FLOOR_RELPATHS="pre-commit pre-push reference-transaction house-lib.sh"
+FLOOR_RELPATHS="$FLOOR_RELPATHS pre-commit.d/10-house-branch"
+FLOOR_RELPATHS="$FLOOR_RELPATHS pre-push.d/10-house-branch"
+FLOOR_RELPATHS="$FLOOR_RELPATHS reference-transaction.d/10-house-branch"
+
+# git's own command names, from `git --list-cmds=builtins,main,others` on git
+# 2.23 and 2.54 unioned. While the floor is not armed, a verb that is not on
+# this list is not readable (an alias, a typo, a computed word) and is refused
+# rather than guessed at. Aliases are never resolved: that was a seam.
+GIT_VERBS=" add add--interactive am annotate apply archimport archive backfill
+ bisect bisect--helper blame branch bugreport bundle cat-file check-attr
+ check-ignore check-mailmap check-ref-format checkout checkout--worker
+ checkout-index cherry cherry-pick citool clean clone column commit
+ commit-graph commit-tree config count-objects credential credential-cache
+ credential-cache--daemon credential-osxkeychain credential-store
+ credential-wincred cvsexportcommit cvsimport cvsserver daemon describe
+ diagnose diff diff-files diff-index diff-pairs diff-tree difftool
+ difftool--helper env--helper fast-export fast-import fetch fetch-pack
+ filter-branch filter-repo fmt-merge-msg for-each-ref for-each-repo
+ format-patch fsck fsck-objects fsmonitor--daemon gc get-tar-commit-id grep
+ gui gui--askpass gui--askyesno hash-object help history hook http-backend
+ http-fetch http-push imap-send index-pack init init-db instaweb
+ interpret-trailers last-modified legacy-stash log ls-files ls-remote ls-tree
+ mailinfo mailsplit maintenance merge merge-base merge-file merge-index
+ merge-octopus merge-one-file merge-ours merge-recursive
+ merge-recursive-ours merge-recursive-theirs merge-resolve merge-subtree
+ merge-tree mergetool mktag mktree multi-pack-index mv name-rev notes p4
+ pack-objects pack-redundant pack-refs patch-id pickaxe prune prune-packed
+ pull push quiltimport range-diff read-tree rebase rebase--interactive
+ receive-pack reflog refs remote remote-ext remote-fd remote-ftp remote-ftps
+ remote-http remote-https remote-testsvn repack replace replay repo
+ request-pull rerere reset restore rev-list rev-parse revert rm send-email
+ send-pack sh-i18n--envsubst shell shortlog show show-branch show-index
+ show-ref sparse-checkout stage stash status stripspace submodule
+ submodule--helper subtree svn switch symbolic-ref tag unpack-file
+ unpack-objects update-index update-ref update-server-info upload-archive
+ upload-archive--writer upload-pack var verify-commit verify-pack verify-tag
+ version web--browse whatchanged worktree write-tree "
+GIT_VERBS="${GIT_VERBS//$'\n'/ }"
+
+# One jq pass for the payload: this hook runs on every Bash call, so each
+# process it spawns is latency the session pays. Every field is emitted with a
+# one-character prefix so an empty value still occupies a line, and the
+# command goes LAST because it is the only field that can hold newlines.
+payload_fields=$(jq -r '"t" + (.tool_name // ""), "w" + (.cwd // ""),
+  "f" + (.tool_input.file_path // ""), "c" + (.tool_input.command // "")' \
+  <<<"$payload" 2>/dev/null || echo "")
+tool_name="${payload_fields%%$'\n'*}"; _rest="${payload_fields#*$'\n'}"
+payload_cwd="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
+file_path="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
+tool_name="${tool_name#t}"; payload_cwd="${payload_cwd#w}"
+file_path="${file_path#f}"; cmd="${cmd#c}"
 case "$tool_name" in
-  Bash) MODE='bash'; cmd=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null || echo "") ;;
-  Edit|Write|MultiEdit) MODE='file'; file_path=$(jq -r '.tool_input.file_path // ""' <<<"$payload" 2>/dev/null || echo "") ;;
+  Bash) MODE='bash'; file_path='' ;;
+  Edit|Write|MultiEdit) MODE='file'; cmd='' ;;
   *) exit 0 ;;
 esac
 
@@ -223,11 +321,16 @@ if [[ "$MODE" == bash ]]; then
   # the disable list has to see. The cost is a `-c` value carrying spaces,
   # whose tail is read as the verb; the floor catches that commit.
   cmd_safe=$(_strip_flag_args '-m|--message|-F|--file' "$cmd" | _unquote)
+  # `git branch -m <protected>` is a rename of a protected branch, and the -m
+  # strip above eats its argument before the plumbing scan can see it. So the
+  # plumbing scan gets a second pass over text that kept -m, restricted to
+  # `branch` clauses (see run_scans).
+  cmd_plumb=$(_strip_flag_args '--message|-F|--file' "$cmd" | _unquote)
   # Target resolution reads the blind strip, `-c` included, so neither prose
   # nor a config value can steer which checkout is decided.
   cmd_for_target=$(_strip_flag_args_blind '-m|--message|-F|--file|-c' "$cmd" | _unquote)
 else
-  cmd_safe=''; cmd_for_target=''
+  cmd_safe=''; cmd_plumb=''; cmd_for_target=''
 fi
 
 # ── Shared predicates (the checker mirrors these definitions) ────────────
@@ -290,13 +393,14 @@ local_hook_is_substantive() {
 # ── Reading one clause ───────────────────────────────────────────────────
 # git_split CLAUSE sets GV_VERB (the first token after `git` that is not a
 # global option, the value-taking ones skipped) and GV_ARGS (the tokens after
-# it, one per line). Returns 1 when the clause runs no git command, or when
-# the verb is not a literal word: a computed verb is NOT chased any more,
-# because the floor reads the ref the shell finally produces.
-GV_VERB=''; GV_ARGS=''
+# it, one per line). Returns 1 when the clause runs no git command (GV_BAD=0)
+# or when it runs one whose verb is not a literal word (GV_BAD=1): while the
+# floor is armed a computed verb is simply not chased, because the floor reads
+# the ref the shell finally produces; while it is not, GV_BAD is refused.
+GV_VERB=''; GV_ARGS=''; GV_BAD=0
 git_split() {
   local toks=() i=0 n tok
-  GV_VERB=''; GV_ARGS=''
+  GV_VERB=''; GV_ARGS=''; GV_BAD=0
   IFS=$' \t\n' read -r -a toks <<<"$1"
   n="${#toks[@]}"
   while [[ "$i" -lt "$n" ]]; do
@@ -308,7 +412,7 @@ git_split() {
         -c|-C|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) i=$((i + 1)) ;;
         -*) ;;
         git|*/git) ;;   # a git where the verb should be starts a new command
-        *'$'*|*'{'*) return 1 ;;
+        *'$'*|*'{'*) GV_BAD=1; return 1 ;;
         *)
           GV_VERB="$tok"
           while [[ "$i" -lt "$n" ]]; do GV_ARGS+="${toks[$i]}"$'\n'; i=$((i + 1)); done
@@ -323,14 +427,21 @@ git_split() {
 # second). git_next reloads GV_* from what follows the verb just read.
 git_next() { git_split "${GV_ARGS//$'\n'/ }"; }
 
+# True when $1 is one of git's own command names (GIT_VERBS above).
+verb_is_known() {
+  case "$GIT_VERBS" in *" $1 "*) return 0 ;; esac
+  return 1
+}
+
 # ── Target candidates ────────────────────────────────────────────────────
 # The payload cwd is always a candidate; every LITERAL path after `cd`,
 # `pushd` or `git -C` is another. A path the shell computes is simply not a
 # candidate: guessing at it was the #34 seam, and the floor covers the
-# checkout the command really lands in. Each candidate carries the clauses
-# whose git command runs there, so the release flow (commit in a worktree,
-# come back to the shared checkout, git status) is not refused for a verb that
-# belongs to another directory.
+# checkout the command really lands in (a commit or push at a computed or bare
+# target is refused outright by dir_target_scan). Each candidate carries the
+# clauses whose git command runs there, so the release flow (commit in a
+# worktree, come back to the shared checkout, git status) is not refused for a
+# verb that belongs to another directory.
 US=$'\x1f'
 CANDIDATES=''
 path_is_literal() {
@@ -393,7 +504,9 @@ floor_deny() {
   deny "Refusing '$1': it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Commit on a feature branch and open a PR."
 }
 # Read clause by clause over the WHOLE command. Every entry is a literal: no
-# shape-guessing, nothing an abbreviation or a rename quietly widens.
+# shape-guessing, nothing an abbreviation or a rename quietly widens. This list
+# is fast feedback, not the guard: floor_is_armed re-reads the floor's own
+# bytes on every call, so a disable this list misses shows up there.
 disable_scan() {
   local clause="$1" toks=() i n tok commit_seen=0 sed_seen=0 floorish=0
   case "$clause" in *.githooks*|*.git/config*|*.git/hooks*) floorish=1 ;; esac
@@ -411,6 +524,11 @@ disable_scan() {
       # Any spelling of core.hooksPath, case-insensitively, wherever it sits:
       # `-c core.hooksPath=`, `git config core.hooksPath`, `--unset`.
       *[hH][oO][oO][kK][sS][pP][aA][tT][hH]*) floor_deny "$tok" ;;
+      # A config include can set core.hooksPath from a file outside the repo,
+      # and `git config --get core.hooksPath` resolves it, so the floor reads
+      # as disarmed while nothing in .git/config says so.
+      *[iI][nN][cC][lL][uU][dD][eE].[pP][aA][tT][hH]*) floor_deny "$tok" ;;
+      *[iI][nN][cC][lL][uU][dD][eE][iI][fF]*) floor_deny "$tok" ;;
     esac
     if [[ "$tok" == commit ]]; then commit_seen=1; fi
     # `-n` is --no-verify's short form on a commit. Any short-flag cluster
@@ -432,15 +550,20 @@ disable_scan() {
 }
 # The ref-writing plumbing that moves a protected branch with no commit and no
 # push. reference-transaction catches these on git 2.28+; nothing does below
-# that, so they are refused here on every git.
+# that, so they are refused here on every git. Mode `all` reads every verb in
+# the list; mode `branch` reads only `git branch`, over text whose -m value
+# survived (`git branch -m master old`).
+# A delete is deliberately NOT here: `git branch -D master` throws away a local
+# ref the remote still has, and the floor allows it.
 plumbing_scan() {
-  local clause="$1" tok t need_flag flagged
+  local clause="$1" mode="$2" tok t need_flag flagged
   git_split "$clause" || return 0
   while :; do
     need_flag=-1
     case "$GV_VERB" in
-      update-ref|symbolic-ref) need_flag=0 ;;
-      branch|push) need_flag=1 ;;
+      update-ref|symbolic-ref) if [[ "$mode" == all ]]; then need_flag=0; fi ;;
+      push) if [[ "$mode" == all ]]; then need_flag=1; fi ;;
+      branch) need_flag=1 ;;
     esac
     if [[ "$need_flag" -ge 0 ]]; then
       flagged=0
@@ -448,14 +571,21 @@ plumbing_scan() {
         case "$tok" in
           # A force-push is the floor's to refuse, and pre-push does; only the
           # delete is read here, because a deleted branch never reaches its
-          # diff. On `git branch`, every mover counts.
-          -d|--delete) flagged=1; continue ;;
-          -f|-M|-m|-D|--force|--move)
+          # diff. On `git branch`, the movers (-f, -M, -m) count.
+          -d|--delete) if [[ "$GV_VERB" == push ]]; then flagged=1; fi; continue ;;
+          -f|-M|-m|--force|--move)
             if [[ "$GV_VERB" == branch ]]; then flagged=1; fi
             continue ;;
           -*) continue ;;
         esac
-        t="${tok#refs/heads/}"; t="${t#heads/}"
+        # A remote-tracking ref is a target too: writing refs/remotes/<r>/main
+        # is how the reference-transaction guard's "the remote already has
+        # this commit" test was fooled.
+        t="$tok"
+        case "$t" in
+          refs/remotes/*) t="${t#refs/remotes/}"; t="${t#*/}" ;;
+          *) t="${t#refs/heads/}"; t="${t#heads/}" ;;
+        esac
         if [[ "$need_flag" -eq 0 || "$flagged" -eq 1 ]] && is_protected_branch "$t"; then
           floor_deny "git $GV_VERB on '$t'"
         fi
@@ -466,11 +596,77 @@ plumbing_scan() {
   return 0
 }
 
-# ── B. Is the floor armed for THIS candidate? ────────────────────────────
-# core.hooksPath from any scope (a global one governs too) has to resolve to
-# <toplevel>/.githooks, and the pre-push guard has to be executable there.
+# A commit or push whose `-C`, `--git-dir` or `GIT_DIR=` target this hook
+# cannot read is refused in BOTH modes: a computed directory cannot be checked
+# at all, and a bare repository has no working tree, no house.json and no
+# git-hook floor, so nothing downstream would catch it either.
+dir_is_bare() {
+  local out
+  if [[ "$1" == C ]]; then
+    out=$(trap - ERR; git -C "$2" rev-parse --is-bare-repository 2>/dev/null || true)
+  else
+    out=$(trap - ERR; git --git-dir="$2" rev-parse --is-bare-repository 2>/dev/null || true)
+  fi
+  [[ "$out" == true ]]
+}
+dir_target_scan() {
+  local clause="$1" toks=() i n tok verb ent k d targets=''
+  IFS=$' \t\n' read -r -a toks <<<"$clause"
+  n="${#toks[@]}"; i=0
+  while [[ "$i" -lt "$n" ]]; do
+    tok="${toks[$i]}"; i=$((i + 1))
+    case "$tok" in
+      GIT_DIR=*) targets+="gitdir${US}${tok#GIT_DIR=}"$'\n'; continue ;;
+      git|*/git) ;;
+      *) continue ;;
+    esac
+    verb=''
+    while [[ "$i" -lt "$n" ]]; do
+      tok="${toks[$i]}"; i=$((i + 1))
+      case "$tok" in
+        -C) if [[ "$i" -lt "$n" ]]; then targets+="C${US}${toks[$i]}"$'\n'; i=$((i + 1)); fi ;;
+        --git-dir) if [[ "$i" -lt "$n" ]]; then targets+="gitdir${US}${toks[$i]}"$'\n'; i=$((i + 1)); fi ;;
+        --git-dir=*) targets+="gitdir${US}${tok#--git-dir=}"$'\n' ;;
+        -c|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) i=$((i + 1)) ;;
+        -*) ;;
+        *) verb="$tok"; break ;;
+      esac
+    done
+    case "$verb" in
+      commit|push) ;;
+      *) targets=''; continue ;;
+    esac
+    while IFS= read -r ent; do
+      [[ -n "$ent" ]] || continue
+      k="${ent%%"$US"*}"; d="${ent#*"$US"}"
+      if ! path_is_literal "$d"; then
+        deny "Refusing 'git $verb' with a computed git target ('$d'): this hook cannot tell which checkout it lands in, and a directory the shell builds has no floor it can verify. Use a literal path, or run the command from that checkout."
+      fi
+      case "$d" in '~'*) d="$HOME${d#\~}" ;; esac
+      case "$d" in /*) ;; *) d="${payload_cwd:-.}/$d" ;; esac
+      if [[ ! -d "$d" ]]; then
+        deny "Refusing 'git $verb' at '$d': that directory does not exist, so this hook cannot check the branch policy or the git-hook floor there."
+      fi
+      if dir_is_bare "$k" "$d"; then
+        deny "Refusing 'git $verb' at '$d': it is a bare repository, which has no working tree, no house.json and no git-hook floor, so nothing there enforces the branch policy. Push from a checkout, or fix it on the remote with a ruleset."
+      fi
+    done <<<"$targets"
+    targets=''
+  done
+  return 0
+}
+
+# ── B. Is the floor intact and armed for THIS candidate? ─────────────────
+# Not "does the command mention hooksPath" but "is the floor there": the seven
+# vendored files, byte-identical to the plugin's own copy, executable, clean in
+# git's eyes, under a core.hooksPath this repo (or its main checkout) owns.
+# core.hooksPath is read with `git config --get`, which resolves include.path
+# and includeIf, so an include that points it at /dev/null reads as unarmed.
+# Sets FLOOR_REASON to the first thing that failed, which picks the remedy.
+FLOOR_REASON=''
 floor_is_armed() {
-  local hp resolved
+  local hp resolved owner rel st
+  FLOOR_REASON='hookspath'
   hp=$(trap - ERR; git "${git_dir_arg[@]}" config --get core.hooksPath 2>/dev/null || true)
   [[ -n "$hp" ]] || return 1
   case "$hp" in
@@ -479,11 +675,48 @@ floor_is_armed() {
     *) resolved="$toplevel/$hp" ;;
   esac
   resolved="${resolved%/}"
-  if [[ "$resolved" != "$toplevel/.githooks" ]] && ! [[ "$resolved" -ef "$toplevel/.githooks" ]]; then
-    return 1
+  # Compared with -ef where both sides exist, because git reports the toplevel
+  # with its symlinks resolved (/private/var on macOS) while the config may
+  # hold the path as it was typed (/var).
+  owner=''
+  if [[ "$resolved" == "$toplevel/.githooks" ]]; then owner="$toplevel"
+  elif [[ "$resolved" == "$MAIN_ROOT/.githooks" ]]; then owner="$MAIN_ROOT"
+  elif [[ -d "$resolved" && -d "$toplevel/.githooks" && "$resolved" -ef "$toplevel/.githooks" ]]; then owner="$toplevel"
+  elif [[ -d "$resolved" && -d "$MAIN_ROOT/.githooks" && "$resolved" -ef "$MAIN_ROOT/.githooks" ]]; then owner="$MAIN_ROOT"
+  else return 1
   fi
-  [[ -x "$toplevel/.githooks/pre-push" ]] || return 1
+  FLOOR_REASON='files'
+  [[ -d "$FLOOR_SRC" ]] || return 1
+  # Seven execs, measured at about 20 ms all together on bash 3.2, and the
+  # cheapest exact answer available: bash's own `read -r -d ''` reads a byte at
+  # a time and came out at 38 ms, `$(<file)` at 20 ms with the trailing
+  # newlines dropped. If cmp is not on PATH at all, every comparison fails and
+  # the floor reads as not armed, which is the safe direction.
+  for rel in $FLOOR_RELPATHS; do
+    [[ -x "$resolved/$rel" ]] || return 1
+    cmp -s "$resolved/$rel" "$FLOOR_SRC/$rel" || return 1
+  done
+  # An untracked .d/00-mine or a modified 20-secrets means the hooks directory
+  # in this checkout is not the one a PR reviewed. A session that wants to
+  # change a hook does it through a PR from a checkout it does not commit from.
+  st=$(trap - ERR; git -C "$owner" status --porcelain --untracked-files=all -- .githooks 2>/dev/null || true)
+  [[ -z "$st" ]] || return 1
+  FLOOR_REASON=''
   return 0
+}
+# The remedy sentence every not-armed refusal ends with, chosen by the reason.
+set_arm_suffix() {
+  local extra=''
+  case "$FLOOR_REASON" in
+    hookspath)
+      if [[ "$MAIN_ROOT" != "$toplevel" ]]; then
+        extra=" (this is a linked worktree; core.hooksPath lives in the main checkout, so run it there)"
+      fi
+      arm_suffix=" The git-hook floor is not armed in this checkout; arm it: git config core.hooksPath \"$MAIN_ROOT/.githooks\"$extra (house render --apply also does this)." ;;
+    files)
+      arm_suffix=" The git-hook floor is armed but not intact here: one of its vendored files is missing, not executable, edited, or uncommitted, so git is not enforcing the policy. Restore it with house render --apply, and house doctor reports what is wrong with it." ;;
+    *) arm_suffix='' ;;
+  esac
 }
 
 # ── C. The branch refusals, over this candidate's own clauses ────────────
@@ -497,29 +730,66 @@ commit_decision() {
   if carve_out_satisfied "$staged"; then return 0; fi
   deny "Refusing to commit on '$branch': this branch needs a PR. house.json at $toplevel requires a feature branch and a PR for this repo. Work in a worktree: git worktree add -b kind/short-name ../${toplevel##*/}-kind-short-name, in a separate call, then commit there and open a PR.${carve_out_reason_suffix}${arm_suffix}"
 }
-# Only while the floor is NOT armed here: armed, pre-push reads the refs git
-# is about to move, and this scan could only add false denies (a tag push, a
-# refspec the config supplies).
+# Everything below runs ONLY while the floor is not intact and armed here.
+# Armed, git itself reads the refs it is about to move and these scans could
+# only add false denies (a tag push, a refspec the config supplies, an alias).
+
+# A verb this hook cannot read. Refused rather than guessed at, because with
+# no floor there is nothing behind it.
+unreadable_deny() {
+  local what="a computed git verb"
+  if [[ -n "${1:-}" ]]; then what="the git verb '$1', which is not one of git's own commands (an alias, or a typo)"; fi
+  deny "Refusing $what: this hook cannot tell what it does to a protected branch, and the git-hook floor that would decide is not enforcing the policy in this checkout. Aliases are never resolved here by design.${arm_suffix}"
+}
+# The verbs that write history onto the current branch without the word
+# `commit`. Carve-outs do not apply: a merge or a rebase has no staged diff to
+# measure them against.
+history_decision() {
+  is_protected_branch "$branch" || return 0
+  deny "Refusing 'git $GV_VERB' on '$branch': it writes onto a protected branch. house.json at $toplevel requires a feature branch and a PR for this repo.${arm_suffix}"
+}
+# A push is read by a literal grammar: every refspec token must be a literal
+# that does not name a protected branch, and a push with no refspec at all from
+# a protected branch is refused because push.default and remote.*.push decide
+# what moves. A tag push, and a feature-branch push from a protected checkout,
+# are therefore allowed: the release flow needs the first and the sync agents
+# need the second.
 push_decision() {
-  local tok part unpushed
+  local tok part refspecs='' nrefs=0 remote_seen=0 skip_next=0
   while IFS= read -r tok; do
     [[ -n "$tok" ]] || continue
+    if [[ "$skip_next" -eq 1 ]]; then skip_next=0; continue; fi
     case "$tok" in
       --all|--mirror|--branches|--prune)
         deny "Refusing: '$tok' can move a protected branch without naming it (house.json at $toplevel). Push one feature branch by name and open a PR.${arm_suffix}" ;;
+      # Only the flags whose value is a SEPARATE token are skipped. git's
+      # other value-taking push options (--receive-pack=, --exec=, --repo=)
+      # are `=`-joined, and treating them as separate would swallow the token
+      # after them, which could be the protected branch itself.
+      -o|--push-option) skip_next=1; continue ;;
+      -*) continue ;;
     esac
+    if [[ "$remote_seen" -eq 0 ]]; then remote_seen=1; continue; fi
+    refspecs+="$tok"$'\n'; nrefs=$((nrefs + 1))
+  done <<<"$GV_ARGS"
+  while IFS= read -r tok; do
+    [[ -n "$tok" ]] || continue
+    case "$tok" in
+      *'$'*|*'*'*|*'?'*|*'['*|*'{'*)
+        deny "Refusing: '$tok' is not a literal refspec, so this hook cannot tell which branch the push moves (house.json at $toplevel). Name the branch, or arm the floor and let git decide.${arm_suffix}" ;;
+    esac
+    # shellcheck disable=SC2086 # deliberate split of a colon-joined refspec
     for part in ${tok//:/ }; do
       part="${part#+}"; part="${part#refs/heads/}"; part="${part#heads/}"
       if is_protected_branch "$part"; then
         deny "Refusing: this push targets protected branch '$part' directly (house.json at $toplevel). Push a feature branch and open a PR.${arm_suffix}"
       fi
     done
-  done <<<"$GV_ARGS"
-  is_protected_branch "$branch" || return 0
-  unpushed=$(trap - ERR; git "${git_dir_arg[@]}" diff '@{push}..' --name-only 2>/dev/null \
-             || git "${git_dir_arg[@]}" diff "origin/${branch}.." --name-only 2>/dev/null || true)
-  if carve_out_satisfied "$unpushed"; then return 0; fi
-  deny "Refusing to push from '$branch'. house.json at $toplevel requires a feature branch and a PR for this repo. Push a feature branch and open a PR.${carve_out_reason_suffix}${arm_suffix}"
+  done <<<"$refspecs"
+  if [[ "$nrefs" -eq 0 ]] && is_protected_branch "$branch"; then
+    deny "Refusing a push with no refspec from protected branch '$branch': push.default and remote.*.push decide what moves, and this hook cannot read them (house.json at $toplevel). Name the branch or tag you mean.${arm_suffix}"
+  fi
+  return 0
 }
 
 BRANCH_CREATED_AT=''
@@ -530,13 +800,18 @@ run_scans() {
   split_clauses "$cmd_safe"
   while IFS= read -r clause; do
     disable_scan "$clause"
-    plumbing_scan "$clause"
+    plumbing_scan "$clause" all
+    dir_target_scan "$clause"
   done <<<"$CLAUSES"
+  # The second plumbing pass: `git branch -m <protected>` only.
+  split_clauses "$cmd_plumb"
+  while IFS= read -r clause; do
+    case "$clause" in *branch*) plumbing_scan "$clause" branch ;; esac
+  done <<<"$CLAUSES"
+
   if floor_is_armed; then armed=1; fi
-  arm_suffix=''
-  if [[ "$armed" -eq 0 ]]; then
-    arm_suffix=" The git-hook floor is not armed in this checkout; arm it: git config core.hooksPath \"$toplevel/.githooks\" (house render --apply also does this)."
-  fi
+  set_arm_suffix
+
   # B and C, over this candidate's clauses only. First pass: the clause that
   # creates a branch, if any.
   BRANCH_CREATED_AT=''
@@ -555,50 +830,59 @@ run_scans() {
   CLAUSE_IDX=0
   while IFS= read -r clause; do
     CLAUSE_IDX=$((CLAUSE_IDX + 1))
-    git_split "$clause" || continue
+    if ! git_split "$clause"; then
+      if [[ "$armed" -eq 0 && "$GV_BAD" -eq 1 ]]; then unreadable_deny ''; fi
+      continue
+    fi
     while :; do
+      if [[ "$armed" -eq 0 ]] && ! verb_is_known "$GV_VERB"; then unreadable_deny "$GV_VERB"; fi
       case "$GV_VERB" in
         commit) commit_decision ;;
         push) if [[ "$armed" -eq 0 ]]; then push_decision; fi ;;
+        merge|cherry-pick|revert|rebase|am|commit-tree)
+          if [[ "$armed" -eq 0 ]]; then history_decision; fi ;;
       esac
-      git_next || break
+      if ! git_next; then
+        if [[ "$armed" -eq 0 && "$GV_BAD" -eq 1 ]]; then unreadable_deny ''; fi
+        break
+      fi
     done
   done <<<"$CLAUSES"
   return 0
 }
 
 # ── B for Edit/Write/MultiEdit ───────────────────────────────────────────
-# A managed .githooks path is one the lock records; an unmanaged one (the
-# repo's own .githooks/pre-commit.d/20-secrets scaffold) is the repo's to edit.
-# The repo root is compared with -ef, not as a string prefix: git reports the
-# toplevel with its symlinks resolved (/private/var on macOS) while the tool
-# payload carries the path as the session spelled it (/var), and a prefix
-# match missed every file.
+# EVERY path under the repo's .githooks/ is refused, not only the lock-listed
+# ones: the scaffold the repo owns (.githooks/pre-commit.d/20-secrets) runs
+# inside the same dispatcher and an unmanaged .d file added here is exactly
+# what floor_is_armed reads as "not intact". Same for anything under the git
+# directory. The repo root is compared with -ef, not as a string prefix: git
+# reports the toplevel with its symlinks resolved (/private/var on macOS) while
+# the tool payload carries the path as the session spelled it (/var).
 run_file_scan() {
-  local fp="$file_path" root rel managed p
+  local fp="$file_path" root rel
   case "$fp" in /*) ;; *) fp="${payload_cwd:-.}/$fp" ;; esac
   case "$fp" in
-    */.git/config|*/.git/hooks/*)
-      root="${fp%%/.git/*}"; rel=".git/${fp#*/.git/}"
-      if [[ -d "$root" && "$root" -ef "$toplevel" ]]; then
-        deny "Refusing to write '$rel': it is where the git-hook floor that enforces this repo's branch policy is wired (house.json at $toplevel). Change the floor upstream in the house plugin and re-render; house doctor reports what is wrong with it."
+    */.git/*|*/.git)
+      root="${fp%%/.git*}"
+      if { [[ -d "$root" ]] && [[ "$root" -ef "$toplevel" ]]; } \
+         || { [[ -n "$COMMON_DIR" ]] && [[ "$fp" == "$COMMON_DIR"/* ]]; }; then
+        deny "Refusing to write '$fp': it is inside the git directory, where the git-hook floor that enforces this repo's branch policy is wired (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones and house doctor reports what is wrong."
       fi
       return 0 ;;
-    */.githooks/*)
-      root="${fp%%/.githooks/*}"; rel=".githooks/${fp#*/.githooks/}" ;;
+    */.githooks/*|*/.githooks)
+      root="${fp%%/.githooks*}"; rel=".githooks${fp#*/.githooks}" ;;
     *) return 0 ;;
   esac
-  [[ -d "$root" && "$root" -ef "$toplevel" ]] || return 0
-  managed=$(trap - ERR; jq -r '(.files[]? | .path // empty)' "$toplevel/.house/lock.json" 2>/dev/null || true)
-  while IFS= read -r p; do
-    if [[ -n "$p" && "$p" == "$rel" ]]; then
-      deny "Refusing to write '$rel': it is a managed file of the git-hook floor that enforces this repo's branch policy (recorded in .house/lock.json, house.json at $toplevel). Change it upstream in the house plugin and run house render --apply."
-    fi
-  done <<<"$managed"
+  if [[ -d "$root" ]] \
+     && { [[ "$root" -ef "$toplevel" ]] || { [[ -d "$MAIN_ROOT" ]] && [[ "$root" -ef "$MAIN_ROOT" ]]; }; }; then
+    deny "Refusing to write '$rel': it is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel), and an edited or added hook file makes the floor untrusted for every command after it. Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
+  fi
   return 0
 }
 
 # ── Deciding one candidate ───────────────────────────────────────────────
+MAIN_ROOT=''; COMMON_DIR=''
 decide_for_target() {
   local dir="${1/#\~/$HOME}"
   CAND_TEXT="${2:-}"
@@ -606,6 +890,13 @@ decide_for_target() {
   # the trap armed by an earlier candidate must not turn it into a crash-deny.
   trap - ERR
 
+  # One rev-parse for the toplevel, the shared git directory and the branch.
+  # `--git-common-dir` and `--abbrev-ref HEAD` always print a line (an unborn
+  # HEAD prints "HEAD" and exits non-zero, which is fine); `--show-toplevel`
+  # prints NOTHING when git is run from inside a .git directory. So a
+  # three-line answer carries a toplevel and a two-line answer does not, which
+  # is exactly the "not a repo for our purposes" case the fallback wants.
+  local probe='' rest
   git_dir_arg=(-C "${payload_cwd:-.}")
   if [[ -n "$dir" ]]; then
     # Successive -C compose and an absolute second path still wins, so a
@@ -614,31 +905,78 @@ decide_for_target() {
     # repo falls back to that directory: before the fallback, prose naming a
     # path that does not exist pointed the check at nothing and a real commit
     # on a protected branch was allowed (#1).
-    # An EMPTY toplevel counts as "not a repo" too: run inside a .git
-    # directory, rev-parse --show-toplevel exits 0 and prints nothing, and a
-    # Write to .git/config resolved to no repo at all.
     git_dir_arg+=(-C "$dir")
-    toplevel=$(git "${git_dir_arg[@]}" rev-parse --show-toplevel 2>/dev/null || true)
-    [[ -n "$toplevel" ]] || git_dir_arg=(-C "${payload_cwd:-.}")
+    probe=$(trap - ERR; git "${git_dir_arg[@]}" rev-parse --show-toplevel --git-common-dir --abbrev-ref HEAD 2>/dev/null || true)
+    case "$probe" in
+      *$'\n'*$'\n'*) ;;
+      *) probe=''; git_dir_arg=(-C "${payload_cwd:-.}") ;;
+    esac
   fi
-
+  if [[ -z "$probe" ]]; then
+    probe=$(trap - ERR; git "${git_dir_arg[@]}" rev-parse --show-toplevel --git-common-dir --abbrev-ref HEAD 2>/dev/null || true)
+  fi
   # Deliberate fail-open, not an error: a non-repo dir is not our business.
-  toplevel=$(git "${git_dir_arg[@]}" rev-parse --show-toplevel 2>/dev/null) || return 0
-  [[ -z "$toplevel" ]] && return 0
-  branch=$(git "${git_dir_arg[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  case "$probe" in
+    *$'\n'*$'\n'*)
+      toplevel="${probe%%$'\n'*}"; rest="${probe#*$'\n'}"
+      COMMON_DIR="${rest%%$'\n'*}"; branch="${rest#*$'\n'}" ;;
+    *) return 0 ;;
+  esac
+  [[ -n "$toplevel" ]] || return 0
 
-  # POLICY: <toplevel>/house.json. Absent means the repo has not adopted
-  # house; that is fail-open, not an error (ADR 0002).
-  house_json="$toplevel/house.json"
-  [[ -f "$house_json" ]] || return 0
-  # An adopted repo whose manifest cannot be parsed gets a refusal, not a
-  # silently disarmed guard: existence signals adoption, so unreadable policy
-  # is treated like a crash.
-  if ! jq empty "$house_json" >/dev/null 2>&1; then
-    deny "house.json exists but is not valid JSON, so the branch policy cannot be read. Refusing rather than guessing. Fix house.json (node .house/check.mjs names the error), then retry."
+  # A linked worktree shares one config and one .githooks with the checkout
+  # that created it, so both the arming advice and the file scan have to know
+  # where that is. git reports an ABSOLUTE common dir exactly then; a relative
+  # one (`.git`, `../.git`) is relative to the process cwd, not the toplevel,
+  # and can only mean this checkout's own git directory, which the file scan
+  # already recognises by its path.
+  MAIN_ROOT="$toplevel"
+  case "$COMMON_DIR" in
+    /*/.git) if [[ -d "${COMMON_DIR%/.git}" ]]; then MAIN_ROOT="${COMMON_DIR%/.git}"; fi ;;
+  esac
+  case "$COMMON_DIR" in /*) ;; *) COMMON_DIR='' ;; esac
+
+  # POLICY: house.json as it is on HEAD, not as the working tree has it. One
+  # Write to the working-tree file used to turn every layer off; an edit now
+  # only counts once it has landed on the branch through a PR. The working
+  # tree is read only when HEAD carries no house.json at all, which is a repo
+  # adopting house before its first commit.
+  local house_json='' house_src="HEAD:house.json"
+  house_json=$(trap - ERR; git "${git_dir_arg[@]}" show HEAD:house.json 2>/dev/null || true)
+  if [[ -n "$house_json" ]]; then
+    :
+  elif [[ -f "$toplevel/house.json" ]]; then
+    house_src="$toplevel/house.json (HEAD carries none yet)"
+    house_json=$(trap - ERR; cat "$toplevel/house.json" 2>/dev/null || true)
+  else
+    # Absent means the repo has not adopted house; that is fail-open, not an
+    # error (ADR 0002).
+    return 0
   fi
-  branch_policy=$(jq -r '.branchPolicy // "pr"' "$house_json" 2>/dev/null || echo "pr")
+  [[ -n "$house_json" ]] || return 0
+
+  # One jq pass for the whole manifest: policy, then the protected list, then
+  # the carve-outs, separated by a record-separator line. An adopted repo whose
+  # manifest cannot be parsed gets a refusal, not a silently disarmed guard:
+  # existence signals adoption, so unreadable policy is treated like a crash.
+  local parsed ln section=0
+  if ! parsed=$(printf '%s' "$house_json" | jq -r '
+        (.branchPolicy // "pr"), "\u001e",
+        ((.protectedBranches // ["master","main"])[]), "\u001e",
+        ((.carveOuts // [])[])' 2>/dev/null); then
+    deny "house.json ($house_src) cannot be read as the branch policy, so this hook cannot tell a safe command from a dangerous one. Refusing rather than guessing. Fix house.json (node .house/check.mjs names the error), then retry."
+  fi
+  branch_policy='pr'; protected_list=''; carve_outs=''
+  while IFS= read -r ln; do
+    if [[ "$ln" == $'\x1e' ]]; then section=$((section + 1)); continue; fi
+    case "$section" in
+      0) branch_policy="$ln" ;;
+      1) protected_list+="$ln"$'\n' ;;
+      *) carve_outs+="$ln"$'\n' ;;
+    esac
+  done <<<"$parsed"
   [[ "$branch_policy" == "direct" ]] && return 0
+  [[ -n "$protected_list" ]] || protected_list=$'master\nmain'
 
   # Repo-local guard present: defer to it during migration onto house.
   local local_hook="$toplevel/.claude/hooks/no-direct-master.sh"
@@ -668,11 +1006,8 @@ decide_for_target() {
   # into a variable instead of to stdout.
   trap crashed ERR
 
-  protected_list=$(jq -r '(.protectedBranches // ["master","main"])[]' "$house_json" 2>/dev/null)
-  [[ -n "$protected_list" ]] || protected_list=$'master\nmain'
   # carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
   # in plugins/house/schema/house.schema.json.
-  carve_outs=$(jq -r '(.carveOuts // [])[]' "$house_json" 2>/dev/null)
   carve_out_reason_suffix=""
   if [[ -n "$carve_outs" ]]; then
     local list

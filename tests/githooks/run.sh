@@ -100,23 +100,14 @@ unguarded() {
   return $rc
 }
 
-# new_adopted_repo <dir> [policy] [carveOuts-json] -- a repo on master with
-# house.json, a bare origin that already has master, and the floor armed.
-# The seed push happens BEFORE arming, so the remote has master and the
-# reference-transaction guard has something to call reachable.
-#   policy: pr (default) | direct | none (no house.json) | malformed
-new_adopted_repo() {
-  local dir="$1" policy="${2:-pr}" carveouts="${3:-[]}"
-  mkdir -p "$dir"
-  git -C "$dir" init -q
-  git -C "$dir" config user.email test@example.com
-  git -C "$dir" config user.name "House Floor Test"
-  git -C "$dir" config commit.gpgsign false
-  git -C "$dir" config advice.detachedHead false
-  git -C "$dir" checkout -q -b master
-
+# write_manifest <dir> <policy> [carveOuts-json] -- (re)writes the working-tree
+# house.json. Whether that copy has any say is itself under test: the guards
+# read the policy from HEAD, so an uncommitted write here must not move them.
+#   policy: pr | direct | none (no house.json) | malformed
+write_manifest() {
+  local dir="$1" policy="$2" carveouts="${3:-[]}"
   case "$policy" in
-    none) : ;;
+    none) rm -f "$dir/house.json" ;;
     malformed) printf '{"branchPolicy": "pr",\n' >"$dir/house.json" ;;
     *)
       cat >"$dir/house.json" <<EOF
@@ -128,6 +119,30 @@ new_adopted_repo() {
 EOF
       ;;
   esac
+}
+
+# init_repo <dir> -- an empty repo on master with the identity every fixture
+# needs and nothing else: no manifest, no remote, no floor.
+init_repo() {
+  local dir="$1"
+  mkdir -p "$dir"
+  git -C "$dir" init -q
+  git -C "$dir" config user.email test@example.com
+  git -C "$dir" config user.name "House Floor Test"
+  git -C "$dir" config commit.gpgsign false
+  git -C "$dir" config advice.detachedHead false
+  git -C "$dir" checkout -q -b master
+}
+
+# new_adopted_repo <dir> [policy] [carveOuts-json] -- a repo on master with
+# house.json, a bare origin that already has master, and the floor armed.
+# The seed push happens BEFORE arming, so the remote has master and the
+# reference-transaction guard has something to call reachable.
+#   policy: pr (default) | direct | none (no house.json) | malformed
+new_adopted_repo() {
+  local dir="$1" policy="${2:-pr}" carveouts="${3:-[]}"
+  init_repo "$dir"
+  write_manifest "$dir" "$policy" "$carveouts"
 
   echo seed >"$dir/seed.txt"
   mkdir -p "$dir/docs" "$dir/src"
@@ -147,6 +162,20 @@ EOF
 
   install_floor "$dir"
   arm "$dir"
+}
+
+# advance_remote <dir> <clone-dir> -- lands a commit on origin/master the way a
+# merged PR would: through a second clone that never has the floor armed.
+advance_remote() {
+  local dir="$1" clone="$2"
+  git clone -q "$dir.git" "$clone"
+  git -C "$clone" config user.email test@example.com
+  git -C "$clone" config user.name "House Floor Test"
+  git -C "$clone" config commit.gpgsign false
+  echo "from elsewhere" >"$clone/src/remote.js"
+  git -C "$clone" add -A
+  git -C "$clone" commit -q -m "work landed through a PR"
+  git -C "$clone" push -q origin master
 }
 
 # stage <dir> <path> <content>
@@ -240,10 +269,17 @@ git -C "$r" commit -q -m "feature work"
 expect_ok "push a feature branch passes" "$r" push -q origin feat/x
 expect_refused "push HEAD:master from a feature branch is refused" "needs a PR" \
   "$r" push origin HEAD:master
-expect_refused "push a feature branch onto refs/heads/main is refused" "needs a PR" \
-  "$r" push origin feat/x:refs/heads/main
+expect_refused "push a feature branch onto refs/heads/master is refused" "needs a PR" \
+  "$r" push origin feat/x:refs/heads/master
 expect_ok "push a glob refspec of feature branches passes" \
   "$r" push origin 'refs/heads/feat/*:refs/heads/feat/*'
+
+# F3: a freshly adopted repo has to be able to publish its protected branch
+# once. The remote here has master but no main, so this creates it.
+expect_ok "creating a protected branch the remote does not have yet passes" \
+  "$r" push -q origin feat/x:refs/heads/main
+expect_refused "deleting that protected branch on the remote is still refused" \
+  "needs a PR" "$r" push origin --delete main
 
 # A fixture whose master is ahead of the remote, seeded with the floor off:
 # with nothing to push git never calls pre-push, so the ahead state is what
@@ -342,6 +378,40 @@ stage "$r" "src/e.js" "dispatch again"
 expect_refused "a .d hook exiting non-zero stops the commit, and its stderr shows" \
   "sixty says no" "$r" commit -m "dispatch again"
 
+# F4: the branch guard runs before anything else in the .d directory. Name
+# order alone would let an unmanaged `00-` hook run first, and the first hook
+# to run is the one that can delete the guard behind it.
+r="$TMP_ROOT/c07b"; new_adopted_repo "$r"
+for n in 00-mine 20-after; do
+  cat >"$r/.githooks/pre-commit.d/$n" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "$n" >>"$r/order.log"
+exit 0
+EOF
+  chmod +x "$r/.githooks/pre-commit.d/$n"
+done
+stage "$r" "src/o.js" "ordering"
+run_git "$r" commit -m "ordering"
+if [[ "$RUN_CODE" -eq 0 ]]; then
+  fail "the branch guard runs before an unmanaged 00- hook" "the commit succeeded: $RUN_OUT"
+elif [[ -e "$r/order.log" ]]; then
+  fail "the branch guard runs before an unmanaged 00- hook" \
+    "00-mine ran before the guard refused: $(cat "$r/order.log")"
+else
+  pass "the branch guard runs before an unmanaged 00- hook"
+fi
+
+git -C "$r" checkout -q -b feat/x
+run_git "$r" commit -m "ordering on a feature branch"
+if [[ "$RUN_CODE" -ne 0 ]]; then
+  fail "the other .d hooks still run in name order" "commit failed: $RUN_OUT"
+elif [[ "$(tr '\n' ' ' <"$r/order.log" 2>/dev/null)" != "00-mine 20-after " ]]; then
+  fail "the other .d hooks still run in name order" \
+    "order.log was [$(tr '\n' ' ' <"$r/order.log" 2>/dev/null)]"
+else
+  pass "the other .d hooks still run in name order"
+fi
+
 # --- 6. manifest handling ---------------------------------------------------
 echo "-- manifest --"
 
@@ -415,7 +485,14 @@ if [[ "$RT_SUPPORTED" -ne 1 ]]; then
     "a fetch is allowed" \
     "deleting the local master branch is allowed" \
     "update-ref moving master to an unpublished commit is refused" \
-    "branch -f master origin/master is allowed"
+    "branch -f master origin/master is allowed" \
+    "pack-refs --all with master ahead of the remote is allowed" \
+    "reset --hard HEAD with master ahead of the remote is allowed" \
+    "stash push with master ahead of the remote is allowed" \
+    "gc packs refs with master ahead of the remote" \
+    "branch -f master master, a no-op force update, is allowed" \
+    "worktree add on a protected branch ahead of the remote is allowed" \
+    "fetch origin master:master is allowed and moves master"
   do
     skip "$label" "$RT_WHY"
   done
@@ -455,14 +532,7 @@ else
   # A fast-forward pull: the remote moved first, so the new tip is reachable
   # from origin/master by the time refs/heads/master is updated.
   r="$TMP_ROOT/c17"; new_adopted_repo "$r"
-  git clone -q "$r.git" "$TMP_ROOT/c17-clone"
-  git -C "$TMP_ROOT/c17-clone" config user.email test@example.com
-  git -C "$TMP_ROOT/c17-clone" config user.name "House Floor Test"
-  git -C "$TMP_ROOT/c17-clone" config commit.gpgsign false
-  echo "from elsewhere" >"$TMP_ROOT/c17-clone/src/remote.js"
-  git -C "$TMP_ROOT/c17-clone" add -A
-  git -C "$TMP_ROOT/c17-clone" commit -q -m "work landed through a PR"
-  git -C "$TMP_ROOT/c17-clone" push -q origin master
+  advance_remote "$r" "$TMP_ROOT/c17-clone"
   expect_ok "a fetch is allowed" "$r" fetch -q origin
   run_git "$r" pull -q --ff-only
   if [[ "$RUN_CODE" -ne 0 ]]; then
@@ -488,9 +558,130 @@ else
     "no remote has" "$r" update-ref refs/heads/master "$unpublished"
   expect_ok "branch -f master origin/master is allowed" \
     "$r" branch -f master origin/master
+
+  # F1: a transaction that does not MOVE the protected branch is not this
+  # guard's business, however far ahead of the remote that branch is. git
+  # rewrites a ref to its own value all the time (pack-refs, gc, reset to the
+  # current tip, stash, worktree add, a no-op `branch -f`), and refusing those
+  # broke plumbing that has nothing to do with the branch policy.
+  r="$TMP_ROOT/c21"; new_adopted_repo "$r"
+  echo "local only" >"$r/src/local.js"
+  unguarded "$r" add -A
+  unguarded "$r" commit -m "unpushed work on master"
+  expect_ok "pack-refs --all with master ahead of the remote is allowed" \
+    "$r" pack-refs --all
+  expect_ok "reset --hard HEAD with master ahead of the remote is allowed" \
+    "$r" reset --hard HEAD
+  echo "dirty" >>"$r/src/seed.js"
+  expect_ok "stash push with master ahead of the remote is allowed" \
+    "$r" stash push -m "work in progress"
+  # gc exits 0 even when its pack-refs transaction is aborted, so the exit code
+  # alone would pass vacuously; the refusal text is the real assertion.
+  run_git "$r" gc --quiet
+  if [[ "$RUN_CODE" -eq 0 && "$RUN_OUT" != *"house reference-transaction"* ]]; then
+    pass "gc packs refs with master ahead of the remote"
+  else
+    fail "gc packs refs with master ahead of the remote" "exit $RUN_CODE: $RUN_OUT"
+  fi
+
+  r="$TMP_ROOT/c22"; new_adopted_repo "$r"
+  echo "local only" >"$r/src/local.js"
+  unguarded "$r" add -A
+  unguarded "$r" commit -m "unpushed work on master"
+  git -C "$r" checkout -q -b feat/x
+  expect_ok "branch -f master master, a no-op force update, is allowed" \
+    "$r" branch -f master master
+  expect_ok "worktree add on a protected branch ahead of the remote is allowed" \
+    "$r" worktree add -q "$TMP_ROOT/c22-wt" master
+
+  # F2: the same transaction publishes the remote-tracking ref, so the remote
+  # does have this commit. `git fetch origin master:master` is the shape.
+  r="$TMP_ROOT/c23"; new_adopted_repo "$r"
+  advance_remote "$r" "$TMP_ROOT/c23-clone"
+  landed=$(git -C "$TMP_ROOT/c23-clone" rev-parse HEAD)
+  git -C "$r" checkout -q -b feat/x
+  run_git "$r" fetch origin master:master
+  if [[ "$RUN_CODE" -ne 0 ]]; then
+    fail "fetch origin master:master is allowed and moves master" "exit $RUN_CODE: $RUN_OUT"
+  elif [[ "$(git -C "$r" rev-parse master)" != "$landed" ]]; then
+    fail "fetch origin master:master is allowed and moves master" "master did not move"
+  else
+    pass "fetch origin master:master is allowed and moves master"
+  fi
 fi
 
-# --- 9. worktrees share the hooks path ---------------------------------------
+# --- 9. the policy is read from HEAD, not from the working tree --------------
+echo "-- policy source --"
+
+# One Write to house.json must not turn the floor off. The committed manifest
+# is the policy; a working-tree edit only counts once it lands on the protected
+# branch, which takes the PR this guard is asking for.
+r="$TMP_ROOT/c24"; new_adopted_repo "$r" pr
+write_manifest "$r" direct
+stage "$r" "src/a.js" "policy rewritten in the working tree"
+expect_refused "an uncommitted branchPolicy: direct does not weaken the floor" \
+  "needs a PR" "$r" commit -m "sneaky"
+
+# The mirror, so the rule reads as "HEAD is the source" and not as "take the
+# stricter of the two": a committed `direct` policy is honoured.
+r="$TMP_ROOT/c25"; new_adopted_repo "$r" direct
+write_manifest "$r" pr
+stage "$r" "src/a.js" "policy tightened in the working tree only"
+expect_ok "an uncommitted branchPolicy: pr does not arm a direct-policy repo" \
+  "$r" commit -m "direct policy stands"
+
+# pre-push reads the policy from the commit the REMOTE has, so a push cannot
+# carry the manifest that would have allowed it.
+r="$TMP_ROOT/c26"; new_adopted_repo "$r" pr
+write_manifest "$r" direct
+unguarded "$r" add -A
+unguarded "$r" commit -m "weaken the policy on master"
+expect_refused "a pushed commit cannot carry its own weaker policy" \
+  "needs a PR" "$r" push origin master
+
+# A repo that adopts house before its first commit has no HEAD to read, so the
+# working-tree manifest is the only source there is.
+r="$TMP_ROOT/c27"; init_repo "$r"
+write_manifest "$r" pr
+install_floor "$r"
+arm "$r"
+stage "$r" "src/a.js" "first commit ever"
+expect_refused "before the first commit the working-tree house.json is read" \
+  "needs a PR" "$r" commit -m "initial"
+
+# --- 10. escapes and machine state -------------------------------------------
+echo "-- escapes --"
+
+# A commit that never saw the hooks at all (any git, any means) is still stopped
+# at the push. This is the modern-git counterpart of the --no-verify case above,
+# which git 2.28+ refuses at the ref transaction instead.
+r="$TMP_ROOT/c28"; new_adopted_repo "$r"
+mkdir -p "$TMP_ROOT/c28-nohooks"
+stage "$r" "src/skip.js" "landed by other means"
+run_git "$r" -c core.hooksPath="$TMP_ROOT/c28-nohooks" commit -m "no hooks ran"
+if [[ "$RUN_CODE" -ne 0 ]]; then
+  fail "a commit made with the hooks switched off is refused at push" \
+    "the seeding commit itself failed: $RUN_OUT"
+else
+  expect_refused "a commit made with the hooks switched off is refused at push" \
+    "needs a PR" "$r" push origin master
+fi
+
+# core.hooksPath is machine state, and a config include can set it: this pins
+# that `git config --get` (what house doctor and the PreToolUse hook read)
+# reports the included value, so a disarmed clone reads as disarmed.
+r="$TMP_ROOT/c29"; new_adopted_repo "$r"
+printf '[core]\n\thooksPath = /dev/null\n' >"$r/.git/extra-config"
+git -C "$r" config include.path ./extra-config
+run_git "$r" config --get core.hooksPath
+if [[ "$RUN_CODE" -eq 0 && "$RUN_OUT" == "/dev/null" ]]; then
+  pass "an include.path that sets core.hooksPath is what git config reports"
+else
+  fail "an include.path that sets core.hooksPath is what git config reports" \
+    "exit $RUN_CODE: $RUN_OUT"
+fi
+
+# --- 11. worktrees share the hooks path --------------------------------------
 echo "-- worktrees --"
 
 r="$TMP_ROOT/c20"; new_adopted_repo "$r"

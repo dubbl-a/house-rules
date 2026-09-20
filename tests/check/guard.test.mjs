@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sandbox, run, houseJson } from './helpers.mjs';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
 
 // The guard family warns when branchPolicy "pr" has no repo-local guard the
 // HOOK would defer to. "Reachable guard" must mean exactly what the hook
@@ -121,12 +123,13 @@ test('guard: a malformed guard record does NOT clear the warning (positive contr
 //
 // The text scan above only sees what a model typed in a session. The floor is
 // the vendored `.githooks/` set, which git runs whoever is driving, so the
-// family checks that the repo carries it: all six files, executable in the
+// family checks that the repo carries it: all seven files, executable in the
 // INDEX (a clone gets the index mode, and writeFileSync would give 100644),
 // and none of them a stub. Whether this clone is ARMED (core.hooksPath) is
 // machine state and belongs to `house doctor` (ADR 0008), so nothing here
 // touches git config, and the same commit checks the same on every machine.
 const FLOOR_FILES = [
+  '.githooks/house-lib.sh',
   '.githooks/pre-commit',
   '.githooks/pre-commit.d/10-house-branch',
   '.githooks/pre-push',
@@ -153,7 +156,7 @@ function floorSandbox(house, damage) {
   return sandbox({ 'house.json': house, ...files }, { modes });
 }
 
-test('guard floor: all six hooks vendored, 100755 and substantive is silent', () => {
+test('guard floor: all seven files vendored, 100755 and substantive is silent', () => {
   const dir = floorSandbox(houseJson());
   const { code, json } = run(dir, ['--only=guard', '--json']);
   assert.equal(code, 0);
@@ -172,14 +175,36 @@ test('guard floor: a repo with no .githooks at all gets ONE warning naming rende
   for (const p of FLOOR_FILES) assert.ok(w[0].message.includes(p), `the warning must name ${p}`);
 });
 
-test('guard floor: a partly vendored floor names only the files that are missing', () => {
+// A repo that has SOME of the floor was rendered and then lost the rest, which
+// is a different thing from a repo that never had it: the first is damage, the
+// second is an upgrade that has not happened yet. So a partial floor is a
+// finding, and it names only what is gone.
+test('guard floor: a partly vendored floor is a FINDING naming only the files that are missing', () => {
   const dir = floorSandbox(houseJson(), { omit: ['.githooks/pre-push', '.githooks/pre-push.d/10-house-branch'] });
   const { code, json } = run(dir, ['--only=guard', '--json']);
-  assert.equal(code, 0);
-  const w = floorWarnings(json);
-  assert.equal(w.length, 1);
-  assert.ok(w[0].message.includes('.githooks/pre-push'), w[0].message);
-  assert.ok(!w[0].message.includes('.githooks/pre-commit`'), 'a vendored file must not be reported missing');
+  assert.equal(code, 1, 'a floor that was vendored and is now incomplete is damage, not a pending upgrade');
+  assert.equal(floorWarnings(json).length, 0, JSON.stringify(json.warnings));
+  const f = floorFindings(json);
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.equal(f[0].path, '.githooks');
+  assert.ok(f[0].message.includes('.githooks/pre-push'), f[0].message);
+  assert.ok(!f[0].message.includes('.githooks/pre-commit`'), 'a vendored file must not be reported missing');
+  assert.match(f[0].message, /house render --apply/);
+});
+
+// R4: house-lib.sh is in the floor set because every guard sources it and dies
+// when the source fails. A repo missing only the library cannot commit at all,
+// so "the floor is fine, one sourced helper is gone" is exactly the wrong
+// verdict; it is the sharpest case for partial-is-a-finding.
+test('guard floor: a missing house-lib.sh alone is a FINDING (every guard sources it and fails closed)', () => {
+  const dir = floorSandbox(houseJson(), { omit: ['.githooks/house-lib.sh'] });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 1, 'a floor whose shared library is gone must not pass the gate');
+  const f = floorFindings(json);
+  assert.equal(f.length, 1, JSON.stringify(f));
+  assert.ok(f[0].message.includes('.githooks/house-lib.sh'), f[0].message);
+  assert.match(f[0].message, /fails every commit closed/);
+  assert.equal(floorWarnings(json).length, 0);
 });
 
 test('guard floor: a floor file tracked 100644 is a FINDING (git skips a hook it cannot execute)', () => {
@@ -255,4 +280,46 @@ test('guard floor: --only=guard --json keeps the family output shape', () => {
     assert.equal(e.family, 'guard');
     assert.equal(e.line, null);
   }
+});
+
+// R4: ONE definition of the floor, spelled in three languages.
+//
+// The checker (JS), the arming script (bash) and the module manifest (JSON)
+// each carry the list, because none of them can read either of the others at
+// the moment it needs it: check.mjs ships as a standalone payload copied into
+// an adopter repo, the arming script runs from the plugin with no node
+// guaranteed, and module.json is what render reads. Three copies with no test
+// between them is how a checker comes to call a floor complete that the arming
+// script calls unrendered, and how a new floor file gets vendored but never
+// verified. This is that test: it fails the moment the three disagree.
+const REPO_ROOT = join(dirname(CHECK_SRC), '..', '..', '..');
+const ARM_SRC = join(REPO_ROOT, 'plugins', 'house', 'hooks', 'arm-git-hooks.sh');
+const GITHUB_MODULE_JSON = join(REPO_ROOT, 'plugins', 'house', 'modules', 'github', 'module.json');
+
+test('guard floor: check.mjs, arm-git-hooks.sh and the github module agree on which files ARE the floor', () => {
+  const checkerList = (() => {
+    const src = readFileSync(CHECK_SRC, 'utf8');
+    const block = src.match(/const GUARD_FLOOR_FILES = \[([\s\S]*?)\];/);
+    assert.ok(block, 'GUARD_FLOOR_FILES is not a literal array in check.mjs any more');
+    return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  })();
+
+  const armingList = (() => {
+    const src = readFileSync(ARM_SRC, 'utf8');
+    const block = src.match(/^FLOOR_FILES="([\s\S]*?)"$/m);
+    assert.ok(block, 'FLOOR_FILES is not a literal assignment in arm-git-hooks.sh any more');
+    // A bash line continuation is a backslash-newline; what is left is the list.
+    return block[1].replace(/\\\n/g, ' ').split(/\s+/).filter(Boolean).map((rel) => `.githooks/${rel}`);
+  })();
+
+  const moduleList = JSON.parse(readFileSync(GITHUB_MODULE_JSON, 'utf8'))
+    .files.map((f) => f.dest).filter((d) => d.startsWith('.githooks/'));
+
+  const sorted = (a) => [...a].sort();
+  assert.equal(checkerList.length, 7, `the floor is seven files, check.mjs has ${checkerList.length}`);
+  assert.deepEqual(sorted(armingList), sorted(checkerList), 'arm-git-hooks.sh and check.mjs disagree about the floor');
+  assert.deepEqual(sorted(moduleList), sorted(checkerList), 'the github module vendors a different set than check.mjs verifies');
+  // ...and the list the cases above exercise is that same set, so a file added
+  // to the floor cannot slip past this file untested either.
+  assert.deepEqual(sorted(FLOOR_FILES), sorted(checkerList));
 });

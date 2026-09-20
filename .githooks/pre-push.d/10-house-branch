@@ -9,6 +9,11 @@
 # every refspec, alias and `push.default` into the ref lines on stdin, so the
 # refs here are facts, not a reading of the command. See ADR 0013 and #58.
 #
+# The policy for each ref comes from the commit the REMOTE already has
+# (`<remote-sha>:house.json`), falling back to HEAD and then to the working
+# tree. A push therefore cannot carry the manifest that would have allowed it:
+# a weaker policy only takes effect once it has landed through a PR.
+#
 # Arguments: <remote-name> <remote-url>.
 # Stdin:     <local-ref> <local-sha> <remote-ref> <remote-sha>, one per ref.
 set -u
@@ -25,11 +30,17 @@ top=$(house_toplevel) || exit 0
 # shellcheck disable=SC2034 # read by house_refuse in house-lib.sh
 HOUSE_TOPLEVEL="$top"
 
-rc=0
-house_manifest_read "$top" || rc=$?
-[ "$rc" -eq 1 ] && exit 0
-[ "$rc" -eq 2 ] && exit 1
-[ "$HOUSE_POLICY" = "pr" ] || exit 0
+# Read every ref line up front. The manifest readers below spawn jq or node,
+# and a `while read` loop straddling the same stdin is the one place that bites.
+payload=$(cat)
+
+# Nothing to say about a push that touches no branch on the remote (a tag push,
+# a notes push), and answering that before the manifest is read keeps the
+# common case free.
+case "$payload" in
+  *refs/heads/*) ;;
+  *) exit 0 ;;
+esac
 
 # True when a sha is git's all-zeros placeholder (40 or 64 hex digits of 0),
 # which means "does not exist": on the local side a deletion, on the remote
@@ -39,6 +50,27 @@ is_zero_sha() {
     "" | *[!0]*) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+# One-entry cache, because a push usually carries one ref and the refs of a
+# normal push share a source: reading the manifest is a jq or node spawn.
+CACHED_REV=""
+CACHED_RC=0
+CACHED_VALID=1
+read_policy_for() { # <rev-or-empty>
+  local rev="$1"
+  if [ "$CACHED_VALID" -eq 0 ] && [ "$rev" = "$CACHED_REV" ]; then
+    return "$CACHED_RC"
+  fi
+  CACHED_REV="$rev"
+  CACHED_RC=0
+  CACHED_VALID=0
+  if [ -n "$rev" ]; then
+    house_manifest_read "$top" "$rev" HEAD || CACHED_RC=$?
+  else
+    house_manifest_read "$top" || CACHED_RC=$?
+  fi
+  return "$CACHED_RC"
 }
 
 # Collected as an array, with its own counter: bash 3.2 under `set -u` treats
@@ -55,6 +87,19 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     *) continue ;;
   esac
   branch="${remote_ref#refs/heads/}"
+
+  # The policy that governs this ref is the one the remote is already running.
+  policy_rev=""
+  if ! is_zero_sha "${remote_sha:-}" &&
+    git -C "$top" cat-file -e "${remote_sha}^{commit}" 2>/dev/null </dev/null; then
+    policy_rev="$remote_sha"
+  fi
+  rc=0
+  read_policy_for "$policy_rev" || rc=$?
+  [ "$rc" -eq 1 ] && continue
+  [ "$rc" -eq 2 ] && exit 1
+  [ "$HOUSE_POLICY" = "pr" ] || continue
+
   house_is_protected "$branch" || continue
 
   if is_zero_sha "$local_sha"; then
@@ -63,28 +108,27 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     continue
   fi
 
-  if is_zero_sha "$remote_sha"; then
-    # Creating the protected branch on the remote: there is no base to diff
-    # against, so a carve-out cannot be established.
-    refused[refused_n]="$remote_ref (creating a protected branch on the remote)"
-    refused_n=$((refused_n + 1))
-    continue
-  fi
+  # Creating the branch on a remote that has no such ref yet is the one push
+  # that has to work: a freshly adopted repo publishes its protected branch
+  # once, before any PR can exist. Deleting it stays refused above.
+  is_zero_sha "$remote_sha" && continue
 
   # A remote sha this clone does not have cannot be diffed, so the carve-out
   # cannot be established and the push is refused: the direction this check is
   # allowed to fail in.
-  if ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+  if ! git -C "$top" cat-file -e "$remote_sha^{commit}" 2>/dev/null </dev/null; then
     refused[refused_n]="$remote_ref (the remote's commit $remote_sha is not in this clone, so the carve-outs cannot be checked)"
     refused_n=$((refused_n + 1))
     continue
   fi
 
-  changed=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null || printf '')
+  changed=$(git -C "$top" diff --name-only "$remote_sha" "$local_sha" 2>/dev/null </dev/null || printf '')
   house_carve_out_satisfied "$changed" && continue
   refused[refused_n]="$remote_ref (from ${local_ref:-HEAD})"
   refused_n=$((refused_n + 1))
-done
+done <<EOF
+$payload
+EOF
 
 [ "$refused_n" -eq 0 ] && exit 0
 

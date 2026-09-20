@@ -59,6 +59,45 @@ is_zero_sha() {
   esac
 }
 
+# A first pass over the transaction, collecting every remote-tracking ref it
+# updates as "<branch> <new-sha>" lines. When the SAME transaction publishes
+# refs/remotes/<remote>/<branch> at the sha refs/heads/<branch> is moving to,
+# the remote is handing this clone that commit right now: `git fetch origin
+# master:master` has exactly that shape, and it is a fast-forward the remote
+# owns rather than local work.
+#
+# Forging that line means writing a remote-tracking ref by hand, which is on
+# the PreToolUse hook's disable list (`update-ref refs/remotes/.../<protected>`).
+remote_updates=""
+nl='
+'
+while IFS= read -r scan_line; do
+  [ -z "$scan_line" ] && continue
+  scan_rest="${scan_line#* }"
+  scan_new="${scan_rest%% *}"
+  scan_ref="${scan_rest#* }"
+  case "$scan_ref" in
+    refs/remotes/*/*) ;;
+    *) continue ;;
+  esac
+  scan_tail="${scan_ref#refs/remotes/}"
+  remote_updates="$remote_updates${scan_tail#*/} $scan_new$nl"
+done <<EOF
+$lines
+EOF
+
+# True when the transaction also publishes <branch> on a remote at <sha>.
+published_in_this_transaction() { # <branch> <sha>
+  local want="$1 $2" entry
+  [ -z "$remote_updates" ] && return 1
+  while IFS= read -r entry; do
+    [ "$entry" = "$want" ] && return 0
+  done <<EOF
+$remote_updates
+EOF
+  return 1
+}
+
 # True when <sha> is already reachable from some remote-tracking ref for
 # <branch>, which is the whole test: a commit the remote has is a commit a PR
 # could have carried.
@@ -104,6 +143,17 @@ while IFS= read -r line; do
   cur=$(git rev-parse --verify --quiet "$ref" 2>/dev/null) || cur=""
   [ -z "$cur" ] && continue
   is_zero_sha "$old_sha" && old_sha="$cur"
+
+  # A transaction that rewrites the ref to the value it already has does not
+  # MOVE the branch, so it is none of this guard's business however far ahead
+  # of the remote that branch is. git does this constantly: pack-refs (and so
+  # `git gc`, whose pack-refs transaction was being silently aborted), `git
+  # reset --hard HEAD`, `git stash push`, `git worktree add <path> <branch>`,
+  # `git branch -f <branch> <branch>`.
+  [ "$new_sha" = "$cur" ] && continue
+  [ "$new_sha" = "$old_sha" ] && continue
+
+  published_in_this_transaction "$branch" "$new_sha" && continue
 
   on_a_remote "$new_sha" "$branch" && continue
 

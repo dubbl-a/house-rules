@@ -8,6 +8,10 @@
 # branch policy. git has already resolved the branch by the time this runs, so
 # there is nothing to infer from command text. See ADR 0013 and issue #58.
 #
+# The policy comes from `HEAD:house.json`, not from the working tree, so one
+# Write to house.json cannot turn the floor off; a repo that adopted house
+# before its first commit falls back to the working-tree copy.
+#
 # Fails open (exit 0) for every repo this policy does not cover: no house.json,
 # `branchPolicy: direct`, a detached HEAD, an unprotected branch. It fails
 # CLOSED only when an adopted repo's manifest cannot be read.
@@ -41,5 +45,5 @@ house_carve_out_satisfied "$staged" && exit 0
 
 house_refuse "pre-commit" \
   "a commit on '$branch', which house.json protects." \
-  "house.json: $top/house.json"
+  "policy read from: $HOUSE_MANIFEST_SOURCE"
 exit 1

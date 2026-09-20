@@ -19,15 +19,17 @@ HOUSE_POLICY="${HOUSE_POLICY-}"
 HOUSE_PROTECTED="${HOUSE_PROTECTED-}"
 HOUSE_CARVEOUTS="${HOUSE_CARVEOUTS-}"
 HOUSE_TOPLEVEL="${HOUSE_TOPLEVEL-}"
+HOUSE_MANIFEST_SOURCE="${HOUSE_MANIFEST_SOURCE-}"
 
 # The node fallback for reading house.json, used only when jq is absent. Kept
-# as a single-quoted string, so it must not contain a single quote. It prints
-# the same P/B/C line protocol the jq filter below prints, and exits non-zero
-# on anything it cannot read as the expected shape.
+# as a single-quoted string, so it must not contain a single quote. It reads
+# the manifest on stdin, prints the same P/B/C line protocol the jq filter
+# below prints, and exits non-zero on anything it cannot read as the expected
+# shape.
 HOUSE_NODE_READER='
 try {
   var fs = require("fs");
-  var m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  var m = JSON.parse(fs.readFileSync(0, "utf8"));
   if (m === null || typeof m !== "object" || Array.isArray(m)) process.exit(1);
   var out = ["P" + (m.branchPolicy == null ? "pr" : String(m.branchPolicy))];
   var pb = m.protectedBranches == null ? ["master", "main"] : m.protectedBranches;
@@ -51,44 +53,71 @@ house_toplevel() {
   return 0
 }
 
-# house_manifest_read <toplevel>: reads <toplevel>/house.json into
-# HOUSE_POLICY, HOUSE_PROTECTED (newline list) and HOUSE_CARVEOUTS (newline
-# list).
+# house_manifest_read <toplevel> [rev ...]: reads house.json into HOUSE_POLICY,
+# HOUSE_PROTECTED (newline list) and HOUSE_CARVEOUTS (newline list), and names
+# what it read in HOUSE_MANIFEST_SOURCE.
+#
+# The manifest is read from a COMMIT, not from the working tree: `HEAD` by
+# default, or the revs given, in order. One Write to the working-tree
+# house.json would otherwise turn every layer of the policy off, and a policy a
+# session can rewrite in place is not a policy. The working-tree copy is the
+# last resort, used only when no given rev has a house.json at all, which is
+# the repo that adopted house before its first commit.
 #
 #   0  read it
-#   1  no house.json: the repo has not adopted house, fail open
+#   1  no house.json anywhere: the repo has not adopted house, fail open
 #   2  refuse: the manifest exists but cannot be read (bad JSON, unexpected
 #      shape, or no JSON reader on PATH). Existence signals adoption, so
 #      unreadable policy denies rather than guesses, the same posture the
 #      PreToolUse hook takes when jq is missing. The message is already on
 #      stderr when this returns.
 house_manifest_read() {
-  local top="$1" manifest raw rc line nl
+  local top="$1" rev json raw rc line nl found
+  shift
   nl='
 '
-  manifest="$top/house.json"
   HOUSE_POLICY=""
   HOUSE_PROTECTED=""
   HOUSE_CARVEOUTS=""
-  [ -f "$manifest" ] || return 1
+  HOUSE_MANIFEST_SOURCE=""
+  [ "$#" -gt 0 ] || set -- HEAD
+
+  json=""
+  found=1
+  for rev in "$@"; do
+    [ -n "$rev" ] || continue
+    # cat-file, not show: plumbing, one process, no pager, and it fails
+    # quietly on an unborn HEAD or a rev this clone does not have.
+    json=$(git -C "$top" cat-file blob "$rev:house.json" 2>/dev/null </dev/null) && {
+      HOUSE_MANIFEST_SOURCE="$rev:house.json"
+      found=0
+      break
+    }
+    json=""
+  done
+  if [ "$found" -ne 0 ]; then
+    [ -f "$top/house.json" ] || return 1
+    json=$(cat "$top/house.json" 2>/dev/null) || json=""
+    HOUSE_MANIFEST_SOURCE="$top/house.json"
+  fi
 
   rc=0
   if command -v jq >/dev/null 2>&1; then
-    raw=$(jq -r '
+    raw=$(printf '%s\n' "$json" | jq -r '
       "P" + ((.branchPolicy // "pr") | tostring),
       ((.protectedBranches // ["master","main"])[] | "B" + tostring),
       ((.carveOuts // [])[] | "C" + tostring)
-    ' "$manifest" 2>/dev/null) || rc=$?
+    ' 2>/dev/null) || rc=$?
   elif command -v node >/dev/null 2>&1; then
-    raw=$(node -e "$HOUSE_NODE_READER" "$manifest" 2>/dev/null) || rc=$?
+    raw=$(printf '%s\n' "$json" | node -e "$HOUSE_NODE_READER" 2>/dev/null) || rc=$?
   else
-    printf 'house: neither jq nor node is on PATH, so %s cannot be read.\n' "$manifest" >&2
+    printf 'house: neither jq nor node is on PATH, so %s cannot be read.\n' "$HOUSE_MANIFEST_SOURCE" >&2
     printf 'house: refusing rather than guessing the branch policy; install jq (brew install jq) or node.\n' >&2
     return 2
   fi
 
   if [ "$rc" -ne 0 ]; then
-    printf 'house: %s is not valid JSON, or its branch policy fields are not the expected shape.\n' "$manifest" >&2
+    printf 'house: %s is not valid JSON, or its branch policy fields are not the expected shape.\n' "$HOUSE_MANIFEST_SOURCE" >&2
     printf 'house: refusing rather than guessing; fix it (node .house/check.mjs names the error).\n' >&2
     return 2
   fi

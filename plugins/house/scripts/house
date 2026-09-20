@@ -720,11 +720,19 @@ function isGitHookDest(relPath) {
   const p = normalizeRepoPath(relPath);
   return p === GIT_HOOK_DIR || p.startsWith(`${GIT_HOOK_DIR}/`);
 }
+//
+// The bit is added per class that can already READ the file, never wholesale:
+// a repo that deliberately keeps its hooks at 0700 (a shared machine, a
+// checkout under a tight umask) asked for 0700, and a render that answered
+// 0755 would widen a permission nobody asked it to touch. `mode | ((mode &
+// 0o444) >> 2)` turns 0644 into 0755 and 0600 into 0700, and leaves a file
+// already executable by everyone who can read it alone.
 function ensureExecutable(absPath) {
   try {
     const mode = statSync(absPath).mode & 0o7777;
-    if ((mode & 0o111) === 0o111) return false;
-    chmodSync(absPath, 0o755);
+    const want = mode | ((mode & 0o444) >> 2);
+    if (want === mode) return false;
+    chmodSync(absPath, want);
     return true;
   } catch { return false; }
 }
@@ -843,12 +851,24 @@ const SCAFFOLDS = [
 // Render moves it into the .d directory instead, where the dispatcher runs it.
 //
 // The three conditions are what make the move unambiguous: on disk, NOT in the
-// prior lock (so it is the adopter's, not ours), and no 20-secrets yet (so
-// nothing is clobbered). When 20-secrets already exists, the ordinary refuse
-// path applies with its ordinary message.
+// prior lock (so it is the adopter's, not ours), and nothing already at the
+// destination (so nothing is clobbered). When the destination exists, the
+// ordinary refuse path applies with its ordinary message.
+//
+// Which destination depends on what the file actually IS. `.githooks/pre-commit`
+// was house's hand-installed secrets template for a year, but it is also just
+// the path git has always used, so an adopter's own lint-staged runner lives
+// there too. Only the template declares `PIIPATTERNS=(`, so that marker is what
+// separates "your copy of our old template" (20-secrets, where the template's
+// successor lives) from "your own pre-commit hook" (15-local, ahead of the
+// secrets backstop and behind the branch guard). Calling the second one a copy
+// of our template, as the first pass did, tells a repo its own hook came from
+// us and invites them to delete it.
 const OLD_PRE_COMMIT = '.githooks/pre-commit';
+const OLD_TEMPLATE_MARKER = 'PIIPATTERNS=(';
 const SECRETS_SCAFFOLD_TMPL = 'pre-commit.d/20-secrets';
 const SECRETS_SCAFFOLD_DEST = '.githooks/pre-commit.d/20-secrets';
+const LOCAL_PRE_COMMIT_DEST = '.githooks/pre-commit.d/15-local';
 
 function enabledModuleFileDests(houseData, modules) {
   return arr(modules)
@@ -863,9 +883,13 @@ function planOldPreCommitMigration(repoRoot, houseData, modules, priorLock) {
   // write; a repo whose github module is off keeps its own pre-commit.
   if (!enabledModuleFileDests(houseData, modules).includes(OLD_PRE_COMMIT)) return null;
   if (priorLock.has(OLD_PRE_COMMIT)) return null;
-  if (!existsSync(path.join(repoRoot, OLD_PRE_COMMIT))) return null;
-  if (existsSync(path.join(repoRoot, SECRETS_SCAFFOLD_DEST))) return null;
-  return { from: OLD_PRE_COMMIT, to: SECRETS_SCAFFOLD_DEST };
+  const fromAbs = path.join(repoRoot, OLD_PRE_COMMIT);
+  if (!existsSync(fromAbs)) return null;
+  let body = '';
+  try { body = readFileSync(fromAbs, 'utf8'); } catch { return null; }
+  const to = body.includes(OLD_TEMPLATE_MARKER) ? SECRETS_SCAFFOLD_DEST : LOCAL_PRE_COMMIT_DEST;
+  if (existsSync(path.join(repoRoot, to))) return null;
+  return { from: OLD_PRE_COMMIT, to };
 }
 
 // ── git-hook floor arming (#58) ──────────────────────────────────────────
@@ -1063,9 +1087,15 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
 
 // The one wording for the #58 migration, in both tenses, so the dry run
-// promises exactly what the apply reports.
+// promises exactly what the apply reports. The destination is what decides
+// which of the two it was (see planOldPreCommitMigration): the repo is told
+// whose file this is, because "your unmanaged copy of the old template" said
+// about a repo's own hook is simply false.
 function migrationLine(m, applied) {
-  return `${applied ? 'Moved' : 'would move'} ${m.from} (your unmanaged copy of the old template) to ${m.to}; the house dispatcher now runs it`;
+  const verb = applied ? 'Moved' : 'would move';
+  return m.to === SECRETS_SCAFFOLD_DEST
+    ? `${verb} ${m.from} (your unmanaged copy of the old template) to ${m.to}; the house dispatcher now runs it`
+    : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
 function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, json, apply }) {
@@ -1149,7 +1179,10 @@ function cmdRender(args) {
     mkdirSync(path.dirname(toAbs), { recursive: true });
     renameSync(fromAbs, toAbs);
     ensureExecutable(toAbs);
-    scaffoldRecord.set(SECRETS_SCAFFOLD_TMPL, m.to);
+    // Only a move that landed ON the scaffold's dest is that scaffold. A repo
+    // whose own hook went to 15-local has still never been offered the secrets
+    // backstop, so the loop below writes it a fresh 20-secrets beside theirs.
+    if (m.to === SECRETS_SCAFFOLD_DEST) scaffoldRecord.set(SECRETS_SCAFFOLD_TMPL, m.to);
     if (!args.json) console.log(migrationLine(m, true));
   }
 
@@ -1332,7 +1365,12 @@ function gitHookFloorLines(probe) {
     return lines;
   }
   if (!probe.rendered) {
-    lines.push('git-hook floor: not rendered here (no .githooks/pre-commit; run `house render --apply`)');
+    // Naming the missing files matters most when only one is gone: every guard
+    // sources house-lib.sh and exits non-zero when the source fails, so a floor
+    // missing only the library fails every commit closed, and "not rendered"
+    // on its own would send the reader looking at the hooks that are there.
+    const missing = arr(probe.missing);
+    lines.push(`git-hook floor: not rendered here (missing: ${missing.length ? missing.map((m) => `.githooks/${m}`).join(', ') : '.githooks/'}; run \`house render --apply\`)`);
   } else if (probe.armed) {
     lines.push(`git-hook floor: armed (core.hooksPath=${probe.hooksPath}${probe.hooksPathScope ? `, ${probe.hooksPathScope}` : ''})`);
   } else if (probe.hooksPath) {
@@ -1351,9 +1389,14 @@ function gitHookFloorLines(probe) {
   if (arr(probe.nonExecutable).length) {
     lines.push(`  not executable (git silently ignores a hook without the bit): ${probe.nonExecutable.join(', ')}`);
   }
+  // Below 2.28 the floor has no unskippable member. `--no-verify` turns off
+  // pre-commit and pre-push together, and on 2.28+ the reference-transaction
+  // hook is the one git runs anyway; without it the flag skips the whole floor,
+  // and the only thing left refusing the flag is the session-time PreToolUse
+  // hook, which by definition is not there when no session is in the loop.
   lines.push(probe.referenceTransactionSupported
     ? `  reference-transaction: supported by git ${probe.gitVersion || '?'} (>= 2.28)`
-    : `  reference-transaction: inert on git ${probe.gitVersion || '?'} (needs 2.28); the pre-commit and pre-push guards still run`);
+    : `  reference-transaction: inert on git ${probe.gitVersion || '?'} (needs 2.28); the pre-commit and pre-push guards still run, but \`--no-verify\` skips BOTH of them and there is no reference-transaction hook here to catch what they miss, so on this git the flag is refused only by the session-time PreToolUse hook. Upgrade git to 2.28 or newer for a floor a flag cannot turn off.`);
   return lines;
 }
 
