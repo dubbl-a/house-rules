@@ -383,29 +383,69 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 # option has to belong to a git command (the clause's first word is git), so
 # `bash -c '...'` is untouched. The marker turns back into a space wherever a
 # path is resolved (unquote_path).
-SP=$'\x01'
+# The same walk turns a LITERAL parenthesis inside quotes (`echo ")"`, `'('`)
+# into a placeholder byte, so only a structural paren reaches the clause
+# splitter and the paren stack: round 5 ended a subshell early with a quoted
+# `)` and hid a commit behind one inside a substitution. Inside double
+# quotes a `$(` opens a real substitution whose own `)` is structural, so
+# those are counted and kept.
+# A protected flag value keeps its parentheses as placeholders as well, so
+# `-C "$(git rev-parse --show-toplevel)"` and the same unquoted stay ONE
+# token that the walk reads as computed: the regression round found the
+# unquoted form leaking `git` into the verb search (rev-parse became the
+# verb and the commit vanished) and the quoted form fragmenting into an
+# unknown verb. The substitution's body is read separately, from the raw
+# command, see extract_substitutions.
+SP=$'\x01'; LP=$'\x02'; RP=$'\x03'
 protect_quoted_spaces() {
-  local s="$1" out='' q='' ch i n cur='' prev='' saw_git=0 protect=0
+  local s="$1" out='' q='' ch i n cur='' prev='' saw_git=0 protect=0 depth=0 pdepth=0
   n="${#s}"
   for ((i = 0; i < n; i++)); do
     ch="${s:$i:1}"
-    if [[ -n "$q" ]]; then
-      if [[ "$ch" == "$q" ]]; then q=''
-      elif [[ "$protect" -eq 1 && ( "$ch" == ' ' || "$ch" == $'\t' ) ]]; then ch="$SP"; fi
-    elif [[ "$ch" == '"' || "$ch" == "'" ]]; then
+    if [[ "$pdepth" -gt 0 ]]; then
+      # Inside an unquoted flag-value substitution: one token until it closes.
+      case "$ch" in
+        '(') pdepth=$((pdepth + 1)); ch="$LP" ;;
+        ')') pdepth=$((pdepth - 1)); ch="$RP" ;;
+        ' '|$'\t') ch="$SP" ;;
+      esac
+      [[ "$pdepth" -eq 0 ]] && cur+='x'
+    elif [[ -n "$q" ]]; then
+      if [[ "$ch" == "$q" && "$depth" -eq 0 ]]; then
+        # A protected backtick value keeps its backticks as markers too, or
+        # the clause splitter turns them into spaces and splits the token.
+        [[ "$q" == '`' && "$protect" -eq 1 ]] && ch="$SP"
+        q=''
+      elif [[ "$protect" -eq 1 ]]; then
+        case "$ch" in ' '|$'\t') ch="$SP" ;; '(') ch="$LP" ;; ')') ch="$RP" ;; esac
+      elif [[ "$q" == '`' ]]; then
+        : # a backtick span outside a flag value is code; left as written
+      elif [[ "$ch" == '(' ]]; then
+        if [[ "$q" == '"' && "$i" -gt 0 && "${s:$((i - 1)):1}" == '$' ]]; then depth=$((depth + 1))
+        elif [[ "$q" == '"' && "$depth" -gt 0 ]]; then depth=$((depth + 1))
+        else ch="$LP"; fi
+      elif [[ "$ch" == ')' ]]; then
+        if [[ "$q" == '"' && "$depth" -gt 0 ]]; then depth=$((depth - 1)); else ch="$RP"; fi
+      fi
+    elif [[ "$ch" == '(' && "$cur" == *'$' && "$saw_git" -eq 1 ]] && case "$prev" in -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) true ;; *) false ;; esac; then
+      pdepth=1; ch="$LP"
+    elif [[ "$ch" == '"' || "$ch" == "'" || "$ch" == '`' ]]; then
       q="$ch"; protect=0
       # The option belongs to a git command when a git word came earlier in
       # this clause, whatever launcher or assignment sits in front of it
       # (`env git`, `time git`, `FOO=1 git`; round 4 found each unprotected
-      # when only the clause's first word was read).
+      # when only the clause's first word was read). The quote may open
+      # mid-value (`-c a="$(x)"`, a backtick value), so the word before the
+      # value is what is read, not whether the value has started.
       if [[ "$saw_git" -eq 1 ]]; then
         case "$prev" in
-          -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) [[ -z "$cur" ]] && protect=1 ;;
+          -C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source) protect=1 ;;
         esac
         case "$cur" in
           -C*|-c*|--git-dir=*|--work-tree=*|--namespace=*|--super-prefix=*|--config-env=*|--attr-source=*) protect=1 ;;
         esac
       fi
+      [[ "$ch" == '`' && "$protect" -eq 1 ]] && ch="$SP"
     elif [[ "$ch" == ' ' || "$ch" == $'\t' ]]; then
       if [[ -n "$cur" ]]; then
         [[ "$cur" == git || "$cur" == */git ]] && saw_git=1
@@ -469,6 +509,7 @@ compose_path() {
 # in the chain. The walk now marks the directory unknown and sets
 # TARGET_COMPUTED; run_scans refuses a guarded verb under it, the same way a
 # computed ref or verb is refused, and the refusal says to spell the path.
+PO="__PAREN_${$}_${RANDOM}_O__"; PC="__PAREN_${$}_${RANDOM}_C__"
 TARGET_COMPUTED=0
 path_is_computed() {
   case "$1" in
@@ -477,7 +518,7 @@ path_is_computed() {
   return 1
 }
 collect_candidates() {
-  local text="$1" dir='' sticky_gd='' sticky_wt='' clause unknown=0
+  local text="$1" dir='' sticky_gd='' sticky_wt='' last_gd='' last_wt='' clause unknown=0
   local toks i n tok gd wt cdir is_export envdir cl
   local stack=()
   # Quote characters go, the way the verb scans drop them: an interpreter's
@@ -490,7 +531,12 @@ collect_candidates() {
   # parentheses into spaces, so they become marker words first, and the
   # walk saves the directory at `(` and restores it at `)`. A brace group
   # is not a subshell and its cd persists, which the walk already models.
-  text="${text//\(/ __PAREN_OPEN__ }"; text="${text//\)/ __PAREN_CLOSE__ }"
+  # A process substitution's paren is structural too, and its `<` would be
+  # read as a redirection that eats the marker word after it, so the pair
+  # goes first. The marker words carry a per-process nonce so typed text
+  # cannot move the stack (round 5 typed them).
+  text="${text//<\(/ $PO }"; text="${text//>\(/ $PO }"
+  text="${text//\(/ $PO }"; text="${text//\)/ $PC }"
   local pstack=()
   split_clauses "$text"
   while IFS= read -r clause; do
@@ -498,7 +544,25 @@ collect_candidates() {
     n="${#toks[@]}"
     [[ "$n" -gt 0 ]] || continue
     i=0; gd="$sticky_gd"; wt="$sticky_wt"; is_export=0; envdir=''
-    [[ "${toks[0]}" == export ]] && { is_export=1; i=1; }
+    # `export`, `declare -x`, and `typeset -x` all export; a bare `export
+    # GIT_DIR` exports the value an earlier assignment-only clause set.
+    case "${toks[0]}" in
+      export) is_export=1; i=1 ;;
+      declare|typeset)
+        is_export=1; i=1
+        while [[ "$i" -lt "$n" && "${toks[$i]}" == -* ]]; do i=$((i + 1)); done ;;
+    esac
+    if [[ "$is_export" -eq 1 ]]; then
+      for tok in "${toks[@]:$i}"; do
+        case "$tok" in
+          GIT_DIR=*) gd="${tok#GIT_DIR=}" ;;
+          GIT_WORK_TREE=*) wt="${tok#GIT_WORK_TREE=}" ;;
+          GIT_DIR) gd="$last_gd" ;;
+          GIT_WORK_TREE) wt="$last_wt" ;;
+        esac
+      done
+      sticky_gd="$gd"; sticky_wt="$wt"; continue
+    fi
     if [[ "${toks[0]}" == unset ]]; then
       for tok in "${toks[@]}"; do
         case "$tok" in GIT_DIR) sticky_gd='' ;; GIT_WORK_TREE) sticky_wt='' ;; esac
@@ -528,7 +592,13 @@ collect_candidates() {
         *) break ;;
       esac
     done
-    if [[ "$is_export" -eq 1 ]]; then sticky_gd="$gd"; sticky_wt="$wt"; continue; fi
+    # An assignment-only clause (`GIT_DIR=x;`) sets nothing for later
+    # clauses until exported, but a later bare `export GIT_DIR` reads it.
+    if [[ "$i" -ge "$n" ]]; then
+      [[ "$gd" != "$sticky_gd" ]] && last_gd="$gd"
+      [[ "$wt" != "$sticky_wt" ]] && last_wt="$wt"
+      continue
+    fi
     if [[ -n "$envdir" ]]; then
       if path_is_computed "$envdir"; then TARGET_COMPUTED=1; fi
     fi
@@ -537,10 +607,13 @@ collect_candidates() {
       i=$((i + 1))
       case "$tok" in
         cd|pushd)
+          # A flag before the path (`cd -P <p>`, `cd -L`, `cd --`) is not the
+          # path; round 5 found the path after a flag read as a bare word.
+          while [[ "$i" -lt "$n" && "${toks[$i]}" != - && "${toks[$i]}" == -* ]]; do i=$((i + 1)); done
           if [[ "$i" -lt "$n" ]]; then
             if path_is_computed "${toks[$i]}"; then
               TARGET_COMPUTED=1; unknown=1
-            elif [[ "${toks[$i]}" != -* ]]; then
+            else
               [[ "$tok" == pushd ]] && stack+=("$dir")
               dir=$(compose_path "$dir" "${toks[$i]}"); unknown=0
             fi
@@ -558,8 +631,8 @@ collect_candidates() {
           fi
           unknown=0
           continue ;;
-        __PAREN_OPEN__) pstack+=("$dir"); continue ;;
-        __PAREN_CLOSE__)
+        "$PO") pstack+=("$dir"); continue ;;
+        "$PC")
           if [[ "${#pstack[@]}" -gt 0 ]]; then
             dir="${pstack[$((${#pstack[@]} - 1))]}"; unset "pstack[$((${#pstack[@]} - 1))]"; unknown=0
           fi
@@ -588,7 +661,7 @@ collect_candidates() {
           *) break ;;
         esac
       done
-      cl="${clause//__PAREN_OPEN__/ }"; cl="${cl//__PAREN_CLOSE__/ }"
+      cl="${clause//$PO/ }"; cl="${cl//$PC/ }"
       if [[ "$unknown" -eq 1 ]]; then
         # The directory is unreadable here: decide the cwd, where the
         # computed-target refusal fires under a guarded verb.
@@ -669,6 +742,14 @@ decide_for_target() {
         git_dir_arg=(-C "${payload_cwd:-.}" -C "$p1")
       fi ;;
     env)
+      # A git dir with no work tree makes git treat the cwd as the work
+      # tree, so the toplevel (where house.json is read) was the cwd while
+      # the branch came from the git dir: round 5 committed on master from
+      # a non-adopted cwd that way. The policy belongs to the git dir's own
+      # repo, so its parent stands in for the work tree.
+      if [[ -n "$p1" && -z "$p2" ]]; then
+        p2="${p1%/.git}"; [[ "$p2" == "$p1" ]] && p2="${p1%/*}"
+      fi
       git_dir_arg=(-C "${payload_cwd:-.}")
       [[ -n "$p3" ]] && git_dir_arg+=(-C "$p3")
       [[ -n "$p1" ]] && git_dir_arg+=("--git-dir=$p1")
@@ -773,6 +854,12 @@ decide_for_target() {
   # i.e. the guard would silently vanish exactly when it matters most).
   trap crashed ERR
 
+  # Every alias the candidate's repo and the user's config define, read
+  # once per candidate rather than once per verb (the per-verb lookup was
+  # most of a six-clause command's two seconds). Read with the trap
+  # disarmed in the subshell, see resolve_alias.
+  ALIAS_CACHE=$(trap - ERR; git "${git_dir_arg[@]}" config --get-regexp '^alias\.' 2>/dev/null || true)
+
   protected_list=$(jq -r '(.protectedBranches // ["master","main"])[]' "$house_json" 2>/dev/null)
   if [[ -z "$protected_list" ]]; then
     protected_list=$'master\nmain'
@@ -825,7 +912,57 @@ cmd_safe=$(protect_quoted_spaces "$(strip_message_args "$cmd")" | sed -E "
 # strip_flag_args_keep_dash_c). A scan denies when ANY variant matches, so the
 # extra variant can only add denials. Skipping it when it is identical keeps the
 # no-`-c` common case (every ordinary git command) off a second sed and scan.
+# The body of every `$(...)` and backtick span, read from the raw command by
+# a quote-aware depth walk (a single-quoted `)` inside does not close it, a
+# nested `$( )` or `$(( ))` is counted, an unclosed span runs to the end).
+# A verb inside a substitution belongs to every candidate and to every
+# any-branch scan: the blind-stripped clause text loses a message value
+# whole, and a protected flag value hides its substitution as one token, so
+# `-m "$(git commit)"` and `-C "$(git push origin master)"` are read here.
+extract_substitutions() {
+  local s="$1" n i ch q='' d=0 body='' out=''
+  n="${#s}"
+  for ((i = 0; i < n; i++)); do
+    ch="${s:$i:1}"
+    if [[ "$d" -gt 0 ]]; then
+      if [[ -n "$q" ]]; then
+        [[ "$ch" == "$q" ]] && q=''
+        body+="$ch"; continue
+      fi
+      case "$ch" in
+        "'") q="'"; body+="$ch" ;;
+        '(') d=$((d + 1)); body+="$ch" ;;
+        ')') d=$((d - 1)); if [[ "$d" -gt 0 ]]; then body+="$ch"; else out+="$body"$'\n'; body=''; fi ;;
+        *) body+="$ch" ;;
+      esac
+      continue
+    fi
+    if [[ -n "$q" ]]; then
+      [[ "$ch" == "$q" ]] && q=''
+      continue
+    fi
+    case "$ch" in
+      "'") q="'" ;;
+      '$') if [[ "${s:$((i + 1)):1}" == '(' ]]; then d=1; i=$((i + 1)); fi ;;
+    esac
+  done
+  [[ "$d" -gt 0 ]] && out+="$body"$'\n'
+  local rest="$1"
+  while [[ "$rest" =~ \`([^\`]*)\` ]]; do
+    out+="${BASH_REMATCH[1]}"$'\n'
+    rest="${rest#*"${BASH_REMATCH[0]}"}"
+  done
+  printf '%s' "$out"
+}
+SUBST_TEXT=$(extract_substitutions "$cmd")
+subst_safe=''
+if [[ -n "$SUBST_TEXT" ]]; then
+  subst_safe=$(protect_quoted_spaces "$(strip_message_args "$SUBST_TEXT")" | sed -E "
+    s/['\"]//g;
+    s/(^|[[:space:]])#.*\$//")
+fi
 scan_variants=("$cmd_safe")
+[[ -n "$subst_safe" ]] && scan_variants+=("$subst_safe")
 cmd_safe2=$(protect_quoted_spaces "$(strip_flag_args_keep_dash_c "$cmd")" | sed -E "
   s/['\"]//g;
   s/(^|[[:space:]])#.*\$//")
@@ -952,13 +1089,18 @@ git_split() {
 # read; one injected on the command line or through the environment is
 # refused before this runs.
 resolve_alias() {
-  local depth=0 alias_val first rest
+  local depth=0 alias_val first rest _al
   while [[ "$depth" -lt 5 ]]; do
     # The lookup runs with the trap disarmed inside its own subshell: a
     # missing alias is git exiting 1, and with the trap armed that exit
     # would print the crash-deny JSON INTO alias_val (the same seam the
     # clause splitter records), which then read as a computed verb.
-    alias_val=$(trap - ERR; git "${git_dir_arg[@]}" config --get "alias.$GV_VERB" 2>/dev/null || true)
+    alias_val=''
+    if [[ -n "$ALIAS_CACHE" ]]; then
+      while IFS= read -r _al; do
+        case "$_al" in "alias.$GV_VERB "*) alias_val="${_al#alias.$GV_VERB }"; break ;; esac
+      done <<<"$ALIAS_CACHE"
+    fi
     [[ -n "$alias_val" ]] || break
     # A shell alias runs whatever it likes, and its body is not readable
     # text: the first version scanned it for git or push after removing
@@ -1243,27 +1385,11 @@ fi
 # cand_has_verb VERB: does the git command this candidate was made for run
 # VERB (alias resolved against this candidate's repo)? The protected-branch
 # block reads this rather than the whole command, see the candidate comment.
-# A verb inside a substitution anywhere in the command belongs to every
-# candidate: the candidate's clause comes from the blind-stripped text, where
-# a message value vanishes whole, and round 4 hid `$(git commit)` inside a
-# `-m` value on a read-only verb. SUBST_TEXT holds the body of every `$(...)`
-# and backtick span, read from the expand-aware text where they survive.
-SUBST_TEXT=''
-_rest="$cmd_safe"
-# The closing paren may be gone, eaten with a bare value the strip removed
-# (`-m done)`), so an unclosed span runs to the end of the text.
-while [[ "$_rest" =~ \$\(([^()]*)(\)|$) ]]; do
-  SUBST_TEXT+="${BASH_REMATCH[1]}"$'\n'
-  _rest="${_rest#*"${BASH_REMATCH[0]}"}"
-done
-_rest="$cmd"
-while [[ "$_rest" =~ \`([^\`]*)\` ]]; do
-  SUBST_TEXT+="${BASH_REMATCH[1]}"$'\n'
-  _rest="${_rest#*"${BASH_REMATCH[0]}"}"
-done
+# cand_has_verb VERB: the git commands this candidate was made for, plus
+# every substitution body (see extract_substitutions).
 cand_has_verb() {
   verb_in_text "$1" "$CAND_TEXT" && return 0
-  [[ -n "$SUBST_TEXT" ]] && verb_in_text "$1" "$SUBST_TEXT" && return 0
+  [[ -n "$subst_safe" ]] && verb_in_text "$1" "$subst_safe" && return 0
   return 1
 }
 # A target the shell computes (see collect_candidates) with a guarded verb
@@ -1272,7 +1398,37 @@ if [[ "$TARGET_COMPUTED" -eq 1 ]] && { any_clause_verb commit || any_clause_verb
   deny "Refusing: the directory this git command runs in is computed by the shell (a cd, pushd, -C, or CDPATH the branch guard cannot read), so it cannot tell which checkout the commit or push lands in (house.json at $toplevel). Spell the path as a literal, absolute where possible, and retry."
 fi
 
-if is_protected_branch "$branch"; then
+# A branch created earlier in the same call (`git checkout -b x && git
+# commit`) is where the commit lands, so the protected-branch block stands
+# down for it; that is the shape the refusal itself recommends, and the
+# regression round found it refused from the protected branch. A checkout
+# back onto a protected branch afterwards is the same-call state-change
+# refusal, and a push naming a protected branch is the any-branch scan.
+creates_branch_first() {
+  local v clause tok n created='' guarded=''
+  for v in "${scan_variants[@]}"; do
+    split_clauses "$v"
+    n=0; created=''; guarded=''
+    while IFS= read -r clause; do
+      n=$((n + 1))
+      git_split "$clause" || continue
+      while :; do
+        case "$GV_VERB" in
+          commit|push) [[ -z "$guarded" ]] && guarded="$n" ;;
+          checkout|switch)
+            case "$GV_ARGS" in
+              -b$'\n'*|-B$'\n'*|-c$'\n'*|-C$'\n'*|--orphan$'\n'*|*$'\n'-b$'\n'*|*$'\n'-B$'\n'*|*$'\n'-c$'\n'*|*$'\n'-C$'\n'*|*$'\n'--orphan$'\n'*)
+                [[ -z "$created" ]] && created="$n" ;;
+            esac ;;
+        esac
+        git_next || break
+      done
+    done <<<"$CLAUSES"
+    if [[ -n "$created" && -n "$guarded" && "$created" -lt "$guarded" ]]; then return 0; fi
+  done
+  return 1
+}
+if is_protected_branch "$branch" && ! creates_branch_first; then
   if cand_has_verb commit; then
     staged=$(git "${git_dir_arg[@]}" diff --cached --name-only 2>/dev/null || true)
     if carve_out_satisfied "$staged"; then
@@ -1424,14 +1580,28 @@ collect_candidates "$cmd_for_target_c"
 if [[ -z "$CANDIDATES" ]]; then
   decide_for_target dir '' '' '' "$cmd_safe"
 else
-  seen=''
+  # One decision per distinct target, its clauses joined: the regression
+  # round timed a six-clause command at seconds when every clause was its
+  # own candidate with its own policy read and git lookups.
+  keys=(); texts=()
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
-    case "$seen" in *"|$line|"*) continue ;; esac
-    seen+="|$line|"
     IFS="$US" read -r kind p1 p2 p3 p4 <<<"$line"
-    decide_for_target "$kind" "$p1" "$p2" "$p3" "$p4"
+    key="${kind}${US}${p1}${US}${p2}${US}${p3}"
+    found=''
+    for ((k = 0; k < ${#keys[@]}; k++)); do
+      [[ "${keys[$k]}" == "$key" ]] && { found="$k"; break; }
+    done
+    if [[ -n "$found" ]]; then
+      texts[$found]+=$'\n'"$p4"
+    else
+      keys+=("$key"); texts+=("$p4")
+    fi
   done <<<"$CANDIDATES"
+  for ((k = 0; k < ${#keys[@]}; k++)); do
+    IFS="$US" read -r kind p1 p2 p3 <<<"${keys[$k]}"
+    decide_for_target "$kind" "$p1" "$p2" "$p3" "${texts[$k]}"
+  done
 fi
 
 exit 0

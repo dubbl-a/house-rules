@@ -1282,6 +1282,69 @@ expect_allow "adversarial 8: env before git with a quoted -C path and a read-onl
 expect_allow "adversarial 8: a message with a variable and the letters HOME= is prose" \
   "$(mk_payload "git $_verb -m \"note \$UNRELATED and also HOME=/nothing/special\"" "$pf")"
 
+# Adversarial round 5: the directory model diverging from bash. A cd flag
+# hid the path that followed it; declare -x and a split assign-then-export
+# were not exports; GIT_DIR without a work tree read the branch from one
+# repo and the policy from another; the paren markers could be typed, were
+# desynced by a quoted paren, and were eaten with a process substitution's
+# `<`; a nested substitution defeated the extraction regex.
+open_d="$TMP_ROOT/seam_open"; new_repo "$open_d"
+expect_deny "adversarial 9: cd -P into the protected checkout" \
+  "$(mk_payload "cd -P $pm && git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: cd -L into the protected checkout" \
+  "$(mk_payload "cd -L $pm && git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: declare -x exports GIT_DIR and GIT_WORK_TREE" \
+  "$(mk_payload "declare -x GIT_DIR=$pm/.git GIT_WORK_TREE=$pm; git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: assign then bare export" \
+  "$(mk_payload "GIT_DIR=$pm/.git; GIT_WORK_TREE=$pm; export GIT_DIR; export GIT_WORK_TREE; git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: exported GIT_DIR alone from a non-adopted cwd" \
+  "$(mk_payload "export GIT_DIR=$pm/.git; git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: --git-dir alone from a non-adopted cwd" \
+  "$(mk_payload "git --git-dir=$pm/.git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: typed paren marker words do not move the stack" \
+  "$(mk_payload ": __PAREN_OPEN__ ; cd $pm ; : __PAREN_CLOSE__ ; git $_verb -m x" "$open_d")" "master"
+expect_deny "adversarial 9: a quoted close paren inside a subshell does not end it early" \
+  "$(mk_payload "(echo \")\" ; cd $pf) ; git $_verb -m x" "$pm")" "master"
+expect_allow "adversarial 9: the mirror case, the subshell cd into the protected checkout expires" \
+  "$(mk_payload "(echo \")\" ; cd $pm) ; git $_verb -m x" "$pf")"
+expect_deny "adversarial 9: a process substitution's cd expires" \
+  "$(mk_payload "diff <(cd $pf) /dev/null ; git $_verb -m x" "$pm")" "master"
+expect_deny "adversarial 9: a nested substitution around a commit on master" \
+  "$(mk_payload "git status -m \"\$(echo \$(true) && git $_verb -m x)\"" "$pm")" "master"
+expect_deny "adversarial 9: arithmetic inside the substitution" \
+  "$(mk_payload "git status -m \"\$(\$((1+1)) ; git $_verb -m x)\"" "$pm")" "master"
+expect_deny "adversarial 9: a quoted paren inside the substitution" \
+  "$(mk_payload "git status -m \"\$(echo ')' ; git $_verb -m x)\"" "$pm")" "master"
+
+# Regression round 3. The toplevel idiom `git -C $(git rev-parse
+# --show-toplevel) commit` was a bypass on master unquoted (the split value
+# leaked `git` into the verb search and rev-parse became the verb) and a
+# false deny quoted (the parens fragmented the protected token); creating a
+# branch and committing on it in one call from a protected branch was
+# refused by the branch block that reads the branch before the checkout
+# runs, which is the very shape the refusal recommends; and a six-clause
+# command took seconds because every clause was its own candidate.
+expect_deny "regression 3: the toplevel idiom unquoted before a commit on master" \
+  "$(mk_payload "git -C \$(git rev-parse --show-toplevel) $_verb -m x" "$pm")" "computed"
+expect_deny "regression 3: the toplevel idiom unquoted before a push from master" \
+  "$(mk_payload "git -C \$(git rev-parse --show-toplevel) $_p origin master" "$pm")" "computed"
+expect_allow "regression 3: the toplevel idiom quoted before a read-only verb" \
+  "$(mk_payload "git -C \"\$(git rev-parse --show-toplevel)\" status" "$pf")"
+expect_allow "regression 3: a -c value holding a substitution before a read-only verb" \
+  "$(mk_payload "git -c \"user.name=\$(id -un)\" status" "$pf")"
+expect_deny "regression 3: a push hidden in a -C substitution is still read" \
+  "$(mk_payload "git -C \"\$(git $_p origin master)\" status" "$pf")" "computed"
+expect_allow "regression 3: create a branch then commit on it, from the protected branch" \
+  "$(mk_payload "git checkout -b feat/new && git $_verb -m x" "$pm")"
+expect_allow "regression 3: switch -c then commit, from the protected branch" \
+  "$(mk_payload "git switch -c feat/new2 && git $_verb -m x" "$pm")"
+expect_allow "regression 3: create a branch then push it, from the protected branch" \
+  "$(mk_payload "git checkout -b feat/new3 && git $_p -u origin feat/new3" "$pm")"
+expect_deny "regression 3: create a branch, go back, then commit" \
+  "$(mk_payload "git checkout -b feat/new4 && git checkout master && git $_verb -m x" "$pm")" "separate"
+expect_deny "regression 3: create a branch then push master by name" \
+  "$(mk_payload "git checkout -b feat/new5 && git $_p origin master" "$pm")" "protected"
+
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
