@@ -229,6 +229,23 @@ definition's own, for subagents, teammates, and workflow agents alike
 (https://code.claude.com/docs/en/sub-agents), so with it set to the tier below the session's an
 omitted model no longer lands on the session model, and a pinned call is unaffected.
 
+The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,
+and the way of working was being retyped into prompts ("subagents on lower models, and here is
+how to use them"). The plugin now ships it. Five agents under `plugins/house/agents/` (scout on
+Haiku, researcher and builder on Sonnet, refuter and debugger on Opus) each pin model, effort,
+and tools in frontmatter the harness enforces, and none lists the Agent tool, so none can spawn;
+they load in every session as `house-rules:<name>` at the lowest priority, so a project or user
+agent of the same name wins (https://code.claude.com/docs/en/sub-agents). A SessionStart hook
+injects `plugins/house/orchestration/ORCHESTRATION.md` under
+`hookSpecificOutput.additionalContext` on startup, clear, and compact, the same mechanism the
+superpowers plugin uses for its own introduction; a missing file emits nothing and exits 0. The
+text is directives only, under 120 lines, because every session pays for it. Both are a port of
+SirRuggie's claude-code-orchestration-kit (MIT, consulted 2026-09-20 at its commit of 2026-09-13),
+minus its task-bucket system and `/task` command, which this package has not adopted;
+`scripts/check-orchestration-kit-upstream.mjs` pins that commit and exits 1 when the upstream
+branch moves, with `--diff` for the stat of the ported paths, so re-porting stays a deliberate PR
+rather than a re-fork.
+
 The "fail loudly" floor the rule once stated does not hold on v2.1.278. The same binary's strings
 show the real behavior: "Subagent model … is not in the availableModels allowlist; using the newest
 allowed model in its family" and, on the workflows doc, "that agent runs on a substituted model

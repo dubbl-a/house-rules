@@ -131,10 +131,9 @@ incident or receipt that earned it matters more than its wording; a bug in the c
 a skill, through the bug-report form, with the command and its output; and an adopter's report that
 a rule kept getting ignored or a check fired wrongly, which is how rules get cut. Questions fit
 [Discussions](https://github.com/dubbl-a/house-rules/discussions) better than an issue; issues
-labelled good first issue are scoped for a first pull request. `CONTRIBUTING.md` covers the
-branch-and-PR flow, the upstream-first rule, the escape hatches, licensing (inbound is outbound, no
-CLA), and `npm run verify`. `SECURITY.md` is how to report a vulnerability privately;
-`CODE_OF_CONDUCT.md` applies wherever this project runs.
+labelled good first issue are scoped for a first pull request. `CONTRIBUTING.md` covers the flow,
+the escape hatches, licensing (inbound is outbound, no CLA), and `npm run verify`; `SECURITY.md`
+is how to report a vulnerability privately; `CODE_OF_CONDUCT.md` applies wherever this project runs.
 
 ## Standing on other people's work
 
@@ -143,6 +142,7 @@ rules. Each is named plainly rather than folded into one credits line, because e
 
 - [superpowers](https://github.com/obra/superpowers) (obra), for the in-session discipline this
   package complements and for the starting text behind its worktree and finish-branch guidance.
+- [claude-code-orchestration-kit](https://github.com/SirRuggie/claude-code-orchestration-kit) (SirRuggie), for the pinned five-agent roster and the six-section brief.
 - [antfu's eslint-config](https://github.com/antfu/eslint-config), for the personal-config contract
   this README opens with.
 - [typescript-eslint's versioning policy](https://typescript-eslint.io/users/versioning/), for the
