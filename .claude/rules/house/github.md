@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.10.1 module=github source=modules/github/rules/github.md body-sha256=74b5fb8b46eed741c3019585c095cd69986c8871bc241aeb7b5289ad8c77a36d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.10.0 module=github source=modules/github/rules/github.md body-sha256=76e330fce7a6f1b2c50fcde86a8aaaee7d8d3bf8aa6206ab82f9d2faa14f5f12 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -148,6 +148,15 @@ Take issue intake through YAML forms with blank issues disabled, so a report sta
 The pull-request template already has its own rule above; point here rather than repeating it.
 Anchor: confirm the platform's community-profile endpoint at adoption, the same shape as confirming push protection in settings; a checker family here is a later cycle if it earns one.
 Receipts: `docs/handbook/github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms`
+
+## Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it
+
+Enforce a protected-branch policy inside `.githooks/pre-commit` and `.githooks/pre-push`, where git has already resolved the real repository, the real HEAD, and the real ref, not by reading the text of a command that might produce one.
+Arm the floor with `core.hooksPath`, set by `house render --apply` and every session start, because a rendered hook that nothing points at from `.git/config` never runs.
+Keep the PreToolUse hook's job to the enumerable list of ways to turn the floor off (`--no-verify`, `core.hooksPath` in any form, the `GIT_CONFIG_*` family, a mutation of `.githooks/`), never to inferring a branch or a working tree from a string.
+Read `house doctor` for whether the floor is armed here, because `core.hooksPath` is machine-local state a repo-only checker cannot see.
+Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored by this module, kept executable by render and the arming step) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, and reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh`'s disable list is the text scan's whole remaining job.
+Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`
 
 ## Don't
 

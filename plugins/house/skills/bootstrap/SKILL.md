@@ -105,7 +105,15 @@ Add a CI step that runs:
 Install the plugin once per machine:
   claude plugin marketplace add dubbl-a/house-rules
   claude plugin install house-rules@house-rules --scope user
+
+Arm the git hooks once per clone (render --apply and every session start also do this):
+  git config core.hooksPath "$(pwd)/.githooks"
 ```
+
+`core.hooksPath` lives in `.git/config`, which no clone and no PR carries, so the vendored
+`.githooks/` tree is inert in a fresh checkout until something sets it. `render --apply` and the
+plugin's SessionStart hook both arm it; the line above is for a clone that has neither. Neither
+they nor the person should overwrite a `core.hooksPath` another tool already owns.
 
 If the repo has no `.claude/settings.local.json`, say so in the printed output. That file is
 where a per-repo opt-out of a house module or hook would live, and its absence means the repo

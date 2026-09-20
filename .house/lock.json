@@ -4,25 +4,25 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "156d067b91961899754338f44839ef0e93967519327f476c69f7d59495224f7b"
+      "bodySha256": "f62024c7cb706c9889347939945339c3640d4d62d31309f8e9d4416c8b27d179"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
       "module": "claude-code",
       "source": "modules/claude-code/files/check-deep-research-upstream.mjs",
-      "bodySha256": "4a9632eab3786c232b87cb6080ed29556fb8b742cfe38cbb5ca74f1e41418d88"
+      "bodySha256": "600ef204dd45f7f6a8ec40d0d45a944bcb02104f427dca7c0be2161a231b3def"
     },
     {
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "e20cb2a4ee1ad224b9fd4536a78601cec6f868bf5936975da6e8d64e0edfd2b6"
+      "bodySha256": "084505d04ef672154db3d613db9f0aeba997fed490d40ef34d3058ea5a6a7be6"
     },
     {
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "b24fa7feab006a9b227dc93435285cc460bf3ab7dc6b2911c984072152f7c886"
+      "bodySha256": "12509755aff2ae5053cb201a7f3adea2c8d7896f2a4a845aa700a8bab025e0b0"
     },
     {
       "path": "scripts/house/is-main.mjs",
@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "ea26bee80e47b553e5e19162f1d81cd57025b5fa9519bf74cb062845f038d00d"
+      "bodySha256": "0eb3b8bd4c732c29c3389cff9d9e40a02389c4a4284307fb1e1dac7473347021"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -49,16 +49,58 @@
       "bodySha256": "835d6428535917891406876ded35df7ea194c15d39b98b7e49e59204789fff31"
     },
     {
+      "path": ".githooks/pre-commit",
+      "module": "github",
+      "source": "modules/github/files/githooks/pre-commit",
+      "bodySha256": "6288884578187d863b05ce932fa5c92651f0418f6e18f8486dc7ee2b9f897e67"
+    },
+    {
+      "path": ".githooks/pre-push",
+      "module": "github",
+      "source": "modules/github/files/githooks/pre-push",
+      "bodySha256": "fee82662344f2135d7d1b7c9d9b9a59d445011de91ec739878341daaf56e6908"
+    },
+    {
+      "path": ".githooks/reference-transaction",
+      "module": "github",
+      "source": "modules/github/files/githooks/reference-transaction",
+      "bodySha256": "f455d075e152f4dc89dfd452ba40c4422ed30e3dedbb565f7d71a039f66ab8e6"
+    },
+    {
+      "path": ".githooks/house-lib.sh",
+      "module": "github",
+      "source": "modules/github/files/githooks/house-lib.sh",
+      "bodySha256": "29d49c2ad917dcf100902380e5e50b9792000e1e7997f0abd97148dc67ee20e2"
+    },
+    {
+      "path": ".githooks/pre-commit.d/10-house-branch",
+      "module": "github",
+      "source": "modules/github/files/githooks/pre-commit.d/10-house-branch",
+      "bodySha256": "2b176125b22b3f6b49384c8010b688fa8b1f57b82c790d204b0985adabddcb3e"
+    },
+    {
+      "path": ".githooks/pre-push.d/10-house-branch",
+      "module": "github",
+      "source": "modules/github/files/githooks/pre-push.d/10-house-branch",
+      "bodySha256": "df52f596fe2e45133ab020f27a80fdf9edda83c6a6477cc63c33691e7115a038"
+    },
+    {
+      "path": ".githooks/reference-transaction.d/10-house-branch",
+      "module": "github",
+      "source": "modules/github/files/githooks/reference-transaction.d/10-house-branch",
+      "bodySha256": "8d4bccc60278445a332b60f4d783621861ce4eece46d4f2893627151a6afadef"
+    },
+    {
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "fe806a81a0f5fed8887f49c4ef0fe74ae1d798505a2aaf82c1865ba617542f8d"
+      "bodySha256": "f2d14372c93cc30b4a6918ab9072ecb56a902539f21b8128fc63ec50b7a4e769"
     },
     {
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "358b7e27d1a798e6717f196a7f8a9b6875011bb2268e7f53655d569e49e2277f"
+      "bodySha256": "e597d121da87df4677a9a9a7edeb008fdfd7c3ffd5429e1104641268de3bb99b"
     }
   ],
   "scaffolds": [
@@ -77,6 +119,10 @@
     {
       "template": "pr-checks.yml",
       "path": ".github/workflows/pr-checks.yml"
+    },
+    {
+      "template": "pre-commit.d/20-secrets",
+      "path": ".githooks/pre-commit.d/20-secrets"
     }
   ]
 }

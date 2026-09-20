@@ -9,12 +9,13 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs tests/check/*.test.mjs",
     "test:hooks": "bash tests/hooks/run.sh",
+    "test:githooks": "bash tests/githooks/run.sh && bash tests/templates/pre-commit.test.sh",
     "check:traceability": "node scripts/check-traceability.mjs",
     "check:docs": "node .house/check.mjs --only=drift,todo",
     "check:house": "node .house/check.mjs",
     "test:smoke": "bash tests/smoke-bootstrap.sh",
     "check:plugin": "claude plugin validate --strict ./plugins/house",
     "check:kit": "node scripts/check-orchestration-kit-upstream.mjs",
-    "verify": "npm test && npm run test:hooks && npm run check:traceability && npm run check:house && npm run test:smoke && npm run check:plugin"
+    "verify": "npm test && npm run test:hooks && npm run test:githooks && npm run check:traceability && npm run check:house && npm run test:smoke && npm run check:plugin"
   }
 }

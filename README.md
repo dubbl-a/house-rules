@@ -61,9 +61,9 @@ https://house-rules-guide.vercel.app
 
 **If you are an engineer**, this is a Claude Code plugin. The nine modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
-enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs`
-runs in CI; a PreToolUse hook refuses a commit or push to a protected branch in every session; the
-next version arrives as a diff you approve. It installs from this repository with the `claude` CLI.
+enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs` runs
+in CI; a git-hook floor refuses a commit or push to a protected branch, backed by a PreToolUse hook;
+the next version arrives as a diff you approve. It installs from this repository with the `claude` CLI.
 Nothing is on npm or GitHub Packages; an adopting repo carries its own copy of the checker and rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They

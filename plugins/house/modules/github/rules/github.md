@@ -142,6 +142,15 @@ The pull-request template already has its own rule above; point here rather than
 Anchor: confirm the platform's community-profile endpoint at adoption, the same shape as confirming push protection in settings; a checker family here is a later cycle if it earns one.
 Receipts: `docs/handbook/github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms`
 
+## Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it
+
+Enforce a protected-branch policy inside `.githooks/pre-commit` and `.githooks/pre-push`, where git has already resolved the real repository, the real HEAD, and the real ref, not by reading the text of a command that might produce one.
+Arm the floor with `core.hooksPath`, set by `house render --apply` and every session start, because a rendered hook that nothing points at from `.git/config` never runs.
+Keep the PreToolUse hook's job to the enumerable list of ways to turn the floor off (`--no-verify`, `core.hooksPath` in any form, the `GIT_CONFIG_*` family, a mutation of `.githooks/`), never to inferring a branch or a working tree from a string.
+Read `house doctor` for whether the floor is armed here, because `core.hooksPath` is machine-local state a repo-only checker cannot see.
+Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored by this module, kept executable by render and the arming step) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, and reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh`'s disable list is the text scan's whole remaining job.
+Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`
+
 ## Don't
 
 Don't gate a PR on a check that needs a live credential.

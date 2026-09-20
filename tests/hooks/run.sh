@@ -1,15 +1,31 @@
 #!/usr/bin/env bash
 # Regression tests for plugins/house/hooks/no-direct-master.sh.
 #
-# For each case, builds a REAL PreToolUse JSON payload
-# ({"tool_name":"Bash","tool_input":{"command":"..."},"cwd":"..."}), pipes
-# it into the REAL hook script, and asserts on the captured stdout JSON
-# (via jq, .hookSpecificOutput.permissionDecision) and the exit code.
+# For each case, builds a REAL PreToolUse JSON payload (Bash:
+# {"tool_name":"Bash","tool_input":{"command":"..."},"cwd":"..."}; Edit,
+# Write and MultiEdit: tool_input.file_path), pipes it into the REAL hook
+# script, and asserts on the captured stdout JSON (via jq,
+# .hookSpecificOutput.permissionDecision) and the exit code.
 #
-# Deliberately does NOT reimplement any of the hook's branch/refspec/
-# carve-out matching logic here; every case exercises the hook's actual
-# stdin-to-stdout contract, using throwaway git repos created under
-# mktemp.
+# Deliberately does NOT reimplement any of the hook's matching logic here;
+# every case exercises the hook's actual stdin-to-stdout contract, using
+# throwaway git repos created under mktemp.
+#
+# Since #58 (ADR 0013) the hook is no longer the branch guard: the git-hook
+# floor is. So the suite is in four parts:
+#   - the ADR 0002 adoption gates and the deference matrix (unchanged)
+#   - the disable list: every literal that turns the floor off, each next to
+#     an innocent neighbour that must still pass
+#   - the branch refusals, run twice: against a fixture where the floor is
+#     ARMED (only a commit is refused, pushes are the floor's) and one where
+#     it is NOT (commit and push are both refused, and the message names the
+#     arming command)
+#   - the two fail-closed paths: missing jq and the ERR trap
+#
+# The armed fixture copies the vendored floor from
+# plugins/house/modules/github/files/githooks/ when it exists, and plants
+# minimal executable stand-ins when it does not, so this suite never depends
+# on the floor's own content, only on its presence and its mode.
 #
 # Run:  bash tests/hooks/run.sh   (also wired as `npm run test:hooks`)
 #
@@ -21,6 +37,8 @@ SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HOOK="$REPO_ROOT/plugins/house/hooks/no-direct-master.sh"
+FLOOR_SRC="$REPO_ROOT/plugins/house/modules/github/files/githooks"
+FLOOR_PATHS="pre-commit pre-push reference-transaction house-lib.sh pre-commit.d/10-house-branch pre-push.d/10-house-branch reference-transaction.d/10-house-branch"
 
 if [[ ! -f "$HOOK" ]]; then
   echo "FATAL: hook not found at $HOOK" >&2
@@ -53,7 +71,13 @@ mk_payload() {
     '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}'
 }
 
-# run_hook <payload-json> [env-prefix...] -> sets HOOK_OUT / HOOK_CODE
+# mk_file_payload <tool> <file_path> <cwd> -> real PreToolUse JSON on stdout
+mk_file_payload() {
+  jq -n --arg tool "$1" --arg fp "$2" --arg cwd "$3" \
+    '{tool_name: $tool, tool_input: {file_path: $fp}, cwd: $cwd}'
+}
+
+# run_hook <payload-json> -> sets HOOK_OUT / HOOK_CODE
 run_hook() {
   local payload="$1"
   HOOK_OUT=$(printf '%s' "$payload" | bash "$HOOK")
@@ -97,6 +121,24 @@ expect_deny() {
   pass "$label"
 }
 
+# expect_deny_without <label> <payload-json> <substring-that-must-be-absent>
+expect_deny_without() {
+  local label="$1" payload="$2" unwanted="$3"
+  run_hook "$payload"
+  local decision reason
+  decision=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
+  reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
+  if [[ "$decision" != "deny" ]]; then
+    fail "$label" "expected DENY, got decision=[$decision] out=[$HOOK_OUT]"
+    return
+  fi
+  if [[ "$reason" == *"$unwanted"* ]]; then
+    fail "$label" "deny reason must not mention [$unwanted]: $reason"
+    return
+  fi
+  pass "$label"
+}
+
 # new_repo <dir> -- inits a repo, one commit, on branch master
 new_repo() {
   local dir="$1"
@@ -104,15 +146,73 @@ new_repo() {
   git -C "$dir" init -q
   git -C "$dir" config user.email test@example.com
   git -C "$dir" config user.name "House Test"
+  git -C "$dir" config commit.gpgsign false
   git -C "$dir" checkout -q -b master
   echo seed >"$dir/.seed"
   git -C "$dir" add .seed
   git -C "$dir" commit -q -m seed
 }
 
+# adopt <dir> [json] -- writes house.json and records it, still on master
+adopt() {
+  local dir="$1" json="${2:-}"
+  [[ -n "$json" ]] || json='{"branchPolicy":"pr"}'
+  printf '%s' "$json" >"$dir/house.json"
+  git -C "$dir" add house.json
+  git -C "$dir" commit -q -m house
+}
+
+# arm_floor <dir> -- installs the git-hook floor in <dir> and points
+# core.hooksPath at it, which is what the hook reads to decide that pushes
+# are the floor's business rather than its own. Copies the vendored sources
+# when they exist (the github module's files[] entries); when they do not,
+# plants minimal executable stand-ins, because this suite asserts on the
+# floor's PRESENCE and mode, never on what it does. Call it AFTER the
+# fixture's own commits: a real floor refuses a commit on master.
+arm_floor() {
+  local dir="$1" rel
+  mkdir -p "$dir/.githooks/pre-commit.d" "$dir/.githooks/pre-push.d" "$dir/.githooks/reference-transaction.d"
+  for rel in $FLOOR_PATHS; do
+    if [[ -f "$FLOOR_SRC/$rel" ]]; then
+      cp "$FLOOR_SRC/$rel" "$dir/.githooks/$rel"
+    else
+      printf '#!/usr/bin/env bash\nexit 0\n' >"$dir/.githooks/$rel"
+    fi
+    chmod +x "$dir/.githooks/$rel"
+  done
+  git -C "$dir" config core.hooksPath "$dir/.githooks"
+}
+
+# lock_floor <dir> -- plants the .house/lock.json files[] records that make
+# the floor's paths managed, which is what the Edit/Write scan reads.
+lock_floor() {
+  local dir="$1"
+  mkdir -p "$dir/.house"
+  cat >"$dir/.house/lock.json" <<'EOF'
+{
+  "files": [
+    { "path": ".githooks/pre-commit", "module": "github" },
+    { "path": ".githooks/pre-push", "module": "github" },
+    { "path": ".githooks/reference-transaction", "module": "github" },
+    { "path": ".githooks/house-lib.sh", "module": "github" },
+    { "path": ".githooks/pre-commit.d/10-house-branch", "module": "github" },
+    { "path": ".githooks/pre-push.d/10-house-branch", "module": "github" },
+    { "path": ".githooks/reference-transaction.d/10-house-branch", "module": "github" }
+  ]
+}
+EOF
+}
+
 echo "=== house guard: PreToolUse hook regression tests ==="
 echo "hook: $HOOK"
+if [[ -d "$FLOOR_SRC" ]]; then
+  echo "floor fixture: vendored sources from $FLOOR_SRC"
+else
+  echo "floor fixture: stand-ins (vendored sources not present yet)"
+fi
 echo
+
+# ── ADR 0002 adoption gates ──────────────────────────────────────────────
 
 # --- 1. no house.json, commit on master: ALLOW (fail open) ---
 r="$TMP_ROOT/case01"; new_repo "$r"
@@ -121,13 +221,12 @@ expect_allow "no house.json, commit on master (fail open)" \
 
 # --- 2. house.json branchPolicy direct, commit on main: ALLOW ---
 r="$TMP_ROOT/case02"; new_repo "$r"
-echo '{"branchPolicy":"direct"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+adopt "$r" '{"branchPolicy":"direct"}'
 git -C "$r" checkout -q -b main
 expect_allow "house.json branchPolicy direct, commit on main" \
   "$(mk_payload "git commit -m x" "$r")"
 
-# --- 3. repo-local .claude/settings.json with a PreToolUse hook: ALLOW (deference) ---
+# --- 3. repo-local .claude/settings.json with a PreToolUse hook: ALLOW ---
 r="$TMP_ROOT/case03"; new_repo "$r"
 echo '{"branchPolicy":"pr"}' >"$r/house.json"
 mkdir -p "$r/.claude"
@@ -139,9 +238,7 @@ expect_allow "repo-local settings.json PreToolUse hook defers, on master" \
 # --- 4. repo-local .claude/hooks/no-direct-master.sh: only a SUBSTANTIVE one defers ---
 # #27: deference used to be by mere file existence, so a no-op `exit 0` stub
 # disarmed this hook entirely while the checker still reported the repo as
-# guarded. A stub is indistinguishable from no guard at all, so it must not
-# buy deference. The predicate fails toward DENY: a local guard we cannot
-# recognize leaves this hook armed, which costs a branch, not a miss.
+# guarded. The predicate fails toward DENY.
 r="$TMP_ROOT/case04"; new_repo "$r"
 echo '{"branchPolicy":"pr"}' >"$r/house.json"
 mkdir -p "$r/.claude/hooks"
@@ -164,47 +261,42 @@ for stub in '' '#!/usr/bin/env bash\n' '#!/usr/bin/env bash\nexit 0\n' '#!/usr/b
 done
 
 # --- 5/6. house.json pr policy: commit on master DENY, commit on feat/x ALLOW ---
-r="$TMP_ROOT/case05"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+r="$TMP_ROOT/case05"; new_repo "$r"; adopt "$r"
 expect_deny "house.json pr policy, commit on master" \
   "$(mk_payload "git commit -m x" "$r")" "feature branch"
 git -C "$r" checkout -q -b feat/x
 expect_allow "house.json pr policy, commit on feat/x" \
   "$(mk_payload "git commit -m x" "$r")"
 
-# --- 7/8. push from master DENY, push origin feat/x from feat/x ALLOW ---
-r="$TMP_ROOT/case07"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
-expect_deny "push from master" \
+# --- 7/8. UNARMED: push from master DENY (and names the arming command),
+#          push origin feat/x from feat/x ALLOW ---
+r="$TMP_ROOT/case07"; new_repo "$r"; adopt "$r"
+expect_deny "unarmed: push from master" \
   "$(mk_payload "git push origin master" "$r")" "feature branch"
+expect_deny "unarmed: the deny names the arming command" \
+  "$(mk_payload "git push origin master" "$r")" "floor is not armed in this checkout"
 git -C "$r" checkout -q -b feat/x
-expect_allow "push origin feat/x from feat/x" \
+expect_allow "unarmed: push origin feat/x from feat/x" \
   "$(mk_payload "git push origin feat/x" "$r")"
 
-# --- 9. push refspec targeting master from feat/x: DENY ---
-r="$TMP_ROOT/case09"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+# --- 9. UNARMED: push refspec targeting master from feat/x: DENY ---
+r="$TMP_ROOT/case09"; new_repo "$r"; adopt "$r"
 git -C "$r" checkout -q -b feat/x
-expect_deny "push refspec HEAD:master from feat/x" \
+expect_deny "unarmed: push refspec HEAD:master from feat/x" \
   "$(mk_payload "git push origin HEAD:master" "$r")" "protected branch"
+expect_deny "unarmed: push --all from feat/x" \
+  "$(mk_payload "git push --all origin" "$r")" "without naming it"
 
 # --- 10. git -C <other-worktree-on-master> commit: DENY even when cwd is elsewhere ---
 base="$TMP_ROOT/case10"
-new_repo "$base/main"
-echo '{"branchPolicy":"pr"}' >"$base/main/house.json"
-git -C "$base/main" add house.json && git -C "$base/main" commit -q -m house
+new_repo "$base/main"; adopt "$base/main"
 git -C "$base/main" checkout -q -b feat/main
 git -C "$base/main" worktree add -q "$base/other" master
 expect_deny "git -C other-worktree-on-master commit, cwd is the (non-protected) main worktree" \
   "$(mk_payload "git -C $base/other commit -m x" "$base/main")" "feature branch"
 
 # --- 11/12. cd <path> && / ; git commit resolution ---
-r="$TMP_ROOT/case11"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+r="$TMP_ROOT/case11"; new_repo "$r"; adopt "$r"
 # cwd is TMP_ROOT itself (not a git repo): a DENY here can only come from
 # resolving the target via the `cd` clause, not from a cwd fallback.
 expect_deny "cd <path> && git commit resolution" \
@@ -213,26 +305,23 @@ expect_deny "cd <path> ; git commit resolution" \
   "$(mk_payload "cd $r ; git commit -m x" "$TMP_ROOT")" "feature branch"
 
 # --- 13. quoted false positive: commit -m "fix master bug" on feat/x: ALLOW ---
-r="$TMP_ROOT/case13"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+r="$TMP_ROOT/case13"; new_repo "$r"; adopt "$r"
 git -C "$r" checkout -q -b feat/x
 expect_allow "quoted false positive (fix master bug) on feat/x" \
   "$(mk_payload 'git commit -m "fix master bug"' "$r")"
+expect_allow "quoted false positive (push to master later) on feat/x" \
+  "$(mk_payload 'git commit -m "push to master later"' "$r")"
 
 # --- 14. push-clause isolation: push origin feat && checkout master: ALLOW ---
-r="$TMP_ROOT/case14"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+r="$TMP_ROOT/case14"; new_repo "$r"; adopt "$r"
 git -C "$r" checkout -q -b feat/x
-expect_allow "push-clause isolation (push feat && checkout master)" \
+expect_allow "unarmed: push-clause isolation (push feat && checkout master)" \
   "$(mk_payload "git push origin feat && git checkout master" "$r")"
 
 # --- 15-18. carve-outs ---
 r="$TMP_ROOT/case15"; new_repo "$r"
 mkdir -p "$r/scripts/newsletter" "$r/src" "$r/public/email-assets/broadcasts/2026-08"
-echo '{"branchPolicy":"pr","carveOuts":["scripts/newsletter/issue-*.json","public/email-assets/broadcasts/*"]}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+adopt "$r" '{"branchPolicy":"pr","carveOuts":["scripts/newsletter/issue-*.json","public/email-assets/broadcasts/*"]}'
 echo x >"$r/scripts/newsletter/issue-9.json"
 echo y >"$r/src/foo.ts"
 echo z >"$r/public/email-assets/broadcasts/2026-08/x.png"
@@ -275,9 +364,7 @@ else
 fi
 
 # --- 20. planted internal failure AFTER the manifest read: DENY with crashed message ---
-r="$TMP_ROOT/case20"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
+r="$TMP_ROOT/case20"; new_repo "$r"; adopt "$r"
 payload="$(mk_payload "git status" "$r")"
 HOOK_OUT=$(printf '%s' "$payload" | HOUSE_TEST_CRASH=1 bash "$HOOK")
 HOOK_CODE=$?
@@ -288,10 +375,232 @@ else
   fail "planted internal failure denies with the crashed message" "exit=$HOOK_CODE reason=[$reason] out=[$HOOK_OUT]"
 fi
 
-# --- 21. non-git command (ls): ALLOW instantly ---
-r="$TMP_ROOT/case21"; new_repo "$r"
+# --- 21. non-git command (ls), and a tool this hook does not handle: ALLOW ---
+r="$TMP_ROOT/case21"; new_repo "$r"; adopt "$r"
 expect_allow "non-git command (ls) allowed instantly" \
   "$(mk_payload "ls -la" "$r")"
+expect_allow "a tool_name this hook does not handle is allowed instantly" \
+  "$(jq -n --arg cwd "$r" '{tool_name:"Read", tool_input:{file_path:"/etc/gitconfig"}, cwd:$cwd}')"
+
+# --- 22. malformed house.json in an adopted repo: deny, never a disarmed guard ---
+r="$TMP_ROOT/case22"; new_repo "$r"
+echo '{broken' >"$r/house.json"
+expect_deny "malformed house.json on protected branch: DENY (refuse rather than guess)" \
+  "$(mk_payload 'git commit -m test' "$r")" "not valid JSON"
+
+# ── the deference matrix: only a PreToolUse entry that can SEE the call ───
+repo_d="$TMP_ROOT/defer"; new_repo "$repo_d"; adopt "$repo_d"
+mkdir -p "$repo_d/.claude"
+_gc="git"" commit"
+
+echo '{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[]}]}}' >"$repo_d/.claude/settings.json"
+expect_deny "PostToolUse-only settings.json does not disarm the guard" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+echo '{"hooks":{"PreToolUse":{"matcher":"Bash"}}}' >"$repo_d/.claude/settings.json"
+expect_deny "a non-array PreToolUse value does not disarm the guard" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}' >"$repo_d/.claude/settings.json"
+expect_deny "a Bash-matching entry with an empty hooks array does not disarm the guard" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+# 2026-09-20 audit: an entry whose matcher names other tools never sees a git
+# command, so deferring to it gave up enforcement for nothing.
+for _m in 'Edit|Write' 'Edit' 'Read' 'mcp__.*' 'bash' '('; do
+  printf '{"hooks":{"PreToolUse":[{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" >"$repo_d/.claude/settings.json"
+  expect_deny "a PreToolUse entry with matcher '$_m' cannot see Bash and does not disarm the guard" \
+    "$(mk_payload "$_gc -m x" "$repo_d")"
+done
+for _m in 'Bash|Edit' '.*' '' '*' 'Ba.h'; do
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"y"}]},{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" >"$repo_d/.claude/settings.json"
+  expect_allow "a PreToolUse entry with matcher '$_m' covers Bash and defers" \
+    "$(mk_payload "$_gc -m x" "$repo_d")"
+done
+echo '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"x"}]}]}}' >"$repo_d/.claude/settings.json"
+expect_allow "a PreToolUse entry with no matcher at all covers every tool and defers" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+rm -f "$repo_d/.claude/settings.json"
+
+# ADR 0009: house.json's guard record is a CHECKER signal only; the hook never
+# reads it.
+printf '{"branchPolicy":"pr","guard":{"by":"plugin","decided":"2026-08-31","why":"recorded choice"}}' >"$repo_d/house.json"
+expect_deny "a recorded plugin guard in house.json is not a stand-down signal" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+
+# ── the strip's direction: prose cannot steer which checkout is decided ───
+# The target regexes used to run on the RAW command, so `cd /nonexistent &&`
+# inside a commit message pointed the check at a non-repo path and the
+# deliberate non-repo fail-open turned into an attacker-controlled disarm.
+r="$TMP_ROOT/strip"; new_repo "$r"; adopt "$r"
+o="$TMP_ROOT/strip-other"; new_repo "$o"; adopt "$o"
+git -C "$o" checkout -q -b feat/y
+_c="git"" commit"
+_verb="com""mit"
+expect_deny "a message naming a missing path cannot disarm the guard" \
+  "$(mk_payload "$_c -m \"note: cd /nonexistent && done\"" "$r")" "feature branch"
+expect_deny "a -C at a missing path cannot disarm the guard" \
+  "$(mk_payload "git -C /nonexistent status && $_c -m z" "$r")" "feature branch"
+expect_allow "a real cd to another repo still resolves to THAT repo" \
+  "$(mk_payload "cd $o && $_c -m x" "$r")"
+expect_allow "a real -C to another repo still resolves to THAT repo" \
+  "$(mk_payload "git -C $o $_verb -m x" "$r")"
+expect_deny "a real -C INTO the protected repo is still caught from elsewhere" \
+  "$(mk_payload "git -C $r $_verb -m x" "$o")" "feature branch"
+expect_allow "a branch created earlier in the same call is where the commit lands" \
+  "$(mk_payload "git checkout -b feat/new && $_c -m x" "$r")"
+
+# ── the verb walk: a global option is stepped over, a computed verb is not
+#    chased (documented: the floor reads the ref the shell finally produces) ──
+expect_deny "git --no-pager commit on master still denies" \
+  "$(mk_payload "git --no-pager $_verb -m x" "$r")" "feature branch"
+expect_deny "git -c key=value (space-free value) commit still denies on master" \
+  "$(mk_payload "git -c user.name=x $_verb -m y" "$r")" "feature branch"
+expect_allow "git -c key=value status is untouched" \
+  "$(mk_payload 'git -c user.name=x status' "$r")"
+expect_allow "a computed verb is NOT chased any more; the floor reads the ref" \
+  "$(mk_payload 'git ${v} -m x' "$r")"
+
+# ── the disable list: every literal, each with an innocent neighbour ──────
+# Run from a FEATURE branch, so only the disable list can produce a deny.
+d="$TMP_ROOT/disable"; new_repo "$d"; adopt "$d"
+git -C "$d" checkout -q -b feat/d
+_cm="com""mit"
+_ph="hooks""Path"
+
+expect_deny "--no-verify on a commit" \
+  "$(mk_payload "git $_cm --no-verify -m x" "$d")" "disables or moves the git-hook floor"
+expect_deny "--no-verif (git accepts the abbreviation)" \
+  "$(mk_payload "git $_cm --no-verif -m x" "$d")" "disables or moves"
+expect_deny "--no-veri (git accepts the abbreviation)" \
+  "$(mk_payload "git $_cm --no-veri -m x" "$d")" "disables or moves"
+expect_allow "the same letters inside a commit message are prose" \
+  "$(mk_payload "git $_cm -m \"no --no-verify here\"" "$d")"
+expect_deny "-n as a commit option is --no-verify's short form" \
+  "$(mk_payload "git $_cm -n -m x" "$d")" "disables or moves"
+expect_deny "-n inside a short-flag cluster on a commit" \
+  "$(mk_payload "git $_cm -an -m x" "$d")" "disables or moves"
+expect_allow "-n on a push is a dry run, not a hook switch" \
+  "$(mk_payload "git push -n origin feat/d" "$d")"
+expect_allow "-n on git log is not a commit option" \
+  "$(mk_payload "git log -n 5 --oneline" "$d")"
+expect_deny "core.hooksPath on the command line" \
+  "$(mk_payload "git -c core.$_ph=/dev/null $_cm -m x" "$d")" "disables or moves"
+expect_deny "git config core.hooksPath (writing it)" \
+  "$(mk_payload "git config core.$_ph /dev/null" "$d")" "disables or moves"
+# Accepted false deny, documented in the hook header: reading the value is
+# refused along with writing it. `house doctor` reports the arming instead.
+expect_deny "ACCEPTED FALSE DENY: reading core.hooksPath is refused too" \
+  "$(mk_payload "git config --get core.$_ph" "$d")" "disables or moves"
+expect_deny "git config --unset core.hooksPath" \
+  "$(mk_payload "git config --unset core.$_ph" "$d")" "disables or moves"
+expect_deny "GIT_CONFIG_COUNT through the environment" \
+  "$(mk_payload "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.x GIT_CONFIG_VALUE_0=y git $_cm -m x" "$d")" "disables or moves"
+expect_deny "GIT_CONFIG_PARAMETERS through the environment" \
+  "$(mk_payload "GIT_CONFIG_PARAMETERS=\"'core.x=y'\" git $_cm -m x" "$d")" "disables or moves"
+expect_deny "GIT_CONFIG_GLOBAL through the environment" \
+  "$(mk_payload "GIT_CONFIG_GLOBAL=/dev/null git $_cm -m x" "$d")" "disables or moves"
+expect_deny "--config-env" \
+  "$(mk_payload "git --config-env=core.x=VAR $_cm -m y" "$d")" "disables or moves"
+expect_deny "--exec-path" \
+  "$(mk_payload "git --exec-path=/tmp/fake $_cm -m y" "$d")" "disables or moves"
+expect_deny "GIT_EXEC_PATH through the environment" \
+  "$(mk_payload "GIT_EXEC_PATH=/tmp/fake git $_cm -m y" "$d")" "disables or moves"
+expect_deny "HUSKY=0" \
+  "$(mk_payload "HUSKY=0 git $_cm -m y" "$d")" "disables or moves"
+expect_deny "LEFTHOOK=0, with no git command in the call at all" \
+  "$(mk_payload "LEFTHOOK=0 npm run release" "$d")" "disables or moves"
+
+# Mutating the floor's own files. Reading them passes.
+expect_allow "cat .githooks/pre-push is a read" \
+  "$(mk_payload "cat .githooks/pre-push" "$d")"
+expect_allow "ls .githooks is a read" \
+  "$(mk_payload "ls -la .githooks" "$d")"
+expect_allow "running the floor's own suite is a read" \
+  "$(mk_payload "bash tests/githooks/run.sh" "$d")"
+expect_deny "rm .githooks/pre-push" \
+  "$(mk_payload "rm .githooks/pre-push" "$d")" "disables or moves"
+expect_deny "mv .githooks/pre-push aside" \
+  "$(mk_payload "mv .githooks/pre-push /tmp/x" "$d")" "disables or moves"
+expect_deny "chmod -x .githooks/pre-push" \
+  "$(mk_payload "chmod -x .githooks/pre-push" "$d")" "disables or moves"
+expect_deny "sed -i on a floor file" \
+  "$(mk_payload "sed -i.bak s/x/y/ .githooks/pre-commit" "$d")" "disables or moves"
+expect_deny "a redirection into a floor file" \
+  "$(mk_payload "echo x > .githooks/pre-push" "$d")" "disables or moves"
+expect_deny "truncating .git/config" \
+  "$(mk_payload "truncate -s 0 .git/config" "$d")" "disables or moves"
+expect_deny "writing into .git/hooks" \
+  "$(mk_payload "cp /tmp/x .git/hooks/pre-commit" "$d")" "disables or moves"
+
+# Ref-writing plumbing that moves a protected branch without a commit.
+expect_deny "git update-ref on a protected branch" \
+  "$(mk_payload "git update-ref refs/heads/master HEAD" "$d")" "disables or moves"
+expect_deny "git symbolic-ref onto a protected branch" \
+  "$(mk_payload "git symbolic-ref HEAD refs/heads/master" "$d")" "disables or moves"
+expect_deny "git branch -D on a protected branch" \
+  "$(mk_payload "git branch -D master" "$d")" "disables or moves"
+expect_deny "git branch -f on a protected branch" \
+  "$(mk_payload "git branch -f master HEAD" "$d")" "disables or moves"
+expect_allow "git branch -D on a feature branch" \
+  "$(mk_payload "git branch -D feat/old" "$d")"
+expect_allow "git update-ref on a feature branch" \
+  "$(mk_payload "git update-ref refs/heads/feat/old HEAD" "$d")"
+expect_allow "git branch (a listing) is untouched" \
+  "$(mk_payload "git branch --list" "$d")"
+
+# The disable list only applies in an ADOPTED repo (ADR 0002).
+n="$TMP_ROOT/unadopted"; new_repo "$n"
+expect_allow "--no-verify in a repo that never adopted house is not our business" \
+  "$(mk_payload "git $_cm --no-verify -m x" "$n")"
+
+# ── the floor ARMED: only a commit is refused; pushes are the floor's ─────
+a="$TMP_ROOT/armed"; new_repo "$a"; adopt "$a"; lock_floor "$a"; arm_floor "$a"
+expect_deny "armed: commit on master denies with the short message" \
+  "$(mk_payload "git commit -m x" "$a")" "needs a PR"
+expect_deny_without "armed: the commit deny does NOT tell you to arm the floor" \
+  "$(mk_payload "git commit -m x" "$a")" "not armed in this checkout"
+expect_allow "armed: push origin master from master is the floor's business" \
+  "$(mk_payload "git push origin master" "$a")"
+git -C "$a" checkout -q -b feat/a
+expect_allow "armed: push origin master from a feature branch is the floor's business" \
+  "$(mk_payload "git push origin master" "$a")"
+expect_allow "armed: a tag push is the floor's business" \
+  "$(mk_payload "git push origin v1.2.3" "$a")"
+expect_allow "armed: commit on a feature branch" \
+  "$(mk_payload "git commit -m x" "$a")"
+expect_deny "armed: the disable list still applies" \
+  "$(mk_payload "git commit --no-verify -m x" "$a")" "disables or moves"
+expect_deny "armed: push --delete on a protected branch is plumbing, not a push scan" \
+  "$(mk_payload "git push origin --delete master" "$a")" "disables or moves"
+expect_allow "armed: push --delete on a feature branch is the floor's business" \
+  "$(mk_payload "git push origin --delete feat/old" "$a")"
+# A force-push to a protected branch IS refused by pre-push, so the plumbing
+# scan deliberately does not read it here; unarmed, the push scan still does.
+expect_allow "armed: a force-push to master is left to pre-push" \
+  "$(mk_payload "git push --force origin master" "$a")"
+expect_deny "unarmed: a force-push to master is refused by the push scan" \
+  "$(mk_payload "git push --force origin master" "$d")" "protected branch"
+
+# ── Edit/Write/MultiEdit: the floor's managed files are not editable ──────
+expect_deny "Edit on a managed .githooks file" \
+  "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "managed file of the git-hook floor"
+expect_deny "MultiEdit on a managed .githooks file" \
+  "$(mk_file_payload MultiEdit "$a/.githooks/pre-commit.d/10-house-branch" "$a")" "managed file"
+expect_deny "Write on .git/config" \
+  "$(mk_file_payload Write "$a/.git/config" "$a")" "git-hook floor"
+expect_deny "Write on .git/hooks/pre-commit" \
+  "$(mk_file_payload Write "$a/.git/hooks/pre-commit" "$a")" "git-hook floor"
+expect_allow "Edit on the repo's own .githooks/pre-commit.d/20-secrets scaffold" \
+  "$(mk_file_payload Edit "$a/.githooks/pre-commit.d/20-secrets" "$a")"
+expect_allow "Edit on an ordinary file" \
+  "$(mk_file_payload Edit "$a/README.md" "$a")"
+expect_allow "Edit on a managed floor file, relative path, resolved against the cwd" \
+  "$(mk_file_payload Edit "README.md" "$a")"
+expect_deny "Edit on a managed floor file given as a relative path" \
+  "$(mk_file_payload Edit ".githooks/pre-push" "$a")" "managed file"
+# Another repo's .githooks is not this repo's business, and a repo on
+# branchPolicy direct never gets here at all.
+p="$TMP_ROOT/direct-floor"; new_repo "$p"; adopt "$p" '{"branchPolicy":"direct"}'; lock_floor "$p"
+expect_allow "Edit on a .githooks file in a branchPolicy direct repo" \
+  "$(mk_file_payload Edit "$p/.githooks/pre-push" "$p")"
 
 echo
 echo "=== shellcheck (informational; does not gate this suite) ==="
@@ -304,1046 +613,6 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
   echo "  shellcheck not installed, skipping"
 fi
-
-
-# ── malformed house.json in an adopted repo: deny, never a disarmed guard ──
-repo_bad=$(mktemp -d "$TMP_ROOT/badjson.XXXX")
-git init -q "$repo_bad"
-git -C "$repo_bad" symbolic-ref HEAD refs/heads/master
-git -C "$repo_bad" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-echo '{broken' > "$repo_bad/house.json"
-run_hook "$(mk_payload 'git commit -m test' "$repo_bad")"
-if [[ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" == "deny" ]]; then
-  pass "malformed house.json on protected branch: DENY (refuse rather than guess)"
-else
-  fail "malformed house.json on protected branch" "expected deny, got code=$HOOK_CODE out=$HOOK_OUT"
-fi
-
-
-# ── F2: quoted verb / quoted-or-modified refspec must not defeat the guard ──
-repo_q=$(mktemp -d "$TMP_ROOT/quote.XXXX")
-git init -q "$repo_q"; git -C "$repo_q" symbolic-ref HEAD refs/heads/master
-git -C "$repo_q" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-printf '{"version":"0.1.0","defaultBranch":"master","branchPolicy":"pr","protectedBranches":["master","main"],"modules":{"docs":{"enabled":true,"config":{}}}}' > "$repo_q/house.json"
-for c in "git 'commit' -m x" 'git "commit" -m x' "git push origin 'master'" "git push origin HEAD:'master'"; do
-  run_hook "$(mk_payload "$c" "$repo_q")"
-  if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-    pass "quote bypass denied: $c"
-  else fail "quote bypass: $c" "expected deny, got $HOOK_OUT"; fi
-done
-git -C "$repo_q" checkout -q -b feat
-for c in "git commit -m 'fix master bug'" 'git commit -m "push to master later"'; do
-  run_hook "$(mk_payload "$c" "$repo_q")"
-  d="$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)"
-  if [ "$d" != "deny" ]; then pass "message text not a false positive: $c"
-  else fail "message false positive: $c" "expected allow, got deny"; fi
-done
-
-
-# ── F4: quoted message text must not pick where the branch check happens ──
-# The target_dir regexes used to run on the RAW command, before the -m/-F
-# stripping, so `cd /nonexistent &&` or `git -C /other` INSIDE a commit message
-# pointed the check at a non-repo path and the deliberate non-repo fail-open
-# turned into an attacker-controlled disarm (ultra review of v0.2.1).
-repo_h=$(mktemp -d "$TMP_ROOT/hijack.XXXX")
-git init -q "$repo_h"; git -C "$repo_h" symbolic-ref HEAD refs/heads/master
-git -C "$repo_h" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-printf '{"version":"0.1.0","defaultBranch":"master","branchPolicy":"pr","protectedBranches":["master","main"],"modules":{"docs":{"enabled":true,"config":{}}}}' > "$repo_h/house.json"
-for c in 'git commit -m "note: cd /nonexistent && push"' 'git commit -m "run git -C /nonexistent status"' "git commit -m 'cd /tmp ; git status'" 'git commit --message="see cd /nonexistent && done"'; do
-  run_hook "$(mk_payload "$c" "$repo_h")"
-  if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-    pass "message text cannot hijack target_dir: $c"
-  else fail "target_dir hijack: $c" "expected deny on master, got [$HOOK_OUT]"; fi
-done
-# negative control: a REAL cd/-C clause outside the message still resolves the target.
-other=$(mktemp -d "$TMP_ROOT/hijack-other.XXXX"); new_repo "$other"
-echo '{"branchPolicy":"pr"}' >"$other/house.json"; git -C "$other" add house.json && git -C "$other" commit -q -m house
-git -C "$repo_h" checkout -q -b feat/y
-expect_deny "real cd <protected repo> && git commit still resolves the target" \
-  "$(mk_payload "cd $other && git commit -m 'note: cd /nonexistent && push'" "$repo_h")"
-expect_deny "real git -C <protected repo> commit still resolves the target" \
-  "$(mk_payload "git -C $other commit -m 'run git -C /nonexistent status'" "$repo_h")"
-
-# ── F3: only a PreToolUse hook defers; PostToolUse-only does NOT disarm ──
-repo_d=$(mktemp -d "$TMP_ROOT/defer.XXXX")
-git init -q "$repo_d"; git -C "$repo_d" symbolic-ref HEAD refs/heads/master
-git -C "$repo_d" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-printf '{"version":"0.1.0","defaultBranch":"master","branchPolicy":"pr","protectedBranches":["master","main"],"modules":{"docs":{"enabled":true,"config":{}}}}' > "$repo_d/house.json"
-mkdir -p "$repo_d/.claude"
-echo '{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[]}]}}' > "$repo_d/.claude/settings.json"
-run_hook "$(mk_payload 'git commit -m x' "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "PostToolUse-only settings.json does not disarm the guard"
-else fail "PostToolUse-only deferral" "expected deny, a non-branch-guard hook must not disarm"; fi
-echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}]}}' > "$repo_d/.claude/settings.json"
-run_hook "$(mk_payload 'git commit -m x' "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" != "deny" ]; then
-  pass "PreToolUse hook in settings.json defers (repo guard wins)"
-else fail "PreToolUse deferral" "expected allow/defer"; fi
-
-# #34 review: `length > 0` alone is satisfied by any non-empty jq value, so a
-# malformed settings.json (PreToolUse as an object, a hand-edit Claude Code
-# itself ignores) disarmed the guard while checker and doctor reported
-# protection. Only a non-empty ARRAY may defer. Every git verb below is
-# assembled from string parts (testing.md: build the guard's trigger tokens
-# so this file's own text cannot trip the guard it drives).
-_gc="git"" commit"
-_verb="com""mit"
-_push="pu""sh"
-echo '{"hooks":{"PreToolUse":{"matcher":"Bash"}}}' > "$repo_d/.claude/settings.json"
-run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "a non-array PreToolUse value does not disarm the guard"
-else fail "non-array PreToolUse deferral" "expected deny: a malformed settings.json must not disarm"; fi
-
-# 2026-09-20 audit, the one CONFLICT claim, downgraded to this narrow bug: a
-# PreToolUse entry whose matcher names other tools never sees a git command,
-# so deferring to it gave up enforcement for nothing. Only an entry whose
-# matcher covers Bash, with a non-empty hooks array, defers.
-for _m in 'Edit|Write' 'Edit' 'Read' 'mcp__.*' 'bash' '('; do
-  printf '{"hooks":{"PreToolUse":[{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" > "$repo_d/.claude/settings.json"
-  run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
-  if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-    pass "a PreToolUse entry with matcher '$_m' cannot see Bash and does not disarm the guard"
-  else fail "matcher $_m deferral" "expected deny: a hook scoped to other tools is not a branch guard"; fi
-done
-echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}' > "$repo_d/.claude/settings.json"
-run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "a Bash-matching entry with an empty hooks array does not disarm the guard"
-else fail "empty hooks array deferral" "expected deny"; fi
-for _m in 'Bash|Edit' '.*' '' '*' 'Ba.h'; do
-  printf '{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"y"}]},{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" > "$repo_d/.claude/settings.json"
-  run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
-  if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" != "deny" ]; then
-    pass "a PreToolUse entry with matcher '$_m' covers Bash and defers"
-  else fail "matcher $_m deferral" "expected allow: this entry can see a git command"; fi
-done
-echo '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"x"}]}]}}' > "$repo_d/.claude/settings.json"
-run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" != "deny" ]; then
-  pass "a PreToolUse entry with no matcher at all covers every tool and defers"
-else fail "absent matcher deferral" "expected allow"; fi
-
-# ADR 0009: house.json's guard record is a CHECKER signal only; the hook never
-# reads it. A repo carrying the record, with no repo-local guard, still denies
-# a protected-branch commit.
-rm -f "$repo_d/.claude/settings.json"
-printf '{"version":"0.1.0","defaultBranch":"master","branchPolicy":"pr","protectedBranches":["master","main"],"guard":{"by":"plugin","decided":"2026-08-31","why":"recorded choice"},"modules":{"docs":{"enabled":true,"config":{}}}}' > "$repo_d/house.json"
-run_hook "$(mk_payload "$_gc -m x" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "a recorded plugin guard in house.json is not a stand-down signal"
-else fail "guard-record stand-down" "expected deny: the record must never disarm the hook"; fi
-
-# ── #27: an interpreter's -c body is code, not prose ─────────────────────
-# strip_message_args removed -c and its value (git's own `-c key=value`), so an
-# interpreter's -c body was invisible to the verb scans. The union scan now
-# reads a -c-retaining variant too; each addition can only turn allow into deny.
-run_hook "$(mk_payload "bash -c '$_gc -m x'" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "an interpreter -c commit body on a protected branch denies"
-else fail "interpreter -c commit" "expected deny: the -c body is code the scan must see"; fi
-run_hook "$(mk_payload "sh -c 'git $_push origin master'" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "an interpreter -c push-to-master body denies"
-else fail "interpreter -c push" "expected deny"; fi
-# git's own -c with a space-free value: the value stays stripped in cmd_safe, so
-# it cannot trigger, and the verb outside the -c pair still denies.
-expect_deny "git -c key=value (space-free value) commit still denies on a protected branch" \
-  "$(mk_payload "git -c user.name=x $_verb -m y" "$repo_d")"
-expect_allow "git -c key=value status is untouched" \
-  "$(mk_payload 'git -c user.name=x status' "$repo_d")"
-# From a feature branch the protected-branch scans do not run, but the
-# any-branch refspec scan reads the -c body too.
-git -C "$repo_d" checkout -q -b feat/c-scan
-run_hook "$(mk_payload "bash -c '$_gc -m x'" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" != "deny" ]; then
-  pass "an interpreter -c commit body on a feature branch is allowed"
-else fail "interpreter -c feature commit" "expected allow: feature-branch commits are not guarded"; fi
-run_hook "$(mk_payload "bash -c 'git $_push origin master'" "$repo_d")"
-if [ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)" = "deny" ]; then
-  pass "an interpreter -c push-to-master body from a feature branch denies via the refspec scan"
-else fail "interpreter -c refspec" "expected deny: the refspec scan must read the -c body"; fi
-git -C "$repo_d" checkout -q master
-
-# --- #27: a target parsed out of the command is a GUESS, and a wrong guess
-# used to fall through to the non-repo fail-open, which is an ALLOW. Any prose
-# naming a path that does not exist (a heredoc body, a commit message, a
-# quoted string) therefore disarmed the guard on a protected branch. A wrong
-# guess now falls back to the directory the command actually runs in.
-#
-# The fix deliberately adds no parsing: three attempts to parse the command
-# better were reverted, each having opened new seams. Verbs are assembled from
-# parts so this file cannot trip the guard it exercises.
-r="$TMP_ROOT/case_failopen"; new_repo "$r"
-echo '{"branchPolicy":"pr"}' >"$r/house.json"
-git -C "$r" add house.json && git -C "$r" commit -q -m house
-# A second repo that has ALSO adopted house, on a feature branch. It must be
-# adopted: an unadopted repo passes the cross-repo controls below via the
-# "has not adopted house" fail-open, which would prove only that the fallback
-# did not swallow the target, not that the branch was resolved in the RIGHT
-# repo.
-o="$TMP_ROOT/case_failopen_other"; new_repo "$o"
-echo '{"branchPolicy":"pr"}' >"$o/house.json"
-git -C "$o" add house.json && git -C "$o" commit -q -m house
-git -C "$o" checkout -q -b feat/y
-_c="git"" commit"
-_verb="com""mit"
-
-expect_deny "a heredoc naming a missing path cannot disarm the guard" \
-  "$(mk_payload "cat <<'EOF' > n.md
-see cd /nonexistent && more
-EOF
-$_c -m x" "$r")" "feature branch"
-expect_deny "a message naming a missing path cannot disarm the guard" \
-  "$(mk_payload "$_c -m \"note: cd /nonexistent && done\"" "$r")" "feature branch"
-expect_deny "quoted prose naming a missing path cannot disarm the guard" \
-  "$(mk_payload "echo \"cd /nonexistent && x\" > n.md
-$_c -m y" "$r")" "feature branch"
-expect_deny "a -C at a missing path cannot disarm the guard" \
-  "$(mk_payload "git -C /nonexistent status && $_c -m z" "$r")" "feature branch"
-
-# Controls: the fallback must not swallow a real cross-repo target, and a
-# genuine non-repo target must still fail open.
-expect_allow "a real -C to another repo still resolves to THAT repo" \
-  "$(mk_payload "git -C $o $_verb -m x" "$r")"
-expect_allow "a real cd to another repo still resolves to THAT repo" \
-  "$(mk_payload "cd $o && $_c -m x" "$r")"
-expect_deny "a real -C INTO the protected repo is still caught from elsewhere" \
-  "$(mk_payload "git -C $r $_verb -m x" "$o")" "feature branch"
-
-# A RELATIVE target must resolve against the directory the command runs in,
-# not against whatever cwd the hook process happens to have. Successive -C
-# compose, which is what makes this work without parsing anything.
-expect_allow "a relative target resolves against the payload cwd, not the hook's" \
-  "$(mk_payload "cd ../$(basename "$o") && $_c -m x" "$r")"
-
-# The accepted cost of the fallback, pinned rather than left to be discovered:
-# a target this same command CREATES does not resolve yet either, so it denies
-# on a protected branch and has to be split into two calls. Recognizing
-# creation would mean reading the command again, which is the approach that
-# was reverted three times. The deny message says "separate call" so the
-# guidance and the behavior agree.
-expect_deny "a target the same command creates does not resolve yet, and denies" \
-  "$(mk_payload "git worktree add -b fix/x ../wt-fix-x && cd ../wt-fix-x && $_c -m x" "$r")" "SEPARATE call"
-expect_allow "a genuinely non-repo working directory still fails open" \
-  "$(mk_payload "$_c -m x" "/tmp")"
-
-# --- #17: the flag strip must not eat a path segment ---------------------
-# _strip_flag_args ran its alternation (-m|--message|-F|--file|-c) with no
-# token boundary on the left, so the -c of a directory named
-# ...-council-audit-findings matched and the rest of that segment was deleted.
-# Target resolution then landed on a path that is not a repo, the wrong-guess
-# fallback sent it to the payload cwd (the protected checkout), and a valid
-# feature-branch commit was refused. Reported twice in one week, once from a
-# worktree and once from a plain clone; both times the workaround was renaming
-# the directory. Any segment beginning -c, -m, or -F after a hyphen triggers it.
-#
-# Only a LEFT anchor closes this. A right boundary (requiring = or whitespace
-# between the flag and its value) was tried and rejected: it leaves git's own
-# attached form `git -cuser.name=x commit` unstripped, and the commit pattern
-# does not match that string, so a real commit on a protected branch would be
-# ALLOWED. Under-stripping costs a false deny; over-stripping costs a bypass,
-# and the last case below is what pins that direction.
-p="$TMP_ROOT/case_strip"; new_repo "$p"
-echo '{"branchPolicy":"pr"}' >"$p/house.json"
-git -C "$p" add house.json && git -C "$p" commit -q -m house
-
-for seg in fix-council-audit-findings main-cleanup Fix-typo; do
-  w="$TMP_ROOT/wt-$seg"; new_repo "$w"
-  echo '{"branchPolicy":"pr"}' >"$w/house.json"
-  git -C "$w" add house.json && git -C "$w" commit -q -m house
-  git -C "$w" checkout -q -b "kind/$seg"
-  echo body >"$w/msg.txt"
-  expect_allow "cd into a path whose segment starts -c/-m/-F resolves to that repo: $seg" \
-    "$(mk_payload "cd $w && $_c -q -F $w/msg.txt" "$p")"
-  expect_allow "-C at a path whose segment starts -c/-m/-F resolves to that repo: $seg" \
-    "$(mk_payload "git -C $w $_verb -q -F $w/msg.txt" "$p")"
-done
-
-# The fix resolves the target rather than discarding it, so the same poisoned
-# path on a PROTECTED branch must still deny. Without this the fix would be a
-# disarm dressed up as an ergonomics repair.
-wm="$TMP_ROOT/wt-guard-council-audit"; new_repo "$wm"
-echo '{"branchPolicy":"pr"}' >"$wm/house.json"
-git -C "$wm" add house.json && git -C "$wm" commit -q -m house
-expect_deny "a path with a -c segment on a protected branch still denies (cd)" \
-  "$(mk_payload "cd $wm && $_c -m x" "$p")" "feature branch"
-expect_deny "a path with a -c segment on a protected branch still denies (-C)" \
-  "$(mk_payload "git -C $wm $_verb -m x" "$p")" "feature branch"
-
-# The strip itself must still do its job in both -c forms, or the bypass the
-# right boundary would have opened comes back by another route.
-expect_deny "git -c with a separated value still denies on a protected branch" \
-  "$(mk_payload "git -c user.name=x $_verb -m y" "$p")" "feature branch"
-expect_deny "git -c with an ATTACHED value still denies on a protected branch" \
-  "$(mk_payload "git -cuser.name=x $_verb -m y" "$p")" "feature branch"
-
-
-# ── #1: every push clause is scanned, a value that expands stays visible, and a
-# tag-only publish passes ────────────────────────────────────────────────────
-# Three seams found while re-reading the hook for #1, each confirmed against
-# the shipped script before the fix:
-#   - the any-branch refspec scan read only the FIRST push clause per variant,
-#     so `git push origin feat && git push origin master` from a feature branch
-#     was allowed;
-#   - the flag strip removed a quoted value whole, substitution included, so
-#     `git commit -m "$(git push origin master)"` was allowed and the inner push
-#     ran;
-#   - a tag-only push from a protected branch was denied, so the documented
-#     release step was not runnable and tags went through `gh api`.
-# The verbs below are assembled from parts so this file cannot trip the guard
-# it exercises.
-_p="pu""sh"
-t="$TMP_ROOT/case_tags"; new_repo "$t"
-echo '{"branchPolicy":"pr"}' >"$t/house.json"
-git -C "$t" add house.json && git -C "$t" $_verb -q -m house
-git -C "$t" tag v1.0
-git -C "$t" tag v1.1
-git -C "$t" tag dual && git -C "$t" branch dual
-bare="$TMP_ROOT/case_tags_remote.git"; git init -q --bare "$bare"
-git -C "$t" remote add origin "$bare"
-
-# Tag-only forms, on the protected branch: allowed.
-expect_allow "tag-only: bare tag name" \
-  "$(mk_payload "git $_p origin v1.0" "$t")"
-expect_allow "tag-only: refs/tags form" \
-  "$(mk_payload "git $_p origin refs/tags/v1.0" "$t")"
-expect_allow "tag-only: tag keyword form" \
-  "$(mk_payload "git $_p origin tag v1.0" "$t")"
-expect_allow "tag-only: --tags before the remote" \
-  "$(mk_payload "git $_p --tags origin" "$t")"
-expect_allow "tag-only: --tags after the remote" \
-  "$(mk_payload "git $_p origin --tags" "$t")"
-expect_allow "tag-only: --tags with no remote" \
-  "$(mk_payload "git $_p --tags" "$t")"
-expect_allow "tag-only: two tags in one push" \
-  "$(mk_payload "git $_p origin v1.0 v1.1" "$t")"
-expect_allow "tag-only: chained with a non-push command" \
-  "$(mk_payload "git $_p origin v1.0 && gh release create v1.0" "$t")"
-
-# Not tag-only, on the protected branch: every one denies. The grammar is an
-# allowlist written in the safe direction, so the entry it forgets is a false
-# deny, never a miss.
-expect_deny "not tag-only: a name that is both a tag and a branch" \
-  "$(mk_payload "git $_p origin dual" "$t")" "feature branch"
-expect_deny "not tag-only: --tag (git's abbreviation of --tags)" \
-  "$(mk_payload "git $_p --tag origin v1.0" "$t")" "feature branch"
-expect_deny "not tag-only: --follow-tags moves the branch too" \
-  "$(mk_payload "git $_p --follow-tags origin v1.0" "$t")" "feature branch"
-expect_deny "not tag-only: an explicit refspec with a colon" \
-  "$(mk_payload "git $_p origin v1.0:refs/heads/main" "$t")" "feature branch"
-expect_deny "not tag-only: a tag push chained with a branch push" \
-  "$(mk_payload "git $_p origin v1.0 && git $_p origin master" "$t")" "feature branch"
-expect_deny "not tag-only: --delete" \
-  "$(mk_payload "git $_p origin --delete v1.0" "$t")" "feature branch"
-expect_deny "not tag-only: a force flag" \
-  "$(mk_payload "git $_p -f origin v1.0" "$t")" "feature branch"
-expect_deny "not tag-only: a remote git does not know" \
-  "$(mk_payload "git $_p nowhere v1.0" "$t")" "feature branch"
-expect_deny "not tag-only: a tag that does not exist" \
-  "$(mk_payload "git $_p origin v9.9" "$t")" "feature branch"
-expect_deny "not tag-only: a leading plus" \
-  "$(mk_payload "git $_p origin +v1.0" "$t")" "feature branch"
-expect_deny "not tag-only: no refspec at all" \
-  "$(mk_payload "git $_p origin" "$t")" "feature branch"
-expect_deny "not tag-only: bare push" \
-  "$(mk_payload "git $_p" "$t")" "feature branch"
-expect_deny "not tag-only: a dangling tag keyword" \
-  "$(mk_payload "git $_p origin tag" "$t")" "feature branch"
-expect_deny "the branch-push refusal names the tag-only form" \
-  "$(mk_payload "git $_p origin master" "$t")" "tag-only push"
-
-# Every push clause is scanned from any branch, not just the leftmost.
-git -C "$t" checkout -q -b feat/x
-expect_deny "every clause: && hides a push to master" \
-  "$(mk_payload "git $_p origin feat/x && git $_p origin master" "$t")" "protected branch"
-expect_deny "every clause: ; hides a push to master" \
-  "$(mk_payload "git $_p origin feat/x; git $_p origin master" "$t")" "protected branch"
-expect_deny "every clause: & hides a push to master" \
-  "$(mk_payload "git $_p origin feat/x & git $_p origin master" "$t")" "protected branch"
-expect_deny "every clause: || hides a push to master" \
-  "$(mk_payload "git $_p origin feat/x || git $_p origin master" "$t")" "protected branch"
-expect_deny "every clause: a newline hides a push to master" \
-  "$(mk_payload "git $_p origin feat/x
-git $_p origin master" "$t")" "protected branch"
-expect_deny "every clause: a pipe hides a push to master" \
-  "$(mk_payload "git $_p origin feat/x | cat; git $_p origin master" "$t")" "protected branch"
-expect_deny "every clause: a subshell group hides a push to master" \
-  "$(mk_payload "(git $_p origin master)" "$t")" "protected branch"
-expect_deny "every clause: a redirection glued to the branch name" \
-  "$(mk_payload "git $_p origin master>/dev/null" "$t")" "protected branch"
-expect_allow "every clause: a later non-push clause naming master is still fine" \
-  "$(mk_payload "git $_p origin feat/x; git log master" "$t")"
-
-# A value that would expand is code, not prose, and must stay in the text the
-# scans read. Single-quoted values do not expand and stay strippable.
-expect_deny "expanding value: double-quoted substitution in -m" \
-  "$(mk_payload "$_c -m \"\$(git $_p origin master)\"" "$t")" "protected branch"
-expect_deny "expanding value: backticks in -m" \
-  "$(mk_payload "$_c -m \"\`git $_p origin master\`\"" "$t")" "protected branch"
-expect_deny "expanding value: bare substitution in -m" \
-  "$(mk_payload "$_c -m \$(git $_p origin master)" "$t")" "protected branch"
-expect_deny "expanding value: substitution glued to a bare word" \
-  "$(mk_payload "$_c -m note\$(git $_p origin master)" "$t")" "protected branch"
-expect_deny "expanding value: substitution in -F" \
-  "$(mk_payload "$_c -F \"\$(git $_p origin master)\"" "$t")" "protected branch"
-expect_deny "expanding value: substitution in --message=" \
-  "$(mk_payload "$_c --message=\"\$(git $_p origin master)\"" "$t")" "protected branch"
-expect_allow "a dollar sign in prose without a verb is still fine" \
-  "$(mk_payload "$_c -m \"cost \$5 more\"" "$t")"
-expect_allow "a single-quoted message naming the verb does not expand and is stripped" \
-  "$(mk_payload "$_c -m 'note: git $_p origin master later'" "$t")"
-
-# A deny whose verb sits only inside a quoted string says so, and points at the
-# file route. The decision itself is unchanged: the text still denies.
-git -C "$t" checkout -q master
-expect_deny "quoted prose: the refusal names the file route" \
-  "$(mk_payload "gh issue create --title t --body \"see git $_p origin main for details\"" "$t")" "quoted string"
-run_hook "$(mk_payload "$_c -m x" "$t")"
-reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
-if [[ "$reason" == *"feature branch"* && "$reason" != *"quoted string"* ]]; then
-  pass "a real verb outside quotes gets no prose hint"
-else fail "prose hint on a real verb" "reason: $reason"; fi
-
-# ── #1 review round 1: the fixes above opened seams of their own ──────────
-# (1) A clause break at `(`, backtick, `<`, `>` moved everything after the
-# character out of the push clause, so a push to master with a substitution
-# or a redirection BEFORE the ref was never read. Parentheses and backticks
-# are spaces now; a redirection goes with its target (round 5).
-git -C "$t" checkout -q feat/x
-expect_deny "round 1: a substitution before the ref is still scanned (now refused as computed)" \
-  "$(mk_payload "git $_p \$(echo origin) master" "$t")" "cannot read"
-expect_deny "round 1: backticks before the ref are still scanned" \
-  "$(mk_payload "git $_p \`echo origin\` master" "$t")" "protected branch"
-expect_deny "round 1: a redirection before the ref is still scanned" \
-  "$(mk_payload "git $_p >/dev/null origin master" "$t")" "protected branch"
-# (2) The expand-aware strip must not reach target resolution: a message value
-# holding `$` survived the strip there, and a `cd <sibling> &&` inside it
-# pointed the check at a repo on a feature branch.
-git -C "$t" checkout -q master
-t2="$TMP_ROOT/case_tags_sibling"; new_repo "$t2"
-echo '{"branchPolicy":"pr"}' >"$t2/house.json"
-git -C "$t2" add house.json && git -C "$t2" $_verb -q -m house
-git -C "$t2" checkout -q -b feat/sib
-expect_deny "round 1: a dollar-bearing message cannot steer the target (cd)" \
-  "$(mk_payload "$_c -m \"cost \$5. cd $t2 && done\"" "$t")" "feature branch"
-expect_deny "round 1: a backtick-bearing message cannot steer the target" \
-  "$(mk_payload "$_c -m \"see \`x\`. cd $t2 && done\"" "$t")" "feature branch"
-expect_deny "round 1: a dollar-bearing message cannot steer the target (-C)" \
-  "$(mk_payload "$_c -m \"cost \$5. git -C $t2 status\"" "$t")" "feature branch"
-# (3) The carve-out refuses a clause that runs any other git command, so a
-# push behind a tag push cannot ride through the protected-branch block.
-expect_deny "round 1: a tag push chained with an unrecognised push form" \
-  "$(mk_payload "git $_p origin v1.0 && git --git-dir=$t/.git/ $_p origin master" "$t")" "feature branch"
-# (4) The refspec scan is the carve-out's safety net: a tag named after a
-# protected branch passes the grammar and is still refused there.
-git -C "$t" tag main
-expect_deny "round 1: a tag named main passes the grammar and the refspec scan refuses it" \
-  "$(mk_payload "git $_p origin tag main" "$t")" "protected branch"
-# (5) The prose hint stays silent on a substitution: that is code, not prose.
-git -C "$t" checkout -q feat/x
-run_hook "$(mk_payload "$_c -m \"\$(git $_p origin master)\"" "$t")"
-reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
-if [[ "$reason" == *"protected branch"* && "$reason" != *"quoted string"* ]]; then
-  pass "round 1: no prose hint on a substitution"
-else fail "prose hint on substitution" "reason: $reason"; fi
-git -C "$t" checkout -q master
-
-# ── #1 adversarial round: -c residue, backslashes, pushes that name no branch ──
-# (1) A -c value ending in a variable left a residue between `git` and the
-# verb, so neither scan variant matched. -c is stripped blind again.
-expect_deny "adversarial: -c value ending in a variable still denies on master" \
-  "$(mk_payload "git -c user.name=\$USER $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial: attached -c value ending in a variable still denies" \
-  "$(mk_payload "git -cuser.name=\$USER $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial: quoted -c value with a substitution still denies on master" \
-  "$(mk_payload "git -c a=\"\$(x)\" $_verb -m x" "$t")" "feature branch"
-# (2) A backslash ended the push clause, so `v1.0 \master` read as tag-only
-# while the shell handed git `master`.
-expect_deny "adversarial: a backslash before the ref cannot hide it from the carve-out" \
-  "$(mk_payload "git $_p origin v1.0 \\master" "$t")" "feature branch"
-expect_deny "adversarial: a line continuation before the ref cannot hide it" \
-  "$(mk_payload "git $_p origin v1.0 \\
-master" "$t")" "feature branch"
-expect_deny "adversarial: --tags with a backslashed branch behind it" \
-  "$(mk_payload "git $_p --tags origin \\master" "$t")" "feature branch"
-# (3) From any branch: redirection pairs and IFS are not clause ends, and a
-# push that names no branch can still move a protected one.
-git -C "$t" checkout -q feat/x
-expect_deny "adversarial: -c value ending in a variable still denies a push to master" \
-  "$(mk_payload "git -c user.name=\$USER $_p origin master" "$t")" "protected branch"
-expect_deny "adversarial: a -c value that expands to a push is scanned" \
-  "$(mk_payload "git -c a=\$(git $_p origin master) status" "$t")" "protected branch"
-expect_deny "adversarial: 2>&1 before the ref does not end the clause" \
-  "$(mk_payload "git $_p origin 2>&1 master" "$t")" "protected branch"
-expect_deny "adversarial: &> before the ref does not end the clause" \
-  "$(mk_payload "git $_p origin &>/dev/null master" "$t")" "protected branch"
-expect_deny "adversarial: \${IFS} between remote and ref is a separator" \
-  "$(mk_payload "git $_p origin\${IFS}master" "$t")" "protected branch"
-expect_deny "adversarial: --all pushes every branch" \
-  "$(mk_payload "git $_p --all origin" "$t")" "without naming it"
-expect_deny "adversarial: --mirror pushes every branch" \
-  "$(mk_payload "git $_p --mirror origin" "$t")" "without naming it"
-expect_deny "adversarial: --al, git's abbreviation, is read the same way" \
-  "$(mk_payload "git $_p --al origin" "$t")" "without naming it"
-expect_deny "adversarial: --prune can delete a protected branch" \
-  "$(mk_payload "git $_p --prune origin feat/x" "$t")" "without naming it"
-expect_deny "adversarial: a wildcard refspec can match a protected branch" \
-  "$(mk_payload "git $_p origin refs/heads/*:refs/heads/*" "$t")" "wildcard"
-expect_allow "adversarial: a plain feature push is still fine" \
-  "$(mk_payload "git $_p origin feat/x" "$t")"
-expect_allow "adversarial: a feature push with 2>&1 after the ref is still fine" \
-  "$(mk_payload "git $_p origin feat/x 2>&1" "$t")"
-git -C "$t" checkout -q master
-
-# ── #1 adversarial round 2: substitutions in -c, backslashes in words, IFS ──
-# Backslashes are now read the shell's way on the whole command: a
-# backslash-newline vanishes and every other backslash escapes the character
-# after it, which stays. A -c value is one whole word, substitutions included.
-expect_deny "adversarial 2: a -c value with a spaced substitution still denies on master" \
-  "$(mk_payload "git -c user.name=\$(id -un) $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 2: a -c value with spaced backticks still denies on master" \
-  "$(mk_payload "git -c user.name=\`id -un\` $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 2: two -c values, one with a spaced substitution" \
-  "$(mk_payload "git -c a.b=\$(id -un) -c c.d=1 $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 2: a backslash inside the program word cannot hide it" \
-  "$(mk_payload "gi\\t $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 2: a backslash inside the verb cannot hide it" \
-  "$(mk_payload "git co\\mmit -m x" "$t")" "feature branch"
-expect_deny "adversarial 2: a line continuation between git and the verb cannot hide it" \
-  "$(mk_payload "git \\
-$_verb -m x" "$t")" "feature branch"
-git -C "$t" checkout -q feat/x
-expect_deny "adversarial 2: a -c value with a spaced substitution still denies a push to master" \
-  "$(mk_payload "git -c user.name=\$(id -un) $_p origin master" "$t")" "protected branch"
-expect_deny "adversarial 2: a backslash inside the push verb cannot hide it" \
-  "$(mk_payload "git pu\\sh origin master" "$t")" "protected branch"
-expect_deny "adversarial 2: a backslash inside the ref cannot hide it" \
-  "$(mk_payload "git $_p origin mas\\ter" "$t")" "protected branch"
-expect_deny "adversarial 2: a backslash inside a refs/heads ref cannot hide it" \
-  "$(mk_payload "git $_p origin refs/heads/mas\\ter" "$t")" "protected branch"
-expect_deny "adversarial 2: an escaped separator does not glue a push into the clause before it" \
-  "$(mk_payload "git $_p origin feat/x \; git $_p origin master" "$t")" "protected branch"
-expect_deny "adversarial 2: --m is git's shortest --mirror" \
-  "$(mk_payload "git $_p --m origin" "$t")" "without naming it"
-expect_deny "adversarial 2: a substring of IFS is still a separator" \
-  "$(mk_payload "git $_p origin\${IFS:0:1}master" "$t")" "protected branch"
-expect_deny "adversarial 2: a parameter default is read as its value" \
-  "$(mk_payload "git $_p origin \${x:-master}" "$t")" "protected branch"
-expect_allow "adversarial 2: a Windows path in a message is still fine" \
-  "$(mk_payload "$_c -m \"see C:\\Users\\x\\notes.txt\"" "$t")"
-expect_allow "adversarial 2: a feature push after the backslash handling is still fine" \
-  "$(mk_payload "git $_p origin feat/x" "$t")"
-git -C "$t" checkout -q master
-
-# ── #1 review round 3: escaped quotes, computed words, config-driven pushes ──
-# An escaped quote is data, not structure: it vanishes whole so it cannot
-# re-pair with the quotes around it, which let a message strip swallow a real
-# chained command.
-git -C "$t" checkout -q feat/x
-expect_deny "round 3: an escaped quote cannot open a span that swallows a push" \
-  "$(mk_payload "$_c -m \\\"a && git $_p origin master && echo \\\"b" "$t")" "protected branch"
-expect_deny "round 3: the single-quote form of the same" \
-  "$(mk_payload "$_c -m \\'a && git $_p origin master && echo \\'b" "$t")" "protected branch"
-expect_deny "round 3: --message= form of the same" \
-  "$(mk_payload "$_c --message=\\\"a && git $_p origin master && echo \\\"b" "$t")" "protected branch"
-git -C "$t" checkout -q master
-expect_deny "round 3: an escaped quote in a non-git word cannot swallow a commit" \
-  "$(mk_payload "echo -m \\\"a && $_c -m x && echo \\\"b" "$t")" "feature branch"
-expect_deny "round 3: an escaped quote cannot re-pair a message to steer the target" \
-  "$(mk_payload "$_c -m \"a\\\" cd $t2 && x\"" "$t")" "feature branch"
-# A word the shell computes is refused, not guessed at.
-expect_deny "round 3: an empty parameter default between git and the verb" \
-  "$(mk_payload "git \${x:-} $_verb -m y" "$t")" "feature branch"
-expect_deny "round 3: a parameter default that spells git" \
-  "$(mk_payload "\${x:-git} $_verb -m y" "$t")" "feature branch"
-expect_deny "round 3: a separator glued to the verb" \
-  "$(mk_payload "git $_p;" "$t")" "feature branch"
-expect_deny "round 3: a redirection glued to the verb" \
-  "$(mk_payload "git $_p>/dev/null" "$t")" "feature branch"
-expect_deny "round 3: && glued to the verb" \
-  "$(mk_payload "git $_p&&true" "$t")" "feature branch"
-expect_deny "round 3: a glued separator on commit" \
-  "$(mk_payload "$_c;" "$t")" "feature branch"
-expect_deny "round 3: a tag push chained with a computed verb" \
-  "$(mk_payload "git $_p origin v1.0 && git pu\${x}sh origin master" "$t")" "feature branch"
-expect_deny "round 3: a tag push chained with any other git command is refused and says why" \
-  "$(mk_payload "git tag v2.0 && git $_p origin v2.0" "$t")" "earlier call"
-git -C "$t" checkout -q feat/x
-expect_deny "round 3: a computed verb" \
-  "$(mk_payload "git pu\${x}sh origin master" "$t")" "protected branch"
-expect_deny "round 3: a computed ref" \
-  "$(mk_payload "git $_p origin mast\${x}er" "$t")" "computed"
-expect_deny "round 3: a variable ref" \
-  "$(mk_payload "git $_p origin \$b" "$t")" "computed"
-_br='{feat/x,master}'   # a variable: bash brace-expands even inside a quoted $( )
-expect_deny "round 3: a brace-expanded ref" \
-  "$(mk_payload "git $_p origin $_br" "$t")" "computed"
-expect_deny "round 3: a ? glob ref" \
-  "$(mk_payload "git $_p origin m?ster" "$t")" "wildcard"
-expect_deny "round 3: a [ ] glob ref" \
-  "$(mk_payload "git $_p origin ma[s]ter" "$t")" "wildcard"
-expect_deny "round 3: --branches is --all on git 2.42" \
-  "$(mk_payload "git $_p --branches origin" "$t")" "without naming it"
-expect_deny "round 3: heads/master is a valid destination spelling" \
-  "$(mk_payload "git $_p origin HEAD:heads/master" "$t")" "protected branch"
-expect_deny "round 3: a -c remote push refspec redirects the push" \
-  "$(mk_payload "git -c remote.origin.push=+refs/heads/feat/x:refs/heads/master $_p origin" "$t")" "redirect"
-expect_deny "round 3: a -c push.default redirects the push" \
-  "$(mk_payload "git -c push.default=matching $_p origin" "$t")" "redirect"
-expect_deny "round 3: a process substitution in -F is code" \
-  "$(mk_payload "$_c -F <(git $_p origin master)" "$t")" "protected branch"
-expect_deny "round 3: a process substitution in --file= is code" \
-  "$(mk_payload "$_c --file=<(git $_p origin master)" "$t")" "protected branch"
-expect_allow "round 3: a substitution inside a message on a feature branch is still fine" \
-  "$(mk_payload "$_c -m \"\$(date)\"" "$t")"
-expect_allow "round 3: -u before the remote is still fine" \
-  "$(mk_payload "git $_p -u origin feat/x" "$t")"
-expect_allow "round 3: prose naming a tag push in a message is still fine" \
-  "$(mk_payload "$_c -m \"release: git $_p origin v1.0 later\"" "$t")"
-git -C "$t" checkout -q master
-expect_allow "round 3: a format string with a variable after a read-only verb is still fine" \
-  "$(mk_payload "git log --format=\"%h \$x\" -1" "$t")"
-git -C "$t" checkout -q feat/x
-expect_allow "round 3: --progress is not --prune" \
-  "$(mk_payload "git $_p --progress origin feat/x" "$t")"
-expect_allow "round 3: --push-option is not --prune" \
-  "$(mk_payload "git $_p --push-option=ci.skip origin feat/x" "$t")"
-git -C "$t" checkout -q master
-
-# ── #1 adversarial round 4: global options, config-key case, prose, redirects ──
-# The verb is found by walking tokens, so no global option can sit between
-# `git` and the verb unread.
-expect_deny "adversarial 4: --no-pager between git and the verb" \
-  "$(mk_payload "git --no-pager $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 4: --exec-path= between git and the verb" \
-  "$(mk_payload "git --exec-path=/usr/libexec/git-core $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 4: -P between git and the verb" \
-  "$(mk_payload "git -P $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 4: a full path to git" \
-  "$(mk_payload "/usr/bin/git --no-pager $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 4: --git-dir and --work-tree with separate values" \
-  "$(mk_payload "git --git-dir $t/.git --work-tree $t $_verb -m x" "$t")" "feature branch"
-expect_deny "adversarial 4: a tag push chained with a --no-pager push" \
-  "$(mk_payload "git $_p origin v1.0 && git --no-pager $_p origin master" "$t")" "feature branch"
-expect_allow "adversarial 4: --tags with a trailing redirect is still tag-only" \
-  "$(mk_payload "git $_p --tags origin >/dev/null 2>&1" "$t")"
-git -C "$t" checkout -q feat/x
-expect_deny "adversarial 4: -p before a forced push to master" \
-  "$(mk_payload "git -p $_p --force origin master" "$t")" "protected branch"
-expect_deny "adversarial 4: --literal-pathspecs before a push to master" \
-  "$(mk_payload "git --literal-pathspecs $_p origin master" "$t")" "protected branch"
-expect_deny "adversarial 4: an upper-case remote push key" \
-  "$(mk_payload "git -c remote.origin.PUSH=+refs/heads/feat/x:refs/heads/master $_p origin" "$t")" "redirect"
-expect_deny "adversarial 4: a mixed-case push.default key" \
-  "$(mk_payload "git -c Push.Default=matching $_p origin" "$t")" "redirect"
-expect_deny "adversarial 4: a computed verb in an interpreter body is still refused" \
-  "$(mk_payload "bash -c \"git \$CMD origin master\"" "$t")" "protected branch"
-expect_allow "adversarial 4: git in argument position with a variable is prose" \
-  "$(mk_payload "echo \"git \$CMD\" > notes.txt" "$t")"
-expect_allow "adversarial 4: an issue body naming git with a variable is prose" \
-  "$(mk_payload "gh issue create --title t --body \"see git \$branch notes\"" "$t")"
-expect_allow "adversarial 4: a -c push key on a non-push verb is fine" \
-  "$(mk_payload "git -c push.default=simple log --oneline -1" "$t")"
-expect_allow "adversarial 4: a push option value with a variable is not a ref" \
-  "$(mk_payload "git $_p --push-option=id=\$CI origin feat/x" "$t")"
-expect_allow "adversarial 4: -o with a separate value holding a variable is not a ref" \
-  "$(mk_payload "git $_p -o id=\$CI origin feat/x" "$t")"
-expect_allow "adversarial 4: a feature push with a trailing redirect" \
-  "$(mk_payload "git $_p origin feat/x >/dev/null 2>&1" "$t")"
-expect_deny "adversarial 4: a redirect target does not hide the ref before it" \
-  "$(mk_payload "git $_p origin master >/dev/null" "$t")" "protected branch"
-git -C "$t" checkout -q master
-
-# ── #1 round 5 breaker: a computed verb is refused on a protected branch in
-# any position, and read as a push from any branch so its arguments are
-# checked. A command-position test was reverted: a leading assignment or an
-# unlisted launcher put the verb outside it.
-expect_deny "breaker: a leading assignment before a computed verb on master" \
-  "$(mk_payload "FOO=1 git \$V -m x" "$t")" "computed"
-expect_deny "breaker: an unlisted launcher before a computed verb on master" \
-  "$(mk_payload "timeout 5 git \$V -m x" "$t")" "computed"
-expect_deny "breaker: a computed verb with harmless arguments on master" \
-  "$(mk_payload "git \$x status" "$t")" "computed"
-git -C "$t" checkout -q feat/x
-expect_deny "breaker: a leading assignment before a computed push to master" \
-  "$(mk_payload "FOO=1 git pu\${x}sh origin master" "$t")" "protected branch"
-expect_deny "breaker: a launcher with its own option before a computed push to master" \
-  "$(mk_payload "sudo -u x git pu\${x}sh origin master" "$t")" "protected branch"
-expect_deny "breaker: an unlisted launcher before a computed push to master" \
-  "$(mk_payload "timeout 5 git pu\${x}sh origin master" "$t")" "protected branch"
-expect_allow "breaker: a computed verb with harmless arguments on a feature branch" \
-  "$(mk_payload "git \$x status" "$t")"
-expect_allow "breaker: a computed verb aimed at the feature branch itself" \
-  "$(mk_payload "git pu\${x}sh origin feat/x" "$t")"
-git -C "$t" checkout -q master
-
-# ── #34: the seams 0.9.0 left open ───────────────────────────────────────────
-# Each was probed against the 0.9.1 hook before the fix and the deny cases
-# below were shown failing (allowed) there. Two adopted repos: one on master,
-# one on a feature branch, so a redirect from one to the other is visible.
-_p="pu""sh"
-_verb="com""mit"
-pm="$TMP_ROOT/seam_master"; new_repo "$pm"
-echo '{"branchPolicy":"pr"}' >"$pm/house.json"
-git -C "$pm" add house.json && git -C "$pm" $_verb -q -m house
-pf="$TMP_ROOT/seam_feature"; new_repo "$pf"
-echo '{"branchPolicy":"pr"}' >"$pf/house.json"
-git -C "$pf" add house.json && git -C "$pf" $_verb -q -m house
-git -C "$pf" checkout -q -b feat/x
-seam_bare="$TMP_ROOT/seam_remote.git"; git init -q --bare "$seam_bare"
-git -C "$pm" remote add origin "$seam_bare"
-git -C "$pf" remote add origin "$seam_bare"
-
-# Seam 2: an environment prefix or a --git-dir/--work-tree option redirects
-# the target, so the check has to follow it the way it follows -C.
-expect_deny "seam 2: GIT_DIR and GIT_WORK_TREE aim a commit at the master repo" \
-  "$(mk_payload "GIT_DIR=$pm/.git GIT_WORK_TREE=$pm git $_verb -m x" "$pf")" "master"
-expect_deny "seam 2: env(1) carrying the same prefix" \
-  "$(mk_payload "env GIT_WORK_TREE=$pm GIT_DIR=$pm/.git git $_verb -m x" "$pf")" "master"
-expect_deny "seam 2: GIT_DIR alone aims at the master repo's HEAD" \
-  "$(mk_payload "GIT_DIR=$pm/.git git $_verb -m x" "$pf")" "master"
-expect_deny "seam 2: --git-dir= and --work-tree= options" \
-  "$(mk_payload "git --git-dir=$pm/.git --work-tree=$pm $_verb -m x" "$pf")" "master"
-expect_deny "seam 2: --work-tree and --git-dir with separate values" \
-  "$(mk_payload "git --work-tree $pm --git-dir $pm/.git $_verb -m x" "$pf")" "master"
-expect_allow "seam 2: the prefix aiming at the feature repo is no longer a false deny" \
-  "$(mk_payload "GIT_DIR=$pf/.git GIT_WORK_TREE=$pf git $_verb -m x" "$pm")"
-expect_deny "seam 2: the prefix does not hide a refspec aimed at master" \
-  "$(mk_payload "GIT_DIR=$pf/.git GIT_WORK_TREE=$pf git $_p origin master" "$pm")" "protected branch"
-expect_deny "seam 2: a prefix naming a non-repo falls back to the real cwd" \
-  "$(mk_payload "GIT_DIR=/nonexistent/.git git $_verb -m x" "$pm")" "master"
-expect_allow "seam 2: a prefix naming a non-repo with a harmless verb" \
-  "$(mk_payload "GIT_DIR=/nonexistent/.git git status" "$pm")"
-expect_deny "seam 2: config injected through the environment is refused" \
-  "$(mk_payload "GIT_CONFIG_PARAMETERS=\"'push.default=matching'\" git $_p origin" "$pf")" "environment"
-expect_deny "seam 2: GIT_CONFIG_COUNT injection is refused" \
-  "$(mk_payload "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.default GIT_CONFIG_VALUE_0=matching git $_p origin" "$pf")" "environment"
-
-# Seam 3: a cd inside an interpreter's -c body changes the target. Every
-# directory the command names is now a candidate, and any candidate on a
-# protected branch refuses the whole command.
-expect_deny "seam 3: cd to the master repo inside a bash -c body" \
-  "$(mk_payload "bash -c 'cd $pm && git $_verb -m x'" "$pf")" "master"
-expect_deny "seam 3: cd with a semicolon inside an sh -c body" \
-  "$(mk_payload "sh -c \"cd $pm; git $_verb -m x\"" "$pf")" "master"
-expect_allow "seam 3: cd to the feature repo inside a -c body" \
-  "$(mk_payload "bash -c 'cd $pf && git $_verb -m x'" "$pf")"
-expect_deny "seam 3: a second cd later in the command is read too" \
-  "$(mk_payload "cd $pf && git status && cd $pm && git $_verb -m x" "$pf")" "master"
-expect_deny "seam 3: a second -C later in the command is read too" \
-  "$(mk_payload "git -C $pf status && git -C $pm $_verb -m x" "$pf")" "master"
-expect_allow "seam 3: two feature-branch targets in one command" \
-  "$(mk_payload "git -C $pf status && cd $pf && git $_verb -m x" "$pm")"
-
-# Seam 1: a ref that arrives as data. The arguments of a git command fed by
-# xargs come from stdin, which this text cannot read, so a push through xargs
-# and a git whose verb comes from xargs are refused from any branch.
-expect_deny "seam 1: a push whose ref arrives through xargs" \
-  "$(mk_payload "echo master | xargs git $_p origin" "$pf")" "xargs"
-expect_deny "seam 1: xargs with its own option before the push" \
-  "$(mk_payload "echo master | xargs -n1 git $_p origin" "$pf")" "xargs"
-expect_deny "seam 1: a git whose verb arrives through xargs" \
-  "$(mk_payload "echo '$_p origin master' | xargs git" "$pf")" "xargs"
-expect_deny "seam 1: a push through xargs is refused even toward the feature branch" \
-  "$(mk_payload "echo feat/x | xargs git $_p origin" "$pf")" "xargs"
-expect_allow "seam 1: xargs feeding a harmless verb is left alone" \
-  "$(mk_payload "git ls-files | xargs git add" "$pf")"
-expect_allow "seam 1: xargs feeding a harmless verb on the protected branch" \
-  "$(mk_payload "git ls-files | xargs git add" "$pm")"
-
-# Seam 4: a git alias is a verb this text cannot read, so the hook asks git.
-# A plain alias is read as the verb it expands to; a shell alias that runs
-# git is refused; an alias defined on the same command line, or a verb git
-# does not know, is refused because it cannot be looked up.
-git -C "$pm" config alias.ci "$_verb"
-git -C "$pm" config alias.st status
-git -C "$pf" config alias.pm "$_p origin master"
-git -C "$pf" config alias.p "$_p"
-git -C "$pf" config alias.sh2 "!git $_p origin master"
-git -C "$pf" config alias.hello '!echo hi'
-expect_deny "seam 4: a plain alias for commit on master" \
-  "$(mk_payload "git ci -m x" "$pm")" "master"
-expect_allow "seam 4: a plain alias for status on master" \
-  "$(mk_payload "git st" "$pm")"
-expect_deny "seam 4: an alias carrying a whole push to master" \
-  "$(mk_payload "git pm" "$pf")" "protected branch"
-expect_deny "seam 4: an alias for push with the ref on the command line" \
-  "$(mk_payload "git p origin master" "$pf")" "protected branch"
-expect_deny "seam 4: a shell alias that runs git" \
-  "$(mk_payload "git sh2" "$pf")" "alias"
-expect_deny "seam 4: a shell alias is refused even when its text names no git" \
-  "$(mk_payload "git hello" "$pf")" "alias"
-git -C "$pf" config alias.sneaky '!g=$(printf "\x67\x69\x74"); p=$(printf "\x70\x75\x73\x68"); $g $p origin master'
-expect_deny "seam 4: a shell alias that spells git with hex escapes" \
-  "$(mk_payload "git sneaky" "$pf")" "alias"
-expect_deny "seam 4: an alias defined on the command line with -c" \
-  "$(mk_payload "git -c alias.x=$_verb x -m y" "$pm")" "alias"
-expect_deny "seam 4: an alias defined and used in the same command" \
-  "$(mk_payload "git config alias.zz '!git $_p origin master' && git zz" "$pf")" "unknown"
-expect_deny "seam 4: a verb git does not know" \
-  "$(mk_payload "git frobnicate origin master" "$pf")" "unknown"
-expect_allow "seam 4: a push with no refspec under the default push config" \
-  "$(mk_payload "git $_p origin" "$pf")"
-git -C "$pf" config push.default matching
-expect_deny "seam 4: push.default=matching in the repo config moves master without naming it" \
-  "$(mk_payload "git $_p origin" "$pf")" "config"
-git -C "$pf" config --unset push.default
-git -C "$pf" config remote.origin.push "+refs/heads/feat/x:refs/heads/master"
-expect_deny "seam 4: a remote.<name>.push refspec in the repo config" \
-  "$(mk_payload "git $_p origin" "$pf")" "config"
-git -C "$pf" config --unset remote.origin.push
-expect_allow "seam 4: a named feature push is unaffected by the config checks" \
-  "$(mk_payload "git $_p origin feat/x" "$pf")"
-
-# Adversarial round on the seams above. Each deny below was allowed by the
-# first version of the candidate walk, which collected every -C and cd in the
-# command as a flat set and forgot the session's own cwd the moment any other
-# target was named.
-expect_deny "adversarial 5: a harmless -C clause does not hide a bare commit in the cwd" \
-  "$(mk_payload "git -C $pf status && git $_verb -m x" "$pm")" "master"
-expect_deny "adversarial 5: a harmless -C clause does not hide a bare push from the cwd" \
-  "$(mk_payload "git -C $pf status && git $_p origin master" "$pm")" "master"
-expect_deny "adversarial 5: a bare commit before a harmless -C clause" \
-  "$(mk_payload "git $_verb -m x && git -C $pf status" "$pm")" "master"
-expect_deny "adversarial 5: successive -C compose, and the last one is the target" \
-  "$(mk_payload "git -C $pf -C ../seam_master $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 5: pushd moves every later clause" \
-  "$(mk_payload "pushd $pm && git $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 5: pushd with a semicolon" \
-  "$(mk_payload "pushd $pm; git $_verb -m x" "$pf")" "master"
-expect_allow "adversarial 5: pushd then popd returns to the cwd" \
-  "$(mk_payload "pushd $pm && popd && git $_verb -m x" "$pf")"
-expect_deny "adversarial 5: a cd on its own line moves the next line" \
-  "$(mk_payload "cd $pm
-git $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 5: an exported GIT_DIR persists into the next clause" \
-  "$(mk_payload "export GIT_DIR=$pm/.git; git $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 5: GIT_CONFIG_GLOBAL redirects the global config" \
-  "$(mk_payload "GIT_CONFIG_GLOBAL=/tmp/evil git $_p origin" "$pf")" "environment"
-expect_deny "adversarial 5: GIT_CONFIG_SYSTEM redirects the system config" \
-  "$(mk_payload "GIT_CONFIG_SYSTEM=/tmp/evil git $_p origin" "$pf")" "environment"
-expect_deny "adversarial 5: HOME redirects the global config" \
-  "$(mk_payload "HOME=/tmp/evil git $_p origin" "$pf")" "environment"
-expect_deny "adversarial 5: GNU parallel feeds a push like xargs" \
-  "$(mk_payload "echo master | parallel git $_p origin" "$pf")" "xargs"
-expect_allow "adversarial 5: a -C to the feature repo before a cd there" \
-  "$(mk_payload "git -C $pf status && cd $pf && git $_verb -m x" "$pm")"
-expect_allow "adversarial 5: an env prefix on a non-git command does not steer" \
-  "$(mk_payload "GIT_DIR=$pm/.git ls && git -C $pf $_verb -m x" "$pm")"
-
-# Adversarial round 2: a target the shell computes. The first walk composed
-# whatever token followed cd or -C, and when that token was `-`, `$OLDPWD`,
-# `"$dir"`, `$(pwd)/..`, a function argument, or an xargs placeholder, the
-# path resolved nowhere and the fallback went to the payload cwd, discarding
-# every real cd earlier in the chain. The rule is the one computed refs and
-# verbs already follow: with a guarded verb in the command, a target this
-# text cannot read is refused, and the refusal says to spell the path.
-mkdir -p "$pm/sub"
-expect_deny "adversarial 6: cd - returns to a protected checkout" \
-  "$(mk_payload "cd $pm && cd $pf && cd - && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: cd \$OLDPWD" \
-  "$(mk_payload "cd $pm && cd $pf && cd \"\$OLDPWD\" && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: cd through a substitution" \
-  "$(mk_payload "cd $pm/sub && cd \$(pwd)/.. && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: cd through a variable assigned in the same command" \
-  "$(mk_payload "TARGET=$pm && cd \$TARGET && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: cd inside a function defined in the same command" \
-  "$(mk_payload "mycd() { cd \"\$1\"; }; mycd $pm && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: -C through a variable" \
-  "$(mk_payload "dir=$pm; git -C \"\$dir\" $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: CDPATH steers a relative cd" \
-  "$(mk_payload "CDPATH=$pm cd sub && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 6: an xargs placeholder as a cd target" \
-  "$(mk_payload "echo $pm | xargs -I{} sh -c 'cd {} && git $_verb -m x'" "$pf")" "computed"
-expect_allow "adversarial 6: a computed cd with no guarded verb is left alone" \
-  "$(mk_payload "cd \$X && git status" "$pm")"
-expect_allow "adversarial 6: a computed cd with a harmless verb on a feature branch" \
-  "$(mk_payload "cd \"\$OLDPWD\" && git log -1" "$pf")"
-expect_deny "adversarial 6: env -C changes the directory for its command" \
-  "$(mk_payload "env -C $pm git $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 6: env --chdir= changes the directory for its command" \
-  "$(mk_payload "env --chdir=$pm git $_verb -m x" "$pf")" "master"
-expect_allow "adversarial 6: env -C into the feature repo from the protected one" \
-  "$(mk_payload "env -C $pf git $_verb -m x" "$pm")"
-expect_deny "adversarial 6: pushd twice then popd lands in the first target" \
-  "$(mk_payload "pushd $pm && pushd $pf && popd && git $_verb -m x" "$pf")" "master"
-expect_allow "adversarial 6: pushd twice then popd twice returns to the cwd" \
-  "$(mk_payload "pushd $pm && pushd $pf && popd && popd && git $_verb -m x" "$pf")"
-git -C "$pf" config branch.feat/x.remote origin
-git -C "$pf" config branch.feat/x.merge refs/heads/master
-git -C "$pf" config push.default upstream
-expect_deny "adversarial 6: push.default=upstream with an upstream on master" \
-  "$(mk_payload "git $_p origin" "$pf")" "config"
-git -C "$pf" config push.default tracking
-expect_deny "adversarial 6: push.default=tracking is the same setting" \
-  "$(mk_payload "git $_p origin" "$pf")" "config"
-git -C "$pf" config --unset push.default
-git -C "$pf" config --unset branch.feat/x.merge
-git -C "$pf" config --unset branch.feat/x.remote
-
-# Regression round: everyday shapes the per-candidate decision must keep
-# allowing. The first version scanned the whole command's verbs for every
-# candidate, so the documented release flow (commit in a worktree, come back
-# to the shared checkout, git status) was refused on the shared checkout.
-expect_allow "regression: commit in the feature worktree, then status back in the protected checkout" \
-  "$(mk_payload "cd $pf && git $_verb -m x && cd $pm && git status" "$pm")"
-expect_allow "regression: -C into the feature worktree, then log in the protected checkout" \
-  "$(mk_payload "git -C $pf $_verb -m x && git log -1" "$pm")"
-expect_deny "regression: the reverse order still refuses" \
-  "$(mk_payload "cd $pm && git status && cd $pf && git status && git -C $pm $_verb -m x" "$pf")" "master"
-sp="$TMP_ROOT/seam with space"; new_repo "$sp"
-echo '{"branchPolicy":"pr"}' >"$sp/house.json"
-git -C "$sp" add house.json && git -C "$sp" $_verb -q -m house
-git -C "$sp" checkout -q -b feat/sp
-expect_allow "regression: a quoted -C path with spaces is one token" \
-  "$(mk_payload "git -C \"$sp\" $_verb -m x" "$pm")"
-expect_deny "regression: a quoted cd path with spaces into the protected checkout" \
-  "$(mk_payload "cd \"$TMP_ROOT/seam_master\" && git $_verb -m x" "$sp")" "master"
-expect_allow "regression: a quoted -c value with spaces before a read-only verb" \
-  "$(mk_payload "git -c \"user.name=Jane Q Public\" status" "$pf")"
-expect_deny "regression: a quoted -c value with spaces before a commit on master still refuses for the branch" \
-  "$(mk_payload "git -c \"user.name=Jane Q Public\" $_verb -m x" "$pm")" "master"
-expect_allow "regression: HOME= inside a commit message is prose" \
-  "$(mk_payload "git $_verb -m \"docs: mention HOME=/custom/path in the README\"" "$pf")"
-expect_deny "regression: HOME= inside a commit message on master refuses for the branch, not the environment" \
-  "$(mk_payload "git $_verb -m \"docs: mention HOME=/custom/path\"" "$pm")" "master"
-expect_deny "regression: HOME= as a real prefix is still refused" \
-  "$(mk_payload "HOME=/tmp/evil git $_p origin" "$pf")" "environment"
-
-# Adversarial round 3: a command that changes the branch, the config, or the
-# checkout it then commits or pushes under, in the same call. The branch and
-# the config are read once, before any clause runs, so `git checkout master
-# && git commit` from a feature branch was read as a feature-branch commit,
-# and `git config push.default matching && git push origin` as a harmless
-# push. Each was executed for real and landed on master. Refused whenever a
-# guarded verb follows in the same call; split into separate calls.
-expect_deny "adversarial 7: checkout of a protected branch then commit" \
-  "$(mk_payload "git checkout master && git $_verb -m x" "$pf")" "separate"
-expect_deny "adversarial 7: switch to a protected branch then commit" \
-  "$(mk_payload "git switch master && git $_verb -m x" "$pf")" "separate"
-expect_deny "adversarial 7: symbolic-ref onto a protected branch then commit" \
-  "$(mk_payload "git symbolic-ref HEAD refs/heads/master && git $_verb -m x" "$pf")" "separate"
-expect_deny "adversarial 7: checkout of a computed branch then commit" \
-  "$(mk_payload "git checkout - && git $_verb -m x" "$pf")" "separate"
-expect_allow "adversarial 7: creating a branch then committing on it is fine" \
-  "$(mk_payload "git checkout -b feat/y && git $_verb -m x" "$pf")"
-expect_allow "adversarial 7: switch -c then commit is fine" \
-  "$(mk_payload "git switch -c feat/z && git $_verb -m x" "$pf")"
-expect_deny "adversarial 7: a push config written then used in the same call" \
-  "$(mk_payload "git config push.default matching && git $_p origin" "$pf")" "separate"
-expect_deny "adversarial 7: an upstream written then used in the same call" \
-  "$(mk_payload "git config branch.feat/x.merge refs/heads/master && git config push.default upstream && git $_p origin" "$pf")" "separate"
-expect_allow "adversarial 7: reading a config key before a named push is fine" \
-  "$(mk_payload "git config --get push.default; git $_p origin feat/x" "$pf")"
-expect_allow "adversarial 7: writing a harmless key before a commit is fine" \
-  "$(mk_payload "git config user.name x && git $_verb -m y" "$pf")"
-expect_deny "adversarial 7: a glob in a cd target is computed" \
-  "$(mk_payload "cd $TMP_ROOT/seam_mas* && git $_verb -m x" "$pf")" "computed"
-expect_deny "adversarial 7: env -S splices a whole git command" \
-  "$(mk_payload "env -S \"git -C $pm $_verb -m x\"" "$pf")" "master"
-expect_deny "adversarial 7: worktree add on a protected branch then commit there" \
-  "$(mk_payload "git worktree add $TMP_ROOT/wt-new master && cd $TMP_ROOT/wt-new && git $_verb -m x" "$pf")" "separate"
-expect_deny "adversarial 7: clone then commit in the clone" \
-  "$(mk_payload "git clone $pm $TMP_ROOT/cl && cd $TMP_ROOT/cl && git $_verb -m x" "$pf")" "separate"
-expect_allow "adversarial 7: worktree add of a new branch then a commit elsewhere is fine" \
-  "$(mk_payload "git worktree add -b feat/w $TMP_ROOT/wt-w && git $_verb -m x" "$pf")"
-expect_allow "adversarial 7: unset clears an exported GIT_DIR" \
-  "$(mk_payload "export GIT_DIR=$pm/.git; unset GIT_DIR; git $_verb -m x" "$pf")"
-
-# Adversarial round 4, against the per-clause verb check and the quoted
-# value protection. A verb inside a message substitution was invisible to
-# the candidate's clause (the blind strip removes the value whole); a cd
-# inside a subshell was read as persisting; the quoted -C value was only
-# protected when git was the clause's first word; and a message carrying a
-# `$` and the letters HOME= tripped the environment refusal.
-expect_deny "adversarial 8: a commit inside a message substitution on master" \
-  "$(mk_payload "git status -m \"\$(git $_verb -m done)\"" "$pm")" "master"
-expect_deny "adversarial 8: a subshell cd does not persist, the commit runs in the cwd" \
-  "$(mk_payload "(cd $pf) ; git $_verb -m x" "$pm")" "master"
-expect_deny "adversarial 8: a subshell cd before a push from the cwd" \
-  "$(mk_payload "(cd $pf) ; git $_p origin master" "$pm")" "master"
-expect_allow "adversarial 8: a subshell that cds into the protected checkout for a read leaves the outer commit alone" \
-  "$(mk_payload "(cd $pm && git status); git $_verb -m x" "$pf")"
-expect_deny "adversarial 8: a cd inside a subshell with the commit also inside" \
-  "$(mk_payload "(cd $pm && git $_verb -m x)" "$pf")" "master"
-ps="$TMP_ROOT/prot secret"; new_repo "$ps"
-echo '{"branchPolicy":"pr"}' >"$ps/house.json"
-git -C "$ps" add house.json && git -C "$ps" $_verb -q -m house
-expect_deny "adversarial 8: env before git with a quoted -C path with spaces" \
-  "$(mk_payload "env git -C \"$ps\" $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 8: time before git with a quoted -C path with spaces" \
-  "$(mk_payload "time git -C \"$ps\" $_verb -m x" "$pf")" "master"
-expect_deny "adversarial 8: an assignment before git with a quoted -C path with spaces" \
-  "$(mk_payload "FOO=1 git -C \"$ps\" $_verb -m x" "$pf")" "master"
-expect_allow "adversarial 8: env before git with a quoted -C path and a read-only verb" \
-  "$(mk_payload "env git -C \"$sp\" status" "$pm")"
-expect_allow "adversarial 8: a message with a variable and the letters HOME= is prose" \
-  "$(mk_payload "git $_verb -m \"note \$UNRELATED and also HOME=/nothing/special\"" "$pf")"
-
-# Adversarial round 5: the directory model diverging from bash. A cd flag
-# hid the path that followed it; declare -x and a split assign-then-export
-# were not exports; GIT_DIR without a work tree read the branch from one
-# repo and the policy from another; the paren markers could be typed, were
-# desynced by a quoted paren, and were eaten with a process substitution's
-# `<`; a nested substitution defeated the extraction regex.
-open_d="$TMP_ROOT/seam_open"; new_repo "$open_d"
-expect_deny "adversarial 9: cd -P into the protected checkout" \
-  "$(mk_payload "cd -P $pm && git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: cd -L into the protected checkout" \
-  "$(mk_payload "cd -L $pm && git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: declare -x exports GIT_DIR and GIT_WORK_TREE" \
-  "$(mk_payload "declare -x GIT_DIR=$pm/.git GIT_WORK_TREE=$pm; git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: assign then bare export" \
-  "$(mk_payload "GIT_DIR=$pm/.git; GIT_WORK_TREE=$pm; export GIT_DIR; export GIT_WORK_TREE; git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: exported GIT_DIR alone from a non-adopted cwd" \
-  "$(mk_payload "export GIT_DIR=$pm/.git; git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: --git-dir alone from a non-adopted cwd" \
-  "$(mk_payload "git --git-dir=$pm/.git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: typed paren marker words do not move the stack" \
-  "$(mk_payload ": __PAREN_OPEN__ ; cd $pm ; : __PAREN_CLOSE__ ; git $_verb -m x" "$open_d")" "master"
-expect_deny "adversarial 9: a quoted close paren inside a subshell does not end it early" \
-  "$(mk_payload "(echo \")\" ; cd $pf) ; git $_verb -m x" "$pm")" "master"
-expect_allow "adversarial 9: the mirror case, the subshell cd into the protected checkout expires" \
-  "$(mk_payload "(echo \")\" ; cd $pm) ; git $_verb -m x" "$pf")"
-expect_deny "adversarial 9: a process substitution's cd expires" \
-  "$(mk_payload "diff <(cd $pf) /dev/null ; git $_verb -m x" "$pm")" "master"
-expect_deny "adversarial 9: a nested substitution around a commit on master" \
-  "$(mk_payload "git status -m \"\$(echo \$(true) && git $_verb -m x)\"" "$pm")" "master"
-expect_deny "adversarial 9: arithmetic inside the substitution" \
-  "$(mk_payload "git status -m \"\$(\$((1+1)) ; git $_verb -m x)\"" "$pm")" "master"
-expect_deny "adversarial 9: a quoted paren inside the substitution" \
-  "$(mk_payload "git status -m \"\$(echo ')' ; git $_verb -m x)\"" "$pm")" "master"
-
-# Regression round 3. The toplevel idiom `git -C $(git rev-parse
-# --show-toplevel) commit` was a bypass on master unquoted (the split value
-# leaked `git` into the verb search and rev-parse became the verb) and a
-# false deny quoted (the parens fragmented the protected token); creating a
-# branch and committing on it in one call from a protected branch was
-# refused by the branch block that reads the branch before the checkout
-# runs, which is the very shape the refusal recommends; and a six-clause
-# command took seconds because every clause was its own candidate.
-expect_deny "regression 3: the toplevel idiom unquoted before a commit on master" \
-  "$(mk_payload "git -C \$(git rev-parse --show-toplevel) $_verb -m x" "$pm")" "computed"
-expect_deny "regression 3: the toplevel idiom unquoted before a push from master" \
-  "$(mk_payload "git -C \$(git rev-parse --show-toplevel) $_p origin master" "$pm")" "computed"
-expect_allow "regression 3: the toplevel idiom quoted before a read-only verb" \
-  "$(mk_payload "git -C \"\$(git rev-parse --show-toplevel)\" status" "$pf")"
-expect_allow "regression 3: a -c value holding a substitution before a read-only verb" \
-  "$(mk_payload "git -c \"user.name=\$(id -un)\" status" "$pf")"
-expect_deny "regression 3: a push hidden in a -C substitution is still read" \
-  "$(mk_payload "git -C \"\$(git $_p origin master)\" status" "$pf")" "computed"
-expect_allow "regression 3: create a branch then commit on it, from the protected branch" \
-  "$(mk_payload "git checkout -b feat/new && git $_verb -m x" "$pm")"
-expect_allow "regression 3: switch -c then commit, from the protected branch" \
-  "$(mk_payload "git switch -c feat/new2 && git $_verb -m x" "$pm")"
-expect_allow "regression 3: create a branch then push it, from the protected branch" \
-  "$(mk_payload "git checkout -b feat/new3 && git $_p -u origin feat/new3" "$pm")"
-expect_deny "regression 3: create a branch, go back, then commit" \
-  "$(mk_payload "git checkout -b feat/new4 && git checkout master && git $_verb -m x" "$pm")" "separate"
-expect_deny "regression 3: create a branch then push master by name" \
-  "$(mk_payload "git checkout -b feat/new5 && git $_p origin master" "$pm")" "protected"
 
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"

@@ -4,7 +4,7 @@
 // real script runs as a subprocess (never imported) so these are black-box
 // tests of the shipped checker, not of a copy of its logic.
 
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, chmodSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -13,14 +13,22 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const CHECK_SRC = join(HERE, '..', '..', 'plugins', 'house', 'payload', 'check.mjs');
 
-/** Build a throwaway git repo containing `files` (path -> string content). */
-export function sandbox(files = {}) {
+/**
+ * Build a throwaway git repo containing `files` (path -> string content).
+ *
+ * `opts.modes` maps a path to a numeric file mode applied before the fixture
+ * is staged, so the INDEX records it: git only ever stores 100644 or 100755,
+ * and the guard family's floor verdict reads that mode. writeFileSync alone
+ * always produces 100644, so an executable fixture has to say so here.
+ */
+export function sandbox(files = {}, opts = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'house-check-'));
   for (const [p, body] of Object.entries(files)) {
     const abs = join(dir, p);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
   }
+  for (const [p, mode] of Object.entries(opts.modes || {})) chmodSync(join(dir, p), mode);
   execFileSync('git', ['-c', 'init.defaultBranch=main', 'init', '-q'], { cwd: dir });
   execFileSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'add', '-A'], { cwd: dir });
   execFileSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'commit', '-q', '-m', 'init'], { cwd: dir });

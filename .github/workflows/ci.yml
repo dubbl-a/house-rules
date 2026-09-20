@@ -19,6 +19,9 @@ jobs:
       - run: npm test
       - run: npm run check:traceability
       - run: bash tests/hooks/run.sh
+      # The runner's git is modern, so this is where the reference-transaction
+      # cases actually run; they print SKIP on a git older than 2.28.
+      - run: npm run test:githooks
       - run: node plugins/house/payload/check.mjs
       - run: npm run test:smoke
       - name: Official validator (best-effort install, strict result)
