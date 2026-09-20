@@ -81,7 +81,7 @@ Scan the archive tier by default: an adopting repo's docs get checked for drift 
 Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (an archive tier excluded wholesale rather than marked file by file) instead of adopting the scan-by-default behavior. This is a real difference in what gets caught, not a restatement of the same rule in different words, so say plainly in the repo's own docs which posture it runs.
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what the implementation did instead rather than deleting it, and state the supersession inside the doc that supersedes.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
-Say honestly when a repo has no archive yet; the first one is created when a domain earns it. Maintainer notes belong in HTML comments, which are stripped before context injection and cost nothing.
+Say honestly when a repo has no archive yet; the first one is created when a domain earns it. Maintainer notes belong in HTML comments, which the harness strips from an instruction file before it reaches context; a document only ever opened with the Read tool keeps its comments visible, so write those for the human who will read them there.
 Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, and the reason text after the colon runs to the closing marker.
 Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-reason`
 

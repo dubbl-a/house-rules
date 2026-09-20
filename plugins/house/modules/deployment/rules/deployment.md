@@ -8,13 +8,13 @@ Merging and deploying are two different acts. These rules cover the order, the g
 Merging moves code onto the default branch and does nothing else, so never report a change as live until the deploy command has finished.
 State in the repo whether a merge deploys, and name every surface where merged is not yet live: the site, a vendor-hosted email template, a generated asset, each with the one command that makes it live.
 A data refresh that merges cleanly and gets announced as shipped stays invisible to every reader until someone runs the deploy.
-Anchor: none (because nothing can observe that a merge was meant to ship; the named deploy script is the only path to production and the docs must say so out loud).
+Anchor: none (because the harness only reviews a deploy command in auto mode and cannot observe that a merge was meant to ship; the named deploy script is the only path to production and the docs must say so out loud).
 Receipts: `docs/handbook/deployment.md#deploy-manually-after-the-merge-because-a-merge-is-not-a-production-update`
 
 ## Chain the deploy guards before building anything, and give them one named escape hatch
 
 Run every guard before the build starts, so a refusal costs seconds instead of a whole build: checkout clean and level with the remote, target account pinned, CI green on the tip, and the tip commit belonging to a merged pull request.
-Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because a push made with the default workflow token starts no run at all and leaves the tip genuinely unchecked.
+Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because the platform starts no workflow run at all for a commit pushed with the default workflow token and leaves the tip genuinely unchecked.
 Ask what else has written to the shared state the build reads, because a deploy publishes the state that store is in right now, not the state the merged pull requests imply.
 Give the chain exactly one escape hatch, set through a named environment variable and described at every call site as rare and deliberate.
 Anchor: `scripts/house/deploy-guards.mjs`, called as the deploy script's first step; the one escape is the `DEPLOY_FROM=any` environment variable.
@@ -25,7 +25,7 @@ Receipts: `docs/handbook/deployment.md#chain-the-deploy-guards-before-building-a
 Land the schema change first, because code deployed ahead of its migration reads tables and columns that do not exist yet, and it fails in front of users instead of in front of you.
 Write the test for the app-only fast path rather than leaving it to judgment: no migration files in the diff, no pipeline or scoring change, and when any doubt remains take the full ordered ship.
 In a scheduled run, apply migrations before the lanes that read them, and let independent lanes still run when an earlier unrelated lane fails.
-Anchor: the ordered ship script (`npm run ship`), which runs the migration step before the deploy step and exits at the first failure by name.
+Anchor: the ordered ship script (`npm run ship`), which runs the migration step before the deploy step and exits at the first failure by name, because auto mode holds a production migration for review but has no notion of which step must come first.
 Receipts: `docs/handbook/deployment.md#migrate-before-deploying-the-code-that-reads-the-schema`
 
 ## Invoke a deploy only through its named script

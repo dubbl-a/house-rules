@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.9.1 module=docs source=modules/docs/rules/docs.md body-sha256=b8e9cd5d6bb554bf433bdea553110662ffe40290649f3f15731cc514016d2f8d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.9.1 module=docs source=modules/docs/rules/docs.md body-sha256=3a1312dc23c8d89b88c313924241dd992181962cd511fe073f8568e366e551ff DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -92,7 +92,7 @@ Scan the archive tier by default: an adopting repo's docs get checked for drift 
 Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (an archive tier excluded wholesale rather than marked file by file) instead of adopting the scan-by-default behavior. This is a real difference in what gets caught, not a restatement of the same rule in different words, so say plainly in the repo's own docs which posture it runs.
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what the implementation did instead rather than deleting it, and state the supersession inside the doc that supersedes.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
-Say honestly when a repo has no archive yet; the first one is created when a domain earns it. Maintainer notes belong in HTML comments, which are stripped before context injection and cost nothing.
+Say honestly when a repo has no archive yet; the first one is created when a domain earns it. Maintainer notes belong in HTML comments, which the harness strips from an instruction file before it reaches context; a document only ever opened with the Read tool keeps its comments visible, so write those for the human who will read them there.
 Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, and the reason text after the colon runs to the closing marker.
 Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-reason`
 

@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.9.1 module=engineering source=modules/engineering/rules/engineering.md body-sha256=fe71b500bc88ce87fe5acd551502ed55b9b6419aadd6d817382e983751e4e5f6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.9.1 module=engineering source=modules/engineering/rules/engineering.md body-sha256=f923cb657dc905bd2c642320306e1a530e1c71d3c27c1719298c3f06edd947be DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -12,7 +12,7 @@ How this repo builds a thing, checks it, and reports what the check found.
 
 Reach for the least machinery that answers the question, and add complexity only when it demonstrably improves the outcome.
 Check whether the platform already measures the thing before modelling it, lift pure logic out of markup so it can be tested, keep the offline path the default, and fold near-duplicate scripts into one.
-Anchor: none (because "simplest" is a design call, caught by the reviewer on the pull request rather than by a gate)
+Anchor: none (because "simplest" is a design call); the harness floor is its own code review, which reports reuse and simplification cleanups after the code exists and never blocks a merge, so reaching for the least machinery up front is this repo's requirement
 Receipts: `docs/handbook/engineering.md#build-the-simplest-thing-that-answers-the-question`
 
 ## Keep one implementation per computation, and let the gate and the report share it
@@ -50,21 +50,21 @@ Receipts: `docs/handbook/engineering.md#validate-the-body-before-writing-it-beca
 
 Keep the answer key independent of the thing being graded, because labels produced by the tool under test measure drift and not accuracy.
 Never hand-edit generated data to make its gate pass, pre-register a tuning sweep in the tool's own header before running it, audit the corpus assembly first because a corpus missing its positives scores every candidate perfectly, treat a clean validation as the moment to check the key, and give no label source deference.
-Anchor: every fixture row carries its label source, and the gate refuses a key written by the tool it grades (`node --test tests/`)
+Anchor: every fixture row carries its label source, and the gate refuses a key written by the tool it grades (`node --test tests/`); the harness floor is an eval run that hides the case definition from the agent under test, which keeps a run from reading its criteria but never asks where the labels came from, so an independently sourced key is this repo's addition
 Receipts: `docs/handbook/engineering.md#never-let-a-gate-mint-the-answer-key-it-grades-against`
 
 ## Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
 
 Give a gate a verdict for "could not evaluate" and never let it print a pass it did not earn, because an invented zero reads exactly like real data.
 Zero samples is a failure; report a gap in the source as its own outcome; treat a verify phase that errored as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
-Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, with the eval case `not-evaluable-verdict`
+Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, with the eval case `not-evaluable-verdict`; the harness floor is a run that marks itself partial when it could not finish and a review that reports an error instead of an empty findings list, so carrying that outcome in every verdict a gate prints is this repo's addition
 Receipts: `docs/handbook/engineering.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
 
 ## Show the ratio and the sample, because one number is never the accuracy
 
 Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
 Never average disagreeing estimands or quote one conditional's number against another's, filter before publishing a count, print the true total under any capped list, label a dataset a floor when later amendments will move it, keep the caveat attached to the number, prefer a measured floor and ceiling to a modelled point, and measure recall rather than assume it.
-Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`)
+Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); the harness floor is published guidance that one set of runs reads as near certain or near impossible depending on which pass statistic is meant, so attaching the sample and the estimand to every published rate is this repo's requirement
 Receipts: `docs/handbook/engineering.md#show-the-ratio-and-the-sample-because-one-number-is-never-the-accuracy`
 
 ## Make a measuring instrument reproducible
@@ -72,14 +72,14 @@ Receipts: `docs/handbook/engineering.md#show-the-ratio-and-the-sample-because-on
 Seed the sampling so two initializing runs are byte-identical, because a baseline fingerprint nobody can reproduce means nothing.
 Regenerate a fixture from its source under a seed instead of curating it, treat a holdout as spent once it has been validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with the command that re-pulls it, move the baseline in the change that moves the numbers with the why in the pull request, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
 When the instrument drives an agent, pin the bare non-interactive invocation that skips ambient discovery, and record the pricing basis beside any cost the harness reports, because that figure is computed locally and a configured rate or a residency multiplier moves it without moving the bill.
-Anchor: seeded regeneration asserted byte-identical in `tests/`
+Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness floor is an isolated run with a pinned model and a cost figure computed locally at list price, which hold the agent steady but leave the sampling and the pricing basis to move underneath you, so seeding the fixture and recording the basis are this repo's addition
 Receipts: `docs/handbook/engineering.md#make-a-measuring-instrument-reproducible`
 
 ## Assert an invariant where its state is created, with a why and a remedy
 
 Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, because a violation never announces itself where it was made.
 The why and the remedy are required, for the person reading the failure late at night; a hard violation exits non-zero so bad state cannot reach a publish or a deploy; and a cost constraint is an invariant, not a habit.
-Anchor: `npm run retro`, which refuses a check missing its why or remedy and exits non-zero on a hard violation
+Anchor: `npm run retro`, which refuses a check missing its why or remedy and exits non-zero on a hard violation; the harness floor is that written guidance is context rather than enforcement and only a blocking hook stops an action regardless of what the agent decides, so asserting the invariant in code where the state is created is this repo's requirement
 Receipts: `docs/handbook/engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy`
 
 ## Make every waiver print its reason, and give an integrity gate none
@@ -155,7 +155,7 @@ Receipts: `docs/handbook/engineering.md#make-an-error-message-teach-the-fix`
 
 Read all config from the environment, so the repo could be published open source at any moment without leaking a credential.
 Avoid named config groups, which multiply combinations and make deploys brittle; keep build, release, and run strictly separate, give each release a unique id, and never mutate one; keep the run stage simple because a runtime failure happens when nobody is watching; and resist different backing services between development and production, even behind an adapter.
-Anchor: the config module throws at startup on a missing key, and `.env.example` lists every key
+Anchor: the config module throws at startup on a missing key, and `.env.example` lists every key; the harness floor is a sandbox with no built-in credential deny list and an agent that treats reading a local env file as ordinary, so keeping every secret in the environment and out of the repo is this repo's requirement
 Receipts: `docs/handbook/engineering.md#read-config-from-the-environment-and-keep-build-release-and-run-separate`
 
 ## Don't
