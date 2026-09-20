@@ -24,7 +24,7 @@
 - Plan when the approach is uncertain, and clear the context after two failed corrections
   Plan first when the approach is uncertain or the change spans files, and skip planning when you could describe the diff in one sentence, because planning has real overhead.
 - Treat git state as shared across sessions
-  Assume another checkout can move your branch mid-run and strand uncommitted work, so ask before switching, prefer a worktree, and commit early.
+  Assume another checkout can move your branch mid-run and strand uncommitted work, so ask before switching and commit early.
 - Keep the committed settings narrow and the local settings local
   Commit an allowlist covering the repo's own script surface and read-side platform commands and nothing broader, and authorize deploy and egress verbs through a skill instead.
 - Read a resume file as a harness artifact, not a handoff

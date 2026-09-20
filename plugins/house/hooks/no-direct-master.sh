@@ -64,6 +64,11 @@
 # per candidate against THAT repo's branch and toplevel, not the hook's own
 # cwd. Any candidate that refuses, refuses the call (#34).
 #
+# Out of reach by construction: a git command that lives in a file this
+# command runs (`bash run.sh`, a Makefile target, an npm script) never
+# appears in the text, and reading every file a command might execute is
+# not a text scan. That boundary is the sandbox's and the remote ruleset's.
+#
 # Still open by decision (#34, item 5): a git verb inside a quoted value that
 # is prose (`--body "... git push ..."`) is refused on a protected branch,
 # and the refusal names the file route. Scanning text rather than parsing
@@ -350,42 +355,109 @@ strip_flag_args_keep_dash_c() { _strip_flag_args '-m|--message|-F|--file' "$1"; 
 # prose cannot steer) plus a second text that keeps -c values (an
 # interpreter's body is code, and the `cd` in it is real). A path that is
 # not a repo is a wrong guess and falls back to the payload cwd, as before.
-#   1. `git -C <path> ...`               -> dir <path>
-#   2. `cd <path> && ...` / `cd <path> ; ...` -> dir <path>
+#   1. `git -C <path> ...`, composed      -> dir <path>, for that git command
+#   2. `cd <path>`, `pushd <path>`         -> dir <path>, for every later clause
 #   3. `GIT_DIR=<g> GIT_WORK_TREE=<w>` or `--git-dir <g>` / `--work-tree <w>`
 #                                        -> env <g> <w>, handed to git as its
 #                                           own --git-dir/--work-tree so git
 #                                           resolves them the way it will
-#   4. none of the above                 -> the payload's cwd
+#   4. a git command with none of these  -> the payload's cwd
 cmd_for_target=$(strip_message_args_for_target "$cmd")
 cmd_for_target_c=$(_strip_flag_args_blind '-m|--message|-F|--file' "$cmd")
 payload_cwd=$(jq -r '.cwd // ""' <<<"$payload" 2>/dev/null || echo "")
 
 # One candidate per line, fields joined by a unit separator (a tab would
-# collapse an empty field under `read`): kind, path, second path.
+# collapse an empty field under `read`): kind, path, second path, base.
 US=$'\x1f'
 CANDIDATES=''
 add_candidate() { CANDIDATES+="$1"$'\n'; }
-collect_dir_targets() {
-  local rest="$1"
-  while [[ "$rest" =~ git[[:space:]]+-C[[:space:]]+([^[:space:]]+) ]]; do
-    add_candidate "dir${US}${BASH_REMATCH[1]}${US}"
-    rest="${rest#*"${BASH_REMATCH[0]}"}"
-  done
-  rest="$1"
-  while [[ "$rest" =~ (^|[^[:alnum:]])cd[[:space:]]+([^[:space:]&\;|]+)[[:space:]]*(\&\&|\;) ]]; do
-    add_candidate "dir${US}${BASH_REMATCH[2]}${US}"
-    rest="${rest#*"${BASH_REMATCH[0]}"}"
-  done
-  return 0
+# compose BASE PATH: where PATH lands when the shell or git resolves it from
+# BASE. An absolute or home-relative PATH wins outright; a relative one is
+# joined; an empty BASE means the payload cwd, which decide_for_target
+# supplies. Successive `-C` compose the same way (git's own rule).
+compose_path() {
+  local base="$1" p="$2"
+  case "$p" in
+    /*|'~'*) printf '%s' "$p" ;;
+    *) if [[ -n "$base" ]]; then printf '%s/%s' "$base" "$p"; else printf '%s' "$p"; fi ;;
+  esac
 }
-collect_env_targets() {
-  local text="$1" gd='' wt=''
-  [[ "$text" =~ (^|[[:space:]])GIT_DIR=([^[:space:]]+) ]] && gd="${BASH_REMATCH[2]}"
-  [[ "$text" =~ (^|[[:space:]])GIT_WORK_TREE=([^[:space:]]+) ]] && wt="${BASH_REMATCH[2]}"
-  [[ "$text" =~ [[:space:]]--git-dir(=|[[:space:]]+)([^[:space:]]+) ]] && gd="${BASH_REMATCH[2]}"
-  [[ "$text" =~ [[:space:]]--work-tree(=|[[:space:]]+)([^[:space:]]+) ]] && wt="${BASH_REMATCH[2]}"
-  [[ -n "$gd$wt" ]] && add_candidate "env${US}${gd}${US}${wt}"
+# collect_candidates TEXT: walk the clauses in order and record, for every git
+# command, the directory it will actually run in. This is the shell's own
+# reading: a `cd` or `pushd` clause moves every later clause (`popd` moves
+# back to the payload cwd, an approximation of the stack that fails toward
+# the session's own checkout); a `git -C <p>` applies to its own clause only,
+# and successive `-C` compose; a `GIT_DIR=`/`GIT_WORK_TREE=` assignment in
+# front of a command, with or without `env`, applies to that command, and an
+# `export` of either persists; `--git-dir`/`--work-tree` apply to their own
+# git command. A git command with none of these runs in the current
+# directory, so the payload cwd is a candidate whenever any git clause
+# carries no target of its own: the adversarial round found that a harmless
+# `git -C <elsewhere> status &&` in front of a bare `git commit` deleted the
+# cwd from the check entirely, and that `git -C a -C b` was read as `a`.
+collect_candidates() {
+  local text="$1" dir='' sticky_gd='' sticky_wt='' clause
+  local toks i n tok gd wt cdir is_export first
+  # Quote characters go, the way the verb scans drop them: an interpreter's
+  # body arrives as `-c 'cd <p> && git ...'` and the `cd` sits behind the
+  # quote. Message values were removed whole before this, so prose stays out.
+  text="${text//\"/}"; text="${text//\'/}"
+  split_clauses "$text"
+  while IFS= read -r clause; do
+    IFS=$' \t\n' read -r -a toks <<<"$clause"
+    n="${#toks[@]}"
+    [[ "$n" -gt 0 ]] || continue
+    i=0; gd="$sticky_gd"; wt="$sticky_wt"; is_export=0
+    [[ "${toks[0]}" == export ]] && { is_export=1; i=1; }
+    # Leading assignments, and the ones `env` carries.
+    while [[ "$i" -lt "$n" ]]; do
+      tok="${toks[$i]}"
+      case "$tok" in
+        GIT_DIR=*) gd="${tok#GIT_DIR=}"; i=$((i + 1)) ;;
+        GIT_WORK_TREE=*) wt="${tok#GIT_WORK_TREE=}"; i=$((i + 1)) ;;
+        [A-Za-z_]*=*) i=$((i + 1)) ;;
+        env) i=$((i + 1)) ;;
+        *) break ;;
+      esac
+    done
+    if [[ "$is_export" -eq 1 ]]; then sticky_gd="$gd"; sticky_wt="$wt"; continue; fi
+    while [[ "$i" -lt "$n" ]]; do
+      tok="${toks[$i]}"
+      i=$((i + 1))
+      case "$tok" in
+        cd|pushd)
+          if [[ "$i" -lt "$n" && "${toks[$i]}" != -* ]]; then
+            dir=$(compose_path "$dir" "${toks[$i]}"); i=$((i + 1))
+          fi
+          continue ;;
+        popd) dir=''; continue ;;
+        git|*/git) ;;
+        *) continue ;;
+      esac
+      # A git command: read its global options for a target of its own.
+      cdir="$dir"
+      while [[ "$i" -lt "$n" ]]; do
+        tok="${toks[$i]}"
+        case "$tok" in
+          -C) [[ $((i + 1)) -lt "$n" ]] && cdir=$(compose_path "$cdir" "${toks[$((i + 1))]}"); i=$((i + 2)) ;;
+          --git-dir=*) gd="${tok#--git-dir=}"; i=$((i + 1)) ;;
+          --work-tree=*) wt="${tok#--work-tree=}"; i=$((i + 1)) ;;
+          --git-dir) [[ $((i + 1)) -lt "$n" ]] && gd="${toks[$((i + 1))]}"; i=$((i + 2)) ;;
+          --work-tree) [[ $((i + 1)) -lt "$n" ]] && wt="${toks[$((i + 1))]}"; i=$((i + 2)) ;;
+          -c|--namespace|--super-prefix|--config-env|--attr-source) i=$((i + 2)) ;;
+          -*) i=$((i + 1)) ;;
+          *) break ;;
+        esac
+      done
+      if [[ -n "$gd$wt" ]]; then
+        add_candidate "env${US}${gd}${US}${wt}${US}${cdir}"
+      else
+        add_candidate "dir${US}${cdir}${US}${US}"
+      fi
+      # Walk on: a second git in the same clause (inside a substitution) is
+      # its own command and gets its own candidate.
+    done
+  done <<<"$CLAUSES"
   return 0
 }
 unquote_path() {
@@ -431,21 +503,28 @@ local_hook_is_substantive() {
 # it lands in, and run every scan against it. Returns 0 to let the call
 # through for THIS candidate; a refusal exits the process from inside deny.
 decide_for_target() {
-  local kind="$1" p1 p2 from_command=1
-  p1=$(unquote_path "$2"); p2=$(unquote_path "$3")
+  local kind="$1" p1 p2 p3 from_command=1
+  p1=$(unquote_path "$2"); p2=$(unquote_path "$3"); p3=$(unquote_path "${4:-}")
   # Disarmed while resolving: a bad guess here is a fail-open by design, and
   # the trap armed by an earlier candidate must not turn it into a crash-deny.
   trap - ERR
 
+  # An empty dir path is the payload cwd itself: a git command that names no
+  # target runs where the session is, and that is never a guess.
   case "$kind" in
-    cwd) from_command=0; git_dir_arg=(-C "${payload_cwd:-.}") ;;
-    # Successive -C compose, and an absolute second path still wins, so this
-    # resolves a RELATIVE guess (`cd ../other-repo`) against the directory the
-    # command actually runs in rather than against whatever cwd the hook
-    # process happens to have.
-    dir) git_dir_arg=(-C "${payload_cwd:-.}" -C "$p1") ;;
+    dir)
+      if [[ -z "$p1" ]]; then
+        from_command=0; git_dir_arg=(-C "${payload_cwd:-.}")
+      else
+        # Successive -C compose, and an absolute second path still wins, so
+        # this resolves a RELATIVE guess (`cd ../other-repo`) against the
+        # directory the command actually runs in rather than against
+        # whatever cwd the hook process happens to have.
+        git_dir_arg=(-C "${payload_cwd:-.}" -C "$p1")
+      fi ;;
     env)
       git_dir_arg=(-C "${payload_cwd:-.}")
+      [[ -n "$p3" ]] && git_dir_arg+=(-C "$p3")
       [[ -n "$p1" ]] && git_dir_arg+=("--git-dir=$p1")
       [[ -n "$p2" ]] && git_dir_arg+=("--work-tree=$p2") ;;
   esac
@@ -672,13 +751,13 @@ git_split() {
   while [[ "$i" -lt "$n" ]]; do
     tok="${toks[$i]}"
     i=$((i + 1))
-    # xargs hands git its arguments from stdin, which this text cannot read
-    # (#34, seam 1): `echo master | xargs git push origin` names no ref in the
+    # xargs (and GNU parallel) hand git their arguments from stdin, which this
+    # text cannot read (#34, seam 1): `echo master | xargs git push origin` names no ref in the
     # push clause, and `echo 'push origin master' | xargs git` names no verb.
     # Remembered here and acted on once the verb is known: a push, or a git
     # with no verb after it, is refused; a harmless verb (`xargs git add`) is
     # left alone.
-    [[ "$tok" == xargs ]] && pre_xargs=1
+    [[ "$tok" == xargs || "$tok" == parallel ]] && pre_xargs=1
     if [[ "$tok" == git || "$tok" == */git ]]; then
       while [[ "$i" -lt "$n" ]]; do
         tok="${toks[$i]}"
@@ -718,10 +797,8 @@ git_split() {
 # `alias.ci=commit` in config is not `commit` to the walker. The meaning lives
 # in git's config, so ask git. A plain alias is read as the verb it expands
 # to, its own arguments put in front of the command's, nested up to a few
-# levels; a shell alias (`!...`) runs whatever it likes, so on a protected
-# branch it is refused outright, and from any branch it is refused when its
-# body, quotes and backslashes removed the way the command was, so much as
-# mentions git or push. A verb that is neither a command git lists nor an
+# levels; a shell alias (`!...`) runs whatever it likes and is refused from
+# every branch. A verb that is neither a command git lists nor an
 # alias git can find is refused too: git would fail on it anyway, and the one
 # way it could succeed is an alias defined earlier in the same call, which is
 # exactly the case a lookup cannot see. Looked up against the candidate
@@ -729,7 +806,7 @@ git_split() {
 # read; one injected on the command line or through the environment is
 # refused before this runs.
 resolve_alias() {
-  local depth=0 alias_val first rest body
+  local depth=0 alias_val first rest
   while [[ "$depth" -lt 5 ]]; do
     # The lookup runs with the trap disarmed inside its own subshell: a
     # missing alias is git exiting 1, and with the trap armed that exit
@@ -737,16 +814,13 @@ resolve_alias() {
     # clause splitter records), which then read as a computed verb.
     alias_val=$(trap - ERR; git "${git_dir_arg[@]}" config --get "alias.$GV_VERB" 2>/dev/null || true)
     [[ -n "$alias_val" ]] || break
+    # A shell alias runs whatever it likes, and its body is not readable
+    # text: the first version scanned it for git or push after removing
+    # quotes and backslashes, and the adversarial round spelled both words
+    # with printf hex escapes. Refused from every branch; nothing in a
+    # session needs one.
     if [[ "$alias_val" == '!'* ]]; then
-      if is_protected_branch "$branch"; then
-        deny "Refusing: 'git $GV_VERB' is a shell alias, which the branch guard cannot read on '$branch' (house.json at $toplevel). Run the underlying command in full."
-      fi
-      body="${alias_val//\\/}"; body="${body//\"/}"; body="${body//\'/}"
-      case "$body" in
-        *git*|*push*)
-          deny "Refusing: 'git $GV_VERB' is a shell alias that runs git, which the branch guard cannot read (house.json at $toplevel). Run the underlying command in full." ;;
-      esac
-      return 0
+      deny "Refusing: 'git $GV_VERB' is a shell alias, which runs a command the branch guard cannot read (house.json at $toplevel). Run the underlying command in full."
     fi
     read -r first rest <<<"$alias_val"
     GV_VERB="$first"
@@ -930,8 +1004,8 @@ run_scans() {
 # alias, a push key, or a remote refspec that none of the scans below can see,
 # and nothing in a session needs it. Refused outright.
 case "$cmd" in
-  *GIT_CONFIG_PARAMETERS=*|*GIT_CONFIG_COUNT=*|*GIT_CONFIG_KEY_*)
-    deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT) can redefine what this command does, and the branch guard cannot read it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read." ;;
+  *GIT_CONFIG_PARAMETERS=*|*GIT_CONFIG_COUNT=*|*GIT_CONFIG_KEY_*|*GIT_CONFIG_GLOBAL=*|*GIT_CONFIG_SYSTEM=*|*HOME=*)
+    deny "Refusing: git config passed through the environment (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, HOME, XDG_CONFIG_HOME) (the last also covers XDG_CONFIG_HOME) can redefine what this command does, and the branch guard's own config lookups run without it (house.json at $toplevel). Put the setting in the repo's config or on the command line where it can be read." ;;
 esac
 
 if is_protected_branch "$branch"; then
@@ -1075,19 +1149,18 @@ done
 }
 
 # ── Decide ────────────────────────────────────────────────────────────────
-collect_dir_targets "$cmd_for_target"
-collect_dir_targets "$cmd_for_target_c"
-collect_env_targets "$cmd_for_target"
+collect_candidates "$cmd_for_target"
+collect_candidates "$cmd_for_target_c"
 if [[ -z "$CANDIDATES" ]]; then
-  decide_for_target cwd '' ''
+  decide_for_target dir '' '' ''
 else
   seen=''
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$seen" in *"|$line|"*) continue ;; esac
     seen+="|$line|"
-    IFS="$US" read -r kind p1 p2 <<<"$line"
-    decide_for_target "$kind" "$p1" "$p2"
+    IFS="$US" read -r kind p1 p2 p3 <<<"$line"
+    decide_for_target "$kind" "$p1" "$p2" "$p3"
   done <<<"$CANDIDATES"
 fi
 

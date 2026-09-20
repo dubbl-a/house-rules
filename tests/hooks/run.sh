@@ -1073,8 +1073,11 @@ expect_deny "seam 4: an alias for push with the ref on the command line" \
   "$(mk_payload "git p origin master" "$pf")" "protected branch"
 expect_deny "seam 4: a shell alias that runs git" \
   "$(mk_payload "git sh2" "$pf")" "alias"
-expect_allow "seam 4: a shell alias that does not run git" \
-  "$(mk_payload "git hello" "$pf")"
+expect_deny "seam 4: a shell alias is refused even when its text names no git" \
+  "$(mk_payload "git hello" "$pf")" "alias"
+git -C "$pf" config alias.sneaky '!g=$(printf "\x67\x69\x74"); p=$(printf "\x70\x75\x73\x68"); $g $p origin master'
+expect_deny "seam 4: a shell alias that spells git with hex escapes" \
+  "$(mk_payload "git sneaky" "$pf")" "alias"
 expect_deny "seam 4: an alias defined on the command line with -c" \
   "$(mk_payload "git -c alias.x=$_verb x -m y" "$pm")" "alias"
 expect_deny "seam 4: an alias defined and used in the same command" \
@@ -1093,6 +1096,42 @@ expect_deny "seam 4: a remote.<name>.push refspec in the repo config" \
 git -C "$pf" config --unset remote.origin.push
 expect_allow "seam 4: a named feature push is unaffected by the config checks" \
   "$(mk_payload "git $_p origin feat/x" "$pf")"
+
+# Adversarial round on the seams above. Each deny below was allowed by the
+# first version of the candidate walk, which collected every -C and cd in the
+# command as a flat set and forgot the session's own cwd the moment any other
+# target was named.
+expect_deny "adversarial 5: a harmless -C clause does not hide a bare commit in the cwd" \
+  "$(mk_payload "git -C $pf status && git $_verb -m x" "$pm")" "master"
+expect_deny "adversarial 5: a harmless -C clause does not hide a bare push from the cwd" \
+  "$(mk_payload "git -C $pf status && git $_p origin master" "$pm")" "master"
+expect_deny "adversarial 5: a bare commit before a harmless -C clause" \
+  "$(mk_payload "git $_verb -m x && git -C $pf status" "$pm")" "master"
+expect_deny "adversarial 5: successive -C compose, and the last one is the target" \
+  "$(mk_payload "git -C $pf -C ../seam_master $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 5: pushd moves every later clause" \
+  "$(mk_payload "pushd $pm && git $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 5: pushd with a semicolon" \
+  "$(mk_payload "pushd $pm; git $_verb -m x" "$pf")" "master"
+expect_allow "adversarial 5: pushd then popd returns to the cwd" \
+  "$(mk_payload "pushd $pm && popd && git $_verb -m x" "$pf")"
+expect_deny "adversarial 5: a cd on its own line moves the next line" \
+  "$(mk_payload "cd $pm
+git $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 5: an exported GIT_DIR persists into the next clause" \
+  "$(mk_payload "export GIT_DIR=$pm/.git; git $_verb -m x" "$pf")" "master"
+expect_deny "adversarial 5: GIT_CONFIG_GLOBAL redirects the global config" \
+  "$(mk_payload "GIT_CONFIG_GLOBAL=/tmp/evil git $_p origin" "$pf")" "environment"
+expect_deny "adversarial 5: GIT_CONFIG_SYSTEM redirects the system config" \
+  "$(mk_payload "GIT_CONFIG_SYSTEM=/tmp/evil git $_p origin" "$pf")" "environment"
+expect_deny "adversarial 5: HOME redirects the global config" \
+  "$(mk_payload "HOME=/tmp/evil git $_p origin" "$pf")" "environment"
+expect_deny "adversarial 5: GNU parallel feeds a push like xargs" \
+  "$(mk_payload "echo master | parallel git $_p origin" "$pf")" "xargs"
+expect_allow "adversarial 5: a -C to the feature repo before a cd there" \
+  "$(mk_payload "git -C $pf status && cd $pf && git $_verb -m x" "$pm")"
+expect_allow "adversarial 5: an env prefix on a non-git command does not steer" \
+  "$(mk_payload "GIT_DIR=$pm/.git ls && git -C $pf $_verb -m x" "$pm")"
 
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
