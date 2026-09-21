@@ -52,19 +52,19 @@
       "path": ".githooks/pre-commit",
       "module": "github",
       "source": "modules/github/files/githooks/pre-commit",
-      "bodySha256": "43baa384e6a3b6102cd8ac519d3232a87e0f3c36dd02cc11c22d0d7a8c9f316e"
+      "bodySha256": "d25cc9c0dc59ae88b46c75939dcf445a6e4329e28b1d643eb07c3dc160496a43"
     },
     {
       "path": ".githooks/pre-push",
       "module": "github",
       "source": "modules/github/files/githooks/pre-push",
-      "bodySha256": "bd33c7650f5bf9b51d05d4b750b97c9fd0d06a9d66282015af2079f7bb520439"
+      "bodySha256": "1edba977fe02c80d5c68f5e9fd5cc7958fa26b8c4ea9fba3cfe6d1321b46080a"
     },
     {
       "path": ".githooks/reference-transaction",
       "module": "github",
       "source": "modules/github/files/githooks/reference-transaction",
-      "bodySha256": "dda509682a1c264ad0fb0bf4acfdf437a6d37343b3c29a6086b48d85ed603dd4"
+      "bodySha256": "fb2fc0f90568e7e3fbf49baf96119e3ffbc27bdf0e1e1565337b00d1b79bcbc4"
     },
     {
       "path": ".githooks/house-lib.sh",

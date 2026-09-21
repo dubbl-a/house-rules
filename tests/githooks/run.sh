@@ -442,12 +442,20 @@ git -C "$r" add .gitignore .githooks/pre-commit.d/40-tracked
 git -C "$r" add -f .githooks/pre-commit.d/30-ignored
 stage "$r" "src/t.js" "tracked hooks only"
 run_git "$r" commit -m "tracked hooks only"
-if [[ "$RUN_CODE" -ne 0 ]]; then
-  fail "a tracked .d hook runs" "the commit failed: $RUN_OUT"
-elif [[ ! -f "$r/40-tracked.ran" ]]; then
-  fail "a tracked .d hook runs" "it did not run"
+# An untracked and a git-ignored file sit beside a tracked one: the dispatcher
+# must refuse the whole commit, naming every offender, and the tracked hook
+# must never get the chance to run (and mark success) once one is found.
+if [[ "$RUN_CODE" -eq 0 ]]; then
+  fail "an untracked or git-ignored .d hook refuses the commit" \
+    "the commit succeeded: $RUN_OUT"
 else
-  pass "a tracked .d hook runs"
+  pass "an untracked or git-ignored .d hook refuses the commit"
+fi
+if [[ -f "$r/40-tracked.ran" ]]; then
+  fail "a tracked hook does not get to mark success beside a refused one" \
+    "it ran anyway"
+else
+  pass "a tracked hook does not get to mark success beside a refused one"
 fi
 if [[ -f "$r/00-mine.ran" ]]; then
   fail "an untracked .d hook does not run" "it ran anyway"
@@ -479,14 +487,14 @@ exit 0
 EOF
 chmod +x "$r/.githooks/pre-push.d/00-mine"
 run_git "$r" push origin feat/x
-if [[ "$RUN_CODE" -ne 0 ]]; then
-  fail "pre-push skips an untracked .d hook too" "the push failed: $RUN_OUT"
+if [[ "$RUN_CODE" -eq 0 ]]; then
+  fail "pre-push refuses an untracked .d hook too" "the push succeeded: $RUN_OUT"
 elif [[ -f "$r/push-hook.ran" ]]; then
-  fail "pre-push skips an untracked .d hook too" "it ran anyway"
+  fail "pre-push refuses an untracked .d hook too" "it ran anyway"
 elif [[ "$RUN_OUT" != *"00-mine"* || "$RUN_OUT" != *"not tracked"* ]]; then
-  fail "pre-push skips an untracked .d hook too" "no warning named it: $RUN_OUT"
+  fail "pre-push refuses an untracked .d hook too" "no warning named it: $RUN_OUT"
 else
-  pass "pre-push skips an untracked .d hook too"
+  pass "pre-push refuses an untracked .d hook too"
 fi
 
 # The managed guard is exempt from that test on purpose. `git rm --cached` on
@@ -861,22 +869,22 @@ EOF
 chmod +x "$r/.githooks/pre-commit.d/25-untracked"
 if git -C "$r" worktree add -q "$TMP_ROOT/c20e-wt" -b feat/untracked master 2>/dev/null; then
   rm -f "$r/untracked.marker"
-  stage "$TMP_ROOT/c20e-wt" "src/w3.js" "worktree commit still skips an untracked hook"
-  run_git "$TMP_ROOT/c20e-wt" commit -m "should skip the untracked hook"
-  if [[ "$RUN_CODE" -ne 0 ]]; then
-    fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
-      "the commit failed: $RUN_OUT"
+  stage "$TMP_ROOT/c20e-wt" "src/w3.js" "worktree commit still refuses an untracked hook"
+  run_git "$TMP_ROOT/c20e-wt" commit -m "should refuse the untracked hook"
+  if [[ "$RUN_CODE" -eq 0 ]]; then
+    fail "issue #68: an untracked .d hook still refuses from a linked worktree" \
+      "the commit succeeded: $RUN_OUT"
   elif [[ -f "$r/untracked.marker" ]]; then
-    fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+    fail "issue #68: an untracked .d hook still refuses from a linked worktree" \
       "it ran anyway"
   elif [[ "$RUN_OUT" != *"25-untracked"* || "$RUN_OUT" != *"not tracked"* ]]; then
-    fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+    fail "issue #68: an untracked .d hook still refuses from a linked worktree" \
       "no warning named it: $RUN_OUT"
   else
-    pass "issue #68: an untracked .d hook is still skipped from a linked worktree"
+    pass "issue #68: an untracked .d hook still refuses from a linked worktree"
   fi
 else
-  fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+  fail "issue #68: an untracked .d hook still refuses from a linked worktree" \
     "could not add the worktree"
 fi
 
