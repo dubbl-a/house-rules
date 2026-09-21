@@ -78,9 +78,10 @@ diffs."):
 ## Verification
 
 - Agents are sent to refute, not confirm. Agreement without stated attacks is nothing.
-- Send a refuter when the change carries logic, a guard or hook, or facts and numbers someone
-  will act on. For a text-only or mechanical change a gate already covers, the session reads the
-  diff itself; no refuter.
+- Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard
+  or hook, facts or numbers someone will act on, or text many repos follow. For a small text or
+  mechanical change a gate covers, reading the diff yourself is usually enough. Judgment, not a
+  category.
 - Review until a round returns no must-fix. Each later round checks only the last round's fixes
   and what they touched. The verdict decides, not a count.
 - Before a third round, tell the user what each round found, what the next checks, and why the

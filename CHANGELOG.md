@@ -6,6 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-09-21
+
+The refuter trigger becomes judgment about risk rather than a category that reads as a prohibition. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
+
+### Changed
+- **Send a refuter when a wrong change would cost something the gates cannot catch.** 0.13.0 said to send one "only when" a change carried logic, a guard, or actionable facts, and "no refuter" for a text-only change, which read as a hard rule. The owner wants a refuter whenever it is warranted. The trigger now names the cost of being wrong (logic, a guard or hook, facts or numbers someone will act on, or text many repos follow) and says reading the diff yourself is usually enough for a small text or mechanical change a gate covers. The 0.13.1 rule trim is the case that motivated "text many repos follow": text only, and its first review round found 20 lost directives.
+
 ## [0.13.2] - 2026-09-21
 
 Review stops on a verdict instead of a round count, flags the owner before a third round, and lets the owner stop or extend it at any point. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
