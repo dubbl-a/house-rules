@@ -66,91 +66,91 @@
 
 ## .claude/rules/house/engineering.md
 - Build the simplest thing that answers the question
-  Reach for the least machinery that answers the question, and add complexity only when it demonstrably improves the outcome.
+  Reach for the least machinery that answers the question, adding complexity only once it demonstrably improves the outcome.
 - Keep one implementation per computation, and let the gate and the report share it
-  Compute a value once and have every surface read that one implementation, because a gate and a report that each carry their own copy will eventually disagree about what the rule means.
+  Compute a value once and have every surface read it, because a gate and a report with separate copies will eventually disagree about what the rule means.
 - Prove a check can fail before trusting that it passed
-  Run a case whose answer is known independently before believing a clean result, because zero findings is also exactly what a broken check prints.
+  Run a case with a known-independent answer before trusting a clean result, because zero findings is also what a broken check prints.
 - Verify the served artifact, not the source
-  Read the bytes that ship, because what the source says and what renders diverge, and an option's name is never the evidence.
+  Read the bytes that ship, because source and render diverge, and an option's name is never the evidence.
 - Validate the body before writing it, because a status code is not a content check
-  Validate the payload before anything touches disk, because a failing source often answers with a success status and an error body.
+  Validate the payload before anything touches disk, because a failing source often answers success with an error body.
 - Never let a gate mint the answer key it grades against
-  Keep the answer key independent of the thing being graded, because labels produced by the tool under test measure drift and not accuracy.
+  Keep the answer key independent of the thing graded, because labels from the tool under test measure drift, not accuracy.
 - Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
-  Give a gate a verdict for "could not evaluate" and never let it print a pass it did not earn, because an invented zero reads exactly like real data.
+  Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
 - Show the ratio and the sample, because one number is never the accuracy
   Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
 - Make a measuring instrument reproducible
-  Seed the sampling so two initializing runs are byte-identical, because a baseline fingerprint nobody can reproduce means nothing.
+  Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
 - Assert an invariant where its state is created, with a why and a remedy
-  Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, because a violation never announces itself where it was made.
+  Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, since a violation never announces itself there.
 - Make every waiver print its reason, and give an integrity gate none
-  Require a reason on every escape hatch, print it, scope it to one run, and keep it deliberately awkward, because a silent override quietly becomes the normal path.
+  Require a reason on every escape hatch, print it, scope it to one run, and keep it deliberately awkward, since a silent override quietly becomes normal.
 - Read a missing field as missing, because absence is not confidence
-  Report an explicit false and an absent value as different outcomes, because collapsing them turns a hole in the data into a finding.
+  Report an explicit false and an absent value as different outcomes, since collapsing them turns a data hole into a finding.
 - Demote a gate that has been wrong before
-  Keep a checker's false-positive tally inside the checker and demote its verdict to advisory once it has been wrong, because a gate with a known blind spot does not get to be certain.
+  Keep a checker's false-positive tally inside the checker and demote its verdict to advisory once wrong, since a gate with a known blind spot does not get to be certain.
 - Record a significant decision as a numbered, immutable record
-  Write every architecturally significant decision as a numbered record in the repo, on a short standard template so writing one stays part of normal flow.
+  Write every architecturally significant decision as a numbered record in the repo, on a short standard template so writing one stays normal.
 - Land a build-time guard with the code it protects
-  Ship a guard in the same change as the code it protects, because guards exist for a class of failure that renders fine, builds green, and is invisible to review.
+  Ship a guard in the same change as the code it protects: guards exist for a failure class that renders fine, builds green, and is invisible to review.
 - Search public prior art before building a tool, and record what you did not adopt
-  Look for an existing tool before writing one, and record what you evaluated and did not adopt with the case that decided it, because an unrecorded rejection gets re-litigated.
+  Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated.
 - Pin a framework default your output depends on, with the reason beside it
   Pin any framework or adapter default your output depends on and put the reason in the config file itself, because an unexplained value is unexplained to the agent too.
 - Enumerate from the system of record, and fail hard on a missing member
-  Build a list by reading the thing that defines it rather than typing the members, and fail loudly on a member you cannot resolve, because a hand-kept list silently omits whatever nobody remembered.
+  Build a list by reading the thing that defines it rather than typing the members, and fail loudly on an unresolvable member, since a hand-kept list silently omits whatever nobody remembered.
 - Normalize against fixed anchors, never against the live population
-  State a share on a denominator that could have produced the numerator, and hold that denominator fixed, because a rate measured against a population that moves is not comparable between runs.
+  State a share on a denominator that could produce the numerator, and hold that denominator fixed, since a rate measured against a moving population is not comparable between runs.
 - Make an error message teach the fix
-  Write a refusal that teaches the fix rather than one that reports the failure, because the reader is trying to get unstuck.
+  Write a refusal that teaches the fix rather than reporting the failure, since the reader is trying to get unstuck.
 - Read config from the environment, and keep build, release, and run separate
-  Read all config from the environment, so the repo could be published open source at any moment without leaking a credential.
+  Read all config from the environment, so the repo could go open source any moment without leaking a credential.
 - Don't
-  - Don't hand-edit generated data to make its gate pass.
+  - Don't call a no-op run evidence a tool works.
 
 ## .claude/rules/house/github.md
 - Gate every PR on checks that need no credential, and name what is not gated
-  Gate on file-only checks, so the gate runs with no database, no network, and no secret to leak. Push everything stateful to a pipeline retro or a local pre-deploy step.
+  Gate on file-only checks, so the gate runs with no database, network, or secret to leak. Push stateful checks to a retro or a local pre-deploy step.
 - Give a workflow read-only permissions and pin every action by SHA
-  Declare read-only `permissions:` on every workflow and grant write per job, because anyone with write access to the repo can read every secret configured for it. Write the reason for the permission set beside the block.
+  Declare read-only `permissions:` on every workflow and grant write per job, since repo write access can read every configured secret. Write the reason beside the block.
 - Budget Actions minutes as account-wide money
-  Treat CI minutes as one pool shared by every repo on the account, billed per job with a per-job minimum, so the number of runs costs as much as their duration.
+  Treat CI minutes as one pool shared by every repo on the account, billed per job with a per-job minimum, so run count costs like duration.
 - Open an issue instead of failing a scheduled run, and comment out a cron with its reason
-  Have a scheduled audit open or update an issue rather than turn the run red, because a recurring red X trains you to ignore the run.
+  Have a scheduled audit open or update an issue rather than turn the run red, since a recurring red X trains you to ignore it.
 - Turn on push protection, head-branch deletion, and grouped dependency updates
-  Turn on secret scanning push protection, which blocks a credential before it is in history rather than after.
+  Turn on secret scanning push protection, blocking a credential before it enters history.
 - Make the PR template force a docs-check answer
   Ask every PR for a summary, a test plan, and a docs check.
 - Never put a closing keyword beside an issue number you do not mean to close
-  A closing keyword closes the issue at merge whatever words sit in front of it, because the negation is never parsed.
+  A closing keyword closes the issue at merge whatever words sit in front of it, since the negation is never parsed.
 - Ship phased work as commits on one PR
-  Ship a multi-phase change as commits on one PR when there is one reviewer, because a PR per step buys review nobody is performing.
+  Ship a multi-phase change as commits on one PR with one reviewer, since a PR per step buys review nobody performs.
 - Stage explicit paths, never everything at once
-  Stage by path, because staging everything sweeps in untracked local-only files that were never meant to leave the machine.
+  Stage by path, since staging everything sweeps in untracked local-only files never meant to leave the machine.
 - Classify a merged branch by its PR state, not by merge detection
-  Ask the platform whether the branch's PR merged, because merge-detection flags lie under squash merging and a refusal to delete is not evidence that deleting is unsafe.
+  Ask the platform whether the branch's PR merged: merge-detection flags lie under squash merging, and refusal to delete isn't evidence deleting is unsafe.
 - Never delete the branch from the worktree being merged
-  Do not pass a delete-branch flag from the checkout that has the branch open, because the branch is pinned there and the flag fails noisily.
+  Don't pass a delete-branch flag from the checkout with the branch open, since it's pinned there and the flag fails noisily.
 - Keep credentials out of the repo, the commit, and the chat
-  Keep env files, account ids, and API keys out of the repo, and set every secret through the platform's secret command rather than a config file.
+  Keep env files, account ids, and API keys out of the repo, and set every secret through the platform's secret command, not a config file.
 - Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
-  Scrub the build environment and hide the secrets file from disk during the build, because an adapter can read that file directly and walk around the environment.
+  Scrub the build environment and hide the secrets file from disk during the build, since an adapter can read that file directly and bypass it.
 - Give a restricted key exactly one writable scope
-  Give a key one writable scope and read-only access everywhere else, so a leak has a blast radius you can state in one sentence.
+  Give a key one writable scope and read-only access elsewhere, so a leak has a blast radius statable in one sentence.
 - Never log a vendor object
-  Log ids, amounts, and outcomes, never a customer, charge, or row object, because observability is how personal data leaves a database sideways.
+  Log ids, amounts, and outcomes, never a customer, charge, or row object, since observability is how personal data leaves a database sideways.
 - Treat a preview URL as production for exposure
-  A preview URL outside the auth policy leaks exactly what production would leak.
+  A preview URL outside the auth policy leaks what production would.
 - Label a non-secret as a non-secret
-  Say beside a deliberately public value that it is public and why, so nobody redacts it by reflex or reads the redaction as proof it was sensitive.
+  Say beside a deliberately public value that it is public and why, so nobody redacts it by reflex or reads the redaction as proof of sensitivity.
 - Ship the community files the platform looks for, and keep issue intake as forms
-  Ship a code of conduct, a security policy that names a reporting route, and a contributing guide, because the platform's community-profile check reads each missing one as a gap and a newcomer reads that gap as neglect.
+  Ship a code of conduct, a security policy naming a reporting route, and a contributing guide: the platform's community-profile check reads a missing one as a gap, and a newcomer reads neglect.
 - Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it
-  Enforce a protected-branch policy inside `.githooks/pre-commit` and `.githooks/pre-push`, where git has already resolved the real repository, the real HEAD, and the real ref, not by reading the text of a command that might produce one.
+  Enforce a protected-branch policy inside `.githooks/pre-commit` and `.githooks/pre-push`, where git has already resolved the real repository, HEAD, and ref, not by reading a command's text.
 - Don't
-  Don't gate a PR on a check that needs a live credential.
+  Don't leave a gate gap unnamed, or a workflow on default write permissions.
 
 ## .claude/rules/house/testing.md
 - Give the agent a check it can run before you walk away
