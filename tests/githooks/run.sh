@@ -812,6 +812,74 @@ else
   fail "a commit on master from a linked worktree is refused" "could not add the worktree"
 fi
 
+# #68: git exports GIT_DIR/GIT_INDEX_FILE etc. into a hook run from a linked
+# worktree, which used to bind the dispatcher's `git -C "$hook_dir"` questions
+# to the WORKTREE's repo while its cwd stayed the main checkout's hooks
+# directory, so every tracked .d hook but the managed guard read as untracked
+# and never ran. Committing FROM the worktree is what used to trip it.
+r="$TMP_ROOT/c20d"; new_adopted_repo "$r"
+cat >"$r/.githooks/pre-commit.d/20-probe" <<EOF
+#!/usr/bin/env bash
+printf 'ran\n' >"\$HOUSE_GITHOOKS_DIR/../probe.marker"
+exit 0
+EOF
+chmod +x "$r/.githooks/pre-commit.d/20-probe"
+git -C "$r" add .githooks/pre-commit.d/20-probe
+git -C "$r" commit -q -m "probe hook"
+git -C "$r" push -q origin master
+git -C "$r" checkout -q -b feat/x
+if git -C "$r" worktree add -q "$TMP_ROOT/c20d-wt" -b feat/probe master 2>/dev/null; then
+  rm -f "$r/probe.marker"
+  stage "$TMP_ROOT/c20d-wt" "src/w2.js" "worktree commit exercises a tracked .d hook"
+  run_git "$TMP_ROOT/c20d-wt" commit -m "trip the probe"
+  if [[ "$RUN_CODE" -ne 0 ]]; then
+    fail "issue #68: a tracked .d hook runs from a commit made in a linked worktree" \
+      "the commit failed: $RUN_OUT"
+  elif [[ ! -f "$r/probe.marker" ]]; then
+    fail "issue #68: a tracked .d hook runs from a commit made in a linked worktree" \
+      "the marker file was not written: $RUN_OUT"
+  elif [[ "$RUN_OUT" == *"not tracked"* ]]; then
+    fail "issue #68: a tracked .d hook runs from a commit made in a linked worktree" \
+      "stderr still says a tracked hook is not tracked: $RUN_OUT"
+  else
+    pass "issue #68: a tracked .d hook runs from a commit made in a linked worktree"
+  fi
+else
+  fail "issue #68: a tracked .d hook runs from a commit made in a linked worktree" \
+    "could not add the worktree"
+fi
+
+# The other half of the same fixture shape: an UNTRACKED .d file is still
+# skipped, with the warning, from a commit made in the worktree.
+r="$TMP_ROOT/c20e"; new_adopted_repo "$r"
+git -C "$r" checkout -q -b feat/x
+cat >"$r/.githooks/pre-commit.d/25-untracked" <<EOF
+#!/usr/bin/env bash
+printf 'ran\n' >"\$HOUSE_GITHOOKS_DIR/../untracked.marker"
+exit 0
+EOF
+chmod +x "$r/.githooks/pre-commit.d/25-untracked"
+if git -C "$r" worktree add -q "$TMP_ROOT/c20e-wt" -b feat/untracked master 2>/dev/null; then
+  rm -f "$r/untracked.marker"
+  stage "$TMP_ROOT/c20e-wt" "src/w3.js" "worktree commit still skips an untracked hook"
+  run_git "$TMP_ROOT/c20e-wt" commit -m "should skip the untracked hook"
+  if [[ "$RUN_CODE" -ne 0 ]]; then
+    fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+      "the commit failed: $RUN_OUT"
+  elif [[ -f "$r/untracked.marker" ]]; then
+    fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+      "it ran anyway"
+  elif [[ "$RUN_OUT" != *"25-untracked"* || "$RUN_OUT" != *"not tracked"* ]]; then
+    fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+      "no warning named it: $RUN_OUT"
+  else
+    pass "issue #68: an untracked .d hook is still skipped from a linked worktree"
+  fi
+else
+  fail "issue #68: an untracked .d hook is still skipped from a linked worktree" \
+    "could not add the worktree"
+fi
+
 # --- 12. the seam the floor cannot see ----------------------------------------
 echo "-- documented seams --"
 
