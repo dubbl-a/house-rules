@@ -497,6 +497,28 @@ else
   pass "pre-push refuses an untracked .d hook too"
 fi
 
+# A tracked hook whose name is not ASCII must still read as tracked. git quotes
+# such a path with octal escapes by default, so the exact-name match missed it,
+# and now that a miss refuses, the "commit it" advice would not have fixed it.
+r="$TMP_ROOT/c07f"; new_adopted_repo "$r"
+git -C "$r" checkout -q -b feat/x
+cat >"$r/.githooks/pre-commit.d/30-café" <<EOF
+#!/usr/bin/env bash
+printf 'ran\n' >"$r/cafe.ran"
+exit 0
+EOF
+chmod +x "$r/.githooks/pre-commit.d/30-café"
+git -C "$r" add ".githooks/pre-commit.d/30-café"
+stage "$r" "src/u.js" "non-ascii hook name"
+run_git "$r" commit -m "non-ascii hook name"
+if [[ "$RUN_CODE" -ne 0 ]]; then
+  fail "a tracked .d hook with a non-ASCII name runs" "commit failed: $RUN_OUT"
+elif [[ ! -f "$r/cafe.ran" ]]; then
+  fail "a tracked .d hook with a non-ASCII name runs" "it did not run"
+else
+  pass "a tracked .d hook with a non-ASCII name runs"
+fi
+
 # The managed guard is exempt from that test on purpose. `git rm --cached` on
 # it must not be a way to switch the floor off; whether the guard is still the
 # file house rendered is .house/lock.json's question, not the dispatcher's.

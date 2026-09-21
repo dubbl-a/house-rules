@@ -112,7 +112,7 @@ tracked_names=""
 ignored_names=""
 tracked_known=1
 if [ "$candidates_n" -gt 0 ]; then
-  if tracked_names=$(house_git_env_clean -C "$hook_dir" ls-files 2>/dev/null); then
+  if tracked_names=$(house_git_env_clean -C "$hook_dir" -c core.quotePath=false ls-files 2>/dev/null); then
     tracked_known=0
     names=()
     i=0
@@ -125,7 +125,7 @@ if [ "$candidates_n" -gt 0 ]; then
     # excluded: the test is what the repo's own rules admit, not what someone
     # managed to get into the index. One call for the whole directory, so the
     # rule costs two git processes however many hooks are in it.
-    ignored_names=$(house_git_env_clean -C "$hook_dir" check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
+    ignored_names=$(house_git_env_clean -C "$hook_dir" -c core.quotePath=false check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
       ignored_names=""
   fi
 fi
