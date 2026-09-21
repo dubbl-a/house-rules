@@ -40,12 +40,18 @@
 #      floor), and any GIT_DIR=, GIT_WORK_TREE=, GIT_COMMON_DIR=, --git-dir or
 #      --work-tree, where the git directory, the work tree, house.json and
 #      core.hooksPath can each come from somewhere else
+#   E. `git checkout -b/-B`, `git switch -c/-C/--create/--force-create`, and an
+#      `--orphan` checkout or switch, refused when the resolved target is the
+#      MAIN checkout of an adopted repo: a workspace rule (git state is shared
+#      across every peer session and the user), not a floor protection, so it
+#      is allowed in a linked worktree, where it does not touch the checkout
+#      anyone else is holding
 #
 # A and B and D run in EVERY repo that has house.json on HEAD, before the
 # policy and deference gates below: `branchPolicy: direct` and a repo-local
 # branch guard each say who decides which BRANCH may move, and neither is a
 # reason to let a session unarm core.hooksPath or edit a vendored hook. Only C
-# sits behind those gates.
+# and E sit behind those gates.
 #
 # "Armed" (floor_is_armed) is verified against the plugin's own copy of the
 # floor, never against literals in the command: core.hooksPath must resolve to
@@ -90,12 +96,22 @@
 #
 # Accepted false denies, all in the safe direction, all pinned in
 # tests/hooks/run.sh:
-#   1. reading core.hooksPath is refused along with writing it (ask
-#      `house doctor` instead)
+#   1. core.hooksPath (and include.path / includeIf, see 2) is refused in any
+#      clause that holds a git token, an `=`-bearing token spelling the key, or
+#      a key token whose NEXT token starts with `=` (the space-separated INI
+#      form, `hooksPath = /x`, however it lands in the file); `git config
+#      --get`/`--get-all`/`--get-regexp core.hooksPath` alone is readable (ask
+#      `house doctor` for anything more), `git config --file <f> --get
+#      core.hooksPath` is readable too because `--file` and its value are
+#      stripped before this scan ever runs, and prose naming the key in a
+#      clause with no git token and no assignment (a `gh issue create
+#      --title`, an `echo`) passes
 #   2. reading include.path / includeIf is refused along with writing it
 #   3. any `-n`-bearing short flag in a clause that also holds the word
 #      `commit`
-#   4. a redirection in a clause that also names .githooks
+#   4. a redirection to a path or to /dev/null in a clause that also names
+#      .githooks; `2>&1`, `1>&2`, `>&1` and `>&2` are not redirections to
+#      anywhere the floor lives, and pass
 #   5. GIT_CONFIG_NOSYSTEM (harmless, but it is a GIT_CONFIG_ prefix)
 #   6. `git replace` in every form, listing included: the verb rewrites what
 #      every reader of an object sees, and no release flow needs it
@@ -137,8 +153,12 @@
 # wildcard that never spells .githooks (`rm -rf .gith*`), after which the next
 # call reads the floor as gone and refuses what it covered; an Edit whose path
 # reaches the hooks directory through a symlink named after neither git nor a
-# hook, which the payload prefilter exits before; and a planted file more than
-# three levels under the hooks directory, which no dispatcher can run.
+# hook, which the payload prefilter exits before; a planted file more than
+# three levels under the hooks directory, which no dispatcher can run; and
+# `git config --file <path> --get core.hooksPath`, readable for the same
+# reason `--get` alone is (see 1) because `--file` and its value never reach
+# the scan, while the write form with `--file` is still refused on the key
+# token itself.
 #
 # Worktree-aware: the payload cwd plus every LITERAL path after `git -C`, `cd`
 # or `pushd` is a candidate target, and the command is decided once per
@@ -365,9 +385,15 @@ _unquote() { sed -E "s/['\"]//g; s/(^|[[:space:]])#.*\$//"; }
 CLAUSES=''
 split_clauses() {
   local c="$1"
+  # A bare `&` is the backgrounding operator and is a clause break; `>&`, a
+  # stream-duplicating redirection (2>&1, 1>&2, >&1, >&2), is not one, and the
+  # `&` split below must not cut it in half. Protected here with a control
+  # character no shell text carries, and restored once the splits are done.
+  c="${c//>&/$'\x01'}"
   c="${c//\|\|/$'\n'}"; c="${c//&&/$'\n'}"; c="${c//;/$'\n'}"
   c="${c//&/$'\n'}"; c="${c//\|/$'\n'}"
   c="${c//\(/ }"; c="${c//\)/ }"; c="${c//\`/ }"
+  c="${c//$'\x01'/>&}"
   CLAUSES="$c"
 }
 
@@ -563,7 +589,9 @@ floor_deny() {
 # is fast feedback, not the guard: floor_is_armed re-reads the floor's own
 # bytes on every call, so a disable this list misses shows up there.
 disable_scan() {
-  local clause="$1" toks=() i n tok commit_seen=0 sed_seen=0 floorish=0
+  local clause="$1" toks=() i n tok next_tok='' commit_seen=0 sed_seen=0 floorish=0
+  local has_git_tok=0 t2 t2s
+  local config_read_ok=0 t3 config_bad=0 config_eq=0
   # Any case: the default macOS volume is case-insensitive, so `rm
   # .GITHOOKS/pre-push` removes the floor just as well.
   case "$clause" in
@@ -571,8 +599,36 @@ disable_scan() {
   esac
   IFS=$' \t\n' read -r -a toks <<<"$clause"
   n="${#toks[@]}"
+  # The three key patterns below fire only in a clause that could actually
+  # RUN git, or that assigns the key with `=`: prose naming the key (a `gh
+  # issue create --title`, an `echo`) is not a way to read or write it.
+  for t2 in "${toks[@]}"; do
+    t2s="$t2"
+    case "$t2s" in "'"*|'"'*) t2s="${t2s:1}" ;; esac
+    case "$t2s" in git|*/git) has_git_tok=1; break ;; esac
+  done
+  # `git config --get`/`--get-all`/`--get-regexp core.hooksPath`, and nothing
+  # else the clause does at the same time, only READS the key: house doctor
+  # is still the way to ask, but this one spelling is not a way to change it.
+  # Read over the WHOLE clause, not just the args git_split hands back after
+  # the verb: git's own `-c key=value` sits BEFORE the verb and never reaches
+  # GV_ARGS, and `-c core.hooksPath=/dev/null config --get core.hooksPath` is
+  # a write riding along with a read, not a read.
+  if [[ "$has_git_tok" -eq 1 ]] && git_split "$clause" && [[ "$GV_VERB" == config ]]; then
+    for t3 in "${toks[@]}"; do
+      case "$t3" in
+        --get|--get-all|--get-regexp) config_read_ok=1 ;;
+        --add|--replace-all|--unset|--unset-all|--rename-section|--remove-section|--edit|-e|-c|--file|-f|--blob)
+          config_bad=1 ;;
+        *=*) config_eq=1 ;;
+      esac
+    done
+    [[ "$config_bad" -eq 0 && "$config_eq" -eq 0 ]] || config_read_ok=0
+  fi
   for ((i = 0; i < n; i++)); do
     tok="${toks[$i]}"
+    next_tok=''
+    [[ $((i + 1)) -lt "$n" ]] && next_tok="${toks[$((i + 1))]}"
     case "$tok" in
       # git takes unambiguous abbreviations; --no-ver is ambiguous with
       # --no-verbose, so the list starts a letter later.
@@ -581,13 +637,22 @@ disable_scan() {
       GIT_CONFIG_*|GIT_EXEC_PATH|GIT_EXEC_PATH=*) floor_deny "$tok" ;;
       HUSKY=0|LEFTHOOK=0) floor_deny "$tok" ;;
       # Any spelling of core.hooksPath, case-insensitively, wherever it sits:
-      # `-c core.hooksPath=`, `git config core.hooksPath`, `--unset`.
-      *[hH][oO][oO][kK][sS][pP][aA][tT][hH]*) floor_deny "$tok" ;;
+      # `-c core.hooksPath=`, `git config core.hooksPath`, `--unset`, or the
+      # space-separated INI form (`hooksPath = /x`, next token starts `=`). A
+      # bare read (`git config --get core.hooksPath`, see config_read_ok
+      # above) is readable; every other git-clause spelling, and any
+      # assignment, is not.
+      *[hH][oO][oO][kK][sS][pP][aA][tT][hH]*)
+        if [[ "$config_read_ok" -eq 0 ]] && { [[ "$has_git_tok" -eq 1 ]] || [[ "$tok" == *=* ]] || [[ "$next_tok" == =* ]]; }; then
+          floor_deny "$tok"
+        fi ;;
       # A config include can set core.hooksPath from a file outside the repo,
       # and `git config --get core.hooksPath` resolves it, so the floor reads
       # as disarmed while nothing in .git/config says so.
-      *[iI][nN][cC][lL][uU][dD][eE].[pP][aA][tT][hH]*) floor_deny "$tok" ;;
-      *[iI][nN][cC][lL][uU][dD][eE][iI][fF]*) floor_deny "$tok" ;;
+      *[iI][nN][cC][lL][uU][dD][eE].[pP][aA][tT][hH]*)
+        if [[ "$has_git_tok" -eq 1 ]] || [[ "$tok" == *=* ]] || [[ "$next_tok" == =* ]]; then floor_deny "$tok"; fi ;;
+      *[iI][nN][cC][lL][uU][dD][eE][iI][fF]*)
+        if [[ "$has_git_tok" -eq 1 ]] || [[ "$tok" == *=* ]] || [[ "$next_tok" == =* ]]; then floor_deny "$tok"; fi ;;
     esac
     if [[ "$tok" == commit ]]; then commit_seen=1; fi
     # `-n` is --no-verify's short form on a commit. Any short-flag cluster
@@ -601,6 +666,9 @@ disable_scan() {
         rm|mv|cp|chmod|chflags|truncate|tee|install|ln) floor_deny "$tok" ;;
         sed) sed_seen=1 ;;
         -i|-i*) if [[ "$sed_seen" -eq 1 ]]; then floor_deny "sed -i"; fi ;;
+        # A stream redirected onto another stream (2>&1, 1>&2, >&1, >&2) goes
+        # nowhere near the floor's files; every other `>` does.
+        '2>&1'|'1>&2'|'>&2'|'>&1') : ;;
         *'>'*) floor_deny "$tok" ;;
       esac
     fi
@@ -986,6 +1054,43 @@ push_decision() {
   esac
 }
 
+# E. Branching in the main checkout: a workspace rule, not a floor protection
+# (git state is shared across every peer session and the user holding this
+# checkout), so it sits behind the same policy and deference gates as C and
+# only fires on the MAIN checkout, never in a linked worktree.
+worktree_create_deny() {
+  deny "Refusing '$1': the main checkout is the one every peer session and the user hold. Branch in a worktree: git worktree add -b <branch> <path> origin/<default>, or the harness's worktree tool. (house rule: treat git state as shared across sessions)"
+}
+worktree_branch_create_scan() {
+  local verb="$1" tok flag='' seen_dashdash=0
+  while IFS= read -r tok; do
+    if [[ "$seen_dashdash" -eq 1 ]]; then continue; fi
+    case "$tok" in
+      --) seen_dashdash=1; continue ;;
+    esac
+    case "$verb:$tok" in
+      checkout:--orphan) flag="$tok" ;;
+      switch:--create|switch:--force-create|switch:--orphan) flag="$tok" ;;
+    esac
+    if [[ -z "$flag" ]]; then
+      case "$tok" in
+        --*) : ;;
+        # A short-flag cluster counts whether the create letter is alone or
+        # glued to others or to the branch name: `-b`, `-qb`, `-bnewb` on
+        # checkout, `-c`, `-cnewb` on switch all create a branch.
+        -*)
+          case "$verb" in
+            checkout) case "$tok" in *b*|*B*) flag="$tok" ;; esac ;;
+            switch) case "$tok" in *c*|*C*) flag="$tok" ;; esac ;;
+          esac ;;
+      esac
+    fi
+  done <<<"$GV_ARGS"
+  [[ -n "$flag" ]] || return 0
+  [[ "$MAIN_ROOT" == "$toplevel" ]] || return 0
+  worktree_create_deny "git $verb $flag"
+}
+
 # A, over the whole command, whichever directory each clause runs in. Runs in
 # ANY repo that has adopted house, whatever its branchPolicy says and whoever
 # else guards the branch: these are the ways to turn the floor off, and a repo
@@ -1012,6 +1117,22 @@ run_branch_scans() {
   local clause armed=0 n=0
   if floor_is_armed; then armed=1; fi
   set_arm_suffix
+
+  # E, over the WHOLE command (cmd_safe, not the blind-stripped CAND_TEXT: the
+  # blind strip removes a bare `-c` for target resolution, which is also
+  # switch's short create flag). Runs whatever this candidate's own clauses
+  # say, because branching in the main checkout is a workspace rule, not a
+  # target-directory question.
+  split_clauses "$cmd_safe"
+  while IFS= read -r clause; do
+    git_split "$clause" || continue
+    while :; do
+      case "$GV_VERB" in
+        checkout|switch) worktree_branch_create_scan "$GV_VERB" ;;
+      esac
+      git_next || break
+    done
+  done <<<"$CLAUSES"
 
   # B and C, over this candidate's clauses only. First pass: the clause that
   # creates a branch, if any.

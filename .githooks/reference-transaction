@@ -98,11 +98,24 @@ done
 # `git rm --cached` on the managed guard must not be a way to switch the floor
 # off. Whether that file is still the one house rendered is .house/lock.json's
 # question, not this dispatcher's.
+#
+# git exports GIT_DIR, GIT_WORK_TREE and friends into every hook it runs. From
+# a LINKED worktree those point at the worktree, while `-C "$hook_dir"` points
+# the cwd at the main checkout, so the two calls below would otherwise answer
+# for the wrong repo (or the wrong path prefix) and report every tracked hook
+# as untracked. Clearing them makes `-C` the only thing that decides the repo.
+if [ "$candidates_n" -gt 0 ]; then
+  house_git_env_clean() {
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+      -u GIT_COMMON_DIR -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_PREFIX \
+      git "$@"
+  }
+fi
 tracked_names=""
 ignored_names=""
 tracked_known=1
 if [ "$candidates_n" -gt 0 ]; then
-  if tracked_names=$(git -C "$hook_dir" ls-files 2>/dev/null); then
+  if tracked_names=$(house_git_env_clean -C "$hook_dir" ls-files 2>/dev/null); then
     tracked_known=0
     names=()
     i=0
@@ -115,7 +128,7 @@ if [ "$candidates_n" -gt 0 ]; then
     # excluded: the test is what the repo's own rules admit, not what someone
     # managed to get into the index. One call for the whole directory, so the
     # rule costs two git processes however many hooks are in it.
-    ignored_names=$(git -C "$hook_dir" check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
+    ignored_names=$(house_git_env_clean -C "$hook_dir" check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
       ignored_names=""
   fi
 fi

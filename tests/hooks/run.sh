@@ -665,8 +665,12 @@ expect_allow "a real -C to another repo still resolves to THAT repo" \
   "$(mk_payload "git -C $o $_verb -m x" "$r")"
 expect_deny "a real -C INTO the protected repo is still caught from elsewhere" \
   "$(mk_payload "git -C $r $_verb -m x" "$o")" "feature branch"
+# #69 refuses `git checkout -b` in the MAIN checkout now, so this fixture
+# needs a linked worktree of $r to still exercise BRANCH_CREATED_AT.
+rw="$TMP_ROOT/strip-wt"
+git -C "$r" worktree add "$rw" -b strip-wt-base master >/dev/null 2>&1  # no -q: git < 2.19 lacks it
 expect_allow "a branch created earlier in the same call is where the commit lands" \
-  "$(mk_payload "git checkout -b feat/new && $_c -m x" "$r")"
+  "$(mk_payload "git checkout -b feat/new && $_c -m x" "$rw")"
 
 # ── a commit or push whose git target this hook cannot read is refused ────
 # Both modes: a computed directory cannot be checked at all, and a bare repo
@@ -718,12 +722,35 @@ expect_deny "core.hooksPath on the command line" \
   "$(mk_payload "git -c core.$_ph=/dev/null $_cm -m x" "$d")" "disables or moves"
 expect_deny "git config core.hooksPath (writing it)" \
   "$(mk_payload "git config core.$_ph /dev/null" "$d")" "disables or moves"
-# Accepted false deny, documented in the hook header: reading the value is
-# refused along with writing it. `house doctor` reports the arming instead.
-expect_deny "ACCEPTED FALSE DENY: reading core.hooksPath is refused too" \
-  "$(mk_payload "git config --get core.$_ph" "$d")" "disables or moves"
+# #69: a bare `git config --get`/`--get-all`/`--get-regexp` only READS the
+# key, so it is allowed; every other git-clause spelling still is not.
+expect_allow "git config --get core.hooksPath is readable" \
+  "$(mk_payload "git config --get core.$_ph" "$d")"
+expect_allow "git config --get-all core.hooksPath is readable" \
+  "$(mk_payload "git config --get-all core.$_ph" "$d")"
 expect_deny "git config --unset core.hooksPath" \
   "$(mk_payload "git config --unset core.$_ph" "$d")" "disables or moves"
+expect_deny "git config --get core.hooksPath chained with --unset" \
+  "$(mk_payload "git config --get core.$_ph && git config --unset core.$_ph" "$d")" "disables or moves"
+expect_deny "a -c assignment next to a readable --get" \
+  "$(mk_payload "git -c core.$_ph=/dev/null config --get core.$_ph" "$d")" "disables or moves"
+expect_deny "core.hooksPath inside bash -c is still a git clause" \
+  "$(mk_payload "bash -c 'git config core.$_ph /x'" "$d")" "disables or moves"
+expect_deny "an echo-and-append past .gitignore still assigns the key" \
+  "$(mk_payload "echo \"core.$_ph=/x\" | tee -a ~/.gitconfig" "$d")" "disables or moves"
+expect_allow "prose naming core.hooksPath with no git token passes" \
+  "$(mk_payload "gh issue create --title \"core.$_ph is unreadable\" --body-file /tmp/x" "$d")"
+expect_allow "echo core.hooksPath with no git token and no assignment passes" \
+  "$(mk_payload "echo core.$_ph" "$d")"
+# Refuter round: the space-separated INI spelling (`hooksPath = /x`) is a key
+# token immediately followed by a token starting with `=`, with no git token
+# and no `=` glued to the key itself, and it must deny like every other spelling.
+expect_deny "echo appending the INI spelling to .gitconfig" \
+  "$(mk_payload "echo \"[core] $_ph = /x\" >> ~/.gitconfig" "$d")" "disables or moves"
+expect_deny "printf appending the INI spelling to .gitconfig" \
+  "$(mk_payload "printf '[core] $_ph = /x' >> ~/.gitconfig" "$d")" "disables or moves"
+expect_deny "sed -i writing the INI spelling into .gitconfig" \
+  "$(mk_payload "sed -i '' -e \"1a $_ph = /x\" ~/.gitconfig" "$d")" "disables or moves"
 # A config include can point core.hooksPath anywhere, and `git config --get`
 # resolves it, so the floor reads as disarmed while .git/config looks clean.
 expect_deny "git config include.path (a config include can set hooksPath)" \
@@ -768,6 +795,15 @@ expect_deny "sed -i on a floor file" \
   "$(mk_payload "sed -i.bak s/x/y/ .githooks/pre-commit" "$d")" "disables or moves"
 expect_deny "a redirection into a floor file" \
   "$(mk_payload "echo x > .githooks/pre-push" "$d")" "disables or moves"
+# #69: a redirection onto another stream, next to a floor file in the same
+# clause, goes nowhere near the floor's bytes and is allowed; a redirection to
+# a path, or to /dev/null, still is not.
+expect_allow "listing the floor with stderr folded into stdout" \
+  "$(mk_payload "ls .githooks/pre-commit.d/ 2>&1" "$d")"
+expect_deny "listing the floor with stderr discarded" \
+  "$(mk_payload "ls .githooks 2>/dev/null" "$d")" "disables or moves"
+expect_deny "cat redirected onto a floor file" \
+  "$(mk_payload "cat x > .githooks/pre-commit" "$d")" "disables or moves"
 expect_deny "truncating .git/config" \
   "$(mk_payload "truncate -s 0 .git/config" "$d")" "disables or moves"
 expect_deny "writing into .git/hooks" \
@@ -812,10 +848,40 @@ expect_allow "git update-ref on a feature branch" \
 expect_allow "git branch (a listing) is untouched" \
   "$(mk_payload "git branch --list" "$d")"
 
+# #69: a branch-creating checkout/switch in the (unarmed) main checkout of an
+# adopted repo is refused as a workspace rule; a plain checkout, a checkout of
+# a path, and a branch listing are still the floor's or git's business.
+expect_deny "unarmed main checkout: git checkout -b is refused" \
+  "$(mk_payload "git checkout -b feat/x" "$d")" "worktree add"
+expect_deny "unarmed main checkout: git switch -c is refused" \
+  "$(mk_payload "git switch -c feat/x" "$d")" "worktree add"
+expect_allow "checking out an existing branch is untouched" \
+  "$(mk_payload "git checkout main" "$d")"
+expect_allow "checking out a path is untouched" \
+  "$(mk_payload "git checkout -- README.md" "$d")"
+expect_allow "git branch <name> creates no worktree conflict" \
+  "$(mk_payload "git branch feat/x" "$d")"
+# Refuter round: the create letter counts glued or clustered, not just as its
+# own token, and stops at a `--` separator.
+expect_deny "git checkout -bnewb (glued branch name) is refused" \
+  "$(mk_payload "git checkout -bnewb" "$d")" "worktree add"
+expect_deny "git checkout -Bnewb (glued, force) is refused" \
+  "$(mk_payload "git checkout -Bnewb" "$d")" "worktree add"
+expect_deny "git switch -cnewb (glued branch name) is refused" \
+  "$(mk_payload "git switch -cnewb" "$d")" "worktree add"
+expect_deny "git checkout -qb newb (clustered short flags) is refused" \
+  "$(mk_payload "git checkout -qb newb" "$d")" "worktree add"
+expect_allow "git checkout -q master (no create letter) is untouched" \
+  "$(mk_payload "git checkout -q master" "$d")"
+expect_allow "git checkout -- -b (a pathspec after --, not a flag)" \
+  "$(mk_payload "git checkout -- -b" "$d")"
+
 # The disable list only applies in an ADOPTED repo (ADR 0002).
 n="$TMP_ROOT/unadopted"; new_repo "$n"
 expect_allow "--no-verify in a repo that never adopted house is not our business" \
   "$(mk_payload "git $_cm --no-verify -m x" "$n")"
+expect_allow "git checkout -b in a repo that never adopted house is not our business" \
+  "$(mk_payload "git checkout -b feat/x" "$n")"
 
 # ── H2 (round-2 N2): a replace ref rewrites HEAD without moving a branch ──
 # `git replace <head> <other>` makes `git show HEAD:house.json` return another
@@ -1045,6 +1111,16 @@ else
     "$(mk_payload "git push" "$w/wt")"
   expect_deny "worktree: the disable list still applies inside the worktree" \
     "$(mk_payload "git commit --no-verify -m x" "$w/wt")" "disables or moves"
+
+  # #69: git state is shared across every session on the checkout, so a
+  # branch-creating checkout/switch is refused on the MAIN checkout and
+  # allowed in a linked worktree, whatever the floor's armed state is.
+  expect_allow "worktree: git checkout -b in the linked worktree" \
+    "$(mk_payload "git checkout -b feat/x" "$w/wt")"
+  expect_deny "main checkout: git checkout -b is refused" \
+    "$(mk_payload "git checkout -b feat/x" "$w/main")" "worktree add"
+  expect_deny "main checkout: git switch -c is refused" \
+    "$(mk_payload "git switch -c feat/x" "$w/main")" "worktree add"
 
   b="$TMP_ROOT/broken-edit"; mk_broken_floor "$b"
   printf '\n# tampered\n' >>"$b/.githooks/pre-push"
