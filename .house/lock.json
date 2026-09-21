@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "dc11088dbdd6ca40986d5d6d7eae6be7a8776cbb909ba79e6a2e5c8b7e21789c"
+      "bodySha256": "efd3583d8faace873503798a93673a1b69c5f540709790a3ad9924d484d618f2"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -52,19 +52,19 @@
       "path": ".githooks/pre-commit",
       "module": "github",
       "source": "modules/github/files/githooks/pre-commit",
-      "bodySha256": "43baa384e6a3b6102cd8ac519d3232a87e0f3c36dd02cc11c22d0d7a8c9f316e"
+      "bodySha256": "ae0c683f0219c04b2020efd36f0d9aba93ec575a2b1bd7a2e99410d0a68ed4b0"
     },
     {
       "path": ".githooks/pre-push",
       "module": "github",
       "source": "modules/github/files/githooks/pre-push",
-      "bodySha256": "bd33c7650f5bf9b51d05d4b750b97c9fd0d06a9d66282015af2079f7bb520439"
+      "bodySha256": "b02cd0109cae5e3c6a82369be709b291b7842f566f5b2352bb3c9457b539e3aa"
     },
     {
       "path": ".githooks/reference-transaction",
       "module": "github",
       "source": "modules/github/files/githooks/reference-transaction",
-      "bodySha256": "dda509682a1c264ad0fb0bf4acfdf437a6d37343b3c29a6086b48d85ed603dd4"
+      "bodySha256": "4b1704e8f183142baa37d1c0fc40627976ffb5e0783403d2b89a15b46fd5a2bc"
     },
     {
       "path": ".githooks/house-lib.sh",

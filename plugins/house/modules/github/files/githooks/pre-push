@@ -11,13 +11,15 @@
 # every other file follows in name order. Name order alone would hand an
 # unmanaged `00-` hook the chance to delete the guard before it ever ran.
 #
-# A file in the .d directory is skipped when its name starts with `.`, when it
-# ends in `~`, `.disabled` or `.sample`, and when git does not have it: only a
-# file that is tracked in this repo and not excluded by .gitignore runs, so an
-# unreviewed script dropped in here never executes (the managed guard itself is
-# exempt, see below). A file that is not executable is still run, with bash,
-# and named in a warning: githooks(5) ignores a non-executable hook silently,
-# and a silently ignored guard is a guard that fails open.
+# A file in the .d directory is silently skipped when its name starts with
+# `.`, or when it ends in `~`, `.disabled` or `.sample`. A file git does not
+# have refuses the push instead: only a file that is tracked in this repo and
+# not excluded by .gitignore runs (the managed guard itself is exempt, see
+# below), and one that is neither is named on stderr and blocks, because a
+# script no review and no PR ever carried must not get a silent pass. A file
+# that is not executable is still run, with bash, and named in a warning:
+# githooks(5) ignores a non-executable hook silently, and a silently ignored
+# guard is a guard that fails open.
 #
 # Bash 3.2 compatible. See ADR 0013 and issue #58.
 set -u
@@ -111,7 +113,7 @@ tracked_names=""
 ignored_names=""
 tracked_known=1
 if [ "$candidates_n" -gt 0 ]; then
-  if tracked_names=$(house_git_env_clean -C "$hook_dir" ls-files 2>/dev/null); then
+  if tracked_names=$(house_git_env_clean -C "$hook_dir" -c core.quotePath=false ls-files 2>/dev/null); then
     tracked_known=0
     names=()
     i=0
@@ -124,11 +126,17 @@ if [ "$candidates_n" -gt 0 ]; then
     # excluded: the test is what the repo's own rules admit, not what someone
     # managed to get into the index. One call for the whole directory, so the
     # rule costs two git processes however many hooks are in it.
-    ignored_names=$(house_git_env_clean -C "$hook_dir" check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
+    ignored_names=$(house_git_env_clean -C "$hook_dir" -c core.quotePath=false check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
       ignored_names=""
   fi
 fi
 
+# A file in state 1 or 2 refuses the whole run: report every offender before
+# exiting, so one push names all of them instead of the first, and never run
+# any hook (not even a tracked one, not even the guard) once one is found,
+# because a tracked hook that got to mark success would hide that the run was
+# never a complete, reviewed one.
+refused=0
 i=0
 while [ "$i" -lt "$candidates_n" ]; do
   f="${candidates[$i]}"
@@ -137,19 +145,22 @@ while [ "$i" -lt "$candidates_n" ]; do
   house_d_file_state "$f" || state=$?
   case "$state" in
     1)
-      printf 'house %s: %s is not tracked in this repo; not running it. Commit it or remove it.\n' \
+      printf 'house %s: %s is not tracked in this repo; refusing. Commit it or remove it.\n' \
         "$hook_name" "$f" >&2
+      refused=1
       continue
       ;;
     2)
-      printf 'house %s: %s is git-ignored; not running it. Un-ignore and commit it, or remove it.\n' \
+      printf 'house %s: %s is git-ignored; refusing. Un-ignore and commit it, or remove it.\n' \
         "$hook_name" "$f" >&2
+      refused=1
       continue
       ;;
   esac
   ordered[ordered_n]="$f"
   ordered_n=$((ordered_n + 1))
 done
+[ "$refused" -eq 0 ] || exit 1
 [ "$ordered_n" -eq 0 ] && exit 0
 
 i=0
