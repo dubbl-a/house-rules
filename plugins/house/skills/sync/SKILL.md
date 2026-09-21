@@ -76,6 +76,10 @@ Render's `Scaffolded` list (`.github/PULL_REQUEST_TEMPLATE.md`, `.github/workflo
 
 A scaffold is offered once per repo, not once per render. The lock's `scaffolds` list records which templates this repo has already been given; a template recorded there is never written again, whether or not its file is still on disk. So a `CLAUDE.md.house-skeleton` that was merged into `CLAUDE.md` and deleted stays deleted, and no re-sync has to `rm` it. If a repo wants one back, `render --apply --scaffold` writes any missing scaffold and still never overwrites a file that is there. Expect the `scaffolds` key to appear in the lock diff on the first sync at 0.2.3 or later; it is a record, not a hash, and nothing refuses on it.
 
+### 4c. Gitignore tool scratch
+
+Ensure the repo's `.gitignore` contains `.claude/worktrees/` and `.superpowers/`, appending whichever line is missing. Tool scratch that shows up in `git status` is one `git add -A` from being committed.
+
 ### 5. Confirm the pin
 
 Confirm `house.json` now carries the loaded plugin version; render wrote it, never hand-edit it. `render --apply` sets the `version` field to the plugin version in:

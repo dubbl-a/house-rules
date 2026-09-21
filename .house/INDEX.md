@@ -8,9 +8,9 @@
 - Keep the auto-memory index to hooks, and hold it under its cap
   Write one line per memory and make that line the cue to open the file rather than the fact itself, because the index loads every session while the topic file loads only when something asks for it.
 - Give a domain rule a paths list, and never leave a rule file unscoped
-  Scope every domain rule with `paths:` so a session that never touches the domain never pays for it.
+  Scope every domain rule with `paths:` so a session that never touches the domain never pays for it; a rule file with no `paths:` is not unscoped, it is always-on at root-file priority, so if it belongs in every session move it into the root file instead.
 - Make a procedure a skill, not a rule
-  Move a multi-step procedure and its reference material into a skill, where only the description costs context every session.
+  Move a multi-step procedure and its reference material into a skill, where only the description costs context every session, and the harness truncates even that listing, while an instruction file pays for its whole body every time it loads; where the harness points a growing instruction file is a path-scoped rule and stops there, so what a skill then owes you is what it never says.
 - Keep a skill body short, its references one level deep, and its name equal to its directory
   Hold the body under its configured cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
 - Disable model invocation on a skill with side effects
@@ -20,7 +20,7 @@
 - Make a must-hold rule a hook, fail it closed, and test it with real payloads
   Turn a rule that must hold every time into a hook, because a rule file is advisory context and only a pre-tool hook stops the action.
 - Run adversarial review in a fresh subagent with a named lens
-  The harness ships a review that already runs in its own subagent over the branch diff, so start there and add what it does not carry: name the lens, and tell the reviewer to flag only correctness and requirement gaps, because a reviewer asked for problems will always return some.
+  The harness ships a review that already runs in its own subagent over the branch diff, so start there and add what it does not carry: name the lens, and tell the reviewer to flag only correctness and requirement gaps.
 - Plan when the approach is uncertain, and clear the context after two failed corrections
   Plan first when the approach is uncertain or the change spans files, and skip planning when you could describe the diff in one sentence, because planning has real overhead.
 - Treat git state as shared across sessions
@@ -30,19 +30,19 @@
 - Read a resume file as a harness artifact, not a handoff
   Treat a checkpoint file the harness writes as a record of where a session stopped, not as a protocol the next session follows.
 - Hand off through the repo, not a standing issue
-  Open an issue only for work someone will do, because a standing issue with nothing to act on is noise in the tracker, not a handoff.
+  Open an issue only for work someone will do, because a standing issue with nothing to act on is noise in the tracker, not a handoff; auto memory is the harness's own place for ongoing work, but it is machine-local and never shared, so it cannot be the channel the next session reads.
 - Check for a peer session before driving shared external state
   List the running agents before driving a shared application, a shared database, or a shared checkout, because a peer session may already own it.
 - Don't
-  Don't put a fact in the root file that Claude could derive from the code.
+  Don't put a fact in the root file that Claude could derive from the code, and don't put one in the memory index that belongs in its topic file.
 
 ## .claude/rules/house/docs.md
 - Anchor every claim to a grep-able token
   Write every claim about the code, the interface, or a command so it names a token a reader can grep: a file path, an npm script, a component name, a section id, a class prefix, or an environment variable. Free-form prose drifts silently when the thing it describes is renamed, while an anchored claim fails the gate on the commit that renames it.
 - Run the docs gate before pushing and in the build
-  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the build step and the pull-request check be the net.
+  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the build step and the pull-request check be the net, because a gate you only meet through a red badge after review costs a round trip per typo, and the round trip is what makes people stop running it.
 - Give every rule file a paths list whose first segment resolves
-  Give every rule file a `paths:` list, and make each glob's first non-glob segment resolve on disk. A glob that resolves to nothing means the rule never loads, so it rots without one failure to warn you.
+  Give every rule file a `paths:` list, and make each glob's first non-glob segment resolve on disk. A glob that resolves to nothing means the rule never loads, so it rots without one failure to warn you; a rule file with no `paths:` at all is not unscoped, it is always-on at root-file priority. If it truly belongs in every session it belongs in the root file, and if it does not, it needs a scope.
 - Put a fact where its litmus test says it belongs
   The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule, and it trims what it can derive from the code. This rule carries that split out to the README, the changelog, and the archive, where nothing native reaches: the README if a human landing on the repo needs it, the archive if it is a dated observation. Working rules, a human runbook, strategy, the changelog, deep reference, and orientation are separate roles, so give each its own document rather than another section, and restate neither the code nor the package manifest in any of them.
 - State a rule as imperative, why, anchor, receipts
@@ -52,7 +52,7 @@
 - Keep files under budget, and raise a ceiling only with a written reason
   The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
 - Cut, don't append, and trim on a fixed cadence
-  When you add to a document, trade something out; a file that only grows is a file nobody reads to the end of. Cut any paragraph that exists to record that something happened rather than to change what the next session does.
+  When you add to a document, trade something out; a file that only grows is a file nobody reads to the end of. Cut any paragraph that exists to record that something happened rather than to change what the next session does, since the harness proposes trims when asked and advises a periodic review, but it sets no cadence and lets a trimmed file grow back.
 - Split a file only when splitting narrows what loads
   Split a topic only when the split makes a session load less. Two files that always load together are strictly worse than one: identical context, plus a second place a rule can hide.
 - Opt a point-in-time doc out with a file-level reason

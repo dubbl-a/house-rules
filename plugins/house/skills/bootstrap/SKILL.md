@@ -89,6 +89,10 @@ The skeleton is offered once per repo: `render` records it in `.house/lock.json`
 `scaffolds`, so once it has been merged into CLAUDE.md and deleted, no later render writes it
 back. `render --apply --scaffold` is the way to ask for it again.
 
+Ensure the repo's `.gitignore` contains `.claude/worktrees/` and `.superpowers/`, appending
+whichever line is missing. Tool scratch that shows up in `git status` is one `git add -A` from
+being committed.
+
 ## Print the wiring
 
 After a successful apply, print this block verbatim so it is copy-pasteable into a plain
