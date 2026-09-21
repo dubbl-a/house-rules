@@ -78,6 +78,7 @@ test('session-start hook emits the orchestration text under hookSpecificOutput.a
   assert.ok(!('additionalContext' in out), 'no top-level field, which Claude Code ignores');
   for (const n of Object.keys(ROSTER)) assert.ok(ctx.includes(`\`${n}\``), `text names ${n}`);
   assert.ok(/Never the session's top tier on a subagent/.test(ctx));
+  assert.ok(ctx.includes('Enter a worktree before the first edit'), 'worktree-first is unconditional');
 });
 
 test('session-start hook with the text missing emits nothing and still exits 0 (never costs a session)', () => {

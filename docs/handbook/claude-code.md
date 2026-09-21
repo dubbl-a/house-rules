@@ -355,12 +355,17 @@ planning has real overhead; and `/clear` after two failed corrections on the sam
 
 repo-b's CLAUDE.md states the rule almost verbatim: "Git state is SHARED across sessions here."
 A `git checkout` elsewhere moves your branch mid-run and strands uncommitted work; the mitigation
-is to ask first, work in a worktree, and commit early. The worktree became the default rather
-than the preference after parallel sessions kept colliding on branches made in the main
-checkout: a rubric that lets each session judge whether anyone else is in flight is one
-that every session answers in its own favor, so the rule now names the two lists to read
-(the running agents and `git worktree list`) and reserves the main-checkout branch for a
-single-commit change when both are empty of peers.
+is to ask first, work in a worktree, and commit early. On 2026-09-20, three agent sessions in
+one adopter repo each ran `git checkout -b` in the main checkout right after plan approval, with
+no reasoning and no look at the agent list; one did it while `git worktree list` showed two peer
+worktrees already in flight, and one went on to commit and push five times from the shared
+checkout over three hours until the user typed "put this session in a worktree." The exception
+clause that let a session judge whether anyone else was in flight was the loophole: every
+session answered it in its own favor. The rule is now unconditional, naming the two concrete
+commands to enter a worktree (the harness's worktree tool, or `git worktree add -b <branch>
+<path> origin/<default>`), putting the worktree step first in every plan, and reserving the
+main checkout for reading, merging, and cleanup; the guard now refuses a `checkout -b` or
+`switch -c` in a main checkout.
 
 A repo-a memory item dates the concrete failure that produced the read-before-every-commit
 half of this rule: on 2026-06-05, a peer session moved the branch mid-run on a shared checkout,
