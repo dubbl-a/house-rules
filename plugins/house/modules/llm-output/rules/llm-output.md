@@ -7,8 +7,8 @@ Output that reads as finished is not output that has been checked.
 ## Quarantine model output until a human moves it
 
 The harness floor is its approval prompt on a write, pre-approved under accept-edits and gone at session end, so the durable gate must be structural: generate into an untracked directory and let a person move each file into the tracked one; that move is the sign-off, and unlike a review, cannot be skipped.
-The machine may not vouch for its own guess: a queued row stays pending until promoted, a dry run may admit nobody, and a hand-edited review file is never overwritten.
-Surface the real records for a person to direct, then execute the write and carry it downstream yourself: the decision is theirs, the bookkeeping is yours.
+The machine may not vouch for its own guess: a queued row stays pending until a person promotes it, a dry run may admit nobody, and a hand-edited review file is never overwritten.
+Surface the real records for a person to direct, then execute the write and carry it through every downstream stage yourself: the decision is theirs, the bookkeeping is yours.
 This governs an artifact heading for the tracked tree or published output, content a user or future session reads as finished; a status-tagged row scoped for auto-approval is a different surface below.
 Anchor: hook. The pre-commit hook refuses to stage the gitignored drafts directory, so promotion happens only by a human's move.
 Receipts: `docs/handbook/llm-output.md#quarantine-model-output-until-a-human-moves-it`
@@ -40,7 +40,7 @@ Receipts: `docs/handbook/llm-output.md#refute-with-named-lenses-drop-by-default-
 
 ## Cite or stay silent
 
-Attach evidence to every claim: a quote that does not match its source, a fact absent from the source bank, or a principle attributed to someone who never said it, is a bug, not an answer.
+Attach evidence to every claim: a quote that does not match its source, a fact absent from the source bank and unconfirmed in session, or a principle attributed to someone who never said it, is a bug, not an answer.
 Verify each citation mechanically before making it, reading the raw markup and heading tree rather than a fetched summary, and diff the whole block against what is published instead of trusting the extractor.
 Respect an explicit authoring marker: an entry its source flags as unconfirmed never ships as settled, whatever the rest of the page implies.
 Being the only candidate is not evidence: corroborate before treating a match as settled, round confidence down, let a weak match cap or forbid output classes, and turn a near miss into a question, not an insertion, unless mechanically checkable.
@@ -54,7 +54,7 @@ Tag every fact with its status and let the tag decide what ships: verified is fr
 Promote a fact by editing the source and recording the basis when confirmation arrives, so the next run starts from the new status.
 Label each claim verified, inferred, or unknown throughout the body, and keep opinion under its own marked heading, so a reader sees a sentence's footing.
 The harness decides which tool calls proceed through its own allow rules and classifier, neither seeing a row's confidence; auto-approve only the safe confidence band and action set, carry the rest forward instead of pausing for a click, and surface borderline rejections for a cheap override.
-This governs a suggestion queue a human still adjudicates downstream, a row already scoped into a band and action set marked auto-approvable; that designation is the human's, made once, not per row. It never licenses waving through content headed for the tracked tree, which stays quarantined above regardless of confidence.
+This governs a suggestion queue a human still adjudicates downstream, a row already scoped into a band and action set marked auto-approvable; that designation is the human's, made once, not per row. It never licenses waving through content headed for the tracked tree or published output, which stays quarantined above regardless of confidence.
 Anchor: validator. A mechanical validation, including a sensitive-data scan, must exit clean before anything syncs, and fails on an untagged or flagged claim.
 Receipts: `docs/handbook/llm-output.md#gate-output-on-status-tags`
 
@@ -79,12 +79,12 @@ Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
 A hosted reviewer, where it runs, already collects agreement marks on the findings it shows and feeds them into its own tuning, an anchored measure, not a quality one.
 When a reviewer sees the model's suggestion beside the evidence, their agreement measures anchoring, not accuracy, so that rate is never quotable as a quality number.
 Enforce blinding in the file on disk, not the reviewer's instructions, since an instruction is not a control, and audit every field a review packet prints for provenance: a field the tested process wrote is not evidence about it.
-Read unanimity as a reason to audit the instrument, and score a proposal by whether it would have killed something approved, not its hit rate on rejections.
 Anchor: test. The packet builder strips model-authored fields before writing, and a test asserts a blinded packet on disk carries no verdict field.
 Receipts: `docs/handbook/llm-output.md#read-agreement-with-a-shown-suggestion-as-anchored-not-accurate`
 
 ## Don't
 
+- Don't let a model approve, promote, or merge its own output.
 - Don't quote agreement with a shown suggestion as an accuracy number.
 - Don't blind a review in its instructions and call it blinded.
 - Don't treat silence, an unanswered question, or a missing field as approval.

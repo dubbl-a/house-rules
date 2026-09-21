@@ -58,7 +58,7 @@ Receipts: `docs/handbook/data-pipelines.md#drive-writes-from-a-policy-registry-t
 ## Make unmapped input loud
 
 Fail a gate when input lands in no bucket above a threshold: the silent version of this failure is a new upstream category vanishing from every report while every page renders and every total still adds up.
-Parse an external tabular source by header, never position, so a reordered column is a loud mismatch, not dates quietly read as amounts.
+Parse an external tabular source by header, never position, so an inserted or reordered column is a loud mismatch, not dates quietly read as amounts.
 
 Anchor: a build gate counting unbucketed input and failing above the threshold, plus a header-contract assertion at parse time.
 Receipts: `docs/handbook/data-pipelines.md#make-unmapped-input-loud`
@@ -110,5 +110,6 @@ Don't re-fetch from the network when the archive already holds the bytes.
 Don't count a vendor's success response as a count.
 Don't hand-enter a relationship the pipeline should derive.
 Don't loosen a guard to fix a hold.
+Don't quote a delta measured mid-chain.
 
 Anchor: every prohibition here inverts a rule above and is enforced by that rule's anchor.

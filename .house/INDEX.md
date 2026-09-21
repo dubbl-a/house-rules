@@ -38,13 +38,13 @@
 
 ## .claude/rules/house/docs.md
 - Anchor every claim to a grep-able token
-  Write every claim about the code, interface, or a command so it names a token a reader can grep: a file path, a script, a component, a section id, or an env variable. Free-form prose drifts silently when renamed; an anchored claim fails the gate on that commit.
+  Write every claim about the code, interface, or a command so it names a token a reader can grep: a file path, a script, a component, a section id, a class prefix, or an env variable. Free-form prose drifts silently when renamed; an anchored claim fails the gate on that commit.
 - Run the docs gate before pushing and in the build
   Run the docs gate locally before pushing any branch that touches documents, and wire it into the build and the pull-request check: local is the loop, the build and the check are the net.
 - Give every rule file a paths list whose first segment resolves
   Give every rule file a `paths:` list, and make each glob's first segment resolve on disk. A glob resolving to nothing means the rule never loads, so it rots with no warning.
 - Put a fact where its litmus test says it belongs
-  The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, and reference are separate roles; give each its own document, and restate neither the code nor the manifest.
+  The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
 - State a rule as imperative, why, anchor, receipts
   Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to its receipt. A reader who disagrees needs the why and the evidence in front of them, or the rule gets worked around, not revised.
 - Move dates, names, and measured numbers out of rule prose
@@ -58,7 +58,7 @@
 - Opt a point-in-time doc out with a file-level reason
   Scan the archive tier by default: a repo's docs are checked for drift unless it says otherwise. Opt a point-in-time document out at file level with its reason in the marker: a day-captured survey, a superseded design doc, a spec with deliberate forward references. Stale names there are a record, not a bug; never fix one.
 - Don't document a command that does not exist
-  Never write a command, script, or environment variable into a document before it exists. A README telling you to run a missing command is worse than a short one; the reader spends trust before time.
+  Never write a command, script, path, or environment variable into a document before it exists. A README telling you to run a missing command is worse than a short one; the reader spends trust before time.
 - Ship the docs and changelog edit in the same PR as the change
   When a change adds or renames a script, an env variable, an endpoint behavior, or a maintenance step, its docs edit ships in the same pull request; one opened afterward drifts. Say in the body that you checked when no edit was needed, and ship every artifact produced, including ones the script's own instructions forget.
 - Don't

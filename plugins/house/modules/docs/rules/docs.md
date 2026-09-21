@@ -5,7 +5,7 @@ These rules govern the repo's own documents: the root file, the rule files, the 
 
 ## Anchor every claim to a grep-able token
 
-Write every claim about the code, interface, or a command so it names a token a reader can grep: a file path, a script, a component, a section id, or an env variable. Free-form prose drifts silently when renamed; an anchored claim fails the gate on that commit.
+Write every claim about the code, interface, or a command so it names a token a reader can grep: a file path, a script, a component, a section id, a class prefix, or an env variable. Free-form prose drifts silently when renamed; an anchored claim fails the gate on that commit.
 Name the page by the file that renders it and the section by its id, not what a reader would see. When a claim cannot be anchored (editorial intent, future tense, an external resource), generalize it to stay true after the next refactor.
 Verify a claimed technology change against the code before writing the rule that describes it; a rule can be wrong on the day it is written.
 Anchor: `npm run check:docs`, which resolves every backticked token in a scanned doc.
@@ -27,7 +27,7 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 
 ## Put a fact where its litmus test says it belongs
 
-The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, and reference are separate roles; give each its own document, and restate neither the code nor the manifest.
+The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
 Index a set of reference docs with a start-here pointer instead of restating them, say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file).
@@ -60,7 +60,7 @@ Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-onl
 ## Cut, don't append, and trim on a fixed cadence
 
 When you add to a document, trade something out; a file that only grows is one nobody reads to the end. Cut any paragraph that records something happened rather than changes what the next session does.
-The harness proposes trims when asked and advises periodic review, but sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, delete at least one section each time, and let the ratchet hold the floor; finding no candidate is valid, since the prompt to look is what does the work.
+The harness proposes trims when asked and advises periodic review, but sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, delete at least one section across the root file and the rule files each time, and let the ratchet hold the floor; finding no candidate is valid, since the prompt to look is what does the work.
 Know the bloat smells: a script walkthrough, a versioned stack list, a file-conventions list, three-level nesting, and example code that is not a workaround.
 Prune on evidence too: a rule that keeps getting ignored means the file is too long; a question the file already answers means the phrasing is ambiguous.
 Anchor: `npm run check:house` (ratchet) tightens on every shrink, so a trimmed file cannot quietly grow back.
@@ -69,9 +69,9 @@ Receipts: `docs/handbook/docs.md#cut-dont-append-and-trim-on-a-fixed-cadence`
 ## Split a file only when splitting narrows what loads
 
 Split a topic only when the split makes a session load less. Two files that always load together are worse than one: identical context, plus a second place a rule can hide.
-Pick the escape valve by what is squeezing: too many rules split along a real axis (write-side, measurement, dated evidence), never size alone; too much history moves to the archive with one-hop links; a new subsystem starts as its own path-scoped file, not more of the root file.
+Pick the escape valve by what is squeezing: too many rules split into a path-scoped directory along a real axis (write-side, measurement, dated evidence), never size alone; too much history moves to the archive with one-hop links; a new subsystem starts as its own path-scoped file, not more of the root file.
 When you do split, name the sibling and the structural blind spot it fills, then cross-reference it and say its rules are never restated here.
-Resolve a co-load collision in order: narrow the colliding module's path slot in `house.json`, tighten this repo's own `paths:`, trim what loads together, and only then raise `maxCoLoadLines`, with a dated `coload-ceiling` deviation carrying the new number.
+Resolve a co-load collision in order: narrow the colliding module's path slot in `house.json`, tighten this repo's own `paths:`, trim what loads together, and only then raise `maxCoLoadLines`, with a dated `coload-ceiling` deviation carrying the new number as `ceiling`.
 Anchor: `npm run check:house` (co-load) caps the summed budgets of every rule whose `paths:` match one file, reporting each colliding rule set once, and (manifest) refuses a raised ceiling with no deviation.
 Receipts: `docs/handbook/docs.md#split-a-file-only-when-splitting-narrows-what-loads`
 
@@ -87,7 +87,7 @@ Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-r
 
 ## Don't document a command that does not exist
 
-Never write a command, script, or environment variable into a document before it exists. A README telling you to run a missing command is worse than a short one; the reader spends trust before time.
+Never write a command, script, path, or environment variable into a document before it exists. A README telling you to run a missing command is worse than a short one; the reader spends trust before time.
 Before opening a docs pull request, walk each documented command against the repo's script list and hooks, and fix any contradiction in the same pull request instead of filing it.
 Mark a deliberately archival command inline with its reason, so a later reader reads it as history, not drift.
 Anchor: `npm run check:docs` resolves each `npm run <name>` and each bare script token against the repo's script list.

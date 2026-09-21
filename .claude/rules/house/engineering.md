@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.13.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=37d89cf46b1b7e66597cbee55fd7fa49dbf3a337cece76224bc998c0a41773f3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=c58bcbf9fe1bf89f2772df5183195277266c969708a120e64a87dc54cc3e65e3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -18,7 +18,7 @@ Receipts: `docs/handbook/engineering.md#build-the-simplest-thing-that-answers-th
 ## Keep one implementation per computation, and let the gate and the report share it
 
 Compute a value once and have every surface read it, because a gate and a report with separate copies will eventually disagree about what the rule means.
-Generate every published figure and gate it verbatim in each surface, diagrams included, and gate a retired value as absent from all of them; derive types from the schema so column drift fails the typecheck; and when one input feeds two renderers, change both together.
+Generate every published figure and gate it verbatim in each surface, diagrams included, and gate a retired value as absent from all of them; derive types from the schema so column drift fails the typecheck; and when one input feeds two renderers, change both and their shared types together.
 Anchor: the published-figure gate in `prebuild`, plus schema-derived types, so a duplicate computation fails the build
 Receipts: `docs/handbook/engineering.md#keep-one-implementation-per-computation-and-let-the-gate-and-the-report-share-it`
 
@@ -26,7 +26,7 @@ Receipts: `docs/handbook/engineering.md#keep-one-implementation-per-computation-
 
 Run a case with a known-independent answer before trusting a clean result, because zero findings is also what a broken check prints.
 Ask what a totally broken version would have printed, run the positive control first, and keep a yardstick set you run before trusting a batch.
-Turn a review finding into a mechanical check, make a real surfaced case the acceptance test, and paste the command's output instead of asserting the result; a guard sharing the blind spot cannot falsify it.
+Turn a review finding into a mechanical check, make a real surfaced case the acceptance test, and paste the command with its output instead of asserting the result; a guard sharing the blind spot cannot falsify it.
 Zero false positives is necessary but never sufficient: graduate a check only once it has caught a real case, and return a null rather than a false when it cannot evaluate.
 Anchor: `node --test tests/`, requiring a positive and negative control per check, eval case `known-answer-control`; the harness's baseline arm only compares runs, never proving the check can fail, so the paired control is this repo's requirement.
 Receipts: `docs/handbook/engineering.md#prove-a-check-can-fail-before-trusting-that-it-passed`
@@ -133,7 +133,6 @@ Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depe
 ## Enumerate from the system of record, and fail hard on a missing member
 
 Build a list by reading the thing that defines it rather than typing the members, and fail loudly on an unresolvable member, since a hand-kept list silently omits whatever nobody remembered.
-When told to remove something, enumerate every surface in the source and in the built output, and remove them all in one pass with no carve-outs.
 Anchor: the enumerator reads the system of record at run time and exits non-zero on an unresolvable member, planted-missing-member case in `tests/`
 Receipts: `docs/handbook/engineering.md#enumerate-from-the-system-of-record-and-fail-hard-on-a-missing-member`
 

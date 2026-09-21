@@ -65,14 +65,14 @@ Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with
 ## Set the model explicitly on every subagent and workflow agent
 
 Name the model on every agent call, because an omitted one silently inherits the session's, and a wide fan-out then runs at whatever tier you happened to be in.
-Match the tier to the task: mechanical joins at the small tier, code and prose in the middle, judgment at the top.
-Keep the session's own tier for the session: a subagent, a teammate, or a workflow agent runs one tier below it by default, so set the subagent model variable to that tier as the floor; an explicit call-level model still wins.
+Match the tier to the task: mechanical joins and receipt checks at the small tier, code and prose in the middle, judgment and adjudication at the top.
+Keep the session's own tier for the session: a subagent, a teammate, or a workflow agent runs one tier below it by default, so set the subagent model variable in user settings to that tier as the floor; an explicit call-level model still wins.
 Reach for the plugin's pinned roster before a bare agent call (scout small, researcher and builder middle, refuter and debugger top tier below the session's), since each pins its model, effort, and tools in a file the harness enforces.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail, stepping a blocked call down to the newest allowed model in its family: the checker and the fork's model map make that step-down visible.
 State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.
-When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each upgrade: unchanged needs nothing, drifted or missing means rebuild, a bad argument means fix the call, and SUNSET means delete it.
-Give that fork a depth that fits the question: the native fan-out runs roughly 110 agents regardless of what is asked, while the fork scales from about 35 to 130, light for a lookup, standard by default, deep for a contested decision, with `args.budget` for a field the presets get wrong.
+When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each upgrade: read its verdict by name, since each outcome is its own exit code, unchanged needs nothing, drifted or missing means rebuild (a missing binary or missing bundled script counts as drift; rebuild the fork), a bad argument means fix the call, and SUNSET means delete the fork.
+Give that fork a depth that fits the question: the native fan-out runs roughly 110 agents regardless of what is asked, while the fork scales from about 35 to 130, light for a lookup or a single procedure, standard by default, deep for a contested or multi-domain question a decision rides on, with `args.budget` for a field the presets get wrong.
 Anchor: the eval pair at `plugins/house/evals/explicit-model-tier/`, whose arms differ only in whether each call sets a model.
 Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subagent-and-workflow-agent`
 
@@ -126,7 +126,7 @@ Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-session
 Commit an allowlist covering the repo's own script surface and read-side platform commands, nothing broader, and authorize deploy and egress verbs through a skill instead.
 Allow-list network fetches per domain rather than blanket, and pin the servers and services the project enables by name rather than inheriting whatever is installed, since a print-mode run loads them with no approval prompt.
 Pin them from the deny side too, since the disable list binds in every session type including an untrusted checkout, and give a scripted run the strict server-config flag so it connects only what it was handed.
-Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule out of settings, since the loader silently skips it.
+Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule on a server tool out of settings, since the loader silently skips it.
 Keep the wide accreted list in `settings.local.json`, gitignored and free of machine paths, and forward-declare a script you are about to add so its first run prompts nothing.
 Prune it on a cadence, since permission lists merge across scope rather than override, so one broad grant supersedes every narrow one and a stale entry outlives the rename that orphaned it.
 Shape the list rather than only pruning it: allow a tool broadly and deny its escape hatches, since hazards are finite and stable per tool while safe invocations are unbounded, growing with every approval.
@@ -148,7 +148,7 @@ Receipts: `docs/handbook/claude-code.md#read-a-resume-file-as-a-harness-artifact
 Open an issue only for work someone will do; a standing issue with nothing to act on is noise in the tracker, not a handoff.
 Auto memory is the harness's own place for ongoing work, but it is machine-local and never shared, so it cannot be the channel the next session reads.
 Turn each next-cycle item into its own issue, after checking that an open one does not already cover it, so the tracker stays a list of work, not snapshots.
-Record a thing deferred by decision, with its reason, where the decision already lives (the CHANGELOG, a decision record, a code comment), and file an issue only when no such place exists; the rest is re-derivable from the default branch and merged PRs.
+Record a thing deferred by decision, with its reason, where the decision already lives (the CHANGELOG, a decision record, a code comment), and file an issue closed as not planned only when no such place exists; the rest is re-derivable from the default branch and merged PRs.
 Print the handoff's snapshot in the session rather than filing it anywhere. Gate verdicts and counts are re-run from the recorded commit, never copied in, since a copied number goes stale and a re-run one cannot be fabricated.
 Anchor: the `/house-rules:handoff` skill, whose required sections are that shape.
 Receipts: `docs/handbook/claude-code.md#hand-off-through-the-repo-not-a-standing-issue`
