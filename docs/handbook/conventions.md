@@ -94,32 +94,33 @@ this form generalizes from is repo-e's own "Deliberate deviations from repo-a"
 section, a dated, per-repo record of what it declines from its upstream and why, named in the
 prior-art survey as the mechanism that makes a common package survivable.
 
-## The session-carryover issue form
+## The handoff snapshot form
 
-The `handoff` skill writes a fixed-shape GitHub issue at the end of a session, titled `Session
-carryover <date>: <one-line state>`. Its body, in order: a staleness disclaimer that also
-supersedes the previous carryover issue by number ("Supersedes #<N>. Verify anything here before
+The `handoff` skill prints a fixed-shape snapshot in the session at the end of a session rather
+than filing it anywhere. Its body, in order: a staleness disclaimer ("Verify anything here before
 relying on it, this is a snapshot and the repo moves"), the tree state (exact SHA, working-tree
-cleanliness, worktree count, open PR count), every PR that shipped since the previous issue,
+cleanliness, worktree count, open PR count), every PR that shipped since the last release tag,
 one headline finding with its evidence, an ordered next-cycle list with the reasoning for each
-item, and two lists that are never merged into one: deferred by decision (skipped on purpose,
-with the reason) and simply not done (ran out of time or scope, no reason beyond that). Gate
-verdicts and count tables are deliberately NOT in the form: both re-run in seconds against the
-recorded SHA, a re-run number cannot be fabricated the way a copied one can, and the issues that
-carried them went stale on those very sections. Opening the new issue closes the superseded one
-with a "superseded by" comment, so exactly one carryover is open at any time; the chain stays
-walkable through the supersession pointers in both directions. This revision (v0.3.1) replaced
-the earlier leave-both-open form after house-rules' own chain accumulated open issues faster
-than sessions closed them.
+item, and the items deferred by decision, each with the reason. Gate verdicts and count tables are
+deliberately NOT in the form: both re-run in seconds against the recorded SHA, and a re-run number
+cannot be fabricated the way a copied one can. A next-cycle item becomes its own GitHub issue,
+matched against an open one first, because an issue is for work someone will do; a thing deferred
+by decision becomes an issue opened and closed as not planned, carrying the reason, because that
+reason is the one line the next session cannot reconstruct on its own.
 
-This shape generalizes repo-a's own carryover chain, issues #605 through #638, where the
-fixed shape is what let each session diff state against the last one instead of re-deriving it
-from a changelog.
+This form is a correction of an earlier one (through v0.12.0), which filed the whole snapshot as
+a fixed-shape GitHub issue that superseded and closed the last one, generalizing repo-a's own
+carryover chain, issues #605 through #638. This package's own chain (#2 through #75) then supplied
+the correction, dated 2026-09-21: it left one issue permanently open at any given time with
+nothing in it anyone was going to act on, since the snapshot was already re-derivable from the
+default branch, merged PRs, and release notes. Issues are for work, so the snapshot now prints
+in the session and only actionable or decision-bearing items become issues.
 
 Native floor, as of 2026-09-02: session resume and the harness's own memory carry state on one
-machine only (https://code.claude.com/docs/en/sessions), so the carryover issue is the shared
-tier. It records what a resumed session and a memory file cannot hand to another machine or
-another person, and nothing a re-run can regenerate.
+machine only (https://code.claude.com/docs/en/sessions), so the repo (its default branch, merged
+PRs, release notes, and the issues opened for real work) is the shared tier. It records what a
+resumed session and a memory file cannot hand to another machine or another person, and nothing a
+re-run can regenerate.
 
 ## Retiring a memory entry once its rule ships
 
@@ -191,7 +192,8 @@ model, not the rule.
 - Don't edit a superseded decision record or design doc in place; head it with the banner and
   leave the text.
 - Don't let a `house.json` deviation exist without its mirror in `CLAUDE.md`, or the reverse.
-- Don't record a gate verdict or a counts table in a carryover issue at all; re-run them from the
-  recorded SHA, and don't merge deferred-by-decision with not-done into one list.
+- Don't record a gate verdict or a counts table in the handoff snapshot at all; re-run them from
+  the recorded SHA, and don't open an issue for a next-cycle item without checking for one that
+  already covers it.
 - Don't leave a memory entry as full prose once its practice ships as a house rule; cut it to a
   pointer.

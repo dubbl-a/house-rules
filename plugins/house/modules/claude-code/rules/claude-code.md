@@ -140,15 +140,15 @@ It carries a session id, a snapshot ref, and a resume command; it does not carry
 Anchor: the `/house-rules:handoff` skill, which produces the handoff artifact so a checkpoint file is never mistaken for one.
 Receipts: `docs/handbook/claude-code.md#read-a-resume-file-as-a-harness-artifact-not-a-handoff`
 
-## Hand off through a carryover issue
+## Hand off through the repo, not a standing issue
 
-Write the handoff as an issue that supersedes the last one, so the next session starts from state it can diff rather than prose it must trust.
+Open an issue only for work someone will do, because a standing issue with nothing to act on is noise in the tracker, not a handoff.
 Auto memory is the harness's own place for ongoing work, but it is machine-local and never shared, so it cannot be the channel the next session reads.
-Open with a staleness disclaimer telling the reader to verify before relying on anything, then give the commit and tree state, what shipped, the headline finding with its evidence, an ordered next-cycle list, and what was deferred by decision. Gate verdicts and counts are re-run from the recorded commit, never copied into the issue, because a copied number is stale the moment the tree moves and a re-run one cannot be fabricated.
-Close the superseded issue when the new one opens, so exactly one carryover is open at a time and the chain stays walkable through its supersession pointers.
-Keep deferred-by-decision separate from forgotten, because that is the one line the next session cannot reconstruct on its own.
+Turn each next-cycle item into its own issue, after checking that an open one does not already cover it, so the tracker stays a list of work rather than a list of snapshots.
+Turn a thing deferred by decision into an issue closed as not planned, with the reason in it, because that line is the one the next session cannot reconstruct on its own; the rest of the state, the SHA, what shipped, what is open, is re-derivable from the default branch, merged PRs, and release notes.
+Print the handoff's snapshot in the session rather than filing it anywhere. Gate verdicts and counts are re-run from the recorded commit, never copied into it, because a copied number is stale the moment the tree moves and a re-run one cannot be fabricated.
 Anchor: the `/house-rules:handoff` skill, whose required sections are that shape.
-Receipts: `docs/handbook/claude-code.md#hand-off-through-a-carryover-issue`
+Receipts: `docs/handbook/claude-code.md#hand-off-through-the-repo-not-a-standing-issue`
 
 ## Check for a peer session before driving shared external state
 

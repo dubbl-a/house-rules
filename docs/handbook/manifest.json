@@ -403,7 +403,7 @@
         "Treat git state as shared across sessions",
         "Keep the committed settings narrow and the local settings local",
         "Read a resume file as a harness artifact, not a handoff",
-        "Hand off through a carryover issue",
+        "Hand off through the repo, not a standing issue",
         "Check for a peer session before driving shared external state"
       ],
       "notes": "15 headings and 53 owned rows against 170 lines is 11.3 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/claude-code.md, and the file ends with ## Don't."
@@ -852,7 +852,7 @@
         "EXT-076"
       ],
       "crossRefs": [],
-      "notes": "The two tiers, the superseded-banner form, the deviations form, the carryover-issue form, and the rule for retiring a memory entry once its rule ships."
+      "notes": "The two tiers, the superseded-banner form, the deviations form, the handoff snapshot form, and the rule for retiring a memory entry once its rule ships."
     },
     {
       "path": "docs/handbook/testing.md",
@@ -932,7 +932,7 @@
         "TW-063"
       ],
       "crossRefs": [],
-      "notes": "disable-model-invocation: true (side effects). Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. The carryover-issue shape; the sections come from TW-062."
+      "notes": "disable-model-invocation: true (side effects). Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. The handoff snapshot shape; the sections come from TW-062."
     },
     {
       "path": "plugins/house/templates/CLAUDE.md.skeleton",
