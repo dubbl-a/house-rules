@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.13.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=62aa35c2233d980f64a4160b48d8de27b902ffb845dd11be437081df5c0686a6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=39cc6b313c9c9a1ab2e37884428f3ecd4a7959e84f42a793dcdc3521609a3a7a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -168,21 +168,6 @@ Receipts: `docs/handbook/claude-code.md#check-for-a-peer-session-before-driving-
 
 ## Don't
 
-Don't put a fact in the root file that Claude could derive from the code.
-Don't put a fact in the memory index that belongs in its topic file.
-Don't ship a rule file without `paths:`, because an unscoped file is always-on at root-file priority.
-Don't let a multi-step procedure live in a rule file.
-Don't chain a reference to another reference, because a nested file gets partially read.
-Don't leave model invocation enabled on a skill that writes, deploys, or spends.
-Don't let an agent call inherit the session's model by omitting the tier.
 Don't lean on a hook's fine-grained filter for a hard allow or deny; match broadly and keep the decision in the script.
-Don't tighten a guard's text rewriting to fix a false refusal without checking what the tighter pattern stops removing.
-Don't route around a permission block, because it is evidence of a wrong step earlier.
-Don't keep correcting the same failure past the second attempt in one context.
-Don't trust the branch you read at session start.
-Don't rebase another session's branch, and don't force-clean a checkout you do not own.
-Don't commit a wide allowlist, and don't let the local one accrete unpruned.
 Don't enumerate safe invocations where a deny on the escape hatch would do, and don't ship a deny pattern you have not run.
-Don't read a checkpoint file as a handoff.
-Don't drive shared external state before checking for a peer session.
 Anchor: each prohibition above is the negative of a rule in this file; that rule names the enforcement.

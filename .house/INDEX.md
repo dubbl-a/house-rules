@@ -34,7 +34,7 @@
 - Check for a peer session before driving shared external state
   List the running agents before driving a shared application, database, or checkout; a peer session may already own it.
 - Don't
-  Don't put a fact in the root file that Claude could derive from the code.
+  Don't lean on a hook's fine-grained filter for a hard allow or deny; match broadly and keep the decision in the script.
 
 ## .claude/rules/house/docs.md
 - Anchor every claim to a grep-able token

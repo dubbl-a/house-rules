@@ -85,15 +85,6 @@ Receipts: `docs/handbook/llm-output.md#read-agreement-with-a-shown-suggestion-as
 
 ## Don't
 
-- Don't let a model approve, promote, or merge its own output.
-- Don't overwrite a hand-edited review file.
-- Don't ship a claim with empty evidence.
-- Don't round a confidence, metric, or number up.
-- Don't delete a dead source; repoint it and confirm the claim carries.
-- Don't insert a near miss; ask about it.
-- Don't strengthen a locked claim's metric, scope, or verb.
-- Don't paper over an unmet requirement, and don't invent a finding.
-- Don't drop a refuted claim silently.
 - Don't quote agreement with a shown suggestion as an accuracy number.
 - Don't blind a review in its instructions and call it blinded.
 - Don't treat silence, an unanswered question, or a missing field as approval.

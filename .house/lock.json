@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "60a669b9fc93fa492b9b4c3af905c9d5c14f0876300793cecc7929dc39d032b3"
+      "bodySha256": "4ed23f3b5c1b301fa0bd2fcef66139c43b8b4ad9b01bb4458b30f439287bd8ed"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -16,7 +16,7 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "42c5d4c701293e04ea8a39d727eb04cd8bb48b8838b54050bff98480cfa05e1e"
+      "bodySha256": "34c386aa8a1998be5665f09ff3e1585b80b79cab1a7aaf48e44255bd1f875bd6"
     },
     {
       "path": ".claude/rules/house/engineering.md",

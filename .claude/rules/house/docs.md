@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.13.0 module=docs source=modules/docs/rules/docs.md body-sha256=534b4a7668b07ff26724ed1db9ee6b53c137d351bffa874d431066d76e8f227d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.0 module=docs source=modules/docs/rules/docs.md body-sha256=3bcdab730ace52c27f015ba0447f853927c7e37d6a975ad2cb19f37c4e25f201 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -118,16 +118,6 @@ Receipts: `docs/handbook/docs.md#ship-the-docs-and-changelog-edit-in-the-same-pr
 
 Don't leave a claim unanchored when a real token exists, and don't invent one; generalize instead.
 Don't let a rule file become an incident log.
-Don't put a date, a person's name, or a measured number in rule prose.
-Don't copy a tuned constant out of the code and into prose.
-Don't fix a stale name inside a point-in-time document.
-Don't delete a superseded design doc; head it with a banner naming what happened instead.
 Don't split a topic that reads as one.
-Don't restate a sibling's rules; point at them.
-Don't mix tutorial, how-to, reference, and explanation in one document.
-Don't let a document grow monotonically, and don't raise a ceiling without a reason.
-Don't document a command, script, or path that does not exist yet.
-Don't split a code change from its docs edit across two pull requests.
-Don't log a refactor, an infra change, or a silent fix in the changelog.
 Don't use an em dash on a surface `modules.docs.config.emDash` covers, and don't widen its `exclude` list without stating the reason beside it.
 Anchor: `npm run check:house` (shape) requires this section in every house rule file.
