@@ -6,6 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-09-21
+
+Review stops on a verdict instead of a round count, flags the owner before a third round, and lets the owner stop or extend it at any point. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
+
+### Changed
+- **The review round cap is replaced by a stopping condition.** 0.13.0 held a change to one review round, a second only for a non-mechanical must-fix, and anything further to the owner. A count is arbitrary: it either stops before real defects or runs past a clean verdict. Review now continues while a round returns a must-fix and stops at the first round that returns none, with each later round scoped to the previous round's fixes and what they touched. Before a third round the session tells the owner what each round found, what the next will check, and why the rounds are converging; it hands the change to the owner when must-fixes land inside the previous round's fixes or one defect class keeps returning. The owner can stop or extend review at any point. `ORCHESTRATION.md` and the rule "Run adversarial review in a fresh subagent with a named lens" carry it; the handbook records the evidence.
+
 ## [0.13.1] - 2026-09-21
 
 Six vendored rule files lose 16 to 19 percent of their words and 7 to 9 percent of their lines with every heading and every directive kept, so adopters co-load less rule text; and adopters now git-ignore tool scratch. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.

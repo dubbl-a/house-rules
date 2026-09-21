@@ -81,8 +81,11 @@ diffs."):
 - Send a refuter when the change carries logic, a guard or hook, or facts and numbers someone
   will act on. For a text-only or mechanical change a gate already covers, the session reads the
   diff itself; no refuter.
-- One review round per change. A second only when the first returned a must-fix and the fix was
-  more than mechanical. Any further round is the user's call.
+- Review until a round returns no must-fix. Each later round checks only the last round's fixes
+  and what they touched. The verdict decides, not a count.
+- Before a third round, tell the user what each round found, what the next checks, and why the
+  rounds are converging. Hand it to the user when must-fixes land in the last round's own fixes or
+  one defect class keeps returning. The user can stop or extend review at any point.
 - Each agent gets its own source of truth. Two agents reading one file is one agent.
 - Anything settleable by running it gets run.
 - Never accept "done" or "tests pass". The refuter reruns them; when no refuter is sent, the

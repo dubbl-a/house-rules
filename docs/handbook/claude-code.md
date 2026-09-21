@@ -351,6 +351,18 @@ logic, a guard or hook, or facts and numbers someone will act on, reads the diff
 otherwise, and holds every change to one review round unless the first round returned a must-fix
 whose fix was more than mechanical.
 
+Later on 2026-09-21 the owner replaced that round count with a stopping condition, because a count
+is arbitrary. The same day's evidence showed why: the 0.13.1 rule trim's first round found 20
+lost directives, and the 0.10.0 guard's later rounds each found a new real bypass, so a fixed
+number would either stop before real defects or keep going past a clean verdict. Review now runs
+until a round returns no must-fix; each later round checks only the previous round's fixes and
+what they touched, which is what bounds the cost (the 0.13.1 second round took under a minute).
+Before a third round the session tells the owner what each round found, what the next will check,
+and why the rounds are converging, and it hands the change to the owner when must-fixes land in
+the previous round's own fixes or one defect class keeps returning, the pattern that ended the
+guard's text-scan design in favor of the git-hook floor (ADR 0013). The owner can stop or extend
+review at any point.
+
 ## Plan when the approach is uncertain, and clear the context after two failed corrections
 
 repo-e's `resume_instructions.md` carries the incident behind "re-read the source of a
