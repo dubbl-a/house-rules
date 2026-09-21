@@ -389,11 +389,14 @@ split_clauses() {
   # stream-duplicating redirection (2>&1, 1>&2, >&1, >&2), is not one, and the
   # `&` split below must not cut it in half. Protected here with a control
   # character no shell text carries, and restored once the splits are done.
-  c="${c//>&/$'\x01'}"
+  c="${c//>&/>$'\x01'}"
   c="${c//\|\|/$'\n'}"; c="${c//&&/$'\n'}"; c="${c//;/$'\n'}"
   c="${c//&/$'\n'}"; c="${c//\|/$'\n'}"
   c="${c//\(/ }"; c="${c//\)/ }"; c="${c//\`/ }"
-  c="${c//$'\x01'/>&}"
+  # Restored with tr, not `${c//.../>&}`: since bash 5.2 (patsub_replacement)
+  # a bare `&` in the replacement means "the matched text", which put the
+  # placeholder back on CI, and `\&` stays a literal backslash on bash 3.2.
+  c=$(printf '%s' "$c" | tr '\001' '&')
   CLAUSES="$c"
 }
 
