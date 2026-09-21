@@ -128,6 +128,7 @@ Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depe
 ## Enumerate from the system of record, and fail hard on a missing member
 
 Build a list by reading the thing that defines it rather than typing the members, and fail loudly on an unresolvable member, since a hand-kept list silently omits whatever nobody remembered.
+When told to remove something, enumerate every surface in the source and in the built output, and remove them all in one pass with no carve-outs.
 Anchor: the enumerator reads the system of record at run time and exits non-zero on an unresolvable member, planted-missing-member case in `tests/`
 Receipts: `docs/handbook/engineering.md#enumerate-from-the-system-of-record-and-fail-hard-on-a-missing-member`
 

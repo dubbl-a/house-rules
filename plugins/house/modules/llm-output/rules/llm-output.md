@@ -79,6 +79,7 @@ Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
 A hosted reviewer, where it runs, already collects agreement marks on the findings it shows and feeds them into its own tuning, an anchored measure, not a quality one.
 When a reviewer sees the model's suggestion beside the evidence, their agreement measures anchoring, not accuracy, so that rate is never quotable as a quality number.
 Enforce blinding in the file on disk, not the reviewer's instructions, since an instruction is not a control, and audit every field a review packet prints for provenance: a field the tested process wrote is not evidence about it.
+Read unanimity as a reason to audit the instrument, and score a proposal by whether it would have killed something a person approved, not by its hit rate on the rejections.
 Anchor: test. The packet builder strips model-authored fields before writing, and a test asserts a blinded packet on disk carries no verdict field.
 Receipts: `docs/handbook/llm-output.md#read-agreement-with-a-shown-suggestion-as-anchored-not-accurate`
 

@@ -22,7 +22,7 @@
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "0c77e263bcde6bef501fe42811bf7cb3591393fefffd48ca06c17140940c6ebb"
+      "bodySha256": "bb31e428da4dc6cf010ab99d6506a90d11598783b9fdb7783035e7e7da75d7fa"
     },
     {
       "path": "scripts/house/is-main.mjs",

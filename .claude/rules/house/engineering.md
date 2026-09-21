@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.13.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=c58bcbf9fe1bf89f2772df5183195277266c969708a120e64a87dc54cc3e65e3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=42c41313b47cbb35dd18e53d0378837b9e26b3fb1b382787d7e135e1bc5101ed DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -133,6 +133,7 @@ Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depe
 ## Enumerate from the system of record, and fail hard on a missing member
 
 Build a list by reading the thing that defines it rather than typing the members, and fail loudly on an unresolvable member, since a hand-kept list silently omits whatever nobody remembered.
+When told to remove something, enumerate every surface in the source and in the built output, and remove them all in one pass with no carve-outs.
 Anchor: the enumerator reads the system of record at run time and exits non-zero on an unresolvable member, planted-missing-member case in `tests/`
 Receipts: `docs/handbook/engineering.md#enumerate-from-the-system-of-record-and-fail-hard-on-a-missing-member`
 
