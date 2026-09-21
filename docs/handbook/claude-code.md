@@ -363,6 +363,13 @@ the previous round's own fixes or one defect class keeps returning, the pattern 
 guard's text-scan design in favor of the git-hook floor (ADR 0013). The owner can stop or extend
 review at any point.
 
+The owner also said the refuter trigger is judgment, not a hard rule: a refuter is fine whenever
+it is warranted. The 0.13.0 wording ("only when", "no refuter") read as a prohibition, and the
+same day showed the category test misfiring: the 0.13.1 rule trim was "text only" yet its first
+review round found 20 lost directives across text six repos follow. The trigger is now the cost
+of being wrong that the gates cannot catch, with "text many repos follow" named beside logic,
+guards, and actionable facts.
+
 ## Plan when the approach is uncertain, and clear the context after two failed corrections
 
 repo-e's `resume_instructions.md` carries the incident behind "re-read the source of a

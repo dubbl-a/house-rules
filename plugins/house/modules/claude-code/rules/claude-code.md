@@ -92,8 +92,8 @@ Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-clo
 ## Run adversarial review in a fresh subagent with a named lens
 
 The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps.
-Send a refuter only when the change carries logic, a guard or hook, or facts someone will act on; a prompted reviewer usually reports something even when the work is sound, and chasing every finding over-engineers.
-Read the diff yourself for a text-only or mechanical change a gate already covers, and rerun the tests yourself; that review buys nothing a gate does not already buy.
+Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard or hook, facts or numbers someone will act on, or text many repos follow; a prompted reviewer usually reports something even when the work is sound, so match the review to the risk rather than to a category.
+For a small text or mechanical change a gate covers, reading the diff and rerunning the tests yourself is usually enough.
 Keep reviewing while a round returns a must-fix and stop at the first round that returns none, scoping each later round to the last round's fixes and what they touched, since a verdict, not a count, says whether another round is worth it.
 Before a third round, tell the user what each round found, what the next will check, and why the rounds are converging; hand it to the user when a round's must-fixes sit inside the last round's fixes or one defect class keeps returning, because that points at the design, and let the user stop or extend review at any point.
 Delegate file-heavy investigation the same way, so only the summary reaches the main context; the full rule on a verify phase's UNVERIFIED lives in engineering.md.
