@@ -163,6 +163,22 @@ function gitLsFilesZ(repoRoot, extraArgs = []) {
   try { out = git(repoRoot, ['ls-files', '-z', ...extraArgs]); } catch { return []; }
   return out.split('\0').filter(Boolean);
 }
+// The INDEX mode of each of `paths`, as Map<path, '100644'|'100755'|...>. A
+// path the index does not hold is simply absent from the map. The index is
+// what a fresh clone gets, so it is the only place a file's executable bit is
+// a property of the REPO rather than of one machine's checkout.
+function gitIndexModes(repoRoot, paths) {
+  if (!paths.length) return new Map();
+  let out;
+  try { out = git(repoRoot, ['ls-files', '-s', '-z', '--', ...paths]); } catch { return new Map(); }
+  const map = new Map();
+  for (const rec of out.split('\0')) {
+    // `<mode> <object> <stage>\t<path>`
+    const m = /^(\d{6}) [0-9a-f]+ \d\t([\s\S]*)$/.exec(rec);
+    if (m) map.set(m[2], m[1]);
+  }
+  return map;
+}
 // #18: which of `paths` do git's ignore rules swallow? Asked of git itself
 // (every .gitignore, info/exclude, core.excludesFile), never parsed by hand.
 // --no-index evaluates a path even if it is tracked; paths need not exist.
@@ -2106,6 +2122,13 @@ function localGuardHookIsSubstantive(repoRoot) {
   if (!existsSync(p)) return false;
   let body;
   try { body = readFileSync(p, 'utf8'); } catch { return false; }
+  return hookBodyIsSubstantive(body);
+}
+// The same predicate, taking a body instead of the one path, so the git-hook
+// floor below and the repo-local hook above cannot drift apart: a guard file
+// is substantive when it has one line that is not blank, not a comment or
+// shebang, and not a bare `exit 0`.
+function hookBodyIsSubstantive(body) {
   return body.split('\n').some((raw) => {
     const line = raw.trim();
     if (!line) return false;
@@ -2113,6 +2136,83 @@ function localGuardHookIsSubstantive(repoRoot) {
     if (line === 'exit') return false;
     return !/^exit\s+0$/.test(line);
   });
+}
+
+// #58 / ADR 0013: the three verdicts above describe the session-time text
+// scan, which only ever sees a command a model typed. The floor that holds
+// when no session is in the loop is the vendored git hooks, so the guard
+// family checks those too: the seven files the github module renders under
+// `.githooks/`, each tracked, executable in the index, and not a stub.
+//
+// `house-lib.sh` is in the list even though it is sourced rather than run.
+// Every guard sources it and exits non-zero when the source fails, so a floor
+// missing only the library fails every commit CLOSED: a repo in that state is
+// not quietly unguarded, it is unable to commit at all, which is a defect the
+// checker should name rather than a gap it should shrug at.
+//
+// THE FLOOR IS THESE SEVEN FILES, and three places have to say so: this list,
+// `FLOOR_FILES` in plugins/house/hooks/arm-git-hooks.sh, and the `.githooks/`
+// dests in plugins/house/modules/github/module.json. A list that drifted would
+// let the checker call a floor complete that the arming script calls
+// unrendered, so `tests/check/guard.test.mjs` reads all three and asserts they
+// are the same set. Add a file to the floor in all three, or in none.
+const GUARD_FLOOR_FILES = [
+  '.githooks/house-lib.sh',
+  '.githooks/pre-commit',
+  '.githooks/pre-commit.d/10-house-branch',
+  '.githooks/pre-push',
+  '.githooks/pre-push.d/10-house-branch',
+  '.githooks/reference-transaction',
+  '.githooks/reference-transaction.d/10-house-branch',
+];
+
+// Whether THIS clone is armed (`core.hooksPath` pointing at `.githooks`) is
+// deliberately never read here. ADR 0008: machine-local state is reported by
+// `house doctor`, which asks `arm-git-hooks.sh --probe`; the checker answers
+// for the repo, so every clone of the same commit must get the same verdict.
+// A checker that read git config would fail CI on a fresh runner and pass on
+// the machine that armed itself once, which is the opposite of a gate.
+function checkGuardFloor(ctx, d) {
+  const findings = [];
+  const warnings = [];
+  const github = isPlainObject(d.modules) ? d.modules.github : undefined;
+  if (isPlainObject(github) && github.enabled === false) {
+    warnings.push(mk('guard', 'house.json', null, 'floor',
+      'branchPolicy is "pr" but the github module is off, so the git-hook floor is not vendored here: `.githooks/pre-commit`, `.githooks/pre-push`, `.githooks/reference-transaction` and their `.d/10-house-branch` guards come from that module. Nothing in this repo refuses a commit or a push on a protected branch when no session is in the loop. Enable the github module and run `house render --apply`, or keep it off and record what enforces the policy instead (a server-side ruleset, or a `deviations` entry saying why the floor is not wanted).'));
+    return { findings, warnings };
+  }
+  const modes = gitIndexModes(ctx.repoRoot, GUARD_FLOOR_FILES);
+  const present = GUARD_FLOOR_FILES.filter((p) => modes.has(p) && existsSync(join(ctx.repoRoot, p)));
+  const missing = GUARD_FLOOR_FILES.filter((p) => !present.includes(p));
+  // A floor that is entirely absent is a WARNING: every repo adopted before
+  // the floor shipped has none of these, and a warning is what tells that repo
+  // to re-render without failing its gate on the day it upgrades.
+  //
+  // A floor that is PARTLY there is a FINDING. The files arrive together, from
+  // one render, so a repo holding some of them was rendered and has since lost
+  // the rest: a deleted `house-lib.sh` fails every commit closed, a deleted
+  // `pre-push.d/10-house-branch` leaves the push path open, and neither is the
+  // "has not upgraded yet" state the warning exists to be kind about.
+  if (missing.length && present.length === 0) {
+    warnings.push(mk('guard', '.githooks', null, 'floor',
+      `branchPolicy is "pr" but the git-hook floor is not vendored here: ${missing.map((p) => `\`${p}\``).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing from the index. Those hooks are what refuses a commit or a push on a protected branch when no session is watching (ADR 0013), and a repo rendered before the floor shipped has none of them. Run \`house render --apply\` to vendor them, then arm them once per clone: \`git config core.hooksPath "$(pwd)/.githooks"\` (render and every session start arm them too; \`house doctor\` reports whether this clone is armed).`));
+  } else if (missing.length) {
+    findings.push(mk('guard', '.githooks', null, 'floor',
+      `the git-hook floor is vendored here but incomplete: ${missing.map((p) => `\`${p}\``).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing from the index while the rest of the floor is present. One render writes all ${GUARD_FLOOR_FILES.length} files, so this repo had them and lost some. Each one is load-bearing: \`house-lib.sh\` is sourced by all three guards, which exit non-zero when the source fails, so a missing library fails every commit closed; a missing \`.d/10-house-branch\` leaves that path silently open. Restore them with \`house render --apply\` and commit the result.`));
+  }
+  for (const p of present) {
+    const mode = modes.get(p);
+    if (mode !== '100755') {
+      findings.push(mk('guard', p, null, 'floor',
+        `the git-hook floor file \`${p}\` is tracked with mode ${mode}, not 100755. Git silently skips a hook it cannot execute, and the house dispatcher rescues a \`.d\` guard that lost the bit only by running it under \`bash\` and warning on every run, so a floor file tracked 100644 either stops enforcing the branch policy in every fresh clone or nags in every one. The mode travels in the index, so this is a repo defect a PR fixes and not machine state: \`chmod +x ${p} && git update-index --chmod=+x ${p}\` (or \`house render --apply\`, which restores the bit), then commit the mode.`));
+      continue;
+    }
+    if (!hookBodyIsSubstantive(safeRead(join(ctx.repoRoot, p)))) {
+      findings.push(mk('guard', p, null, 'floor',
+        `the git-hook floor file \`${p}\` is vendored but does nothing: every line is blank, a comment, or a bare \`exit 0\`. A hook that exits 0 for every commit is a floor in name only, and the repo reports a branch policy it does not enforce. Restore the vendored copy with \`house render --apply\`, or, if this file is meant to be the repo's own guard, give it a real body.`));
+    }
+  }
+  return { findings, warnings };
 }
 
 function checkGuard(ctx) {
@@ -2123,16 +2223,18 @@ function checkGuard(ctx) {
   const repoHook = localGuardHookIsSubstantive(ctx.repoRoot);
   const stubHook = !repoHook && existsSync(hookPath);
   const settingsPreHook = settingsHasPreToolUseHook(ctx.repoRoot);
+  // The three session-time verdicts, unchanged. Exactly one of them can fire,
+  // and the floor verdict below is independent of all three: the text scan and
+  // the git hooks answer different questions and a repo needs both.
   if (stubHook && !settingsPreHook && !pluginGuardRecord(d)) {
     warnings.push(mk('guard', '.claude/hooks/no-direct-master.sh', null, 'guard',
       'branchPolicy is "pr" and this repo-local guard file exists but does nothing: every line is blank, a comment, or a bare `exit 0`. It is not a guard, and until this was fixed it also disarmed the plugin\'s hook by its mere presence, so the repo reported protection while enforcing none. Either give the file a real guard body, or delete it so the plugin\'s hook applies.'));
-    return { findings: [], warnings };
-  }
-  if (!repoHook && !settingsPreHook && !pluginGuardRecord(d)) {
+  } else if (!repoHook && !settingsPreHook && !pluginGuardRecord(d)) {
     warnings.push(mk('guard', 'house.json', null, 'guard',
-      'branchPolicy is "pr" but no reachable branch guard was found in the repo: no `.claude/hooks/no-direct-master.sh`, no PreToolUse hook in `.claude/settings.json`, and no recorded plugin-guard choice. Wire a PreToolUse hook, vendor the hook file, or record the plugin as this repo\'s guard with a dated why: `"guard": {"by": "plugin", "decided": "YYYY-MM-DD", "why": "..."}` in house.json (`house doctor` shows whether the choice is recorded).'));
+      'branchPolicy is "pr" but no reachable branch guard was found in the repo: no `.claude/hooks/no-direct-master.sh`, no PreToolUse hook in `.claude/settings.json`, and no recorded plugin-guard choice. Wire a PreToolUse hook, vendor the hook file, or record the plugin as this repo\'s guard with a dated why: `"guard": {"by": "plugin", "decided": "YYYY-MM-DD", "why": "..."}` in house.json (`house doctor` shows whether the choice is recorded). The session-time scan is only half of it: the git-hook floor under `.githooks/` is what holds when no session is in the loop, and it is reported separately below.'));
   }
-  return { findings: [], warnings };
+  const floor = checkGuardFloor(ctx, d);
+  return { findings: floor.findings, warnings: [...warnings, ...floor.warnings] };
 }
 
 // ── CLI / orchestration ──────────────────────────────────────────────────

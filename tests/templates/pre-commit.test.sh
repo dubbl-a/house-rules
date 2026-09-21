@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Exercises plugins/house/templates/pre-commit against real git staging, in a
-# throwaway repo (mktemp -d) per case, so the hook's own behavior is proven
-# before anything downstream trusts it. Positive control: a file the hook
-# must block. Negative controls: an ordinary file, and an allowlisted file
+# Exercises plugins/house/templates/pre-commit.d/20-secrets against real git
+# staging, in a throwaway repo (mktemp -d) per case, so the hook's own behavior
+# is proven before anything downstream trusts it. Positive control: a file the
+# hook must block. Negative controls: an ordinary file, and an allowlisted file
 # that matches a PIIPATTERNS entry on purpose, must both pass.
+#
+# The template is a scaffold the house pre-commit dispatcher runs from
+# .githooks/pre-commit.d/; here it is installed as the whole hook, because what
+# is under test is the script, not the dispatch (tests/githooks/run.sh covers
+# that).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOOK_SRC="$REPO_ROOT/plugins/house/templates/pre-commit"
+HOOK_SRC="$REPO_ROOT/plugins/house/templates/pre-commit.d/20-secrets"
 fail=0
 
 new_repo() {

@@ -31,7 +31,10 @@
 // (or was) refused, 0 otherwise. check -- whatever the underlying check.mjs
 // exits. doctor -- always 0 (diagnostic only).
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import {
+  readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync,
+  chmodSync, statSync, renameSync,
+} from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -556,6 +559,8 @@ function wiringInstructionLines() {
     '  Plugin install (once per machine):',
     '    claude plugin marketplace add dubbl-a/house-rules',
     '    claude plugin install house-rules@house-rules --scope user',
+    '  Arm the git hooks once per clone (render --apply and every session start also do this):',
+    '    git config core.hooksPath "$(pwd)/.githooks"',
     '  Next step: `house render --apply` to vendor the rules this manifest turns on.',
   ];
 }
@@ -675,10 +680,15 @@ function priorScaffoldRecord(lockJson, scaffolds, houseData, repoRoot) {
 // gone -- restore), clean (on-disk body matches the last known-good hash),
 // clean-forced (--force-managed named this exact path), or refuse (on-disk
 // body was hand-edited since the last render).
-function classify(repoRoot, target, priorLock, forceManagedPath) {
+// `treatAsAbsent` names paths this render is about to move out of the way
+// before it writes (#58's old-pre-commit migration). They are classified as if
+// they were already gone, so the plan a dry run prints is the plan an --apply
+// actually carries out, and the rename itself still happens in the apply phase
+// where an all-or-nothing refusal can still cancel it.
+function classify(repoRoot, target, priorLock, forceManagedPath, treatAsAbsent = null) {
   const absPath = path.join(repoRoot, target.path);
   const priorEntry = priorLock.get(target.path);
-  if (!existsSync(absPath)) {
+  if (!existsSync(absPath) || (treatAsAbsent && treatAsAbsent.has(target.path))) {
     return { status: priorEntry ? 'missing' : 'create', target };
   }
   const onDiskHash = sha256Hex(managedBody(readFileSync(absPath, 'utf8')));
@@ -695,6 +705,36 @@ function writeIfChanged(absPath, content) {
   mkdirSync(path.dirname(absPath), { recursive: true });
   writeFileSync(absPath, content, 'utf8');
   return true;
+}
+
+// #58: everything render writes under .githooks/ is a git hook or a file a
+// hook sources, and git SILENTLY IGNORES a hook without the execute bit
+// (githooks(5)). A managed guard that lost its mode is therefore a fail-open
+// that looks exactly like a guard that ran and passed, so render sets the bit
+// after writing -- and on a file it classified `clean`, whose content matched
+// but whose mode a checkout, an unzip, or a `chmod -x` had since dropped.
+// Mode is not content, so it is not in the lock and not a refusal; it is
+// simply restored.
+const GIT_HOOK_DIR = '.githooks';
+function isGitHookDest(relPath) {
+  const p = normalizeRepoPath(relPath);
+  return p === GIT_HOOK_DIR || p.startsWith(`${GIT_HOOK_DIR}/`);
+}
+//
+// The bit is added per class that can already READ the file, never wholesale:
+// a repo that deliberately keeps its hooks at 0700 (a shared machine, a
+// checkout under a tight umask) asked for 0700, and a render that answered
+// 0755 would widen a permission nobody asked it to touch. `mode | ((mode &
+// 0o444) >> 2)` turns 0644 into 0755 and 0600 into 0700, and leaves a file
+// already executable by everyone who can read it alone.
+function ensureExecutable(absPath) {
+  try {
+    const mode = statSync(absPath).mode & 0o7777;
+    const want = mode | ((mode & 0o444) >> 2);
+    if (want === mode) return false;
+    chmodSync(absPath, want);
+    return true;
+  } catch { return false; }
 }
 
 function extractH2WithFirstLine(content) {
@@ -791,8 +831,93 @@ const SCAFFOLDS = [
   { tmpl: 'PULL_REQUEST_TEMPLATE.md', dest: '.github/PULL_REQUEST_TEMPLATE.md', module: 'github' },
   { tmpl: 'pr-checks.yml', dest: '.github/workflows/pr-checks.yml', module: 'github' },
   { tmpl: 'dependabot.yml', dest: '.github/dependabot.yml', module: 'github', when: (repoRoot) => existsSync(path.join(repoRoot, 'package.json')) },
+  // #58: the secrets backstop used to be `templates/pre-commit`, installed by
+  // hand once per clone. The dispatcher owns `.githooks/pre-commit` now, so the
+  // backstop is a scaffold in the directory the dispatcher runs: still the
+  // repo's own file, still never hash-checked, just reachable without a manual
+  // install step. The lock keys scaffolds by TEMPLATE, so this row's key is the
+  // template path string `pre-commit.d/20-secrets`.
+  { tmpl: 'pre-commit.d/20-secrets', dest: '.githooks/pre-commit.d/20-secrets', module: 'github' },
   { tmpl: 'CLAUDE.md.skeleton', dest: 'CLAUDE.md.house-skeleton', module: null },
 ];
+
+// #58: the same move, for a repo that adopted the OLD template. Such a repo has
+// its own copy at `.githooks/pre-commit` -- unmanaged, never in the lock, and
+// quite possibly edited. The dispatcher now claims that exact path, so without
+// this the repo meets the managed-file `refuse` path on its next render and is
+// told to propose upstream or force-overwrite, neither of which is right: the
+// copy is not a managed file that drifted, it is the previous shape of the same
+// idea, and overwriting it would silently drop whatever the repo added to it.
+// Render moves it into the .d directory instead, where the dispatcher runs it.
+//
+// The three conditions are what make the move unambiguous: on disk, NOT in the
+// prior lock (so it is the adopter's, not ours), and nothing already at the
+// destination (so nothing is clobbered). When the destination exists, the
+// ordinary refuse path applies with its ordinary message.
+//
+// Which destination depends on what the file actually IS. `.githooks/pre-commit`
+// was house's hand-installed secrets template for a year, but it is also just
+// the path git has always used, so an adopter's own lint-staged runner lives
+// there too. Only the template declares `PIIPATTERNS=(`, so that marker is what
+// separates "your copy of our old template" (20-secrets, where the template's
+// successor lives) from "your own pre-commit hook" (15-local, ahead of the
+// secrets backstop and behind the branch guard). Calling the second one a copy
+// of our template, as the first pass did, tells a repo its own hook came from
+// us and invites them to delete it.
+const OLD_PRE_COMMIT = '.githooks/pre-commit';
+const OLD_TEMPLATE_MARKER = 'PIIPATTERNS=(';
+const SECRETS_SCAFFOLD_TMPL = 'pre-commit.d/20-secrets';
+const SECRETS_SCAFFOLD_DEST = '.githooks/pre-commit.d/20-secrets';
+const LOCAL_PRE_COMMIT_DEST = '.githooks/pre-commit.d/15-local';
+
+function enabledModuleFileDests(houseData, modules) {
+  return arr(modules)
+    .filter((m) => !m.error && moduleEnabled(houseData, moduleName(m)))
+    .flatMap((m) => arr(m.json && m.json.files)
+      .filter((f) => isPlainObject(f) && typeof f.dest === 'string')
+      .map((f) => normalizeRepoPath(f.dest)));
+}
+
+function planOldPreCommitMigration(repoRoot, houseData, modules, priorLock) {
+  // Only when an enabled module actually claims the path this render would
+  // write; a repo whose github module is off keeps its own pre-commit.
+  if (!enabledModuleFileDests(houseData, modules).includes(OLD_PRE_COMMIT)) return null;
+  if (priorLock.has(OLD_PRE_COMMIT)) return null;
+  const fromAbs = path.join(repoRoot, OLD_PRE_COMMIT);
+  if (!existsSync(fromAbs)) return null;
+  let body = '';
+  try { body = readFileSync(fromAbs, 'utf8'); } catch { return null; }
+  // Already the managed dispatcher (a lock that never recorded it, as after a
+  // rebase onto a lock from before the floor): nothing to migrate.
+  try { if (body === readFileSync(path.join(__dirname, '..', 'modules', 'github', 'files', 'githooks', 'pre-commit'), 'utf8')) return null; } catch { /* no source: fall through */ }
+  const to = body.includes(OLD_TEMPLATE_MARKER) ? SECRETS_SCAFFOLD_DEST : LOCAL_PRE_COMMIT_DEST;
+  if (existsSync(path.join(repoRoot, to))) return null;
+  return { from: OLD_PRE_COMMIT, to };
+}
+
+// ── git-hook floor arming (#58) ──────────────────────────────────────────
+//
+// `core.hooksPath` is the one thing that makes the vendored `.githooks/` tree
+// actually run, and it lives in .git/config: machine state no clone, no render
+// and no PR carries. One shell script owns both arming it and reporting on it
+// (plugins/house/hooks/arm-git-hooks.sh), read here by render and by doctor, so
+// the arming logic and the diagnosis cannot drift apart. Render arms; doctor
+// only probes.
+const ARM_SCRIPT = path.join(__dirname, '..', 'hooks', 'arm-git-hooks.sh');
+
+function runArmGitHooks(repoRoot, probe) {
+  if (!existsSync(ARM_SCRIPT)) return null;
+  const argv = probe ? [ARM_SCRIPT, '--repo', repoRoot, '--probe', '--json'] : [ARM_SCRIPT, '--repo', repoRoot];
+  const res = spawnSync('bash', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (res.error) return null;
+  return res.stdout || '';
+}
+
+function gitHookFloorProbe(repoRoot) {
+  const out = runArmGitHooks(repoRoot, true);
+  if (out === null) return null;
+  try { return JSON.parse(out); } catch { return null; }
+}
 
 // The single reading of a row's optional `when`, called from BOTH places that
 // iterate SCAFFOLDS (plannedDestPaths and the writer in cmdRender). Those two
@@ -871,7 +996,7 @@ function defaultPathSet(json) {
   return out;
 }
 
-function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, forceScaffold) {
+function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, forceScaffold, treatAsAbsent = null) {
   const priorLock = loadPriorLock(repoRoot);
   const plan = [];
   const skips = [];
@@ -931,7 +1056,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       const header = `<!-- house-managed v${pluginVersion} module=${name} source=${source} body-sha256=${headerHash} DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->`;
       const content = `${fm}${header}\n${sourceBody}`;
       const lockHash = sha256Hex(managedBody(content));
-      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'rule' }, priorLock, forceManagedPath));
+      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'rule' }, priorLock, forceManagedPath, treatAsAbsent));
     }
 
     for (const fEntry of arr(m.json.files)) {
@@ -946,7 +1071,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       const lockHash = sha256Hex(managedBody(content));
       const destPath = normalizeRepoPath(fEntry.dest);
       const source = `modules/${m.dirName}/${relSrc}`;
-      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'file' }, priorLock, forceManagedPath));
+      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'file' }, priorLock, forceManagedPath, treatAsAbsent));
     }
   }
 
@@ -964,16 +1089,32 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
 
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
 
-function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, json }) {
+// The one wording for the #58 migration, in both tenses, so the dry run
+// promises exactly what the apply reports. The destination is what decides
+// which of the two it was (see planOldPreCommitMigration): the repo is told
+// whose file this is, because "your unmanaged copy of the old template" said
+// about a repo's own hook is simply false.
+function migrationLine(m, applied) {
+  const verb = applied ? 'Moved' : 'would move';
+  return m.to === SECRETS_SCAFFOLD_DEST
+    ? `${verb} ${m.from} (your unmanaged copy of the old template) to ${m.to}; the house dispatcher now runs it`
+    : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
+}
+
+function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({ status: p.status, path: p.target.path, module: p.target.module, kind: p.target.kind })),
       skips, moduleWarnings, droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
+      migrations: arr(migrations),
     }, null, 2));
     return;
   }
   for (const w of moduleWarnings) console.log(`warning: ${w}`);
   for (const line of ignoredDestWarningLines(ignoredDests)) console.log(line);
+  // Past tense belongs to the apply phase, which prints it after the rename
+  // actually happened; here the plan only ever promises.
+  if (!apply) for (const m of arr(migrations)) console.log(migrationLine(m, false));
   for (const p of plan) {
     const label = STATUS_LABEL[p.status] || p.status;
     console.log(`${label.padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
@@ -1014,21 +1155,47 @@ function cmdRender(args) {
   // The scaffold record decides both what gets written below and which
   // scaffold dests count as render targets, so it is read once, here.
   const scaffoldRecord = priorScaffoldRecord(priorLockJson, SCAFFOLDS, houseData, repoRoot); // template -> path
-  const { plan, skips, moduleWarnings, droppedDefaults } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold);
+  // #58: decided before the plan (so the dry run classifies the dispatcher as
+  // `create`, not `refuse`) and carried out in the apply phase below, after
+  // the all-or-nothing refusal check has had its say.
+  const migration = planOldPreCommitMigration(repoRoot, houseData, modules, loadPriorLock(repoRoot));
+  const migrations = migration ? [migration] : [];
+  const treatAsAbsent = new Set(migrations.map((m) => m.from));
+  const { plan, skips, moduleWarnings, droppedDefaults } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
   const ignoredDests = gitIgnored(repoRoot, [...plan.map((p) => p.target.path), '.house/lock.json', '.house/INDEX.md']) || [];
-  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, json: args.json });
+  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, json: args.json, apply: args.apply });
 
   const refusals = plan.filter((p) => p.status === 'refuse');
   if (refusals.length > 0) process.exit(1);
 
   if (!args.apply) process.exit(0);
 
+  // The migration first: the dispatcher's own dest is what it vacates, so it
+  // has to be out of the way before the write loop puts the dispatcher there.
+  for (const m of migrations) {
+    const fromAbs = path.join(repoRoot, m.from);
+    const toAbs = path.join(repoRoot, m.to);
+    if (!existsSync(fromAbs) || existsSync(toAbs)) continue; // raced or already done
+    mkdirSync(path.dirname(toAbs), { recursive: true });
+    renameSync(fromAbs, toAbs);
+    ensureExecutable(toAbs);
+    // Only a move that landed ON the scaffold's dest is that scaffold. A repo
+    // whose own hook went to 15-local has still never been offered the secrets
+    // backstop, so the loop below writes it a fresh 20-secrets beside theirs.
+    if (m.to === SECRETS_SCAFFOLD_DEST) scaffoldRecord.set(SECRETS_SCAFFOLD_TMPL, m.to);
+    if (!args.json) console.log(migrationLine(m, true));
+  }
+
   for (const p of plan) {
     if (p.status === 'create' || p.status === 'missing' || p.status === 'clean' || p.status === 'clean-forced') {
-      writeIfChanged(path.join(repoRoot, p.target.path), p.target.content);
+      const abs = path.join(repoRoot, p.target.path);
+      writeIfChanged(abs, p.target.content);
+      // Mode, unlike content, is restored on every status that leaves the file
+      // in place -- including `clean`, where writeIfChanged wrote nothing.
+      if (isGitHookDest(p.target.path)) ensureExecutable(abs);
     }
   }
 
@@ -1107,6 +1274,10 @@ function cmdRender(args) {
     if (!existsSync(tmplAbs)) continue;
     mkdirSync(path.dirname(abs), { recursive: true });
     writeFileSync(abs, readFileSync(tmplAbs, 'utf8'), 'utf8');
+    // A scaffold under .githooks/ is run by the dispatcher, which warns about
+    // (and then still runs) a non-executable file; write it executable so the
+    // warning never fires on house's own scaffold.
+    if (isGitHookDest(s.dest)) ensureExecutable(abs);
     scaffoldRecord.set(s.tmpl, s.dest);
     scaffoldWritten.push(s.dest);
   }
@@ -1118,6 +1289,17 @@ function cmdRender(args) {
     for (const [mod, entries] of scaffoldSkipped) {
       const parts = entries.map((e) => `${e.dest} (${e.existed ? 'left in place, not managed; delete by hand if unwanted' : 'not written'})`);
       console.log(`\nNote: ${mod} module is disabled, so its one-time scaffolds were skipped: ${parts.join(', ')}.`);
+    }
+  }
+
+  // #58: the floor is written but inert until core.hooksPath points at it, and
+  // that setting is per-clone machine state. Arm it here, with the same script
+  // the SessionStart hook and doctor use. It is silent when already armed, and
+  // it never overwrites a hooksPath somebody else owns.
+  if (planDests.has(OLD_PRE_COMMIT)) {
+    const armOut = runArmGitHooks(repoRoot, false);
+    if (armOut && !args.json) {
+      for (const line of armOut.split('\n')) if (line.trim()) console.log(line);
     }
   }
 
@@ -1173,6 +1355,54 @@ function guardRecordIsWellFormed(houseData) {
 // the same gap.
 const PLUGIN_ENABLEMENT_CAVEAT = 'assumes the house plugin is installed and enabled in this session (user-scope install) -- doctor cannot verify plugin enablement from the repo alone.';
 
+// #58: the floor's state as prose, from the probe the arming script prints.
+// `core.hooksPath` is machine-local, which is exactly why the CHECKER never
+// reads it (ADR 0008: machine state is doctor's job, the checker stays
+// repo-only) and exactly why doctor must: a repo can be perfectly rendered,
+// perfectly green in CI, and still have every hook inert in this clone.
+function gitHookFloorLines(probe) {
+  if (probe === null) return ['git-hook floor: unknown (the plugin\'s hooks/arm-git-hooks.sh could not be run here)'];
+  const lines = [];
+  if (!probe.applicable) {
+    lines.push('git-hook floor: not applicable (no house.json at this root, or branchPolicy is not "pr")');
+    return lines;
+  }
+  if (!probe.rendered) {
+    // Naming the missing files matters most when only one is gone: every guard
+    // sources house-lib.sh and exits non-zero when the source fails, so a floor
+    // missing only the library fails every commit closed, and "not rendered"
+    // on its own would send the reader looking at the hooks that are there.
+    const missing = arr(probe.missing);
+    lines.push(`git-hook floor: not rendered here (missing: ${missing.length ? missing.map((m) => `.githooks/${m}`).join(', ') : '.githooks/'}; run \`house render --apply\`)`);
+  } else if (probe.armed) {
+    lines.push(`git-hook floor: armed (core.hooksPath=${probe.hooksPath}${probe.hooksPathScope ? `, ${probe.hooksPathScope}` : ''})`);
+  } else if (probe.hooksPath) {
+    lines.push(`git-hook floor: NOT armed -- core.hooksPath is ${probe.hooksPath}${probe.hooksPathScope ? ` (${probe.hooksPathScope})` : ''}, which is not this repo's .githooks; chain the floor from the hooks there, or unset it and re-run \`house render --apply\``);
+  } else if (probe.linkedWorktree) {
+    // core.hooksPath lives in the config a linked worktree shares with its main
+    // checkout, so arming it from here would point the whole clone at a
+    // directory that vanishes with the worktree.
+    lines.push('git-hook floor: NOT armed -- core.hooksPath is unset, and it is shared with the main checkout, so arm it there (this is a linked worktree); every worktree then inherits it');
+  } else {
+    lines.push('git-hook floor: NOT armed -- core.hooksPath is unset in this clone; run `house render --apply` (or start a session here) to arm it');
+  }
+  if (arr(probe.foreignHooks).length) {
+    lines.push(`  foreign hooks in this clone's .git/hooks (arming would silently disable them, so it is refused): ${probe.foreignHooks.join(', ')}`);
+  }
+  if (arr(probe.nonExecutable).length) {
+    lines.push(`  not executable (git silently ignores a hook without the bit): ${probe.nonExecutable.join(', ')}`);
+  }
+  // Below 2.28 the floor has no unskippable member. `--no-verify` turns off
+  // pre-commit and pre-push together, and on 2.28+ the reference-transaction
+  // hook is the one git runs anyway; without it the flag skips the whole floor,
+  // and the only thing left refusing the flag is the session-time PreToolUse
+  // hook, which by definition is not there when no session is in the loop.
+  lines.push(probe.referenceTransactionSupported
+    ? `  reference-transaction: supported by git ${probe.gitVersion || '?'} (>= 2.28)`
+    : `  reference-transaction: inert on git ${probe.gitVersion || '?'} (needs 2.28); the pre-commit and pre-push guards still run, but \`--no-verify\` skips BOTH of them and there is no reference-transaction hook here to catch what they miss, so on this git the flag is refused only by the session-time PreToolUse hook. The PreToolUse hook reads this checkout as NOT armed for the same reason and keeps its own history scans on. Upgrade git to 2.28 or newer for a floor a flag cannot turn off.`);
+  return lines;
+}
+
 function cmdDoctor(args) {
   const repoRoot = resolveRepoRoot(args);
   const pluginVersion = readPluginVersion();
@@ -1227,10 +1457,12 @@ function cmdDoctor(args) {
     ? (houseData.version === pluginVersion ? `pin v${houseData.version} matches plugin v${pluginVersion}` : `pin v${houseData.version} differs from installed plugin v${pluginVersion} (run \`house render --apply\` to sync)`)
     : 'no version pin (house.json absent, unparseable, or missing "version")';
 
+  const gitHookFloor = gitHookFloorProbe(repoRoot);
+
   const result = {
     effectiveBranchGuard: guard, guardRecorded, caveat, jqOnPath, pluginVersion,
     housePin: houseData && houseData.version ? houseData.version : null,
-    pinStatus, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests,
+    pinStatus, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests, gitHookFloor,
     houseJsonPresent: houseExists, houseJsonParseError: houseParseError,
   };
 
@@ -1239,6 +1471,7 @@ function cmdDoctor(args) {
   } else {
     console.log(`effective branch guard: ${guard}`);
     if (caveat) console.log(`  caveat: ${caveat}`);
+    for (const line of gitHookFloorLines(gitHookFloor)) console.log(line);
     console.log(`jq on PATH: ${jqOnPath ? 'yes' : 'no'}`);
     console.log(`plugin version: ${pluginVersion}`);
     console.log(pinStatus);

@@ -8,7 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CLI = join(ROOT, 'plugins/house/scripts/house');
-const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' });
+// #58: `house render --apply` now ARMS the git-hook floor in whatever repo it
+// renders into (core.hooksPath -> <repo>/.githooks), which is the point of the
+// floor and is exercised for real against real git in tests/githooks/run.sh.
+// These fixtures are about render's OUTPUT, and several of them commit on
+// `main` after rendering, which the floor then correctly refuses. Pointing
+// every git call in this file at an empty hooks directory keeps it testing
+// render rather than re-testing the guards.
+const NO_HOOKS_DIR = mkdtempSync(join(tmpdir(), 'house-no-hooks-'));
+const git = (cwd, ...a) => execFileSync('git', ['-c', `core.hooksPath=${NO_HOOKS_DIR}`, ...a], { cwd, stdio: 'pipe' });
 const house = (repo, ...a) => execFileSync('node', [CLI, ...a, '--repo', repo], { stdio: 'pipe' });
 
 function fixtureRepo(files) {
@@ -240,7 +248,7 @@ test('#32: a repo with no package.json gets no dependabot.yml, and still gets th
   // github scaffold path, so the module's other scaffolds still land.
   assert.ok(existsSync(join(repo, '.github/PULL_REQUEST_TEMPLATE.md')), 'the PR template still lands');
   assert.ok(existsSync(join(repo, '.github/workflows/pr-checks.yml')), 'and so does pr-checks.yml');
-  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'pr-checks.yml'],
+  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'pr-checks.yml', 'pre-commit.d/20-secrets'],
     'an inapplicable scaffold is not recorded either, so adding a package.json later still delivers it');
 });
 
@@ -306,14 +314,14 @@ test('#23: a deleted CLAUDE.md skeleton does not come back on the next render --
   house(repo, 'init', '--apply');
   house(repo, 'render', '--apply');
   assert.ok(existsSync(join(repo, 'CLAUDE.md.house-skeleton')), 'first render still writes the skeleton');
-  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml'], 'the lock records every template offered');
+  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml', 'pre-commit.d/20-secrets'], 'the lock records every template offered');
 
   // The adopter merges it into CLAUDE.md and deletes the sidecar.
   rmSync(join(repo, 'CLAUDE.md.house-skeleton'));
   const out = house(repo, 'render', '--apply').toString();
   assert.ok(!existsSync(join(repo, 'CLAUDE.md.house-skeleton')), 'the skeleton stays deleted');
   assert.doesNotMatch(out, /CLAUDE\.md\.house-skeleton/, 'and is not announced as scaffolded');
-  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml'], 'the record survives the delete');
+  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml', 'pre-commit.d/20-secrets'], 'the record survives the delete');
 
   // Same for a deleted .github/ scaffold, which has the same shape.
   rmSync(join(repo, '.github/PULL_REQUEST_TEMPLATE.md'));
@@ -331,7 +339,7 @@ test('#26: a first render never originates CLAUDE.md; only the sidecar lands', (
   house(repo, 'render', '--apply');
   assert.ok(!existsSync(join(repo, 'CLAUDE.md')), 'the repo root file is the repo\'s to author, not house\'s');
   assert.ok(existsSync(join(repo, 'CLAUDE.md.house-skeleton')), 'the skeleton lands as a sidecar');
-  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml']);
+  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml', 'pre-commit.d/20-secrets']);
   // and still once per repo: delete it, re-render, it stays gone (#23)
   rmSync(join(repo, 'CLAUDE.md.house-skeleton'));
   house(repo, 'render', '--apply');
@@ -455,7 +463,7 @@ test('#23: a pre-0.2.3 lock (no scaffolds key) is read as already-scaffolded', (
   house(repo, 'render', '--apply');
   assert.ok(!existsSync(join(repo, 'CLAUDE.md.house-skeleton')), 'no skeleton on the first render after the upgrade');
   assert.ok(!existsSync(join(repo, '.github/dependabot.yml')), 'and no dependabot.yml either: the seed covers every template whose module gate passes');
-  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml'], 'the seeded record is written back');
+  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml', 'pre-commit.d/20-secrets'], 'the seeded record is written back');
 
   // `--scaffold` is the documented way back, the same as for any other
   // scaffold a pre-0.2.3 lock suppresses.
@@ -482,7 +490,7 @@ test('#23: enabling github after a render with it disabled still delivers its sc
   house(repo, 'render', '--apply');
   assert.ok(existsSync(join(repo, '.github/PULL_REQUEST_TEMPLATE.md')), 'github back on: PR template lands');
   assert.ok(existsSync(join(repo, '.github/workflows/pr-checks.yml')), 'github back on: pr-checks lands');
-  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml']);
+  assert.deepEqual(scaffoldTemplates(repo), ['CLAUDE.md.skeleton', 'PULL_REQUEST_TEMPLATE.md', 'dependabot.yml', 'pr-checks.yml', 'pre-commit.d/20-secrets']);
 });
 
 // The one case the migration seed cannot get right, pinned rather than left to

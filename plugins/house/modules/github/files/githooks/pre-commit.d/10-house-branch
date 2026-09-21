@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# house branch guard, pre-commit half of the floor.
+#
+# Managed by house: `house render` writes this file and .house/lock.json
+# records it, so a local edit is reported as tamper.
+#
+# Refuses a commit on a protected branch when house.json asks for the `pr`
+# branch policy. git has already resolved the branch by the time this runs, so
+# there is nothing to infer from command text. See ADR 0013 and issue #58.
+#
+# The policy comes from `HEAD:house.json`, not from the working tree, so one
+# Write to house.json cannot turn the floor off; a repo that adopted house
+# before its first commit falls back to the working-tree copy.
+#
+# Fails open (exit 0) for every repo this policy does not cover: no house.json,
+# `branchPolicy: direct`, a detached HEAD, an unprotected branch. It fails
+# CLOSED only when an adopted repo's manifest cannot be read.
+set -u
+
+LIB="${HOUSE_GITHOOKS_DIR:-$(cd "$(dirname "$0")/.." && pwd)}/house-lib.sh"
+if [ ! -r "$LIB" ]; then
+  printf 'house pre-commit: cannot read %s; refusing rather than guessing.\n' "$LIB" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$LIB"
+
+top=$(house_toplevel) || exit 0
+# shellcheck disable=SC2034 # read by house_refuse in house-lib.sh
+HOUSE_TOPLEVEL="$top"
+
+rc=0
+house_manifest_read "$top" || rc=$?
+[ "$rc" -eq 1 ] && exit 0
+[ "$rc" -eq 2 ] && exit 1
+[ "$HOUSE_POLICY" = "pr" ] || exit 0
+
+branch=$(house_branch) || exit 0
+house_is_protected "$branch" || exit 0
+
+# ACMDR, not ACM: a commit that only deletes or renames files is still a commit
+# on the protected branch, and its paths still have to clear the carve-outs.
+staged=$(git --no-replace-objects diff --cached --name-only --diff-filter=ACMDR 2>/dev/null || printf '')
+house_carve_out_satisfied "$staged" && exit 0
+
+house_refuse "pre-commit" \
+  "a commit on '$branch', which house.json protects." \
+  "policy read from: $HOUSE_MANIFEST_SOURCE"
+exit 1

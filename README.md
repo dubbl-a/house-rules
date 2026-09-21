@@ -61,9 +61,9 @@ https://house-rules-guide.vercel.app
 
 **If you are an engineer**, this is a Claude Code plugin. The nine modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
-enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs`
-runs in CI; a PreToolUse hook refuses a commit or push to a protected branch in every session; the
-next version arrives as a diff you approve. It installs from this repository with the `claude` CLI.
+enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs` runs
+in CI; a git-hook floor refuses a commit or push to a protected branch, backed by a PreToolUse hook;
+the next version arrives as a diff you approve. It installs from this repository with the `claude` CLI.
 Nothing is on npm or GitHub Packages; an adopting repo carries its own copy of the checker and rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
@@ -79,8 +79,8 @@ loaded (`docs/handbook/origins.md`). Sync tools and copy-paste collections finis
 
 ## Prerequisites
 
-Node 22 or newer, `git`, and bash, plus the GitHub CLI (`gh`) for the pull-request workflow the
-rules assume: the worktree cleanup script, the deploy guards, and the handoff skill shell out to it.
+Node 22 or newer, git 2.28 or newer (below that `--no-verify` skips the whole branch-policy floor, and
+`house doctor` says so), `jq`, bash, and the GitHub CLI (`gh`), which the cleanup script, deploy guards, and handoff skill use.
 No language or framework is assumed. The docs gate resolves `npm run` tokens against `package.json`
 scripts only where that file exists, as the header of `plugins/house/payload/check.mjs` says, so
 without one they are skipped, not failed; `bareScriptAllowlist` and `packageRoots` tune the rest.

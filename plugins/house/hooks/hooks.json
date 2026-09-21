@@ -1,11 +1,24 @@
 {
-  "description": "House branch guard: denies commits and pushes on protected branches in repos that opt in via house.json. Also logs InstructionsLoaded events, the rule-load positive control `house doctor` reads, and injects the orchestration defaults (roster, model tier, briefs, verification) at session start.",
+  "description": "House branch guard: denies the enumerable ways to disable or move the git-hook floor that enforces a repo's branch policy, and commits on a protected branch, in repos that opt in via house.json. Arms the floor (core.hooksPath) at session start, logs InstructionsLoaded events, the rule-load positive control `house doctor` reads, and injects the orchestration defaults (roster, model tier, briefs, verification) at session start.",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Edit|Write|MultiEdit",
         "hooks": [
           { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/no-direct-master.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/arm-git-hooks.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs", "timeout": 5 }
         ]
       }
     ],
@@ -13,14 +26,6 @@
       {
         "hooks": [
           { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/instructions-loaded.mjs", "timeout": 5 }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "startup|clear|compact",
-        "hooks": [
-          { "type": "command", "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs", "timeout": 5 }
         ]
       }
     ]

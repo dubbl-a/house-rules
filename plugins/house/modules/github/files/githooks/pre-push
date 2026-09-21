@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# house pre-commit dispatcher.
+# house pre-push dispatcher.
 #
 # Managed by house: `house render` writes this file and .house/lock.json
 # records it, so a local edit is reported as tamper. Put your own hooks in
-# .githooks/pre-commit.d/ instead; every file there runs in name order and the
-# first one to exit non-zero stops the commit.
+# .githooks/pre-push.d/ instead; every file there runs in name order, gets the
+# same arguments and the same stdin, and the first one to exit non-zero stops
+# the push.
 #
 # 10-house-branch, the managed branch guard, runs FIRST when it is there, and
 # every other file follows in name order. Name order alone would hand an
@@ -32,9 +33,9 @@ hook_dir="$HOUSE_GITHOOKS_DIR/$hook_name.d"
 LC_ALL=C
 export LC_ALL
 
-# git runs pre-commit with no stdin of its own, so this dispatcher does not
-# read stdin: each hook inherits whatever git handed the dispatcher. Reading
-# it here would hang the one case where stdin is a terminal.
+# git feeds pre-push its ref lines on stdin, which can only be read once.
+# Read them here and hand every hook the same copy.
+payload=$(cat)
 
 # house_d_file_state <path>: 0 run it, 1 not tracked, 2 git-ignored. Answers 0
 # whenever the question cannot be asked at all.
@@ -142,13 +143,17 @@ i=0
 while [ "$i" -lt "$ordered_n" ]; do
   f="${ordered[$i]}"
   i=$((i + 1))
-  rc=0
-  if [ -x "$f" ]; then
-    "$f" "$@" || rc=$?
-  else
+  cmd=("$f")
+  if [ ! -x "$f" ]; then
     printf 'house %s: %s is not executable; running it with bash. Fix: chmod +x %s\n' \
       "$hook_name" "$f" "$f" >&2
-    bash "$f" "$@" || rc=$?
+    cmd=(bash "$f")
+  fi
+  rc=0
+  if [ -n "$payload" ]; then
+    printf '%s\n' "$payload" | "${cmd[@]}" "$@" || rc=$?
+  else
+    "${cmd[@]}" "$@" </dev/null || rc=$?
   fi
   [ "$rc" -eq 0 ] || exit "$rc"
 done

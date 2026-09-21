@@ -2,7 +2,17 @@
   "name": "github",
   "default": "on",
   "rules": ["rules/github.md"],
-  "files": [{"src": "files/scan-dist-secrets.mjs", "dest": "scripts/house/scan-dist-secrets.mjs"}, {"src": "files/cleanup-worktree.sh", "dest": "scripts/house/cleanup-worktree.sh"}],
+  "files": [
+    {"src": "files/scan-dist-secrets.mjs", "dest": "scripts/house/scan-dist-secrets.mjs"},
+    {"src": "files/cleanup-worktree.sh", "dest": "scripts/house/cleanup-worktree.sh"},
+    {"src": "files/githooks/pre-commit", "dest": ".githooks/pre-commit"},
+    {"src": "files/githooks/pre-push", "dest": ".githooks/pre-push"},
+    {"src": "files/githooks/reference-transaction", "dest": ".githooks/reference-transaction"},
+    {"src": "files/githooks/house-lib.sh", "dest": ".githooks/house-lib.sh"},
+    {"src": "files/githooks/pre-commit.d/10-house-branch", "dest": ".githooks/pre-commit.d/10-house-branch"},
+    {"src": "files/githooks/pre-push.d/10-house-branch", "dest": ".githooks/pre-push.d/10-house-branch"},
+    {"src": "files/githooks/reference-transaction.d/10-house-branch", "dest": ".githooks/reference-transaction.d/10-house-branch"}
+  ],
   "configSlots": ["actionsBudgetMinutes", "secretGlobs", {"name": "githubGlobs", "default": [".github/**", ".githooks/**", ".env.example"]}, {"name": "worktreeKillProcesses", "default": ["node", "npm"]}],
   "defaultPaths": ["$githubGlobs", "$secretGlobs"]
 }

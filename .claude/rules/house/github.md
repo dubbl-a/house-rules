@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.10.1 module=github source=modules/github/rules/github.md body-sha256=74b5fb8b46eed741c3019585c095cd69986c8871bc241aeb7b5289ad8c77a36d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.10.1 module=github source=modules/github/rules/github.md body-sha256=c68eee81633ac6d79bc17b4ca00b914ee9c925353a37cfc8c5523946d4addf37 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -148,6 +148,16 @@ Take issue intake through YAML forms with blank issues disabled, so a report sta
 The pull-request template already has its own rule above; point here rather than repeating it.
 Anchor: confirm the platform's community-profile endpoint at adoption, the same shape as confirming push protection in settings; a checker family here is a later cycle if it earns one.
 Receipts: `docs/handbook/github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms`
+
+## Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it
+
+Enforce a protected-branch policy inside `.githooks/pre-commit` and `.githooks/pre-push`, where git has already resolved the real repository, the real HEAD, and the real ref, not by reading the text of a command that might produce one.
+Arm the floor with `core.hooksPath`, set by `house render --apply` and every session start, because a rendered hook that nothing points at from `.git/config` never runs.
+Read the policy from `HEAD:house.json`, never from the working tree, so a flipped `branchPolicy` counts only once a PR has landed it.
+Keep the PreToolUse hook's job to verifying the floor is intact (every vendored hook byte-identical to the plugin's copy, `core.hooksPath` pointing at it) and refusing the short list of ways to turn it off or see past it (`--no-verify`, `core.hooksPath` or `include.path` in any form, the `GIT_CONFIG_*` family, `git replace`, `send-pack`, a repository named by `GIT_DIR` instead of entered), never to inferring a branch or a working tree from a string.
+Read `house doctor` for whether the floor is armed here, because `core.hooksPath` is machine-local state a repo-only checker cannot see.
+Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored by this module, kept executable by render and the arming step) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, and reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` reads a tampered or unarmed floor as unarmed on the next call and then refuses every git verb it cannot read literally.
+Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`
 
 ## Don't
 

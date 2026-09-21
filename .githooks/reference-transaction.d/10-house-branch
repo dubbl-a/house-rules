@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# house branch guard, reference-transaction half of the floor.
+#
+# Managed by house: `house render` writes this file and .house/lock.json
+# records it, so a local edit is reported as tamper.
+#
+# This is the half that no `--no-verify` reaches. Every way of moving a ref
+# goes through git's ref transaction: merge, rebase, cherry-pick, revert,
+# amend, reset, update-ref, and a plain commit. So the rule here is not about
+# a command at all: a protected branch may only come to rest on a commit the
+# remote already has.
+#
+# A fast-forward `git pull` on main therefore passes. A local merge commit on
+# main does not. See ADR 0013 and issue #58.
+#
+# Arguments: <state>, one of prepared|committed|aborted. Only `prepared` can
+# still refuse, so the other two exit immediately.
+# Stdin:     <old-sha> <new-sha> <ref>, one line per ref in the transaction.
+#
+# git calls this hook only from 2.28 on (2.28 to 2.30 use the same name and
+# interface). On an older git it never runs, which is documented rather than
+# worked around: pre-commit and pre-push are the floor there.
+set -u
+
+[ "${1:-}" = "prepared" ] || exit 0
+
+lines=$(cat)
+
+# Fast path, before house.json is even looked for: most transactions touch
+# refs/remotes (a fetch), refs/tags, ORIG_HEAD or a stash, and this guard has
+# nothing to say about any of them.
+case "$lines" in
+  *refs/heads/*) ;;
+  *) exit 0 ;;
+esac
+
+LIB="${HOUSE_GITHOOKS_DIR:-$(cd "$(dirname "$0")/.." && pwd)}/house-lib.sh"
+if [ ! -r "$LIB" ]; then
+  printf 'house reference-transaction: cannot read %s; refusing rather than guessing.\n' "$LIB" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$LIB"
+
+top=$(house_toplevel) || exit 0
+# shellcheck disable=SC2034 # read by house_refuse in house-lib.sh
+HOUSE_TOPLEVEL="$top"
+
+rc=0
+house_manifest_read "$top" || rc=$?
+[ "$rc" -eq 1 ] && exit 0
+[ "$rc" -eq 2 ] && exit 1
+[ "$HOUSE_POLICY" = "pr" ] || exit 0
+
+is_zero_sha() {
+  case "$1" in
+    "" | *[!0]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# A first pass over the transaction, collecting every remote-tracking ref it
+# updates as "<branch> <new-sha>" lines. When the SAME transaction publishes
+# refs/remotes/<remote>/<branch> at the sha refs/heads/<branch> is moving to,
+# the remote is handing this clone that commit right now: `git fetch origin
+# master:master` has exactly that shape, and it is a fast-forward the remote
+# owns rather than local work.
+#
+# Forging that line means writing a remote-tracking ref by hand, which is on
+# the PreToolUse hook's disable list (`update-ref refs/remotes/.../<protected>`).
+remote_updates=""
+nl='
+'
+while IFS= read -r scan_line; do
+  [ -z "$scan_line" ] && continue
+  scan_rest="${scan_line#* }"
+  scan_new="${scan_rest%% *}"
+  scan_ref="${scan_rest#* }"
+  case "$scan_ref" in
+    refs/remotes/*/*) ;;
+    *) continue ;;
+  esac
+  scan_tail="${scan_ref#refs/remotes/}"
+  remote_updates="$remote_updates${scan_tail#*/} $scan_new$nl"
+done <<EOF
+$lines
+EOF
+
+# True when the transaction also publishes <branch> on a remote at <sha>.
+published_in_this_transaction() { # <branch> <sha>
+  local want="$1 $2" entry
+  [ -z "$remote_updates" ] && return 1
+  while IFS= read -r entry; do
+    [ "$entry" = "$want" ] && return 0
+  done <<EOF
+$remote_updates
+EOF
+  return 1
+}
+
+# True when <sha> is already reachable from some remote-tracking ref for
+# <branch>, which is the whole test: a commit the remote has is a commit a PR
+# could have carried.
+#
+# --no-replace-objects, because the walk itself is the question being asked. A
+# replace ref makes refs/remotes/<remote>/<branch> READ as some other commit,
+# and a replacement whose parent is the local work would otherwise make this
+# function say the remote has a commit it has never seen. `git replace` needs
+# no commit and no push; the PreToolUse hook refuses the command that writes
+# one, and the walk here ignores the result either way.
+on_a_remote() {
+  local sha="$1" branch="$2" ref
+  while IFS= read -r ref; do
+    [ -z "$ref" ] && continue
+    if git --no-replace-objects merge-base --is-ancestor "$sha" "$ref" 2>/dev/null; then
+      return 0
+    fi
+  done <<EOF
+$(git for-each-ref --format='%(refname)' "refs/remotes/*/$branch" 2>/dev/null)
+EOF
+  return 1
+}
+
+refused=()
+refused_n=0
+
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  old_sha="${line%% *}"
+  rest="${line#* }"
+  new_sha="${rest%% *}"
+  ref="${rest#* }"
+
+  case "$ref" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+  branch="${ref#refs/heads/}"
+  house_is_protected "$branch" || continue
+
+  # Deleting the branch locally is not moving it onto work the remote has
+  # never seen; `git branch -D master` lands here.
+  is_zero_sha "$new_sha" && continue
+
+  # Creation is read from the ref, NOT from an all-zero old sha. git reports
+  # zeros whenever the caller did not state an expected old value, so
+  # `git update-ref refs/heads/master <sha>` on an existing master arrives
+  # looking exactly like a creation. In the `prepared` state the ref still
+  # reads its old value, so asking git is the fact and the sha is the guess.
+  cur=$(git rev-parse --verify --quiet "$ref" 2>/dev/null) || cur=""
+  [ -z "$cur" ] && continue
+  is_zero_sha "$old_sha" && old_sha="$cur"
+
+  # A transaction that rewrites the ref to the value it already has does not
+  # MOVE the branch, so it is none of this guard's business however far ahead
+  # of the remote that branch is. git does this constantly: pack-refs (and so
+  # `git gc`, whose pack-refs transaction was being silently aborted), `git
+  # reset --hard HEAD`, `git stash push`, `git worktree add <path> <branch>`,
+  # `git branch -f <branch> <branch>`.
+  [ "$new_sha" = "$cur" ] && continue
+  [ "$new_sha" = "$old_sha" ] && continue
+
+  published_in_this_transaction "$branch" "$new_sha" && continue
+
+  on_a_remote "$new_sha" "$branch" && continue
+
+  # The same carve-out escape the other two guards honour, so a repo whose
+  # house.json carves out (say) docs/* is not told yes by pre-commit and no
+  # here. Without it, a carve-out would be unusable on git 2.28 and up.
+  if git --no-replace-objects cat-file -e "$old_sha^{commit}" 2>/dev/null && git --no-replace-objects cat-file -e "$new_sha^{commit}" 2>/dev/null; then
+    changed=$(git --no-replace-objects diff --name-only "$old_sha" "$new_sha" 2>/dev/null || printf '')
+    house_carve_out_satisfied "$changed" && continue
+  fi
+
+  refused[refused_n]="$ref -> $new_sha"
+  refused_n=$((refused_n + 1))
+done <<EOF
+$lines
+EOF
+
+[ "$refused_n" -eq 0 ] && exit 0
+
+house_refuse "reference-transaction" \
+  "moving a protected branch onto a commit no remote has:" \
+  "${refused[@]}" \
+  "A merge, rebase, cherry-pick, revert, amend, reset or update-ref did this." \
+  "A fast-forward from the remote is fine; local work is not."
+exit 1

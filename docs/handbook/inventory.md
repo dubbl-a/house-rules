@@ -21,6 +21,9 @@ incident instead of a survey.
 Row PA-040 came in from this package's own carryover issue rather than a source catalog too, citing
 the community-profile finding and the backlog item it closes.
 
+Row PA-041 came in from issue #58, the memo that moved the branch guard off command text after the
+review rounds on PR #57, so its Source cell cites the issue and the PR.
+
 Rows EXT-086 to EXT-098 and PA-035 to PA-039 came in on the reconciliation pass that read the two
 testing source catalogs (`sources/testing-sweep.md`, `sources/testing-external.md`) after a
 template bug had kept them out of the spec stage. That pass also repointed EXT-084 to the renamed
@@ -411,8 +414,8 @@ rule's text without its own heading. `handbook-only` is context or a receipt, no
 | SB-005 | repo-d:CLAUDE.md, rule shape | Write each rule as claim, mechanism, why, and the hazard it prevents | fold | rule:docs.md#state-a-rule-as-imperative-why-anchor-receipts |
 | SB-006 | repo-d:CLAUDE.md, dated amendments | Let every hazard line carry the date or outage that produced it, so a reader can tell which rules are load-bearing | handbook-only | chapter:docs |
 | SB-007 | private survey (repo-d), §2, gap note | A single unscoped root file with no length discipline makes every session pay the full file | handbook-only | chapter:claude-code |
-| SB-008 | repo-d:.githooks/pre-commit | Refuse to stage sensitive data or secrets at commit time, with an explicit allow-list of legitimate exceptions and a documented bypass | port | template:pre-commit |
-| SB-009 | same, install step | Point the hooks path at the tracked hooks directory once per clone, and document the step | fold | template:pre-commit |
+| SB-008 | repo-d:.githooks/pre-commit | Refuse to stage sensitive data or secrets at commit time, with an explicit allow-list of legitimate exceptions and a documented bypass | port | template:pre-commit.d/20-secrets |
+| SB-009 | same, install step | Point the hooks path at the tracked hooks directory once per clone, and document the step | fold | script:arm-git-hooks.sh |
 | SB-010 | repo-d:.claude/launch.json | Give the harness one named dev-server configuration and port instead of per-session improvisation | cross-ref | xref:template:launch.json -> TW-171 |
 | SB-011 | repo-d:.claude/settings.json | Allow-list exactly the repo's own read and idempotent pipeline commands, and authorize deploy and egress verbs through the skill instead | fold | rule:claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local |
 | SB-012 | repo-d:.claude/settings.local.json | Allow-list network fetches per domain rather than blanket, and pin service enablement per project | fold | rule:claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local |
@@ -446,7 +449,7 @@ rule's text without its own heading. `handbook-only` is context or a receipt, no
 | SB-040 | repo-d:config/attio-payload.json, CLAUDE.md | Do not edit a policy value to describe behavior; a typo in a policy string silently stops a lane | fold | rule:data-pipelines.md#drive-writes-from-a-policy-registry-that-fails-closed-on-an-unknown-policy |
 | SB-041 | repo-d:publish-voters.mjs | Refuse a publish that would delete more than a set share of rows, and unit-test the brake rule | cross-ref | xref:rule:data-pipelines.md -> AG-046 |
 | SB-042 | repo-d:CLAUDE.md §PII | Keep the built client code-only and fail the build on any embedded personal data | fold | rule:github.md#scan-the-built-output-after-scrubbing-the-build-and-plant-a-canary-to-prove-the-scanner-fires |
-| SB-043 | same | Name the real guard and call the hook a backstop, rather than claiming the backstop is the protection | fold | template:pre-commit |
+| SB-043 | same | Name the real guard and call the hook a backstop, rather than claiming the backstop is the protection | fold | template:pre-commit.d/20-secrets |
 | SB-044 | repo-d:CLAUDE.md §Don't | Say when a repo declines an upstream editorial rule and why | port | template:CLAUDE.md.skeleton |
 | SB-045 | repo-d:.gitignore | Explain a non-obvious ignore rule in a comment, especially an anchored one | fold | rule:engineering.md#pin-a-framework-default-your-output-depends-on-with-the-reason-beside-it |
 | SB-046 | repo-d:git log, commit types | Use a dedicated commit type for applied review findings; drop, because commit-message taxonomy is below the level this package governs | drop | n/a |
@@ -643,7 +646,7 @@ Source is `sources/external-guidance.md`; each row keeps that brief's numbering 
 | EXT-036 | same 9 | Promote a setup to a plugin the moment a second repository needs it | handbook-only | chapter:origins |
 | EXT-037 | same 10 | Disable model invocation on any skill with side effects, which saves context and guarantees only you fire it | port | rule:claude-code.md#disable-model-invocation-on-a-skill-with-side-effects |
 | EXT-038 | same 11 | Build a few evaluations before writing extensive skill or rule documentation, or you document imagined problems | fold | rule:claude-code.md#make-a-procedure-a-skill-not-a-rule |
-| EXT-039 | same 12 | Keep a pre-commit hook fast and push slow checks to CI, because a slow hook gets bypassed then disabled | port | template:pre-commit |
+| EXT-039 | same 12 | Keep a pre-commit hook fast and push slow checks to CI, because a slow hook gets bypassed then disabled | port | template:pre-commit.d/20-secrets |
 | EXT-040 | same 13 | Follow the test pyramid: many fast unit tests, fewer integration, very few end-to-end | port | rule:testing.md#scale-the-pyramid-to-the-repo-you-have-and-route-what-the-pr-gate-cannot-afford |
 | EXT-041 | same 14 | Adopt a conventional commit format so changelog generation mechanizes; drop, because no fleet repo uses one consistently and the format is below the level this package governs | drop | n/a |
 | EXT-042 | same 15 | Maintain the changelog by hand under an unreleased heading in reverse-chronological dated sections | fold | rule:docs.md#ship-the-docs-and-changelog-edit-in-the-same-pr-as-the-change |
@@ -755,3 +758,4 @@ few are mechanics the package adopts directly, and the testing rows land in the 
 | PA-038 | same, vendor tooling verdict | Adopt no eval vendor, because the built-in runner already gives cases, graders, ablation, repeats, and cost ceilings with no new dependency and no key plumbing | handbook-only | chapter:testing |
 | PA-039 | same, adopt-as-practice items and per-case isolation | Pin a cheap model as a canary, scaffold each eval case into a fresh workspace, and blind the comparison until analysis | handbook-only | chapter:testing |
 | PA-040 | issue #2 item 4 (community-profile finding) and item 6 (backlog) | Ship the code of conduct, security policy, and contributing guide the platform's community-profile check looks for, take issue intake through YAML forms with blank issues disabled, and point at the existing PR-template rule instead of restating it, because the check reads an absent file as a gap and a newcomer reads that gap as neglect | port | rule:github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms |
+| PA-041 | issue #58 (Opus memo, 2026-09-20) and the eight review rounds on PR #57 | Enforce the branch policy in git hooks that see the resolved ref, keep a server-side ruleset as the ceiling where the plan allows, and shrink the session-time text scan to the enumerable ways of disabling those, because a scan of command text cannot know the runtime directory, branch, config, or argument source | port | rule:github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it |

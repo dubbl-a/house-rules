@@ -18,9 +18,9 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync,
-  chmodSync, existsSync, statSync, rmSync,
+  chmodSync, existsSync, statSync, rmSync, realpathSync,
 } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -966,6 +966,454 @@ test('#18 init: the ignore probe covers every module files[].dest, not only the 
   const r = runCli(cliPath, ['init', '--repo', repo]);
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.out, /warning: .*scripts\/house\/tool\.mjs.*\.gitignore:1/, 'a managed file dest under an ignored dir is reported at init');
+});
+
+// ── #58: the git-hook floor (render, arming, doctor) ────────────────────
+//
+// The floor is the seven files the github module vendors under `.githooks/`.
+// Three things have to be true for it to actually guard anything, and each one
+// fails silently on its own: the files have to be written, they have to be
+// EXECUTABLE (git silently ignores a hook without the bit), and `core.hooksPath`
+// has to point at them (machine state living in .git/config, which no clone and
+// no PR carries). The cases below cover all three plus the migration for repos
+// that adopted the old hand-installed `templates/pre-commit`.
+//
+// Unlike the fixture modules above, this one copies the REAL
+// plugins/house/hooks/arm-git-hooks.sh: it is the same file render shells out
+// to and doctor probes with, so a stand-in would test nothing that ships.
+
+const REAL_ARM_SCRIPT = join(HERE, '..', 'plugins', 'house', 'hooks', 'arm-git-hooks.sh');
+
+const FLOOR_FILES = [
+  'pre-commit', 'pre-push', 'reference-transaction', 'house-lib.sh',
+  'pre-commit.d/10-house-branch', 'pre-push.d/10-house-branch',
+  'reference-transaction.d/10-house-branch',
+];
+
+const SECRETS_TEMPLATE_BODY = '#!/usr/bin/env bash\n# fixture stand-in for templates/pre-commit.d/20-secrets\nexit 0\n';
+
+/**
+ * Give a fixture plugin a `github` module that vendors the seven floor files,
+ * the 20-secrets template the SCAFFOLDS table names, and the real arming
+ * script. The module has to be called `github`: that is the module gate the
+ * scaffold row and the migration both read.
+ */
+function addGitHookFloor(dir) {
+  const files = FLOOR_FILES.map((rel) => ({ src: `files/githooks/${rel}`, dest: `.githooks/${rel}` }));
+  const tree = {
+    'modules/github/module.json': `${JSON.stringify({
+      name: 'github', default: 'on', rules: [], files, configSlots: [], defaultPaths: [],
+    }, null, 2)}\n`,
+    'templates/pre-commit.d/20-secrets': SECRETS_TEMPLATE_BODY,
+  };
+  for (const rel of FLOOR_FILES) {
+    tree[`modules/github/files/githooks/${rel}`] = `#!/usr/bin/env bash\n# fixture floor file: ${rel}\nexit 0\n`;
+  }
+  writeTree(dir, tree);
+  mkdirSync(join(dir, 'hooks'), { recursive: true });
+  copyFileSync(REAL_ARM_SCRIPT, join(dir, 'hooks', 'arm-git-hooks.sh'));
+}
+
+function buildFloorFixture() {
+  const fx = buildFixturePlugin();
+  addGitHookFloor(fx.dir);
+  return fx;
+}
+
+/** A target repo with house.json already enabling only the github module. */
+function buildFloorRepo(files) {
+  const repo = buildTargetRepo(files);
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { github: { enabled: true, config: {} } } });
+  return repo;
+}
+
+function gitConfigGet(repo, key) {
+  const res = spawnSync('git', ['-C', repo, 'config', '--get', key], { encoding: 'utf8' });
+  return (res.stdout || '').trim();
+}
+
+// mktemp hands back /var/..., git answers /private/var/... on macOS, and the
+// arming script normalizes with `pwd -P`. Compare against the resolved path or
+// every arming assertion fails for a reason that has nothing to do with arming.
+function floorDir(repo) { return join(realpathSync(repo), '.githooks'); }
+
+function modeOf(p) { return statSync(p).mode & 0o777; }
+
+// Two very different files live at `.githooks/pre-commit` in the wild, and the
+// migration has to tell them apart: house's own secrets template, which an
+// adopter installed by hand and may have edited, and an adopter's own hook,
+// which house never wrote a line of. `PIIPATTERNS=(` is the template's marker
+// (the array of regexes it scans with) and nothing else declares it. Round 1
+// moved both to `20-secrets` and told both repos it was "your unmanaged copy of
+// the old template", which is a false claim about somebody's own lint runner
+// and an invitation to delete it.
+const ADOPTER_PRE_COMMIT = [
+  '#!/usr/bin/env bash',
+  '# house secrets backstop -- an adopter\'s copy, with a line they added',
+  'PIIPATTERNS=(',
+  '  "AKIA[0-9A-Z]{16}"',
+  ')',
+  'echo "custom secret scan"',
+  'exit 0',
+  '',
+].join('\n');
+const OWN_PRE_COMMIT = '#!/usr/bin/env bash\n# this repo\'s own hook; house never wrote a line of it\nnpm run lint-staged\n';
+
+test('#58 render --apply moves an adopter\'s unmanaged .githooks/pre-commit into pre-commit.d/20-secrets and writes the dispatcher over it', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.githooks'), { recursive: true });
+  writeFileSync(join(repo, '.githooks', 'pre-commit'), ADOPTER_PRE_COMMIT);
+  chmodSync(join(repo, '.githooks', 'pre-commit'), 0o755);
+
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /Moved \.githooks\/pre-commit \(your unmanaged copy of the old template\) to \.githooks\/pre-commit\.d\/20-secrets; the house dispatcher now runs it/);
+
+  // The adopter's body survives, verbatim, at the new path. Overwriting it
+  // would silently drop whatever they had added to it.
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets'), 'utf8'), ADOPTER_PRE_COMMIT);
+  // ...and is NOT the template: a repo that already had a copy is not offered
+  // a fresh one on top of it.
+  assert.notEqual(readFileSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets'), 'utf8'), SECRETS_TEMPLATE_BODY);
+
+  // The dispatcher now owns .githooks/pre-commit.
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit'), 'utf8'),
+    '#!/usr/bin/env bash\n# fixture floor file: pre-commit\nexit 0\n');
+
+  // The lock records the scaffold at the path the move landed on, so a later
+  // render does not write the template beside it.
+  const lock = JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'));
+  assert.deepEqual(lock.scaffolds.find((e) => e.template === 'pre-commit.d/20-secrets'),
+    { template: 'pre-commit.d/20-secrets', path: '.githooks/pre-commit.d/20-secrets' });
+
+  // Idempotent: a second render neither moves anything nor re-offers the template.
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(again.code, 0, again.out + again.err);
+  assert.doesNotMatch(again.out, /Moved|would move/);
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets'), 'utf8'), ADOPTER_PRE_COMMIT);
+});
+
+test('#58 render without --apply only promises the move ("would move"), classifies the dispatcher as create, and touches nothing', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.githooks'), { recursive: true });
+  writeFileSync(join(repo, '.githooks', 'pre-commit'), ADOPTER_PRE_COMMIT);
+
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /would move \.githooks\/pre-commit \(your unmanaged copy of the old template\) to \.githooks\/pre-commit\.d\/20-secrets/);
+  assert.doesNotMatch(dry.out, /^Moved /m);
+  // Classified as create, NOT as the REFUSE a hand-edited managed file gets:
+  // the adopter's copy is the previous shape of the same idea, not drift.
+  assert.match(dry.out, /create\s+\.githooks\/pre-commit\b/);
+  assert.doesNotMatch(dry.out, /REFUSE/);
+
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit'), 'utf8'), ADOPTER_PRE_COMMIT, 'a dry run must not move the file');
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')));
+
+  const j = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.migrations, [{ from: '.githooks/pre-commit', to: '.githooks/pre-commit.d/20-secrets' }]);
+});
+
+// A lock that never recorded the dispatcher (a rebase onto a lock written
+// before the floor, or a hand-deleted lock) must not read the dispatcher
+// itself as an adopter's old hook and "migrate" it into the .d directory.
+test('#58 render leaves a .githooks/pre-commit that is already the managed dispatcher alone, even with no lock entry for it', () => {
+  const { cliPath, dir } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.githooks'), { recursive: true });
+  copyFileSync(join(dir, 'modules', 'github', 'files', 'githooks', 'pre-commit'), join(repo, '.githooks', 'pre-commit'));
+
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.doesNotMatch(dry.out, /would move|Moved/);
+  const j = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.migrations, []);
+
+  const applied = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(applied.code, 0, applied.out + applied.err);
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-commit.d', '15-local')), 'the dispatcher is not parked as a local hook');
+});
+
+// R2: the other file that lives at that path. A repo's own pre-commit hook is
+// not a copy of anything of ours, so it goes to 15-local -- after the branch
+// guard, before the secrets backstop -- and the line says whose file it is.
+test('#58 render --apply moves a repo\'s OWN unmanaged pre-commit to pre-commit.d/15-local, and still offers the secrets scaffold', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.githooks'), { recursive: true });
+  writeFileSync(join(repo, '.githooks', 'pre-commit'), OWN_PRE_COMMIT);
+  chmodSync(join(repo, '.githooks', 'pre-commit'), 0o755);
+
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /would move \.githooks\/pre-commit \(your own pre-commit hook\) to \.githooks\/pre-commit\.d\/15-local; the house dispatcher now runs it after the branch guard/);
+  assert.doesNotMatch(dry.out, /old template/, 'a repo\'s own hook must never be described as a copy of house\'s template');
+
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^Moved \.githooks\/pre-commit \(your own pre-commit hook\) to \.githooks\/pre-commit\.d\/15-local; the house dispatcher now runs it after the branch guard$/m);
+
+  // Their hook survives verbatim, one step ahead of the secrets backstop.
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '15-local'), 'utf8'), OWN_PRE_COMMIT);
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-commit.d', '15-local')), 0o755);
+  // And because this repo never had our template, it is still offered one: the
+  // scaffold record must NOT have been pointed at 15-local.
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets'), 'utf8'), SECRETS_TEMPLATE_BODY);
+  const lock = JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'));
+  assert.deepEqual(lock.scaffolds.find((e) => e.template === 'pre-commit.d/20-secrets'),
+    { template: 'pre-commit.d/20-secrets', path: '.githooks/pre-commit.d/20-secrets' });
+
+  // Idempotent, like the other destination.
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.doesNotMatch(again.out, /Moved|would move/);
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit.d', '15-local'), 'utf8'), OWN_PRE_COMMIT);
+});
+
+test('#58 render --apply writes every .githooks file executable, and restores a mode bit a later chmod dropped', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+
+  const first = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(first.code, 0, first.out + first.err);
+  for (const rel of FLOOR_FILES) {
+    assert.equal(modeOf(join(repo, '.githooks', rel)), 0o755, `.githooks/${rel} is not 0755`);
+  }
+  // The scaffold in the same directory is run by the dispatcher, so it gets the
+  // bit too.
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 0o755);
+
+  // A checkout, an unzip, or a stray chmod can drop the bit without touching a
+  // byte, which git reads as "no hook here". That file classifies `clean`
+  // (content matches the lock), so only a mode pass catches it.
+  chmodSync(join(repo, '.githooks', 'pre-push'), 0o644);
+  const second = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(second.code, 0, second.out + second.err);
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-push')), 0o755, 'a clean file that lost the execute bit was not restored');
+});
+
+// R3: restoring the execute bit is not permission to widen the file. A 0600
+// hook is somebody's deliberate choice (a shared machine, a tight umask), and
+// git only needs the OWNER to be able to run it, so the bit is added per class
+// that already has read: 0600 becomes 0700, never 0755.
+test('#58 render --apply adds the execute bit per class that can read, and never widens a 0600 hook to 0755', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+
+  chmodSync(join(repo, '.githooks', 'pre-push'), 0o600);
+  chmodSync(join(repo, '.githooks', 'pre-commit'), 0o640);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-push')), 0o700, 'a 0600 hook must come back as 0700, not 0755');
+  assert.equal(modeOf(join(repo, '.githooks', 'pre-commit')), 0o750, 'the group could read, so the group gets execute; other still gets nothing');
+});
+
+test('#58 render --apply arms the floor: core.hooksPath points at this repo\'s own .githooks', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), '', 'precondition: a fresh clone has no hooksPath');
+
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), floorDir(repo));
+  assert.match(r.out, /house: armed git hooks \(core\.hooksPath=/);
+
+  // Already armed: silent on the next render, so the line means something.
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.doesNotMatch(again.out, /armed git hooks/);
+});
+
+// R1: SessionStart fires the arming script, and sessions start in bunches (a
+// window per worktree, a render running beside them). They all reach for
+// .git/config at once, one wins the lock, and the losers used to announce
+// "the git-hook floor is NOT armed" about a repo that had just been armed --
+// seven false alarms in ten concurrent runs. A loser now re-reads the setting
+// before it says anything, because the question is whether the repo is armed,
+// not whether THIS process is the one that armed it.
+test('#58 arming is concurrency-safe: eight simultaneous runs never report NOT armed', async () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  execFileSync('git', ['-C', repo, 'config', '--unset', 'core.hooksPath']);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), '', 'precondition: every run starts from unarmed');
+
+  const runs = await Promise.all(Array.from({ length: 8 }, () => new Promise((resolve) => {
+    const p = spawn('bash', [REAL_ARM_SCRIPT, '--repo', repo], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    let err = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => resolve({ code, out, err }));
+  })));
+
+  for (const r of runs) {
+    assert.equal(r.code, 0, `arming must never exit non-zero: ${r.err}`);
+    assert.doesNotMatch(r.out, /NOT armed/, `a losing run reported the repo unarmed: ${r.out}`);
+    assert.doesNotMatch(r.out, /could not set core\.hooksPath/, r.out);
+  }
+  // One value, and it is the floor: the losers wrote nothing and claimed nothing.
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), floorDir(repo));
+  assert.equal(
+    execFileSync('git', ['-C', repo, 'config', '--get-all', 'core.hooksPath'], { encoding: 'utf8' }).trim().split('\n').length,
+    1, 'core.hooksPath must not be written twice',
+  );
+});
+
+test('#58 render --apply refuses to arm a repo whose .git/hooks already holds a foreign executable hook, and names it', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  // A hand-written hook, or one the pre-commit framework / lefthook installed.
+  // core.hooksPath REPLACES .git/hooks wholesale, so arming would disable it.
+  const foreign = join(repo, '.git', 'hooks', 'pre-commit');
+  mkdirSync(dirname(foreign), { recursive: true });
+  writeFileSync(foreign, '#!/bin/sh\nexit 0\n');
+  chmodSync(foreign, 0o755);
+
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), '', 'house must not arm over a foreign hook');
+  assert.match(r.out, /git-hook floor NOT armed/);
+  assert.match(r.out, /pre-commit/);
+  assert.match(r.out, /chain them|move them into/);
+
+  // Negative control: a .sample file is not a hook git runs, so it must not
+  // block arming. Removing the foreign hook clears the block on the next run.
+  rmSync(foreign);
+  writeFileSync(join(repo, '.git', 'hooks', 'pre-push.sample'), '#!/bin/sh\nexit 0\n');
+  chmodSync(join(repo, '.git', 'hooks', 'pre-push.sample'), 0o755);
+  const after = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), floorDir(repo), 'a .sample must not count as a foreign hook');
+  assert.match(after.out, /house: armed git hooks/);
+});
+
+test('#58 render --apply leaves a core.hooksPath that points elsewhere alone, and says how to chain the floor from there', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  mkdirSync(join(repo, '.husky', '_'), { recursive: true });
+  execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', '.husky/_']);
+
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), '.husky/_', 'house must never overwrite somebody else\'s hooksPath');
+  assert.match(r.out, /core\.hooksPath is \.husky\/_/);
+  assert.match(r.out, /git-hook floor NOT armed/);
+  assert.match(r.out, /chain it: add 'bash .*\/\.githooks\/pre-commit "\$@"'/);
+});
+
+// core.hooksPath lives in the config a linked worktree SHARES with its main
+// checkout. Arming from inside a worktree would therefore point the whole clone
+// at a directory that disappears when the worktree is removed, after which git
+// runs no hooks at all and says nothing: the exact silent fail-open the floor
+// exists to close. house's own convention is a worktree per change, so this is
+// the common path, not an exotic one.
+test('#58 render --apply inside a linked worktree never writes the shared core.hooksPath, and says where to set it', () => {
+  const { cliPath } = buildFloorFixture();
+  const main = buildFloorRepo();
+  const wt = join(mkdtempSync(join(tmpdir(), 'house-wt-')), 'wt');
+  CLEANUP_DIRS.push(dirname(wt));
+  execFileSync('git', ['-C', main, 'worktree', 'add', '-q', '-b', 'feat/x', wt], { stdio: 'pipe' });
+
+  const r = runCli(cliPath, ['render', '--repo', wt, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(existsSync(join(wt, '.githooks', 'pre-push')), 'the floor is still rendered into the worktree');
+  assert.equal(gitConfigGet(main, 'core.hooksPath'), '', 'a worktree must not write the shared hooksPath');
+  assert.match(r.out, /shared with the main checkout, so set it there/);
+  assert.match(r.out, new RegExp(join(realpathSync(main), '.githooks').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const wj = JSON.parse(runCli(cliPath, ['doctor', '--repo', wt, '--json']).out);
+  assert.equal(wj.gitHookFloor.linkedWorktree, true);
+  assert.equal(wj.gitHookFloor.armed, false);
+  assert.match(runCli(cliPath, ['doctor', '--repo', wt]).out, /shared with the main checkout, so arm it there/);
+
+  // Arming the main checkout arms the worktree too: the hooks ask git for the
+  // toplevel themselves, so one absolute path serves every worktree.
+  assert.equal(runCli(cliPath, ['render', '--repo', main, '--apply']).code, 0);
+  assert.equal(gitConfigGet(main, 'core.hooksPath'), floorDir(main));
+  const armedWt = JSON.parse(runCli(cliPath, ['doctor', '--repo', wt, '--json']).out);
+  assert.equal(armedWt.gitHookFloor.armed, true, 'the worktree inherits the main checkout\'s hooksPath');
+  assert.doesNotMatch(runCli(cliPath, ['render', '--repo', wt, '--apply']).out, /NOT armed/);
+});
+
+test('#58 doctor reports the git-hook floor in every state, in text and as gitHookFloor in --json', () => {
+  const { cliPath } = buildFloorFixture();
+
+  // 1) Rendered and armed by render --apply.
+  const armed = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', armed, '--apply']).code, 0);
+  const a = runCli(cliPath, ['doctor', '--repo', armed]);
+  assert.equal(a.code, 0);
+  assert.match(a.out, new RegExp(`git-hook floor: armed \\(core\\.hooksPath=${floorDir(armed).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  const aj = JSON.parse(runCli(cliPath, ['doctor', '--repo', armed, '--json']).out);
+  assert.equal(aj.gitHookFloor.applicable, true);
+  assert.equal(aj.gitHookFloor.rendered, true);
+  assert.equal(aj.gitHookFloor.armed, true);
+  assert.equal(aj.gitHookFloor.hooksPath, floorDir(armed));
+  assert.deepEqual(aj.gitHookFloor.foreignHooks, []);
+  assert.deepEqual(aj.gitHookFloor.nonExecutable, []);
+  assert.match(aj.gitHookFloor.gitVersion, /^\d+\.\d+/);
+  assert.equal(typeof aj.gitHookFloor.referenceTransactionSupported, 'boolean');
+  // reference-transaction only exists on git 2.28+, and doctor says which side
+  // of that line this machine is on rather than implying full coverage.
+  assert.match(a.out, aj.gitHookFloor.referenceTransactionSupported
+    ? /reference-transaction: supported by git .* \(>= 2\.28\)/
+    : /reference-transaction: inert on git .* \(needs 2\.28\)/);
+
+  assert.deepEqual(aj.gitHookFloor.missing, [], 'a complete floor reports nothing missing');
+
+  // 2) Adopted (branchPolicy pr) but never rendered.
+  const unrendered = buildFloorRepo();
+  const u = runCli(cliPath, ['doctor', '--repo', unrendered]);
+  assert.match(u.out, /git-hook floor: not rendered here/);
+  const uj = JSON.parse(runCli(cliPath, ['doctor', '--repo', unrendered, '--json']).out);
+  assert.equal(uj.gitHookFloor.rendered, false);
+  assert.deepEqual(uj.gitHookFloor.missing.slice().sort(), FLOOR_FILES.slice().sort(), 'every floor file is reported missing');
+  for (const rel of FLOOR_FILES) assert.ok(u.out.includes(`.githooks/${rel}`), `doctor must name .githooks/${rel}`);
+
+  // 2b) R4: rendered EXCEPT the library every guard sources. `rendered` is all
+  // seven or nothing, because a floor missing only house-lib.sh fails every
+  // commit closed and "rendered: true" would send the reader to the wrong file.
+  const halfRendered = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', halfRendered, '--apply']).code, 0);
+  rmSync(join(halfRendered, '.githooks', 'house-lib.sh'));
+  const h = runCli(cliPath, ['doctor', '--repo', halfRendered]);
+  assert.match(h.out, /git-hook floor: not rendered here \(missing: \.githooks\/house-lib\.sh;/);
+  const hj = JSON.parse(runCli(cliPath, ['doctor', '--repo', halfRendered, '--json']).out);
+  assert.equal(hj.gitHookFloor.rendered, false);
+  assert.deepEqual(hj.gitHookFloor.missing, ['house-lib.sh']);
+
+  // 3) Rendered but not armed: the floor is on disk and inert, which is the
+  // state every fresh clone starts in and the one the checker cannot see.
+  const inert = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', inert, '--apply']).code, 0);
+  execFileSync('git', ['-C', inert, 'config', '--unset', 'core.hooksPath']);
+  const i = runCli(cliPath, ['doctor', '--repo', inert]);
+  assert.match(i.out, /git-hook floor: NOT armed -- core\.hooksPath is unset in this clone/);
+  const ij = JSON.parse(runCli(cliPath, ['doctor', '--repo', inert, '--json']).out);
+  assert.equal(ij.gitHookFloor.armed, false);
+  assert.equal(ij.gitHookFloor.hooksPath, null);
+  // A floor file that lost its execute bit is reported, not silently tolerated.
+  chmodSync(join(inert, '.githooks', 'pre-push'), 0o644);
+  const i2 = runCli(cliPath, ['doctor', '--repo', inert]);
+  assert.match(i2.out, /not executable \(git silently ignores a hook without the bit\): pre-push/);
+  assert.deepEqual(JSON.parse(runCli(cliPath, ['doctor', '--repo', inert, '--json']).out).gitHookFloor.nonExecutable, ['pre-push']);
+
+  // 4) Not adopted at all: no house.json, so there is no policy to enforce.
+  const plain = buildTargetRepo();
+  const p = runCli(cliPath, ['doctor', '--repo', plain]);
+  assert.match(p.out, /git-hook floor: not applicable/);
+  assert.equal(JSON.parse(runCli(cliPath, ['doctor', '--repo', plain, '--json']).out).gitHookFloor.applicable, false);
+});
+
+test('#58 init: the wiring block names the once-per-clone arming command', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildTargetRepo();
+  const r = runCli(cliPath, ['init', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /git config core\.hooksPath "\$\(pwd\)\/\.githooks"/);
+  assert.ok(JSON.parse(runCli(cliPath, ['init', '--repo', repo, '--json']).out).wiring
+    .some((l) => l.includes('core.hooksPath')), '--json wiring carries the same line');
 });
 
 test('#18 doctor: one ignore rule is reported once, not once per vendored file, and --json collapses the same way', () => {
