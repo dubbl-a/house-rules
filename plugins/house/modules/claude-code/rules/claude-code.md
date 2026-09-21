@@ -94,7 +94,7 @@ Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-clo
 The harness ships a review that already runs in its own subagent over the branch diff, so start there and add what it does not carry: name the lens, and tell the reviewer to flag only correctness and requirement gaps, because a reviewer asked for problems will always return some.
 Send a refuter only when the change carries logic, a guard or hook, or facts and numbers someone will act on, because a reviewer prompted to find gaps will usually report some even when the work is sound, and chasing every finding leads to over-engineering.
 Read the diff yourself for a text-only or mechanical change a gate already covers, and rerun the tests yourself, because that review buys nothing a gate does not already buy.
-Run one review round per change, add a second only when the first returned a must-fix and the fix was more than mechanical, and leave any further round to the user, because rounds without a cap have run past what the finding justified.
+Run one review round per change, add a second only when the first returned a must-fix and the fix was more than mechanical, and leave any further round to the user, because without a cap nothing but the owner ends a sequence, and each extra round costs a full top-tier review.
 Delegate file-heavy investigation the same way, so only the summary reaches the main context; a verify phase that errors returns UNVERIFIED, and the full rule on that lives in engineering.md.
 Let the reviewer apply mechanical fixes in its own commit, and land judgment-level changes as proposals.
 Remember that a background review's applied fixes land outside the session's checkpoints, so git is the only way back.
