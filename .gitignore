@@ -1,3 +1,5 @@
 node_modules/
 .claude/settings.local.json
 plugins/house/evals/results/
+.claude/worktrees/
+.superpowers/
