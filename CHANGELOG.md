@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-21
+
+Six vendored rule files lose 16 to 19 percent of their words and 7 to 9 percent of their lines with every heading and every directive kept, so adopters co-load less rule text; and adopters now git-ignore tool scratch. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
+
+### Changed
+- **The claude-code, docs, llm-output, engineering, github and data-pipelines rules are shorter.** Restated reasons, long asides, and `## Don't` items that only repeated their own rule's body are cut; one sentence stays on one line, so the lower line count is real text removed, not lines joined. Every `## ` heading is byte-identical, and two adversarial review rounds checked each removed line for a lost directive (the first found 20, all restored). In aaron-gtm, the worst co-loaded path drops from 409 lines to about 380, under the 400 default, so its `coload-ceiling` override can go.
+- **The sync and bootstrap skills ensure `.claude/worktrees/` and `.superpowers/` are in an adopter's `.gitignore`**, appending whichever is missing, because tool scratch that shows in `git status` is one `git add -A` from being committed. This repo's own `.gitignore` gains both lines.
+
 ## [0.13.0] - 2026-09-21
 
 The handoff stops filing a standing carryover issue, review becomes proportionate with one round per change by default, and the hook dispatchers refuse an untracked or git-ignored `.d` hook instead of skipping it. Minor under ADR 0012: the floor's deny set tightens (a skipped hook now refuses), which ADR 0011 classes as breaking, and below 1.0 that class takes the minor. PRs #76 and #77; closes #75.
