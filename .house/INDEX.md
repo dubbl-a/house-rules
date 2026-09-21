@@ -6,63 +6,63 @@
 - Put only what Claude would get wrong without it in the root file
   Ask of every line whether removing it would cause a mistake, and cut the line when the answer is no.
 - Keep the auto-memory index to hooks, and hold it under its cap
-  Write one line per memory and make that line the cue to open the file rather than the fact itself, because the index loads every session while the topic file loads only when something asks for it.
+  Write one line per memory as the cue to open the file, not the fact itself, since the index loads every session while the topic file loads only on demand.
 - Give a domain rule a paths list, and never leave a rule file unscoped
-  Scope every domain rule with `paths:` so a session that never touches the domain never pays for it; a rule file with no `paths:` is not unscoped, it is always-on at root-file priority, so if it belongs in every session move it into the root file instead.
+  Scope every domain rule with `paths:` so a session that never touches the domain never pays for it.
 - Make a procedure a skill, not a rule
-  Move a multi-step procedure and its reference material into a skill, where only the description costs context every session, and the harness truncates even that listing, while an instruction file pays for its whole body every time it loads; where the harness points a growing instruction file is a path-scoped rule and stops there, so what a skill then owes you is what it never says.
+  Move a multi-step procedure and its reference material into a skill, where only the description costs context every session.
 - Keep a skill body short, its references one level deep, and its name equal to its directory
-  Hold the body under its configured cap and move detail into references rather than appending, and keep references exactly one level deep, because a nested file gets partially read.
+  Hold the body under its configured cap and move detail into references rather than appending, and keep references exactly one level deep; a nested file gets partially read.
 - Disable model invocation on a skill with side effects
   Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so nothing in the session can fire it on its own and its body costs nothing until a caller names it.
 - Set the model explicitly on every subagent and workflow agent
-  Name the model on every agent call, because an omitted one silently inherits the session's and a wide fan-out then runs at whatever tier you happened to be in.
+  Name the model on every agent call, because an omitted one silently inherits the session's, and a wide fan-out then runs at whatever tier you happened to be in.
 - Make a must-hold rule a hook, fail it closed, and test it with real payloads
-  Turn a rule that must hold every time into a hook, because a rule file is advisory context and only a pre-tool hook stops the action.
+  Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
 - Run adversarial review in a fresh subagent with a named lens
-  The harness ships a review that already runs in its own subagent over the branch diff, so start there and add what it does not carry: name the lens, and tell the reviewer to flag only correctness and requirement gaps.
+  The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps.
 - Plan when the approach is uncertain, and clear the context after two failed corrections
-  Plan first when the approach is uncertain or the change spans files, and skip planning when you could describe the diff in one sentence, because planning has real overhead.
+  Plan first when the approach is uncertain or the change spans files, and skip it when you could describe the diff in one sentence, since planning has real overhead.
 - Treat git state as shared across sessions
-  Assume another checkout can move your branch mid-run and strand uncommitted work, so ask before switching and commit early.
+  Assume another checkout can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
 - Keep the committed settings narrow and the local settings local
-  Commit an allowlist covering the repo's own script surface and read-side platform commands and nothing broader, and authorize deploy and egress verbs through a skill instead.
+  Commit an allowlist covering the repo's own script surface and read-side platform commands, nothing broader, and authorize deploy and egress verbs through a skill instead.
 - Read a resume file as a harness artifact, not a handoff
-  Treat a checkpoint file the harness writes as a record of where a session stopped, not as a protocol the next session follows.
+  Treat a checkpoint file the harness writes as a record of where a session stopped, not a protocol the next session follows.
 - Hand off through the repo, not a standing issue
-  Open an issue only for work someone will do, because a standing issue with nothing to act on is noise in the tracker, not a handoff; auto memory is the harness's own place for ongoing work, but it is machine-local and never shared, so it cannot be the channel the next session reads.
+  Open an issue only for work someone will do; a standing issue with nothing to act on is noise in the tracker, not a handoff.
 - Check for a peer session before driving shared external state
-  List the running agents before driving a shared application, a shared database, or a shared checkout, because a peer session may already own it.
+  List the running agents before driving a shared application, database, or checkout; a peer session may already own it.
 - Don't
-  Don't put a fact in the root file that Claude could derive from the code, and don't put one in the memory index that belongs in its topic file.
+  Don't put a fact in the root file that Claude could derive from the code.
 
 ## .claude/rules/house/docs.md
 - Anchor every claim to a grep-able token
-  Write every claim about the code, the interface, or a command so it names a token a reader can grep: a file path, an npm script, a component name, a section id, a class prefix, or an environment variable. Free-form prose drifts silently when the thing it describes is renamed, while an anchored claim fails the gate on the commit that renames it.
+  Write every claim about the code, interface, or a command so it names a token a reader can grep: a file path, a script, a component, a section id, or an env variable. Free-form prose drifts silently when renamed; an anchored claim fails the gate on that commit.
 - Run the docs gate before pushing and in the build
-  Run the docs gate locally before pushing any branch that touches documents, and wire the same command into the build and into the pull-request check. A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the build step and the pull-request check be the net, because a gate you only meet through a red badge after review costs a round trip per typo, and the round trip is what makes people stop running it.
+  Run the docs gate locally before pushing any branch that touches documents, and wire it into the build and the pull-request check: local is the loop, the build and the check are the net.
 - Give every rule file a paths list whose first segment resolves
-  Give every rule file a `paths:` list, and make each glob's first non-glob segment resolve on disk. A glob that resolves to nothing means the rule never loads, so it rots without one failure to warn you; a rule file with no `paths:` at all is not unscoped, it is always-on at root-file priority. If it truly belongs in every session it belongs in the root file, and if it does not, it needs a scope.
+  Give every rule file a `paths:` list, and make each glob's first segment resolve on disk. A glob resolving to nothing means the rule never loads, so it rots with no warning.
 - Put a fact where its litmus test says it belongs
-  The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule, and it trims what it can derive from the code. This rule carries that split out to the README, the changelog, and the archive, where nothing native reaches: the README if a human landing on the repo needs it, the archive if it is a dated observation. Working rules, a human runbook, strategy, the changelog, deep reference, and orientation are separate roles, so give each its own document rather than another section, and restate neither the code nor the package manifest in any of them.
+  The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, and reference are separate roles; give each its own document, and restate neither the code nor the manifest.
 - State a rule as imperative, why, anchor, receipts
-  Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to the receipt that earned it. A reader who disagrees with a rule needs the why and the evidence in front of them, or the rule gets worked around instead of revised.
+  Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to its receipt. A reader who disagrees needs the why and the evidence in front of them, or the rule gets worked around, not revised.
 - Move dates, names, and measured numbers out of rule prose
-  A rule that needs a date, a person's name, or a measured number to state itself is history wearing a rule's clothes. Move the evidence to the archive and leave the rule, which is the part that has to survive the next change.
+  A rule that needs a date, a name, or a measured number to state itself is history wearing a rule's clothes. Move the evidence to the archive; leave the rule, the part that must survive the next change.
 - Keep files under budget, and raise a ceiling only with a written reason
-  The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter. Shorter files get better adherence, and an over-budget file is where a rule goes to hide.
+  The harness gives the root file a soft line target and skips only a file past its hard size cap, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
 - Cut, don't append, and trim on a fixed cadence
-  When you add to a document, trade something out; a file that only grows is a file nobody reads to the end of. Cut any paragraph that exists to record that something happened rather than to change what the next session does, since the harness proposes trims when asked and advises a periodic review, but it sets no cadence and lets a trimmed file grow back.
+  When you add to a document, trade something out; a file that only grows is one nobody reads to the end. Cut any paragraph that records something happened rather than changes what the next session does.
 - Split a file only when splitting narrows what loads
-  Split a topic only when the split makes a session load less. Two files that always load together are strictly worse than one: identical context, plus a second place a rule can hide.
+  Split a topic only when the split makes a session load less. Two files that always load together are worse than one: identical context, plus a second place a rule can hide.
 - Opt a point-in-time doc out with a file-level reason
-  Scan the archive tier by default: an adopting repo's docs get checked for drift unless it says otherwise. Opt a genuinely point-in-time document out at file level with its reason stated in the marker: a survey captured on a day, a superseded design doc, a spec whose paths are deliberate forward references. Its stale names are a record, not a bug, so never fix one.
+  Scan the archive tier by default: a repo's docs are checked for drift unless it says otherwise. Opt a point-in-time document out at file level with its reason in the marker: a day-captured survey, a superseded design doc, a spec with deliberate forward references. Stale names there are a record, not a bug; never fix one.
 - Don't document a command that does not exist
-  Never write a command, script, or environment variable into a document before it exists. A README that tells you to run a missing command is worse than a short one, because the reader spends their trust before they spend their time.
+  Never write a command, script, or environment variable into a document before it exists. A README telling you to run a missing command is worse than a short one; the reader spends trust before time.
 - Ship the docs and changelog edit in the same PR as the change
-  When a change adds or renames a script, an environment variable, an endpoint behavior, or a maintenance step, its docs edit ships in the same pull request. A docs pull request opened afterward is an afterthought and drifts. Say in the body that you checked when no edit was needed, and ship every artifact a run produced in the same pass, including the ones the script's own instructions forget to name.
+  When a change adds or renames a script, an env variable, an endpoint behavior, or a maintenance step, its docs edit ships in the same pull request; one opened afterward drifts. Say in the body that you checked when no edit was needed, and ship every artifact produced, including ones the script's own instructions forget.
 - Don't
-  Don't leave a claim unanchored when a real token exists, and don't invent one; generalize the prose instead.
+  Don't leave a claim unanchored when a real token exists, and don't invent one; generalize instead.
 
 ## .claude/rules/house/engineering.md
 - Build the simplest thing that answers the question
