@@ -101,11 +101,18 @@ EOF
 # True when <sha> is already reachable from some remote-tracking ref for
 # <branch>, which is the whole test: a commit the remote has is a commit a PR
 # could have carried.
+#
+# --no-replace-objects, because the walk itself is the question being asked. A
+# replace ref makes refs/remotes/<remote>/<branch> READ as some other commit,
+# and a replacement whose parent is the local work would otherwise make this
+# function say the remote has a commit it has never seen. `git replace` needs
+# no commit and no push; the PreToolUse hook refuses the command that writes
+# one, and the walk here ignores the result either way.
 on_a_remote() {
   local sha="$1" branch="$2" ref
   while IFS= read -r ref; do
     [ -z "$ref" ] && continue
-    if git merge-base --is-ancestor "$sha" "$ref" 2>/dev/null; then
+    if git --no-replace-objects merge-base --is-ancestor "$sha" "$ref" 2>/dev/null; then
       return 0
     fi
   done <<EOF
@@ -160,8 +167,8 @@ while IFS= read -r line; do
   # The same carve-out escape the other two guards honour, so a repo whose
   # house.json carves out (say) docs/* is not told yes by pre-commit and no
   # here. Without it, a carve-out would be unusable on git 2.28 and up.
-  if git cat-file -e "$old_sha^{commit}" 2>/dev/null && git cat-file -e "$new_sha^{commit}" 2>/dev/null; then
-    changed=$(git diff --name-only "$old_sha" "$new_sha" 2>/dev/null || printf '')
+  if git --no-replace-objects cat-file -e "$old_sha^{commit}" 2>/dev/null && git --no-replace-objects cat-file -e "$new_sha^{commit}" 2>/dev/null; then
+    changed=$(git --no-replace-objects diff --name-only "$old_sha" "$new_sha" 2>/dev/null || printf '')
     house_carve_out_satisfied "$changed" && continue
   fi
 

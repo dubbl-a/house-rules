@@ -10,10 +10,13 @@
 # every other file follows in name order. Name order alone would hand an
 # unmanaged `00-` hook the chance to delete the guard before it ever ran.
 #
-# A file in the .d directory is skipped when its name starts with `.` or ends
-# in `~`, `.disabled` or `.sample`. A file that is not executable is still run
-# (with bash) and named in a warning: githooks(5) ignores a non-executable
-# hook silently, and a silently ignored guard is a guard that fails open.
+# A file in the .d directory is skipped when its name starts with `.`, when it
+# ends in `~`, `.disabled` or `.sample`, and when git does not have it: only a
+# file that is tracked in this repo and not excluded by .gitignore runs, so an
+# unreviewed script dropped in here never executes (the managed guard itself is
+# exempt, see below). A file that is not executable is still run, with bash,
+# and named in a warning: githooks(5) ignores a non-executable hook silently,
+# and a silently ignored guard is a guard that fails open.
 #
 # Bash 3.2 compatible. See ADR 0013 and issue #58.
 set -u
@@ -33,6 +36,25 @@ export LC_ALL
 # read stdin: each hook inherits whatever git handed the dispatcher. Reading
 # it here would hang the one case where stdin is a terminal.
 
+# house_d_file_state <path>: 0 run it, 1 not tracked, 2 git-ignored. Answers 0
+# whenever the question cannot be asked at all.
+house_d_file_state() {
+  local f="$1" name line
+  [ "$tracked_known" -eq 0 ] || return 0
+  name="${f##*/}"
+  while IFS= read -r line; do
+    [ "$line" = "$name" ] && return 2
+  done <<EOF
+$ignored_names
+EOF
+  while IFS= read -r line; do
+    [ "$line" = "$name" ] && return 0
+  done <<EOF
+$tracked_names
+EOF
+  return 1
+}
+
 # The managed guard first, then the rest in name order. Collected with an
 # explicit counter because bash 3.2 under `set -u` treats ${#a[@]} on an empty
 # array as unbound.
@@ -43,11 +65,73 @@ if [ -f "$guard" ]; then
   ordered[ordered_n]="$guard"
   ordered_n=$((ordered_n + 1))
 fi
+
+candidates=()
+candidates_n=0
 for f in "$hook_dir"/*; do
   [ -f "$f" ] || continue
   [ "$f" = "$guard" ] && continue
   case "$f" in
     *'~' | *.disabled | *.sample) continue ;;
+  esac
+  candidates[candidates_n]="$f"
+  candidates_n=$((candidates_n + 1))
+done
+
+# Only a TRACKED file runs. A script git does not have in its index, or one
+# .gitignore excludes, is a script no review and no PR ever carried. Running it
+# would hand anything that can write a file the ability to run code inside
+# every commit and every push, and the obvious use is to disarm the floor from
+# behind the guard that has just allowed a commit on a feature branch.
+#
+# The question goes to the repo that CONTAINS the .d directory, not to the one
+# git is running for: with a linked worktree those differ, and the hooks live
+# in the main one. A .d directory that is in no repo at all cannot be asked,
+# and then everything runs, as it did before this rule.
+#
+# 10-house-branch is collected above, before this test, on purpose:
+# `git rm --cached` on the managed guard must not be a way to switch the floor
+# off. Whether that file is still the one house rendered is .house/lock.json's
+# question, not this dispatcher's.
+tracked_names=""
+ignored_names=""
+tracked_known=1
+if [ "$candidates_n" -gt 0 ]; then
+  if tracked_names=$(git -C "$hook_dir" ls-files 2>/dev/null); then
+    tracked_known=0
+    names=()
+    i=0
+    while [ "$i" -lt "$candidates_n" ]; do
+      f="${candidates[$i]}"
+      names[i]="${f##*/}"
+      i=$((i + 1))
+    done
+    # --no-index, so a file force-added past .gitignore still reads as
+    # excluded: the test is what the repo's own rules admit, not what someone
+    # managed to get into the index. One call for the whole directory, so the
+    # rule costs two git processes however many hooks are in it.
+    ignored_names=$(git -C "$hook_dir" check-ignore --no-index -- "${names[@]}" 2>/dev/null) ||
+      ignored_names=""
+  fi
+fi
+
+i=0
+while [ "$i" -lt "$candidates_n" ]; do
+  f="${candidates[$i]}"
+  i=$((i + 1))
+  state=0
+  house_d_file_state "$f" || state=$?
+  case "$state" in
+    1)
+      printf 'house %s: %s is not tracked in this repo; not running it. Commit it or remove it.\n' \
+        "$hook_name" "$f" >&2
+      continue
+      ;;
+    2)
+      printf 'house %s: %s is git-ignored; not running it. Un-ignore and commit it, or remove it.\n' \
+        "$hook_name" "$f" >&2
+      continue
+      ;;
   esac
   ordered[ordered_n]="$f"
   ordered_n=$((ordered_n + 1))

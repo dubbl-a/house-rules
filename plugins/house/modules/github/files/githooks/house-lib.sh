@@ -64,6 +64,11 @@ house_toplevel() {
 # last resort, used only when no given rev has a house.json at all, which is
 # the repo that adopted house before its first commit.
 #
+# The read goes through --no-replace-objects. A replace ref rewrites what an
+# object reads as without moving a single ref and without a commit or a push,
+# so `git replace -f master <side-branch>` would otherwise hand this function
+# the house.json of a branch that never passed a PR.
+#
 #   0  read it
 #   1  no house.json anywhere: the repo has not adopted house, fail open
 #   2  refuse: the manifest exists but cannot be read (bad JSON, unexpected
@@ -88,7 +93,7 @@ house_manifest_read() {
     [ -n "$rev" ] || continue
     # cat-file, not show: plumbing, one process, no pager, and it fails
     # quietly on an unborn HEAD or a rev this clone does not have.
-    json=$(git -C "$top" cat-file blob "$rev:house.json" 2>/dev/null </dev/null) && {
+    json=$(git -C "$top" --no-replace-objects cat-file blob "$rev:house.json" 2>/dev/null </dev/null) && {
       HOUSE_MANIFEST_SOURCE="$rev:house.json"
       found=0
       break

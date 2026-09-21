@@ -1399,7 +1399,7 @@ function gitHookFloorLines(probe) {
   // hook, which by definition is not there when no session is in the loop.
   lines.push(probe.referenceTransactionSupported
     ? `  reference-transaction: supported by git ${probe.gitVersion || '?'} (>= 2.28)`
-    : `  reference-transaction: inert on git ${probe.gitVersion || '?'} (needs 2.28); the pre-commit and pre-push guards still run, but \`--no-verify\` skips BOTH of them and there is no reference-transaction hook here to catch what they miss, so on this git the flag is refused only by the session-time PreToolUse hook. Upgrade git to 2.28 or newer for a floor a flag cannot turn off.`);
+    : `  reference-transaction: inert on git ${probe.gitVersion || '?'} (needs 2.28); the pre-commit and pre-push guards still run, but \`--no-verify\` skips BOTH of them and there is no reference-transaction hook here to catch what they miss, so on this git the flag is refused only by the session-time PreToolUse hook. The PreToolUse hook reads this checkout as NOT armed for the same reason and keeps its own history scans on. Upgrade git to 2.28 or newer for a floor a flag cannot turn off.`);
   return lines;
 }
 

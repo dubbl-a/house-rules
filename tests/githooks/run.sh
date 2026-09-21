@@ -138,11 +138,16 @@ init_repo() {
 # house.json, a bare origin that already has master, and the floor armed.
 # The seed push happens BEFORE arming, so the remote has master and the
 # reference-transaction guard has something to call reachable.
+#
+# .githooks is COMMITTED, as `house render` leaves it: the dispatchers run only
+# the .d files git tracks, so a fixture whose hooks were never added would test
+# a repo no adopter has.
 #   policy: pr (default) | direct | none (no house.json) | malformed
 new_adopted_repo() {
   local dir="$1" policy="${2:-pr}" carveouts="${3:-[]}"
   init_repo "$dir"
   write_manifest "$dir" "$policy" "$carveouts"
+  install_floor "$dir"
 
   echo seed >"$dir/seed.txt"
   mkdir -p "$dir/docs" "$dir/src"
@@ -160,7 +165,6 @@ new_adopted_repo() {
   git -C "$dir" fetch -q origin
   git -C "$dir" branch -q --set-upstream-to=origin/master master 2>/dev/null
 
-  install_floor "$dir"
   arm "$dir"
 }
 
@@ -348,6 +352,8 @@ printf 'ran\n' >"$r/disabled-marker.txt"
 exit 0
 EOF
 chmod +x "$r/.githooks/pre-commit.d/90-skipme.disabled"
+# Tracked, because the dispatcher runs only what git has.
+git -C "$r" add .githooks/pre-commit.d/50-marker .githooks/pre-commit.d/90-skipme.disabled
 stage "$r" "src/d.js" "dispatch"
 run_git "$r" commit -m "dispatch"
 if [[ "$RUN_CODE" -ne 0 ]]; then
@@ -374,6 +380,7 @@ printf 'sixty says no\n' >&2
 exit 3
 EOF
 chmod +x "$r/.githooks/pre-commit.d/60-fail"
+git -C "$r" add .githooks/pre-commit.d/60-fail
 stage "$r" "src/e.js" "dispatch again"
 expect_refused "a .d hook exiting non-zero stops the commit, and its stderr shows" \
   "sixty says no" "$r" commit -m "dispatch again"
@@ -389,6 +396,7 @@ printf '%s\n' "$n" >>"$r/order.log"
 exit 0
 EOF
   chmod +x "$r/.githooks/pre-commit.d/$n"
+  git -C "$r" add ".githooks/pre-commit.d/$n"
 done
 stage "$r" "src/o.js" "ordering"
 run_git "$r" commit -m "ordering"
@@ -411,6 +419,84 @@ elif [[ "$(tr '\n' ' ' <"$r/order.log" 2>/dev/null)" != "00-mine 20-after " ]]; 
 else
   pass "the other .d hooks still run in name order"
 fi
+
+# --- 5b. only tracked .d files run -------------------------------------------
+echo "-- tracked .d files --"
+
+# F5: a file dropped into the .d directory that git does not have is a file
+# nobody reviewed. It would otherwise run inside every commit and every push,
+# and the obvious use is to disarm the floor from behind the guard that has
+# just allowed a commit on a feature branch.
+r="$TMP_ROOT/c07c"; new_adopted_repo "$r"
+git -C "$r" checkout -q -b feat/x
+for n in 00-mine 30-ignored 40-tracked; do
+  cat >"$r/.githooks/pre-commit.d/$n" <<EOF
+#!/usr/bin/env bash
+printf 'ran\n' >"$r/$n.ran"
+exit 0
+EOF
+  chmod +x "$r/.githooks/pre-commit.d/$n"
+done
+printf '.githooks/pre-commit.d/30-ignored\n' >>"$r/.gitignore"
+git -C "$r" add .gitignore .githooks/pre-commit.d/40-tracked
+git -C "$r" add -f .githooks/pre-commit.d/30-ignored
+stage "$r" "src/t.js" "tracked hooks only"
+run_git "$r" commit -m "tracked hooks only"
+if [[ "$RUN_CODE" -ne 0 ]]; then
+  fail "a tracked .d hook runs" "the commit failed: $RUN_OUT"
+elif [[ ! -f "$r/40-tracked.ran" ]]; then
+  fail "a tracked .d hook runs" "it did not run"
+else
+  pass "a tracked .d hook runs"
+fi
+if [[ -f "$r/00-mine.ran" ]]; then
+  fail "an untracked .d hook does not run" "it ran anyway"
+elif [[ "$RUN_OUT" != *"00-mine"* || "$RUN_OUT" != *"not tracked"* ]]; then
+  fail "an untracked .d hook does not run" "no warning named it: $RUN_OUT"
+else
+  pass "an untracked .d hook does not run"
+fi
+# Force-added, so it IS in the index, and still excluded by .gitignore: the
+# content of the .d directory has to be content the repo's own rules admit.
+if [[ -f "$r/30-ignored.ran" ]]; then
+  fail "a git-ignored .d hook does not run" "it ran anyway"
+elif [[ "$RUN_OUT" != *"30-ignored"* || "$RUN_OUT" != *"git-ignored"* ]]; then
+  fail "a git-ignored .d hook does not run" "no warning named it: $RUN_OUT"
+else
+  pass "a git-ignored .d hook does not run"
+fi
+
+# The same rule in the pre-push dispatcher, because the three dispatchers carry
+# a copy each and a copy is where a rule goes missing.
+r="$TMP_ROOT/c07e"; new_adopted_repo "$r"
+git -C "$r" checkout -q -b feat/x
+stage "$r" "src/p.js" "feature work"
+git -C "$r" commit -q -m "feature work"
+cat >"$r/.githooks/pre-push.d/00-mine" <<EOF
+#!/usr/bin/env bash
+printf 'ran\n' >"$r/push-hook.ran"
+exit 0
+EOF
+chmod +x "$r/.githooks/pre-push.d/00-mine"
+run_git "$r" push origin feat/x
+if [[ "$RUN_CODE" -ne 0 ]]; then
+  fail "pre-push skips an untracked .d hook too" "the push failed: $RUN_OUT"
+elif [[ -f "$r/push-hook.ran" ]]; then
+  fail "pre-push skips an untracked .d hook too" "it ran anyway"
+elif [[ "$RUN_OUT" != *"00-mine"* || "$RUN_OUT" != *"not tracked"* ]]; then
+  fail "pre-push skips an untracked .d hook too" "no warning named it: $RUN_OUT"
+else
+  pass "pre-push skips an untracked .d hook too"
+fi
+
+# The managed guard is exempt from that test on purpose. `git rm --cached` on
+# it must not be a way to switch the floor off; whether the guard is still the
+# file house rendered is .house/lock.json's question, not the dispatcher's.
+r="$TMP_ROOT/c07d"; new_adopted_repo "$r"
+git -C "$r" rm -r -q --cached .githooks >/dev/null 2>&1
+stage "$r" "src/g.js" "guard untracked"
+expect_refused "the managed guard runs even when .githooks is untracked" \
+  "house pre-commit" "$r" commit -m "guard untracked"
 
 # --- 6. manifest handling ---------------------------------------------------
 echo "-- manifest --"
@@ -492,7 +578,8 @@ if [[ "$RT_SUPPORTED" -ne 1 ]]; then
     "gc packs refs with master ahead of the remote" \
     "branch -f master master, a no-op force update, is allowed" \
     "worktree add on a protected branch ahead of the remote is allowed" \
-    "fetch origin master:master is allowed and moves master"
+    "fetch origin master:master is allowed and moves master" \
+    "a replace ref cannot make an unpublished commit look published"
   do
     skip "$label" "$RT_WHY"
   done
@@ -608,6 +695,22 @@ else
   else
     pass "fetch origin master:master is allowed and moves master"
   fi
+
+  # The same replace trick aimed at the reachability test instead of at the
+  # manifest. Replacement swaps what an object reads as, so the way to forge
+  # reachability is to make refs/remotes/origin/master READ as a commit whose
+  # parent is the unpublished one: the walk then finds it and
+  # `merge-base --is-ancestor` answers yes about work no remote has.
+  r="$TMP_ROOT/c32"; new_adopted_repo "$r"
+  git -C "$r" checkout -q -b feat/x
+  stage "$r" "src/u.js" "unpublished"
+  git -C "$r" commit -q -m "unpublished"
+  unpublished=$(git -C "$r" rev-parse HEAD)
+  stage "$r" "src/u2.js" "child of the unpublished commit"
+  git -C "$r" commit -q -m "child"
+  git -C "$r" replace -f "$(git -C "$r" rev-parse origin/master)" HEAD
+  expect_refused "a replace ref cannot make an unpublished commit look published" \
+    "no remote has" "$r" update-ref refs/heads/master "$unpublished"
 fi
 
 # --- 9. the policy is read from HEAD, not from the working tree --------------
@@ -638,6 +741,21 @@ unguarded "$r" add -A
 unguarded "$r" commit -m "weaken the policy on master"
 expect_refused "a pushed commit cannot carry its own weaker policy" \
   "needs a PR" "$r" push origin master
+
+# A replace ref rewrites what every object READS as, `HEAD:house.json`
+# included, without moving a single ref. The floor reads the manifest with
+# --no-replace-objects, so `git replace` is not a way to hand the guards a
+# policy that was never committed to the protected branch.
+r="$TMP_ROOT/c31"; new_adopted_repo "$r" pr
+git -C "$r" checkout -q -b side
+write_manifest "$r" direct
+git -C "$r" add house.json
+git -C "$r" commit -q -m "a direct policy on a side branch"
+git -C "$r" checkout -q -f master
+git -C "$r" replace -f master side
+stage "$r" "src/a.js" "policy swapped by a replace ref"
+expect_refused "a replace ref does not change the policy the floor reads" \
+  "house pre-commit" "$r" commit -m "replaced"
 
 # A repo that adopts house before its first commit has no HEAD to read, so the
 # working-tree manifest is the only source there is.
@@ -692,6 +810,20 @@ if git -C "$r" worktree add -q "$TMP_ROOT/c20-wt" master 2>/dev/null; then
     "$TMP_ROOT/c20-wt" commit -m "from a worktree"
 else
   fail "a commit on master from a linked worktree is refused" "could not add the worktree"
+fi
+
+# --- 12. the seam the floor cannot see ----------------------------------------
+echo "-- documented seams --"
+
+# `git send-pack` writes refs on a remote without ever running pre-push: git
+# calls that hook from `git push` only. No hook can close it, so the guard that
+# owns pushes has to say in its own header where it IS closed (the PreToolUse
+# hook's disable list), rather than leaving the gap unstated.
+if grep -q 'send-pack' "$SRC/pre-push.d/10-house-branch"; then
+  pass "the pre-push guard's header names the send-pack seam"
+else
+  fail "the pre-push guard's header names the send-pack seam" \
+    "no mention of send-pack in $SRC/pre-push.d/10-house-branch"
 fi
 
 echo

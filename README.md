@@ -79,8 +79,8 @@ loaded (`docs/handbook/origins.md`). Sync tools and copy-paste collections finis
 
 ## Prerequisites
 
-Node 22 or newer, `git`, and bash, plus the GitHub CLI (`gh`) for the pull-request workflow the
-rules assume: the worktree cleanup script, the deploy guards, and the handoff skill shell out to it.
+Node 22 or newer, git 2.28 or newer (below that `--no-verify` skips the whole branch-policy floor, and
+`house doctor` says so), `jq`, bash, and the GitHub CLI (`gh`), which the cleanup script, deploy guards, and handoff skill use.
 No language or framework is assumed. The docs gate resolves `npm run` tokens against `package.json`
 scripts only where that file exists, as the header of `plugins/house/payload/check.mjs` says, so
 without one they are skipped, not failed; `bareScriptAllowlist` and `packageRoots` tune the rest.

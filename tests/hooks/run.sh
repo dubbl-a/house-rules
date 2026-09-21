@@ -12,22 +12,33 @@
 # throwaway git repos created under mktemp.
 #
 # Since #58 (ADR 0013) the hook is no longer the branch guard: the git-hook
-# floor is. So the suite is in five parts:
+# floor is. So the suite is in six parts:
 #   - the ADR 0002 adoption gates and the deference matrix
-#   - the policy source: house.json as it is on HEAD, not in the working tree
+#   - the policy source: house.json as it is on HEAD, not in the working tree,
+#     and not through a replace ref either
 #   - the disable list: every literal that turns the floor off, each next to
-#     an innocent neighbour that must still pass
-#   - the branch refusals, run three ways: against a fixture where the floor
-#     is ARMED (only a commit is refused, everything else is the floor's), one
-#     where core.hooksPath is unset, and one where the floor is armed but a
-#     vendored file has been edited (so it is not intact and not trusted)
+#     an innocent neighbour that must still pass, and the proof that the list
+#     applies in a `direct` repo and in one that defers its branch decision
+#   - the branch refusals, run four ways: against a fixture where the floor is
+#     ARMED (only a commit and a send-pack are refused, the rest is the
+#     floor's), one where core.hooksPath is unset, one where the floor is
+#     armed but not intact (an edited, missing, unexecutable, untracked,
+#     ignored or symlinked file), and one where the floor is perfect but the
+#     git that would run it is older than 2.28
 #   - the two fail-closed paths: missing jq and the ERR trap
+#   - the round-2 adversarial findings, replayed as fixtures: send-pack (N1),
+#     a replace ref (N2), the disable list in front of the policy gate (N3),
+#     an alias body while armed (N5), git < 2.28 (N6), a bare push from a
+#     feature branch (N7), an ignored plant under .githooks (N8),
+#     case-different paths (N9), and a repository named through the
+#     environment (N11)
 #
 # The armed fixture copies the vendored floor from
 # plugins/house/modules/github/files/githooks/ AND COMMITS IT, because the
-# hook's `armed` test is byte-identity with the plugin's own copy plus a clean
-# `git status` on the hooks directory. Copying at test time is deliberate: the
-# floor's contents change in the same PR, and the fixture must follow.
+# hook's `armed` test is byte-identity with the plugin's own copy, the set of
+# files HEAD tracks, and a clean `git status` on the hooks directory. Copying
+# at test time is deliberate: the floor's contents change in the same PR, and
+# the fixture must follow.
 #
 # Run:  bash tests/hooks/run.sh   (also wired as `npm run test:hooks`)
 #
@@ -52,9 +63,46 @@ if [[ ! -d "$FLOOR_SRC" ]]; then
   exit 1
 fi
 
+# Since round 3 the hook reads a repo as ARMED only when the git that will run
+# the hooks is 2.28 or newer: reference-transaction, the only hook that sees a
+# merge, rebase, amend, reset or update-ref, arrived there, and without it the
+# floor cannot cover history. So the armed fixtures below need a >= 2.28 git
+# first on PATH for the HOOK (the fixtures themselves are built with whatever
+# git this suite runs under, which any version handles), and the git-version
+# cases need an older one. Both are looked for; a missing one skips its cases
+# loudly rather than silently passing.
+# HOUSE_TEST_GIT_NEW / HOUSE_TEST_GIT_OLD pin the bin directory each half uses
+# (the word `none` means "pretend this box has no such git", which is how a CI
+# runner with a single git looks).
+GIT_NEW_DIR="${HOUSE_TEST_GIT_NEW:-}"
+GIT_OLD_DIR="${HOUSE_TEST_GIT_OLD:-}"
+for _g in "$(command -v git 2>/dev/null)" /usr/bin/git /usr/local/bin/git \
+          /opt/homebrew/bin/git /usr/local/opt/git/bin/git /opt/local/bin/git; do
+  [[ -n "$_g" && -x "$_g" ]] || continue
+  _v=$("$_g" --version 2>/dev/null | awk '{print $3}')
+  _maj="${_v%%.*}"; _min="${_v#*.}"; _min="${_min%%.*}"
+  case "$_maj$_min" in ''|*[!0-9]*) continue ;; esac
+  if [[ "$_maj" -gt 2 ]] || { [[ "$_maj" -eq 2 ]] && [[ "$_min" -ge 28 ]]; }; then
+    [[ -n "$GIT_NEW_DIR" ]] || GIT_NEW_DIR="$(dirname "$_g")"
+  else
+    [[ -n "$GIT_OLD_DIR" ]] || GIT_OLD_DIR="$(dirname "$_g")"
+  fi
+done
+[[ "$GIT_NEW_DIR" == none ]] && GIT_NEW_DIR=''
+[[ "$GIT_OLD_DIR" == none ]] && GIT_OLD_DIR=''
+
+# Prepended to PATH for the hook only (empty means: run it as the suite runs).
+HOOK_PATH_PREFIX=''
+
 TESTS_TOTAL=0
 TESTS_PASSED=0
 TESTS_FAILED=0
+TESTS_SKIPPED=0
+
+skip() {
+  TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+  printf '  SKIP  %s -- %s\n' "$1" "$2"
+}
 
 pass() {
   TESTS_TOTAL=$((TESTS_TOTAL + 1))
@@ -84,10 +132,19 @@ mk_file_payload() {
     '{tool_name: $tool, tool_input: {file_path: $fp}, cwd: $cwd}'
 }
 
-# run_hook <payload-json> -> sets HOOK_OUT / HOOK_CODE
+# run_hook <payload-json> -> sets HOOK_OUT / HOOK_CODE. HOOK_PATH_PREFIX picks
+# which git the hook itself sees, which decides whether a floor counts as armed;
+# HOOK_ENV is a list of VAR=value assignments for cases that must not read the
+# person's own global git config (push.default lives there on most boxes).
+HOOK_ENV=()
 run_hook() {
   local payload="$1"
-  HOOK_OUT=$(printf '%s' "$payload" | bash "$HOOK")
+  if [[ -n "$HOOK_PATH_PREFIX" ]]; then
+    HOOK_OUT=$(printf '%s' "$payload" | PATH="$HOOK_PATH_PREFIX:$PATH" \
+      env ${HOOK_ENV[@]+"${HOOK_ENV[@]}"} bash "$HOOK")
+  else
+    HOOK_OUT=$(printf '%s' "$payload" | env ${HOOK_ENV[@]+"${HOOK_ENV[@]}"} bash "$HOOK")
+  fi
   HOOK_CODE=$?
 }
 
@@ -232,6 +289,9 @@ EOF
 echo "=== house guard: PreToolUse hook regression tests ==="
 echo "hook: $HOOK"
 echo "floor fixture: vendored sources from $FLOOR_SRC"
+echo "fixture git: $(git --version)"
+echo "git >= 2.28 for the armed cases: ${GIT_NEW_DIR:-NONE FOUND (those cases skip)}"
+echo "git <  2.28 for the version cases: ${GIT_OLD_DIR:-NONE FOUND (those cases skip)}"
 echo
 
 # ── ADR 0002 adoption gates ──────────────────────────────────────────────
@@ -339,10 +399,56 @@ expect_deny "unarmed: a non-literal refspec cannot be read" \
 expect_deny "unarmed: a glob refspec cannot be read" \
   "$(mk_payload "git push origin refs/heads/*:refs/heads/*" "$u")" "not a literal refspec"
 git -C "$u" checkout -q -b feat/u
-expect_allow "unarmed: a bare push from a feature branch is allowed" \
+# H7 (round-2 N7): a push with no refspec is not readable from a FEATURE
+# branch either, unless the config says in so many words what moves.
+# push.default=upstream with branch.<x>.merge on master, a remote.*.push
+# refspec, or plain `matching` all send a feature branch onto master.
+# push.default lives in the person's global config on most boxes, so the
+# "unset" cases run with a HOME of their own.
+mkdir -p "$TMP_ROOT/nohome"
+HOOK_ENV=(HOME="$TMP_ROOT/nohome" XDG_CONFIG_HOME="$TMP_ROOT/nohome/.config" GIT_CONFIG_NOSYSTEM=1)
+expect_deny "unarmed: a bare push from a feature branch, push.default unset" \
+  "$(mk_payload "git push" "$u")" "push.default is unset"
+expect_deny "unarmed: push --tags from a feature branch, push.default unset" \
+  "$(mk_payload "git push --tags" "$u")" "no refspec"
+HOOK_ENV=()
+git -C "$u" config push.default matching
+expect_deny "unarmed: push.default=matching pushes every same-named branch" \
+  "$(mk_payload "git push" "$u")" "push.default=matching"
+git -C "$u" config push.default current
+expect_allow "unarmed: push.default=current names what moves, and it is this branch" \
   "$(mk_payload "git push" "$u")"
-expect_allow "unarmed: push --tags from a feature branch is allowed" \
+expect_allow "unarmed: push.default=current, push --tags" \
   "$(mk_payload "git push --tags" "$u")"
+git -C "$u" config remote.origin.push refs/heads/feat/u:refs/heads/master
+expect_deny "unarmed: a remote.<name>.push refspec decides instead" \
+  "$(mk_payload "git push" "$u")" "remote.origin.push"
+git -C "$u" config --unset remote.origin.push
+git -C "$u" config push.default simple
+git -C "$u" config branch.feat/u.merge refs/heads/master
+expect_deny "unarmed: push.default=simple with the upstream on master" \
+  "$(mk_payload "git push" "$u")" "branch.feat/u.merge"
+git -C "$u" config branch.feat/u.merge refs/heads/feat/u
+expect_allow "unarmed: push.default=simple with the upstream on the same branch" \
+  "$(mk_payload "git push" "$u")"
+git -C "$u" config push.default upstream
+expect_deny "unarmed: push.default=upstream is not readable, whatever the upstream is" \
+  "$(mk_payload "git push" "$u")" "push.default=upstream"
+git -C "$u" config --unset push.default
+git -C "$u" config --unset branch.feat/u.merge
+expect_allow "unarmed: naming the branch is always readable" \
+  "$(mk_payload "git push origin feat/u" "$u")"
+
+# H1 (round-2 N1): send-pack is a push that pre-push never sees. Unarmed, the
+# push grammar reads it exactly like a push.
+expect_deny "unarmed: send-pack onto master is read like a push" \
+  "$(mk_payload "git send-pack ../bare.git feat/u:master" "$u")" "protected branch"
+expect_deny "unarmed: send-pack --all" \
+  "$(mk_payload "git send-pack --all ../bare.git" "$u")" "without naming it"
+expect_deny "unarmed: send-pack --mirror" \
+  "$(mk_payload "git send-pack --mirror ../bare.git" "$u")" "without naming it"
+expect_allow "unarmed: send-pack naming a feature branch on both sides" \
+  "$(mk_payload "git send-pack ../bare.git feat/u:feat/u" "$u")"
 
 # --- 9c. UNARMED: the verbs that write history without the word commit ---
 h="$TMP_ROOT/unarmed-history"; new_repo "$h"; adopt "$h"
@@ -369,7 +475,7 @@ expect_allow "unarmed: a real git verb that only reads is fine" \
 base="$TMP_ROOT/case10"
 new_repo "$base/main"; adopt "$base/main"
 git -C "$base/main" checkout -q -b feat/main
-git -C "$base/main" worktree add -q "$base/other" master
+git -C "$base/main" worktree add "$base/other" master >/dev/null 2>&1  # no -q: git < 2.19 lacks it
 expect_deny "git -C other-worktree-on-master commit, cwd is the (non-protected) main worktree" \
   "$(mk_payload "git -C $base/other commit -m x" "$base/main")" "feature branch"
 
@@ -711,44 +817,129 @@ n="$TMP_ROOT/unadopted"; new_repo "$n"
 expect_allow "--no-verify in a repo that never adopted house is not our business" \
   "$(mk_payload "git $_cm --no-verify -m x" "$n")"
 
+# ── H2 (round-2 N2): a replace ref rewrites HEAD without moving a branch ──
+# `git replace <head> <other>` makes `git show HEAD:house.json` return another
+# commit's manifest, so the policy read must pass --no-replace-objects and the
+# verb itself must be refused.
+rp="$TMP_ROOT/replace"; new_repo "$rp"; adopt "$rp"
+git -C "$rp" checkout -q -b side
+printf '%s' '{"branchPolicy":"direct"}' >"$rp/house.json"
+git -C "$rp" commit -q -a -m direct
+rp_side=$(git -C "$rp" rev-parse HEAD)
+git -C "$rp" checkout -q master
+rp_head=$(git -C "$rp" rev-parse HEAD)
+git -C "$rp" replace -f "$rp_head" "$rp_side"
+expect_deny "a replace ref cannot turn the policy into direct" \
+  "$(mk_payload "git $_cm -m x" "$rp")" "feature branch"
+expect_deny "git replace is refused in an adopted repo" \
+  "$(mk_payload "git replace -f $rp_head $rp_side" "$rp")" "disables or moves"
+expect_deny "ACCEPTED FALSE DENY: listing replace refs is refused with writing them" \
+  "$(mk_payload "git replace --list" "$rp")" "disables or moves"
+expect_deny "git update-ref on a refs/replace ref is the same move as plumbing" \
+  "$(mk_payload "git update-ref refs/replace/$rp_head $rp_side" "$rp")" "disables or moves"
+expect_allow "reading the manifest is not writing a replace ref" \
+  "$(mk_payload "git cat-file blob HEAD:house.json" "$rp")"
+
+# ── H3 (round-2 N3): the floor's own protection is not the branch policy ──
+# branchPolicy direct and a repo-local branch guard both say who decides which
+# BRANCH may move. Neither licenses unarming core.hooksPath, editing a hook, or
+# writing a ref by hand, so the disable list runs in front of both gates.
+dr="$TMP_ROOT/direct-disable"; new_repo "$dr"; adopt "$dr" '{"branchPolicy":"direct"}'
+lock_floor "$dr"; install_floor "$dr"
+expect_deny "direct policy: unsetting core.hooksPath is still refused" \
+  "$(mk_payload "git config --unset core.$_ph" "$dr")" "disables or moves"
+expect_deny "direct policy: --no-verify is still refused" \
+  "$(mk_payload "git $_cm --no-verify -m x" "$dr")" "disables or moves"
+expect_deny "direct policy: removing a floor file is still refused" \
+  "$(mk_payload "rm .githooks/pre-push" "$dr")" "disables or moves"
+expect_deny "direct policy: update-ref on master is still refused" \
+  "$(mk_payload "git update-ref refs/heads/master HEAD" "$dr")" "disables or moves"
+expect_deny "direct policy: an Edit of a floor file is still refused" \
+  "$(mk_file_payload Edit "$dr/.githooks/pre-push" "$dr")" "git-hook floor"
+expect_allow "direct policy: the BRANCH refusals are still off (commit on master)" \
+  "$(mk_payload "git $_cm -m x" "$dr")"
+expect_allow "direct policy: a push naming master is still allowed" \
+  "$(mk_payload "git push origin master" "$dr")"
+
+dfr="$TMP_ROOT/defer-disable"; new_repo "$dfr"
+echo '{"branchPolicy":"pr"}' >"$dfr/house.json"
+mkdir -p "$dfr/.claude"
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}]}}' >"$dfr/.claude/settings.json"
+git -C "$dfr" add house.json .claude/settings.json && git -C "$dfr" commit -q -m house
+expect_deny "deference: a repo-local guard does not license unarming the floor" \
+  "$(mk_payload "git $_cm --no-verify -m x" "$dfr")" "disables or moves"
+expect_allow "deference: the branch decision is still the local guard's" \
+  "$(mk_payload "git $_cm -m x" "$dfr")"
+
+# ── H6 (round-2 N9): the default macOS volume is case-insensitive ─────────
+ci="$TMP_ROOT/caseins"; new_repo "$ci"; adopt "$ci"; lock_floor "$ci"; install_floor "$ci"
+mkdir -p "$ci/src"
+git -C "$ci" checkout -q -b feat/c
+expect_deny "rm .GITHOOKS/pre-push names the same file" \
+  "$(mk_payload "rm .GITHOOKS/pre-push" "$ci")" "disables or moves"
+expect_deny "a redirection into .GitHooks/pre-push" \
+  "$(mk_payload "echo x > .GitHooks/pre-push" "$ci")" "disables or moves"
+expect_deny "Edit on .GITHOOKS/pre-push" \
+  "$(mk_file_payload Edit "$ci/.GITHOOKS/pre-push" "$ci")" "git-hook floor"
+expect_deny "Write on .Git/config" \
+  "$(mk_file_payload Write "$ci/.Git/config" "$ci")" "git-hook floor"
+ln -s "$ci/.githooks" "$ci/hooks-link"
+expect_deny "Edit through a symlink into the hooks directory" \
+  "$(mk_file_payload Edit "$ci/hooks-link/pre-push" "$ci")" "git-hook floor"
+expect_deny "Edit through a .. segment" \
+  "$(mk_file_payload Edit "$ci/src/../.githooks/pre-push" "$ci")" "git-hook floor"
+expect_allow "Edit on a file whose name merely starts like the hooks directory" \
+  "$(mk_file_payload Edit "$ci/.githooks-notes.md" "$ci")"
+expect_allow "a read of the hooks directory in any case is still a read" \
+  "$(mk_payload "cat .GITHOOKS/pre-push" "$ci")"
+
+# ── H8 (round-2 N11): a repository named rather than entered ──────────────
+e="$TMP_ROOT/envdir"; new_repo "$e"; adopt "$e"; git -C "$e" checkout -q -b feat/e
+for _pfx in "GIT_DIR=$e/.git" "GIT_WORK_TREE=$e" "GIT_COMMON_DIR=$e/.git"; do
+  expect_deny "a commit under $_pfx is refused" \
+    "$(mk_payload "$_pfx git $_cm -m x" "$e")" "environment-named repository"
+done
+expect_deny "a push under GIT_DIR= is refused" \
+  "$(mk_payload "GIT_DIR=$e/.git git push origin feat/e" "$e")" "environment-named repository"
+expect_deny "git --git-dir= on a commit is refused" \
+  "$(mk_payload "git --git-dir=$e/.git $_cm -m x" "$e")" "environment-named repository"
+expect_deny "git --work-tree= on a merge is refused" \
+  "$(mk_payload "git --work-tree=$e --git-dir=$e/.git merge feat/e" "$e")" "environment-named repository"
+expect_deny "git --git-dir with a separate value is refused" \
+  "$(mk_payload "git --git-dir $e/.git $_cm -m x" "$e")" "environment-named repository"
+expect_deny "send-pack under GIT_DIR= is refused" \
+  "$(mk_payload "GIT_DIR=$e/.git git send-pack origin feat/e:feat/e" "$e")" "environment-named repository"
+expect_allow "GIT_DIR= on a read-only verb is not our business" \
+  "$(mk_payload "GIT_DIR=$e/.git git log --oneline -3" "$e")"
+expect_allow "git --git-dir= on a read-only verb is not our business" \
+  "$(mk_payload "git --git-dir=$e/.git status --porcelain" "$e")"
+
+# ── H10: git's per-user config can arm or disarm every repo on the box ────
+expect_deny "Write on ~/.gitconfig from inside an adopted checkout" \
+  "$(mk_file_payload Write "$HOME/.gitconfig" "$d")" "per-user config"
+expect_deny "Edit on ~/.gitconfig from inside an adopted checkout" \
+  "$(mk_file_payload Edit "$HOME/.gitconfig" "$d")" "per-user config"
+expect_allow "Edit on a lookalike beside it" \
+  "$(mk_file_payload Edit "$HOME/.gitconfig.bak" "$d")"
+xdg="$TMP_ROOT/xdg"; mkdir -p "$xdg/git"
+payload="$(mk_file_payload Write "$xdg/git/config" "$d")"
+HOOK_OUT=$(printf '%s' "$payload" | XDG_CONFIG_HOME="$xdg" bash "$HOOK")
+reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
+if [[ "$reason" == *"per-user config"* ]]; then
+  pass "Write on \$XDG_CONFIG_HOME/git/config"
+else
+  fail "Write on \$XDG_CONFIG_HOME/git/config" "expected the per-user config deny, got: [$reason]"
+fi
+expect_allow "the same path with XDG_CONFIG_HOME pointing elsewhere" \
+  "$(mk_file_payload Write "$xdg/git/config" "$d")"
+
 # ── the floor ARMED: only a commit is refused; everything else is the floor's ──
+# Every case in this section needs the hook to see a git >= 2.28; below that
+# the floor cannot cover history and the hook reads the repo as unarmed (the
+# next section pins exactly that).
 a="$TMP_ROOT/armed"; new_repo "$a"; adopt "$a"; lock_floor "$a"
 arm_floor "$a" feat/a
-expect_deny "armed: commit on master denies with the short message" \
-  "$(mk_payload "git commit -m x" "$a")" "needs a PR"
-expect_deny_without "armed: the commit deny does NOT tell you to arm the floor" \
-  "$(mk_payload "git commit -m x" "$a")" "not armed in this checkout"
-expect_deny_without "armed: the commit deny does NOT tell you to re-render" \
-  "$(mk_payload "git commit -m x" "$a")" "house render --apply"
-expect_allow "armed: push origin master from master is the floor's business" \
-  "$(mk_payload "git push origin master" "$a")"
-expect_allow "armed: a bare push from master is the floor's business" \
-  "$(mk_payload "git push" "$a")"
-expect_allow "armed: git merge on master is the floor's business" \
-  "$(mk_payload "git merge feat/a" "$a")"
-expect_allow "armed: an alias verb is the floor's business" \
-  "$(mk_payload "git po origin master" "$a")"
-expect_allow "armed: a computed verb is the floor's business" \
-  "$(mk_payload 'git ${v} -m x' "$a")"
-git -C "$a" checkout -q feat/a
-expect_allow "armed: push origin master from a feature branch is the floor's business" \
-  "$(mk_payload "git push origin master" "$a")"
-expect_allow "armed: a tag push is the floor's business" \
-  "$(mk_payload "git push origin v1.2.3" "$a")"
-expect_allow "armed: commit on a feature branch" \
-  "$(mk_payload "git commit -m x" "$a")"
-expect_deny "armed: the disable list still applies" \
-  "$(mk_payload "git commit --no-verify -m x" "$a")" "disables or moves"
-expect_deny "armed: push --delete on a protected branch is plumbing, not a push scan" \
-  "$(mk_payload "git push origin --delete master" "$a")" "disables or moves"
-expect_allow "armed: push --delete on a feature branch is the floor's business" \
-  "$(mk_payload "git push origin --delete feat/old" "$a")"
-# A force-push to a protected branch IS refused by pre-push, so the plumbing
-# scan deliberately does not read it here; unarmed, the push scan still does.
-expect_allow "armed: a force-push to master is left to pre-push" \
-  "$(mk_payload "git push --force origin master" "$a")"
-expect_deny "unarmed: a force-push to master is refused by the push scan" \
-  "$(mk_payload "git push --force origin master" "$d")" "protected branch"
+git -C "$a" config alias.po "push origin master"
 
 # ── ARMED THROUGH A LINKED WORKTREE ───────────────────────────────────────
 # core.hooksPath lives in the main checkout's config and the hooks directory
@@ -759,66 +950,197 @@ w="$TMP_ROOT/wtfloor"
 new_repo "$w/main"; adopt "$w/main"; lock_floor "$w/main"
 install_floor "$w/main" feat/main
 git -C "$w/main" checkout -q feat/main
-git -C "$w/main" worktree add -q "$w/wt" master
+git -C "$w/main" worktree add "$w/wt" master >/dev/null 2>&1
 arm_hookspath "$w/main"
-expect_allow "worktree: commit on a feature branch in the main checkout" \
-  "$(mk_payload "git commit -m x" "$w/main")"
-expect_deny "worktree: commit on master inside the linked worktree" \
-  "$(mk_payload "git commit -m x" "$w/wt")" "needs a PR"
-expect_deny_without "worktree: the deny does NOT tell the session to write core.hooksPath" \
-  "$(mk_payload "git commit -m x" "$w/wt")" "git config core.hooksPath"
-expect_allow "worktree: push origin master from the linked worktree is the floor's business" \
-  "$(mk_payload "git push origin master" "$w/wt")"
-expect_allow "worktree: a bare push from the linked worktree is the floor's business" \
-  "$(mk_payload "git push" "$w/wt")"
-expect_deny "worktree: the disable list still applies inside the worktree" \
-  "$(mk_payload "git commit --no-verify -m x" "$w/wt")" "disables or moves"
 
 # ── the floor ARMED BUT NOT INTACT: one edited file and it is not trusted ──
 # The integrity check is the real guard: byte-identity with the plugin's own
-# copy, the execute bit, and a clean git status on the hooks directory.
+# copy, the execute bit, the set of files HEAD tracks, and a clean git status
+# on the hooks directory with ignored files included.
 mk_broken_floor() {
   local dir="$1"
   new_repo "$dir"; adopt "$dir"
   arm_floor "$dir" feat/b
   git -C "$dir" checkout -q feat/b
 }
-b="$TMP_ROOT/broken-edit"; mk_broken_floor "$b"
-printf '\n# tampered\n' >>"$b/.githooks/pre-push"
-expect_deny "not intact: an edited floor file makes a push naming master refusable again" \
-  "$(mk_payload "git push origin master" "$b")" "protected branch"
-expect_deny "not intact: and the message names house render --apply" \
-  "$(mk_payload "git push origin master" "$b")" "house render --apply"
-expect_deny_without "not intact: the message does NOT tell you to write core.hooksPath" \
-  "$(mk_payload "git push origin master" "$b")" "git config core.hooksPath"
 
-b2="$TMP_ROOT/broken-missing"; mk_broken_floor "$b2"
-rm -f "$b2/.githooks/pre-push.d/10-house-branch"
-expect_deny "not intact: a missing guard file reads as unarmed" \
-  "$(mk_payload "git push origin master" "$b2")" "house render --apply"
+if [[ -z "$GIT_NEW_DIR" ]]; then
+  skip "the whole armed-floor section" \
+    "no git >= 2.28 on this box, so the hook reads every floor as unarmed"
+else
+  HOOK_PATH_PREFIX="$GIT_NEW_DIR"
 
-b3="$TMP_ROOT/broken-mode"; mk_broken_floor "$b3"
-chmod -x "$b3/.githooks/pre-commit"
-expect_deny "not intact: a floor file without the execute bit reads as unarmed" \
-  "$(mk_payload "git push origin master" "$b3")" "house render --apply"
+  expect_deny "armed: commit on master denies with the short message" \
+    "$(mk_payload "git commit -m x" "$a")" "needs a PR"
+  expect_deny_without "armed: the commit deny does NOT tell you to arm the floor" \
+    "$(mk_payload "git commit -m x" "$a")" "not armed in this checkout"
+  expect_deny_without "armed: the commit deny does NOT tell you to re-render" \
+    "$(mk_payload "git commit -m x" "$a")" "house render --apply"
+  expect_allow "armed: push origin master from master is the floor's business" \
+    "$(mk_payload "git push origin master" "$a")"
+  expect_allow "armed: a bare push from master is the floor's business" \
+    "$(mk_payload "git push" "$a")"
+  expect_allow "armed: git merge on master is the floor's business" \
+    "$(mk_payload "git merge feat/a" "$a")"
+  expect_allow "armed: a computed verb is the floor's business" \
+    "$(mk_payload 'git ${v} -m x' "$a")"
+  git -C "$a" checkout -q feat/a
+  expect_allow "armed: push origin master from a feature branch is the floor's business" \
+    "$(mk_payload "git push origin master" "$a")"
+  expect_allow "armed: a tag push is the floor's business" \
+    "$(mk_payload "git push origin v1.2.3" "$a")"
+  expect_allow "armed: commit on a feature branch" \
+    "$(mk_payload "git commit -m x" "$a")"
+  expect_deny "armed: the disable list still applies" \
+    "$(mk_payload "git commit --no-verify -m x" "$a")" "disables or moves"
+  expect_deny "armed: push --delete on a protected branch is plumbing, not a push scan" \
+    "$(mk_payload "git push origin --delete master" "$a")" "disables or moves"
+  expect_allow "armed: push --delete on a feature branch is the floor's business" \
+    "$(mk_payload "git push origin --delete feat/old" "$a")"
+  # A force-push to a protected branch IS refused by pre-push, so the plumbing
+  # scan deliberately does not read it here; unarmed, the push scan still does.
+  expect_allow "armed: a force-push to master is left to pre-push" \
+    "$(mk_payload "git push --force origin master" "$a")"
 
-b4="$TMP_ROOT/broken-untracked"; mk_broken_floor "$b4"
-printf '#!/usr/bin/env bash\nexit 0\n' >"$b4/.githooks/pre-commit.d/00-mine"
-chmod +x "$b4/.githooks/pre-commit.d/00-mine"
-expect_deny "not intact: an untracked .d file reads as unarmed" \
-  "$(mk_payload "git push origin master" "$b4")" "house render --apply"
+  # H1 (round-2 N1): git send-pack pushes without pre-push running at all, so
+  # armed there is nothing behind a refusal here.
+  expect_deny "armed: git send-pack is refused because no git hook sees it" \
+    "$(mk_payload "git send-pack ../bare.git feat/a:master" "$a")" "git runs no hook for it"
+  expect_deny "armed: send-pack naming a feature branch is refused too" \
+    "$(mk_payload "git send-pack origin feat/a:feat/a" "$a")" "Use git push"
+  expect_allow "armed: a verb that merely looks like send-pack is untouched" \
+    "$(mk_payload "git send-email --dry-run" "$a")"
 
-b5="$TMP_ROOT/broken-devnull"; mk_broken_floor "$b5"
-printf '[core]\n\thooksPath = /dev/null\n' >"$b5/../broken-devnull-include"
-git -C "$b5" config include.path "$b5/../broken-devnull-include"
-expect_deny "not intact: an include.path that repoints hooksPath reads as unarmed" \
-  "$(mk_payload "git push origin master" "$b5")" "floor is not armed in this checkout"
+  # H9 (round-2 N5): armed, an unknown verb is the floor's business, but an
+  # alias BODY is text the floor never sees. One level, no further.
+  expect_allow "armed: an alias verb whose body is innocent is the floor's business" \
+    "$(mk_payload "git po origin master" "$a")"
+  git -C "$a" config alias.hp "-c core.hooksPath=/dev/null push"
+  expect_deny "armed: an alias body carrying core.hooksPath is refused" \
+    "$(mk_payload "git hp origin master" "$a")" "disables or moves"
+  git -C "$a" config alias.pd "push --delete origin master"
+  expect_deny "armed: an alias body deleting a protected branch is refused" \
+    "$(mk_payload "git pd" "$a")" "disables or moves"
+  git -C "$a" config alias.ur "update-ref refs/heads/master HEAD"
+  expect_deny "armed: an alias body writing a protected ref is refused" \
+    "$(mk_payload "git ur" "$a")" "disables or moves"
+  git -C "$a" config alias.nuke '!rm -rf .githooks && git push'
+  expect_deny "armed: a shell alias is not readable and is refused" \
+    "$(mk_payload "git nuke" "$a")" "shell alias"
+  git -C "$a" config alias.lg "log --oneline -5"
+  expect_allow "armed: a read-only alias body is allowed" \
+    "$(mk_payload "git lg" "$a")"
+  expect_allow "armed: an undefined verb with no alias at all is the floor's business" \
+    "$(mk_payload "git nosuchverb --flag" "$a")"
 
-b6="$TMP_ROOT/broken-elsewhere"; mk_broken_floor "$b6"
-mkdir -p "$b6/.husky/_"
-git -C "$b6" config core.hooksPath "$b6/.husky/_"
-expect_deny "not intact: a foreign hooksPath reads as unarmed" \
-  "$(mk_payload "git push origin master" "$b6")" "floor is not armed in this checkout"
+  expect_allow "worktree: commit on a feature branch in the main checkout" \
+    "$(mk_payload "git commit -m x" "$w/main")"
+  expect_deny "worktree: commit on master inside the linked worktree" \
+    "$(mk_payload "git commit -m x" "$w/wt")" "needs a PR"
+  expect_deny_without "worktree: the deny does NOT tell the session to write core.hooksPath" \
+    "$(mk_payload "git commit -m x" "$w/wt")" "git config core.hooksPath"
+  expect_allow "worktree: push origin master from the linked worktree is the floor's business" \
+    "$(mk_payload "git push origin master" "$w/wt")"
+  expect_allow "worktree: a bare push from the linked worktree is the floor's business" \
+    "$(mk_payload "git push" "$w/wt")"
+  expect_deny "worktree: the disable list still applies inside the worktree" \
+    "$(mk_payload "git commit --no-verify -m x" "$w/wt")" "disables or moves"
+
+  b="$TMP_ROOT/broken-edit"; mk_broken_floor "$b"
+  printf '\n# tampered\n' >>"$b/.githooks/pre-push"
+  expect_deny "not intact: an edited floor file makes a push naming master refusable again" \
+    "$(mk_payload "git push origin master" "$b")" "protected branch"
+  expect_deny "not intact: and the message names house render --apply" \
+    "$(mk_payload "git push origin master" "$b")" "house render --apply"
+  expect_deny_without "not intact: the message does NOT tell you to write core.hooksPath" \
+    "$(mk_payload "git push origin master" "$b")" "git config core.hooksPath"
+
+  b2="$TMP_ROOT/broken-missing"; mk_broken_floor "$b2"
+  rm -f "$b2/.githooks/pre-push.d/10-house-branch"
+  expect_deny "not intact: a missing guard file reads as unarmed" \
+    "$(mk_payload "git push origin master" "$b2")" "house render --apply"
+
+  b3="$TMP_ROOT/broken-mode"; mk_broken_floor "$b3"
+  chmod -x "$b3/.githooks/pre-commit"
+  expect_deny "not intact: a floor file without the execute bit reads as unarmed" \
+    "$(mk_payload "git push origin master" "$b3")" "house render --apply"
+
+  b4="$TMP_ROOT/broken-untracked"; mk_broken_floor "$b4"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$b4/.githooks/pre-commit.d/00-mine"
+  chmod +x "$b4/.githooks/pre-commit.d/00-mine"
+  expect_deny "not intact: an untracked .d file reads as unarmed" \
+    "$(mk_payload "git push origin master" "$b4")" "house render --apply"
+
+  # H5 (round-2 N7/N8): an IGNORED planted file is invisible to `git status`,
+  # and the dispatcher runs it anyway. The set of files on disk must equal the
+  # set HEAD tracks, whatever .gitignore and .git/info/exclude say.
+  b4b="$TMP_ROOT/broken-ignored"; mk_broken_floor "$b4b"
+  printf '.githooks/00-mine\n' >>"$b4b/.git/info/exclude"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$b4b/.githooks/00-mine"
+  chmod +x "$b4b/.githooks/00-mine"
+  expect_deny "not intact: a planted .githooks file that .git/info/exclude hides" \
+    "$(mk_payload "git push origin master" "$b4b")" "house render --apply"
+  rm -f "$b4b/.githooks/00-mine"
+  expect_allow "intact again once the planted file is gone" \
+    "$(mk_payload "git push origin master" "$b4b")"
+  # The same through a tracked .gitignore, and in a .d directory.
+  b4c="$TMP_ROOT/broken-gitignored"; mk_broken_floor "$b4c"
+  printf '*.local\n' >"$b4c/.gitignore"
+  git -C "$b4c" add .gitignore && git -C "$b4c" commit -q -m ignore
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$b4c/.githooks/pre-commit.d/00-mine.local"
+  expect_deny "not intact: a planted .d file that .gitignore hides" \
+    "$(mk_payload "git push origin master" "$b4c")" "house render --apply"
+  # A symlinked hook file is not a regular file, so the set comparison sees it.
+  b4d="$TMP_ROOT/broken-symlink"; mk_broken_floor "$b4d"
+  cp "$b4d/.githooks/pre-push" "$TMP_ROOT/copy-pre-push"
+  rm -f "$b4d/.githooks/pre-push"
+  ln -s "$TMP_ROOT/copy-pre-push" "$b4d/.githooks/pre-push"
+  expect_deny "not intact: a floor file replaced by a symlink to an identical copy" \
+    "$(mk_payload "git push origin master" "$b4d")" "protected branch"
+
+  b5="$TMP_ROOT/broken-devnull"; mk_broken_floor "$b5"
+  printf '[core]\n\thooksPath = /dev/null\n' >"$b5/../broken-devnull-include"
+  git -C "$b5" config include.path "$b5/../broken-devnull-include"
+  expect_deny "not intact: an include.path that repoints hooksPath reads as unarmed" \
+    "$(mk_payload "git push origin master" "$b5")" "floor is not armed in this checkout"
+
+  b6="$TMP_ROOT/broken-elsewhere"; mk_broken_floor "$b6"
+  mkdir -p "$b6/.husky/_"
+  git -C "$b6" config core.hooksPath "$b6/.husky/_"
+  expect_deny "not intact: a foreign hooksPath reads as unarmed" \
+    "$(mk_payload "git push origin master" "$b6")" "floor is not armed in this checkout"
+
+  HOOK_PATH_PREFIX=''
+fi
+
+expect_deny "unarmed: a force-push to master is refused by the push scan" \
+  "$(mk_payload "git push --force origin master" "$d")" "protected branch"
+
+# ── H4 (round-2 N6): the floor needs git 2.28, or it cannot cover history ──
+# reference-transaction is the only hook that sees a merge, rebase, amend,
+# reset or update-ref. On an older git an armed, intact floor is still not a
+# floor for those, so the repo reads as unarmed and the unarmed scans stay on.
+if [[ -z "$GIT_OLD_DIR" ]]; then
+  skip "the git < 2.28 cases" "no git older than 2.28 on this box"
+else
+  HOOK_PATH_PREFIX="$GIT_OLD_DIR"
+  git -C "$a" checkout -q master
+  expect_deny "old git: an armed, intact floor still reads as unarmed" \
+    "$(mk_payload "git push origin master" "$a")" "protected branch"
+  expect_deny "old git: and the deny says which git and why" \
+    "$(mk_payload "git push origin master" "$a")" "has no reference-transaction hook"
+  expect_deny "old git: the upgrade is the remedy, not a re-render" \
+    "$(mk_payload "git push origin master" "$a")" "upgrade git to 2.28 or newer"
+  expect_deny_without "old git: and it does NOT tell you to write core.hooksPath" \
+    "$(mk_payload "git push origin master" "$a")" "git config core.hooksPath"
+  expect_deny "old git: a merge on master is refused, because nothing else sees it" \
+    "$(mk_payload "git merge feat/a" "$a")" "writes onto a protected branch"
+  git -C "$a" checkout -q feat/a
+  expect_allow "old git: a commit on a feature branch is still fine" \
+    "$(mk_payload "git commit -m x" "$a")"
+  HOOK_PATH_PREFIX=''
+fi
+git -C "$a" checkout -q feat/a
 
 # ── Edit/Write/MultiEdit: nothing under .githooks/ or the git dir ─────────
 expect_deny "Edit on a vendored .githooks file" \
@@ -845,11 +1167,15 @@ expect_deny "Edit on a floor file given as a relative path" \
 # A linked worktree edits the MAIN checkout's hooks directory.
 expect_deny "Edit on the main checkout's .githooks from inside a linked worktree" \
   "$(mk_file_payload Edit "$w/main/.githooks/pre-push" "$w/wt")" "part of the git-hook floor"
-# Another repo's .githooks is not this repo's business, and a repo on
-# branchPolicy direct never gets here at all.
+# Round 3 (H3): a repo on branchPolicy direct reaches the file scan too. The
+# policy says who decides which BRANCH may move; it is not permission to edit
+# the hooks, and the repo is one merged PR away from "pr".
 pd="$TMP_ROOT/direct-floor"; new_repo "$pd"; adopt "$pd" '{"branchPolicy":"direct"}'; lock_floor "$pd"
-expect_allow "Edit on a .githooks file in a branchPolicy direct repo" \
-  "$(mk_file_payload Edit "$pd/.githooks/pre-push" "$pd")"
+expect_deny "ACCEPTED FALSE DENY: Edit on a .githooks file in a branchPolicy direct repo" \
+  "$(mk_file_payload Edit "$pd/.githooks/pre-push" "$pd")" "git-hook floor"
+# A repo that never adopted house is still nobody's business here.
+expect_allow "Edit on a .githooks file in a repo that never adopted house" \
+  "$(mk_file_payload Edit "$n/.githooks/pre-push" "$n")"
 
 # ── latency: the hook runs on every Bash call, so it has a budget ─────────
 echo
@@ -874,6 +1200,9 @@ latency "six clauses, armed fixture" \
   "$(mk_payload 'git fetch origin && git status && git diff --stat && git log --oneline -5 && git branch --list && git remote -v' "$a")"
 latency "six clauses, unarmed fixture" \
   "$(mk_payload 'git fetch origin && git status && git diff --stat && git log --oneline -5 && git branch --list && git remote -v' "$u")"
+latency "Edit on an ordinary file (early exit)" "$(mk_file_payload Edit "$a/README.md" "$a")"
+latency "Edit on a file whose name holds git" "$(mk_file_payload Edit "$a/src/gitlab-client.ts" "$a")"
+latency "Edit on a floor file (the deny)" "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")"
 
 echo
 echo "=== shellcheck (informational; does not gate this suite) ==="
@@ -889,6 +1218,9 @@ fi
 
 echo
 echo "passed: $TESTS_PASSED / $TESTS_TOTAL"
+if [[ "$TESTS_SKIPPED" -gt 0 ]]; then
+  echo "skipped: $TESTS_SKIPPED group(s), for want of a git version on this box"
+fi
 if [[ "$TESTS_FAILED" -gt 0 ]]; then
   echo "$TESTS_FAILED case(s) failed."
   exit 1

@@ -81,6 +81,20 @@ new literal:
   Unarmed, the hook refuses every verb it cannot read as a literal git command and every push it
   cannot read as a literal refspec, and names the arming command.
 
+A second round against those two mechanisms confirmed every round-one shape closed and the
+release flow clean, then found the gaps that a structural fix leaves at its edges: `git send-pack`
+is a push no git hook sees; `git replace` rewrites what `HEAD:house.json` resolves to unless the
+readers pass `--no-replace-objects`; a feature branch that commits `branchPolicy: direct` stood the
+whole disable list down because the policy gate ran first; an armed floor on git older than 2.28
+was weaker than an unarmed one, since the history scans went quiet for a `reference-transaction`
+hook that does not exist there; and an ignored file in `.githooks/` was invisible to `git status`
+while the dispatcher ran it anyway. Each is closed the same way: the readers ignore replace refs,
+the disable list runs before the policy gate, "armed" requires git 2.28, the integrity test
+compares the hooks directory on disk with the tree at HEAD, the dispatchers run only tracked
+files, and `send-pack` is read as the push it is. That was the last round by decision: three
+rounds, each finding fewer and narrower gaps, is the shape a floor should show, and what follows
+is what stays open.
+
 Residue left open by decision, reported rather than chased: a disable and a push in the same
 Bash call (the integrity check runs before the call); a git command inside a script whose text
 never says `git`; a push from a second clone the session made earlier, whose `HEAD:house.json`
@@ -138,5 +152,5 @@ decision by itself. It supersedes nothing else.
 
 Receipts: #58, where the five classes and the eight review rounds are recorded; #34, the seams a
 hardened text scan tried and failed to close; #1, the reverted fix that first showed a patched
-bypass creates a new one; #57, which shipped the PreToolUse hook this record shrinks; #<this PR>,
+bypass creates a new one; #57, which shipped the PreToolUse hook this record shrinks; #66,
 which lands the floor, the arming, the checker verdict, and this record together.

@@ -14,6 +14,14 @@
 # tree. A push therefore cannot carry the manifest that would have allowed it:
 # a weaker policy only takes effect once it has landed through a PR.
 #
+# One seam no hook can close: git runs pre-push from `git push` only. The
+# plumbing underneath it, `git send-pack`, updates refs on a remote without
+# ever calling here. That is git's design, not an omission in this file, so the
+# answer is not in the floor at all: `send-pack` is on the PreToolUse hook's
+# disable list, refused in an adopted repo whether or not the floor is armed,
+# and the remote's own branch protection is what stops a send-pack from a
+# machine house never touched. See ADR 0013.
+#
 # Arguments: <remote-name> <remote-url>.
 # Stdin:     <local-ref> <local-sha> <remote-ref> <remote-sha>, one per ref.
 set -u
@@ -91,7 +99,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   # The policy that governs this ref is the one the remote is already running.
   policy_rev=""
   if ! is_zero_sha "${remote_sha:-}" &&
-    git -C "$top" cat-file -e "${remote_sha}^{commit}" 2>/dev/null </dev/null; then
+    git -C "$top" --no-replace-objects cat-file -e "${remote_sha}^{commit}" 2>/dev/null </dev/null; then
     policy_rev="$remote_sha"
   fi
   rc=0
@@ -116,13 +124,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   # A remote sha this clone does not have cannot be diffed, so the carve-out
   # cannot be established and the push is refused: the direction this check is
   # allowed to fail in.
-  if ! git -C "$top" cat-file -e "$remote_sha^{commit}" 2>/dev/null </dev/null; then
+  if ! git -C "$top" --no-replace-objects cat-file -e "$remote_sha^{commit}" 2>/dev/null </dev/null; then
     refused[refused_n]="$remote_ref (the remote's commit $remote_sha is not in this clone, so the carve-outs cannot be checked)"
     refused_n=$((refused_n + 1))
     continue
   fi
 
-  changed=$(git -C "$top" diff --name-only "$remote_sha" "$local_sha" 2>/dev/null </dev/null || printf '')
+  changed=$(git -C "$top" --no-replace-objects diff --name-only "$remote_sha" "$local_sha" 2>/dev/null </dev/null || printf '')
   house_carve_out_satisfied "$changed" && continue
   refused[refused_n]="$remote_ref (from ${local_ref:-HEAD})"
   refused_n=$((refused_n + 1))

@@ -40,7 +40,7 @@ house_is_protected "$branch" || exit 0
 
 # ACMDR, not ACM: a commit that only deletes or renames files is still a commit
 # on the protected branch, and its paths still have to clear the carve-outs.
-staged=$(git diff --cached --name-only --diff-filter=ACMDR 2>/dev/null || printf '')
+staged=$(git --no-replace-objects diff --cached --name-only --diff-filter=ACMDR 2>/dev/null || printf '')
 house_carve_out_satisfied "$staged" && exit 0
 
 house_refuse "pre-commit" \
