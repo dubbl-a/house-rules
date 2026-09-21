@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Prints the session's handoff snapshot (SHA, tree state, shipped PRs, headline finding, next steps), opening a real issue only for next-cycle work and for anything deferred by decision. Use for "wrap up" or "handoff".
+description: Prints the session's handoff snapshot (SHA, tree state, shipped PRs, headline finding, next steps), opening a real issue only for next-cycle work and recording anything deferred by decision where the decision lives. Use for "wrap up" or "handoff".
 disable-model-invocation: true
 ---
 
@@ -10,8 +10,8 @@ Handoff prints a snapshot: the fixed-shape summary the next session reads first.
 nothing for the snapshot itself, because the snapshot is re-derivable from the default branch,
 merged PRs, and release notes, and a standing issue that only ever restates that is noise. It
 opens an issue only for work someone will do: each next-cycle item becomes one, matched against
-open issues first, and anything deferred by decision becomes an issue closed as not planned, with
-the reason in it, because that reason is the one thing the next session cannot reconstruct.
+open issues first. Anything deferred by decision is recorded with its reason where the decision
+already lives, because that reason is the one thing the next session cannot reconstruct.
 
 The snapshot carries only what the next session cannot reconstruct on its own. Gate verdicts and
 count tables are deliberately not in it: both re-run in seconds against the recorded SHA, and a
@@ -28,13 +28,15 @@ only at the point a session is actually ending.
 4. Write the next-cycle list: ordered, concrete, each item with its reasoning.
 5. For each next-cycle item, check open issues for one that already covers it; open a new issue
    only when none does, and record its number.
-6. For anything deferred by decision, open an issue for it closed as not planned, with the reason
-   in the issue. Never do this for something simply not done; that stays a next-cycle item or
-   drops silently.
+6. For anything deferred by decision, record the reason where the decision already lives (the
+   CHANGELOG, a decision record, the code comment at the site); file an issue closed as not
+   planned only when no such place exists. Never do this for something simply not done; that
+   stays a next-cycle item or drops silently.
 7. Legacy cleanup: if an open issue titled "Session carryover" exists, close it with a comment
    pointing to the issues its content was split into.
 8. Print the snapshot in the reply: the staleness disclaimer, tree state, shipped, headline
-   finding, next-cycle list with issue numbers, and deferred-by-decision items with issue numbers.
+   finding, next-cycle list with issue numbers, and deferred-by-decision items with where each
+   is recorded.
 
 ## Gather the tree state
 
@@ -86,10 +88,13 @@ gh issue create --title "<item>" --body "<the one-line reasoning>"
 An issue exists for work someone will do; a next-cycle item that never becomes one is a list in
 prose that the next session has to trust instead of a tracker it can act on.
 
-## Turn deferred-by-decision into a closed issue with the reason
+## Record deferred-by-decision where the decision lives
 
 Something this session chose not to do, on purpose, is not the same as something that simply did
-not get to this session. Only the first kind gets an issue, and it is opened closed:
+not get to this session. Only the first kind gets recorded, with its reason, in the place the
+decision already lives: the CHANGELOG entry that shipped around it, a decision record, or the code
+comment at the site. Point to that place in the snapshot. Only when no such place exists, file it
+as an issue opened closed:
 
 ```
 gh issue create --title "<item>" --body "Deferred by decision: <the reason>"
@@ -97,7 +102,7 @@ gh issue close <N> --reason "not planned"
 ```
 
 The reason is the one line the next session cannot reconstruct on its own; a thing simply not
-done needs no issue, since it is either still a next-cycle item or it was never a commitment.
+done needs no record, since it is either still a next-cycle item or it was never a commitment.
 
 ## Legacy: retire an open carryover issue
 
@@ -115,8 +120,8 @@ Skip this step once no such issue remains.
 
 Open with the staleness disclaimer, verbatim in spirit: "Verify anything here before relying on
 it, this is a snapshot and the repo moves." Then, in order: tree state, shipped PRs, headline
-finding, next-cycle list with each item's issue number, deferred-by-decision items with each
-issue's number. Print this in the reply; it is never filed.
+finding, next-cycle list with each item's issue number, deferred-by-decision items with where
+each is recorded. Print this in the reply; it is never filed.
 
 ## Escape hatches
 

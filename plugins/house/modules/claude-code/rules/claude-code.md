@@ -145,7 +145,7 @@ Receipts: `docs/handbook/claude-code.md#read-a-resume-file-as-a-harness-artifact
 Open an issue only for work someone will do, because a standing issue with nothing to act on is noise in the tracker, not a handoff.
 Auto memory is the harness's own place for ongoing work, but it is machine-local and never shared, so it cannot be the channel the next session reads.
 Turn each next-cycle item into its own issue, after checking that an open one does not already cover it, so the tracker stays a list of work rather than a list of snapshots.
-Turn a thing deferred by decision into an issue closed as not planned, with the reason in it, because that line is the one the next session cannot reconstruct on its own; the rest of the state, the SHA, what shipped, what is open, is re-derivable from the default branch, merged PRs, and release notes.
+Record a thing deferred by decision, with its reason, where the decision already lives (the CHANGELOG, a decision record, the code comment at the site) and file an issue closed as not planned only when no such place exists, because that reason is the one line the next session cannot reconstruct on its own; the rest of the state, the SHA, what shipped, what is open, is re-derivable from the default branch, merged PRs, and release notes.
 Print the handoff's snapshot in the session rather than filing it anywhere. Gate verdicts and counts are re-run from the recorded commit, never copied into it, because a copied number is stale the moment the tree moves and a re-run one cannot be fabricated.
 Anchor: the `/house-rules:handoff` skill, whose required sections are that shape.
 Receipts: `docs/handbook/claude-code.md#hand-off-through-the-repo-not-a-standing-issue`

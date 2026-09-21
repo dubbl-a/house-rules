@@ -105,8 +105,10 @@ item, and the items deferred by decision, each with the reason. Gate verdicts an
 deliberately NOT in the form: both re-run in seconds against the recorded SHA, and a re-run number
 cannot be fabricated the way a copied one can. A next-cycle item becomes its own GitHub issue,
 matched against an open one first, because an issue is for work someone will do; a thing deferred
-by decision becomes an issue opened and closed as not planned, carrying the reason, because that
-reason is the one line the next session cannot reconstruct on its own.
+by decision is recorded with its reason where the decision already lives (the CHANGELOG, a
+decision record, the code comment at the site), and becomes an issue closed as not planned only
+when no such place exists, because that reason is the one line the next session cannot
+reconstruct on its own.
 
 This form is a correction of an earlier one (through v0.12.0), which filed the whole snapshot as
 a fixed-shape GitHub issue that superseded and closed the last one, generalizing repo-a's own

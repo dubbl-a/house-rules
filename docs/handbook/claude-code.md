@@ -488,7 +488,8 @@ repo itself, not an issue tracker
 (https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), which
 matches what the corrected form already did for everything except the issue's own existence. The
 practice now prints the same snapshot in the session and files a real issue only for a next-cycle
-item someone will do or a thing deferred by decision, closed as not planned with its reason, since
+item someone will do. A thing deferred by decision is recorded with its reason where the decision
+already lives, and becomes an issue closed as not planned only when no such place exists, since
 that reason is still the one line the next session cannot reconstruct on its own. Auto memory
 stays machine-local and unshared, so it still is not the channel (as of 2026-09-02, above).
 
