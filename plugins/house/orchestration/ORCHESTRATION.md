@@ -32,7 +32,7 @@ tools, and none can spawn an agent.
 | `refuter` | opus | Review a diff against its brief, rerun tests, ACCEPT or REWORK. |
 | `debugger` | opus | Hard root cause only, after an ordinary fix failed. |
 
-Loop: orchestrate, builder, refuter, orchestrate.
+Loop: orchestrate, builder, refuter (when sent), orchestrate.
 
 ## Model tier
 
@@ -78,9 +78,15 @@ diffs."):
 ## Verification
 
 - Agents are sent to refute, not confirm. Agreement without stated attacks is nothing.
+- Send a refuter when the change carries logic, a guard or hook, or facts and numbers someone
+  will act on. For a text-only or mechanical change a gate already covers, the session reads the
+  diff itself; no refuter.
+- One review round per change. A second only when the first returned a must-fix and the fix was
+  more than mechanical. Any further round is the user's call.
 - Each agent gets its own source of truth. Two agents reading one file is one agent.
 - Anything settleable by running it gets run.
-- Never accept "done" or "tests pass". The refuter reruns them.
+- Never accept "done" or "tests pass". The refuter reruns them; when no refuter is sent, the
+  session reruns them.
 - Run `git status --short` before and after a refuter or debugger. If the output differs, the
   agent edited files. Discard its verdict.
 - Say which findings came from an agent, which the session confirmed, and which nobody tested.

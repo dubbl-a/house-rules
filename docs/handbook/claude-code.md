@@ -338,6 +338,19 @@ Native floor, as of 2026-09-02: the bundled local review command, which already 
 subagent over the branch diff and whose background runs apply fixes outside the session's
 checkpoints (https://code.claude.com/docs/en/code-review#review-a-diff-locally).
 
+On 2026-09-21 the owner decided review should be proportionate. The evidence for keeping
+review at all: in the fourteen days before the decision, the refuter ran four times and returned
+REWORK with a real defect every time (a branch-guard glued-flag bypass, arithmetic errors in two
+plans, a silently deleted timeline row). The evidence for capping it: the session-start text sent
+a refuter after every builder change regardless of size, and review rounds carried no cap (the
+0.10.0 guard ran five adversarial rounds plus three regression rounds; PR #66 ran three, stopped
+only by the owner). Anthropic's best practices back the cap directly: "A reviewer prompted to
+find gaps will usually report some, even when the work is sound... Chasing every finding leads to
+over-engineering" (code.claude.com/docs/en/best-practices). The rule now sends a refuter only for
+logic, a guard or hook, or facts and numbers someone will act on, reads the diff itself
+otherwise, and holds every change to one review round unless the first round returned a must-fix
+whose fix was more than mechanical.
+
 ## Plan when the approach is uncertain, and clear the context after two failed corrections
 
 repo-e's `resume_instructions.md` carries the incident behind "re-read the source of a
