@@ -73,6 +73,7 @@ Receipts: `docs/handbook/engineering.md#make-a-measuring-instrument-reproducible
 ## Assert an invariant where its state is created, with a why and a remedy
 
 Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, since a violation never announces itself there.
+Treat a cost constraint as an invariant too, not a habit, so a spend limit fails the run instead of relying on someone noticing.
 Anchor: `npm run retro`, which refuses a check missing its why or remedy and exits non-zero on a hard violation; written guidance is context, not enforcement, so asserting the invariant in code where the state is created is this repo's requirement
 Receipts: `docs/handbook/engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy`
 
