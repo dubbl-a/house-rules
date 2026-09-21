@@ -11,6 +11,14 @@ implementation and file-heavy reading, and keeps for itself: reading a spec or d
 gives it, a one-line fix, a single grep or read, a question it can answer, and final judgment on
 every important finding.
 
+## Workspace
+
+- Enter a worktree before the first edit or branch: the harness's worktree tool, or
+  `git worktree add -b <branch> <path> origin/<default>`. The main checkout is for reading,
+  merging, and cleanup.
+- Never `git checkout -b` or `git switch -c` in the main checkout, not even for one commit.
+- A plan's first step is the worktree.
+
 ## Roster
 
 Pinned agents ship with the plugin as `house-rules:<name>`. Each pins its model, effort, and

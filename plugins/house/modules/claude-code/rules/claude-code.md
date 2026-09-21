@@ -110,10 +110,12 @@ Receipts: `docs/handbook/claude-code.md#plan-when-the-approach-is-uncertain-and-
 ## Treat git state as shared across sessions
 
 Assume another checkout can move your branch mid-run and strand uncommitted work, so ask before switching and commit early.
-Work in a worktree by default, because a branch in the main checkout is the checkout every peer session also holds; branch there only for a single-commit change when the agent list and the worktree list both show nobody else in flight.
+Enter a worktree before the first edit and before creating any branch, with the harness's worktree tool or `git worktree add -b <branch> <path> origin/<default>`, and make it the first step of every plan, because the main checkout is the one every peer session and the user hold.
+Never create a branch in the main checkout, not even for a one-commit change, because the rubric that would license an exception is one every session answers in its own favor, and a worktree costs one command.
+Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and every push instead of trusting what it was at session start.
 Squash-merge another session's branch rather than rebasing it, and never force-clean a checkout you do not own.
-Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees.
+Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout.
 Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-sessions`
 
 ## Keep the committed settings narrow and the local settings local
