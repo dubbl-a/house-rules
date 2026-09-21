@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, renameSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sandbox, run, houseJson, cleanup, writeUntracked } from './helpers.mjs';
@@ -10,13 +11,14 @@ function linesOf(n) {
 }
 
 // The checker derives the auto-memory index path from the repo root the same
-// way the harness names its project directory: every `/` becomes `-`. Derive
-// it here from the sandbox path rather than importing the checker, so the two
-// derivations are independent and a change to either one shows up as a failure.
+// way the harness names its project directory: every character that is not
+// an ASCII letter or digit becomes `-`. Derive it here from the sandbox path
+// rather than importing the checker, so the two derivations are independent
+// and a change to either one shows up as a failure.
 function memoryConfigDir(repoDir, indexBody) {
   const cfg = mkdtempSync(join(tmpdir(), 'house-mem-'));
   if (indexBody !== undefined) {
-    const dir = join(cfg, 'projects', repoDir.replace(/\//g, '-'), 'memory');
+    const dir = join(cfg, 'projects', repoDir.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'MEMORY.md'), indexBody);
   }
@@ -289,6 +291,45 @@ test('memory index: no memory directory at all is silence, not a complaint (the 
   assert.doesNotMatch(out, /MEMORY\.md/);
   cleanup(cfg);
   cleanup(dir);
+});
+
+test('memory index: a linked worktree finds the index filed under the main checkout', () => {
+  // realpath-canonicalize: on macOS the sandbox lives under /var, a symlink
+  // to /private/var, and git itself resolves that symlink when it reports an
+  // absolute --git-common-dir for a worktree (it stays relative, and
+  // unresolved, for a plain repo). Canonicalizing here keeps this test's own
+  // path comparisons consistent with what the checker's git calls see,
+  // matching how a real checkout (never itself behind a home-directory
+  // symlink) already behaves.
+  const dir = realpathSync(sandbox({
+    'README.md': '# r\n',
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } } }),
+  }));
+  const worktreeDir = join(dir, '.claude', 'worktrees', 'probe');
+  mkdirSync(join(dir, '.claude', 'worktrees'), { recursive: true });
+  execFileSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'worktree', 'add', '-b', 'probe', worktreeDir], { cwd: dir });
+  const cfg = memoryConfigDir(dir, linesOf(180)); // filed under the MAIN checkout's name, not the worktree's
+  const { code, out } = run(worktreeDir, ['--only=lengths'], { CLAUDE_CONFIG_DIR: cfg });
+  assert.equal(code, 0, out);
+  assert.match(out, /\[memory-index\]/);
+  cleanup(cfg);
+  execFileSync('git', ['worktree', 'remove', '--force', worktreeDir], { cwd: dir });
+  cleanup(dir);
+});
+
+test('memory index: a repo path with underscores still finds its index under the harness naming', () => {
+  const dir = sandbox({
+    'README.md': '# r\n',
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } } }),
+  });
+  const underscoreDir = `${dir}_with_underscores`;
+  renameSync(dir, underscoreDir);
+  const cfg = memoryConfigDir(underscoreDir, linesOf(180));
+  const { code, out } = run(underscoreDir, ['--only=lengths'], { CLAUDE_CONFIG_DIR: cfg });
+  assert.equal(code, 0, out);
+  assert.match(out, /\[memory-index\]/);
+  cleanup(cfg);
+  cleanup(underscoreDir);
 });
 
 // -- v0.3.0: P7 covers repo-authored rule files too (#33 item 3) ----------

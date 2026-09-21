@@ -138,7 +138,7 @@
 
 import { readFileSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { join, resolve, relative, sep } from 'node:path';
+import { join, resolve, relative, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 
@@ -1453,16 +1453,27 @@ const MEMORY_INDEX_MAX_LINE_CHARS = 160;
 
 // Where the harness keeps this repo's auto-memory index. CLAUDE_CONFIG_DIR
 // relocates the whole config tree (the same variable readInstalledPlugins
-// honors). The project directory is named for the repo's absolute path with
-// every separator turned into a dash (`/Users/x/repo` -> `-Users-x-repo`),
-// unless CLAUDE_CODE_PROJECT_DIR_NAME names it instead, which the harness only
-// honors when it is set BESIDE CLAUDE_CONFIG_DIR: on its own the harness
-// ignores it, so reading it on its own here would point the check at a
-// directory the harness never wrote. Returns a path that may well not exist:
-// no CI checkout has one.
+// honors). The project directory is named for the MAIN checkout's absolute
+// path (not repoRoot itself: in a linked worktree `git rev-parse
+// --show-toplevel` returns the worktree's own path, but the harness keeps
+// this repo's memory filed under the main checkout it was created from) with
+// every character that is not an ASCII letter or digit turned into a dash
+// (`/Users/x/repo_a` -> `-Users-x-repo-a`), unless CLAUDE_CODE_PROJECT_DIR_NAME
+// names it instead, which the harness only honors when it is set BESIDE
+// CLAUDE_CONFIG_DIR: on its own the harness ignores it, so reading it on its
+// own here would point the check at a directory the harness never wrote.
+// Returns a path that may well not exist: no CI checkout has one.
 function memoryIndexPath(repoRoot) {
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
-  const name = (process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME) || repoRoot.replace(/\//g, '-');
+  if (process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME) {
+    return join(cfgDir, 'projects', process.env.CLAUDE_CODE_PROJECT_DIR_NAME, 'memory', 'MEMORY.md');
+  }
+  let mainRoot = repoRoot;
+  try {
+    const commonDir = git(repoRoot, ['rev-parse', '--git-common-dir']).trim();
+    mainRoot = dirname(resolve(repoRoot, commonDir));
+  } catch { /* not a git repo (or no git): fall back to repoRoot itself */ }
+  const name = mainRoot.replace(/[^A-Za-z0-9]/g, '-');
   return join(cfgDir, 'projects', name, 'memory', 'MEMORY.md');
 }
 
