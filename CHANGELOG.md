@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+- **The handoff practice retires the standing carryover issue.** The rule "Hand off through a carryover issue" is now "Hand off through the repo, not a standing issue": an issue is opened only for work someone will do, a next-cycle item becomes its own issue after checking an open one does not already cover it, and a thing deferred by decision is recorded with its reason where the decision already lives (the CHANGELOG, a decision record, the code comment), and becomes an issue closed as not planned only when no such place exists, since that reason is the one line the next session cannot reconstruct on its own. Everything else (the SHA, what shipped, what is open) is re-derivable from the default branch, merged PRs, and release notes, so the `handoff` skill now prints its snapshot in the session and files nothing for the snapshot itself. This package's own carryover chain (#2 through #75) left one issue permanently open with nothing to act on, which is the incident that reversed the earlier form; the handbook records it dated 2026-09-21.
+
 ## [0.12.0] - 2026-09-21
 
 The worktree rule becomes unconditional and the guard enforces it; the hook dispatchers run every tracked `.d` hook from a linked worktree, where the secrets scan had been silently skipped; the guard stops refusing read-only inspection of the floor it protects; and the memory-index check finds the main checkout's index from a worktree. Minor under ADR 0012: the guard's deny set changes shape (a new refusal, three narrowed ones), which ADR 0011 classes as breaking, and below 1.0 that class takes the minor. Resolves #68, #69 and #70 (PRs #71, #72, #73).

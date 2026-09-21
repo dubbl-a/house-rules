@@ -453,7 +453,7 @@ repo-b's survey states the boundary this rule draws in almost the same words the
 uses: "RESUME.md is machine-generated, not a hand-authored handoff convention... This is a harness
 artifact, not an encoded practice; the unification should not mistake it for a handoff protocol."
 
-## Hand off through a carryover issue
+## Hand off through the repo, not a standing issue
 
 repo-a uses session-carryover issues as the reference implementation, chained one
 supersession at a time: the carryover chain #605 to #617 to #638, each opening by naming the
@@ -477,6 +477,21 @@ cannot reconstruct on its own.
 
 Native floor, as of 2026-09-02: auto memory, the harness's own store for ongoing work, which is
 machine-local and shared with nobody (https://code.claude.com/docs/en/memory).
+
+Reversed, dated 2026-09-21: this package's own chain (#2 through #75) is the negative case now.
+It ran the corrected form above for months and still left one issue permanently open at any
+given time, a "Session carryover" issue with nothing in it anyone was going to act on, because the
+snapshot it carried was already re-derivable from the default branch, merged PRs, and release
+notes. Issues are for work, and a standing snapshot issue is not work; it is noise competing with
+the issues that are. Anthropic's guidance for long-running agent work hands state off through the
+repo itself, not an issue tracker
+(https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), which
+matches what the corrected form already did for everything except the issue's own existence. The
+practice now prints the same snapshot in the session and files a real issue only for a next-cycle
+item someone will do. A thing deferred by decision is recorded with its reason where the decision
+already lives, and becomes an issue closed as not planned only when no such place exists, since
+that reason is still the one line the next session cannot reconstruct on its own. Auto memory
+stays machine-local and unshared, so it still is not the channel (as of 2026-09-02, above).
 
 ## Check for a peer session before driving shared external state
 

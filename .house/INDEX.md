@@ -29,8 +29,8 @@
   Commit an allowlist covering the repo's own script surface and read-side platform commands and nothing broader, and authorize deploy and egress verbs through a skill instead.
 - Read a resume file as a harness artifact, not a handoff
   Treat a checkpoint file the harness writes as a record of where a session stopped, not as a protocol the next session follows.
-- Hand off through a carryover issue
-  Write the handoff as an issue that supersedes the last one, so the next session starts from state it can diff rather than prose it must trust.
+- Hand off through the repo, not a standing issue
+  Open an issue only for work someone will do, because a standing issue with nothing to act on is noise in the tracker, not a handoff.
 - Check for a peer session before driving shared external state
   List the running agents before driving a shared application, a shared database, or a shared checkout, because a peer session may already own it.
 - Don't
