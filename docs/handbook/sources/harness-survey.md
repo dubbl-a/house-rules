@@ -807,3 +807,12 @@ The audit's render-and-vendor description adds a fifth count against native syml
 ### The vendored github.md registration defect no longer reproduces
 
 Reported upstream on 2026-09-10, after `house doctor` read `4 of 5 vendored rules seen` for days in this repo's main checkout with `github.md` the unnamed one. On 2.1.278 the rule loads: `~/.claude/house/instructions-loaded/` records `.claude/rules/house/github.md` with `load_reason: path_glob_match` on 2026-09-20, where every 2026-09-10 entry names only the probe copy at `.claude/rules/probe/github.md`.
+
+## Addendum, 2026-09-22: Claude Code 2.1.280
+
+Claude Code 2.1.280 (changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md) made these changes that touch house-rules, each with its disposition against the existing rule surface:
+
+- Claude Opus 5.5 became the default Opus model, and the Pro/Team Standard default moved to Opus. Complement: handled by the model-tier rewrite (`plugins/house/orchestration/ORCHESTRATION.md`, the claude-code rule, and this file's "The ladder after Opus 5.5" paragraph above).
+- A write through a symlink is now judged by where the write lands rather than by the symlink path itself. Complement to the permissions rule; no rule here claimed the older behavior.
+- `PermissionRequest` agent-type hooks no longer run. Unique with no impact: no house hook registers a `PermissionRequest` agent-type matcher.
+- A newly released model starts at its own default effort until a per-model level is set. Complement: handled by the new effort line in the claude-code rule ("Set the model explicitly on every subagent and workflow agent").

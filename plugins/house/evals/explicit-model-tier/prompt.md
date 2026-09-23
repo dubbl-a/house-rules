@@ -29,7 +29,7 @@ cat > .house/INDEX.md <<'EOF'
 
 ## .claude/rules/house/claude-code.md
 - Set the model explicitly on every subagent and workflow agent
-  Name the model on every agent call, because an omitted one silently inherits the session's and a wide fan-out then runs at whatever tier you happened to be in. Match the tier to the task: mechanical joins and receipt checks at the small tier, code and prose in the middle, judgment and adjudication at the top.
+  Name the model on every agent call, because an omitted one silently inherits the session's and a wide fan-out then runs at whatever tier you happened to be in. Match the tier to the task: mechanical joins and receipt checks on Haiku, code and prose on Sonnet, judgment and adjudication on Opus, even when the session itself is on Opus. Fable never runs on a subagent unless the user asks for it.
 - Run adversarial review in a fresh subagent with a named lens
   Review finished work in a fresh subagent whose lens is named, and tell it to flag only correctness and requirement gaps, because a reviewer asked for problems will always return some.
 EOF

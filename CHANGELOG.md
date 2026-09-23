@@ -6,6 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-09-22
+
+Model-tier guidance is rewritten for Claude Opus 5.5 as the default Opus model: the ladder becomes Fable, Opus, Sonnet, Haiku, subagents run below the session by default, and judgment stays on Opus even on an Opus session. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
+
+### Changed
+- **The model-tier rule, orchestration defaults, and their eval and fork comments follow the new default Opus model.** Claude Code 2.1.280 made Opus 5.5 the default Opus model and the docs now recommend it for most workloads, reserving Fable 5.1 for demanding reasoning, long-horizon agentic work, or where Opus at higher effort still falls short. `ORCHESTRATION.md`'s "Model tier" section, the claude-code rule's "Set the model explicitly on every subagent and workflow agent," the `check-deep-research-upstream.mjs` fork comment, and the `explicit-model-tier` eval's grader now say: the session-side floor moves to the tier below the session (Sonnet under an Opus session), Fable never runs on a subagent unless the user asks, and judgment (the refuter, the debugger, any adjudication or synthesis whose verdict decides) stays on Opus regardless of the session's own tier, because the verdict is the product and Opus is moderately priced. The claude-code rule also names the effort explicitly on an off-roster call, since a subagent without one inherits the session's effort and a newly released model starts at its own default until an effort level applies to it. The handbook records the model facts and cites the source docs and changelog dated 2026-09-22, and the harness-survey source notes 2.1.280's other changes and their dispositions.
+
 ## [0.13.3] - 2026-09-21
 
 The refuter trigger becomes judgment about risk rather than a category that reads as a prohibition. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.

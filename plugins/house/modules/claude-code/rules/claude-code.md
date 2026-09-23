@@ -65,9 +65,10 @@ Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with
 ## Set the model explicitly on every subagent and workflow agent
 
 Name the model on every agent call, because an omitted one silently inherits the session's, and a wide fan-out then runs at whatever tier you happened to be in.
-Match the tier to the task: mechanical joins and receipt checks at the small tier, code and prose in the middle, judgment and adjudication at the top.
-Keep the session's own tier for the session: a subagent, a teammate, or a workflow agent runs one tier below it by default, so set the subagent model variable in user settings to that tier as the floor; an explicit call-level model still wins.
-Reach for the plugin's pinned roster before a bare agent call (scout small, researcher and builder middle, refuter and debugger top tier below the session's), since each pins its model, effort, and tools in a file the harness enforces.
+Match the tier to the task: mechanical joins and receipt checks on Haiku, code and prose on Sonnet, judgment and adjudication on Opus, even when the session itself is on Opus, because the verdict is the product and Opus is moderately priced.
+Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor; an explicit call-level model still wins, and Fable never runs on a subagent unless the user asks for it.
+Reach for the plugin's pinned roster before a bare agent call (scout on Haiku, researcher and builder on Sonnet, refuter and debugger on Opus), since each pins its model, effort, and tools in a file the harness enforces.
+Name the effort on an off-roster call too: a subagent without one inherits the session's effort, and a newly released model starts at its own default (medium on Opus 5.5) until an effort level applies to it, so set one per model in user settings.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail, stepping a blocked call down to the newest allowed model in its family: the checker and the fork's model map make that step-down visible.
 State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.

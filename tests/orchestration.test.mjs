@@ -41,7 +41,7 @@ test('roster: exactly the five agents ship, each pinned to its tier', () => {
   }
 });
 
-test('roster: no agent runs on the session top tier or inherits, and none can spawn an agent', () => {
+test('roster: no agent runs on Fable or inherits, and none can spawn an agent', () => {
   for (const name of Object.keys(ROSTER)) {
     const { fm } = frontmatter(join(AGENTS, `${name}.md`));
     assert.ok(!/fable|inherit/.test(fm.model), `${name}: model ${fm.model}`);
@@ -77,7 +77,7 @@ test('session-start hook emits the orchestration text under hookSpecificOutput.a
   assert.ok(ctx.includes(readFileSync(TEXT, 'utf8').trim()), 'the whole text is carried');
   assert.ok(!('additionalContext' in out), 'no top-level field, which Claude Code ignores');
   for (const n of Object.keys(ROSTER)) assert.ok(ctx.includes(`\`${n}\``), `text names ${n}`);
-  assert.ok(/Never the session's top tier on a subagent/.test(ctx));
+  assert.ok(/Fable never runs on a subagent unless the user asks for it/.test(ctx));
   assert.ok(ctx.includes('Enter a worktree before the first edit'), 'worktree-first is unconditional');
 });
 
