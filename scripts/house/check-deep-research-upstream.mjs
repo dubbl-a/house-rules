@@ -99,8 +99,8 @@ const FETCH_BYPASS_REPLACEMENT = '      if (fetchSlots <= 0 && (relRank[r.releva
 const QUESTION_LINE = 'const QUESTION = (typeof args === "string" && args.trim()) || ""';
 const QUESTION_REPLACEMENT = `const QUESTION = (typeof args === "string" && args.trim()) || (typeof ARGS_OBJ.question === "string" && ARGS_OBJ.question.trim()) || ""
 // Per-stage model pins. Conservative by default: the wide fan-out (search,
-// fetch, verify) runs on the middle tier; judgment (scope, synthesize) on the
-// top tier below the session's. Override any stage via args.models.
+// fetch, verify) runs on Sonnet; judgment (scope, synthesize) on Opus.
+// Override any stage via args.models.
 const MODELS = Object.assign(
   { scope: "opus", search: "sonnet", fetch: "sonnet", verify: "sonnet", synthesize: "opus" },
   ARGS_OBJ.models || {}

@@ -226,8 +226,9 @@ constants with a depth preset (`args.depth`: light, standard, deep; any field vi
 logs its ceiling before it starts. The session-side floor is `CLAUDE_CODE_SUBAGENT_MODEL` in
 user settings: the docs put it third in resolution order, after a per-call model and an agent
 definition's own, for subagents, teammates, and workflow agents alike
-(https://code.claude.com/docs/en/sub-agents), so with it set to the tier below the session's an
-omitted model no longer lands on the session model, and a pinned call is unaffected.
+(https://code.claude.com/docs/en/sub-agents), so with it set to the tier below the session's (the
+usual case: Sonnet under an Opus session) an omitted model no longer lands on the session model,
+and a pinned call is unaffected.
 
 The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,
 and the way of working was being retyped into prompts ("subagents on lower models, and here is
@@ -255,6 +256,30 @@ model is silently stepped down and only warned about, in the `/workflows` progre
 workflow agent or the session transcript for a subagent, never failed. That is why the rule now
 reads a pinned tier as a request the run can silently step down from, with the checker and the
 fork's explicit model map as what makes that request visible again.
+
+The ladder after Opus 5.5, 2026-09-22: Claude Code 2.1.280 made Claude Opus 5.5 the default Opus
+model ($4/$20 per Mtok, 5 percent cache reads, "Moderate" latency, API default effort medium,
+always-on adaptive thinking), and the docs now say to start with Opus 5.5 for most workloads and
+use Fable 5.1 ($10/$50, "Slower", default effort high) for demanding reasoning and
+long-horizon agentic work, or when evals on Opus 5.5 at higher effort still fall short
+(https://platform.claude.com/docs/en/about-claude/models/overview). The ladder is Fable, Opus,
+Sonnet, Haiku, ordered by capability and cost together, and Opus is now the default session for
+most work. Judgment stays on Opus even on an Opus session (the refuter, the debugger, and any
+adjudication or synthesis whose verdict decides), because the verdict is the product and Opus is
+moderately priced, not because a subagent's tier is set relative to whatever the session
+happens to be. The session-side floor, `CLAUDE_CODE_SUBAGENT_MODEL`, moves with it: below an
+Opus session that floor is Sonnet, not Opus, since the floor is the tier below the session, and
+the roster pins are unaffected (scout Haiku, researcher and builder Sonnet, refuter and debugger
+Opus). Model resolution order for a subagent, plugin agent, or workflow agent is unchanged: the
+per-call `model`, then the agent frontmatter `model`, then `CLAUDE_CODE_SUBAGENT_MODEL`, then the
+session model, with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overriding all of them
+(https://code.claude.com/docs/en/sub-agents). A subagent without frontmatter `effort` inherits
+the session's effort, and a newly released model starts at its own default effort until
+`modelSettings["<full model id>"].effortLevel` is set for it
+(https://code.claude.com/docs/en/model-config; changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md), which is why an
+off-roster call now names its effort explicitly rather than assuming the new model's default
+matches what an older one needed.
 
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 

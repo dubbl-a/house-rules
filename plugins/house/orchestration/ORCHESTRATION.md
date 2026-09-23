@@ -36,11 +36,18 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 
 ## Model tier
 
-- A subagent, teammate, or workflow agent runs one tier below the session unless the call says
+- The ladder, by capability and cost together: Fable, Opus, Sonnet, Haiku. Opus is the default
+  session for most work; reach for Fable for demanding reasoning, long-horizon agentic work,
+  or where Opus at higher effort still falls short.
+- A subagent, teammate, or workflow agent runs below the session by default unless the call says
   otherwise. Roster agents are pinned; anything off-roster gets an explicit `model` and effort.
-- Never the session's top tier on a subagent. On a Fable session that means Opus or below.
-- Match the tier to the task: locations and receipt checks on the small tier, code and prose on
-  the middle, judgment and adjudication on the top tier below the session's.
+- Fable never runs on a subagent unless the user asks for it.
+- Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
+  or synthesis whose verdict decides, because the verdict is the product and Opus is moderately
+  priced. A hard multi-file or agentic build may go to Opus through an explicit `model` on the
+  builder call; routine and mechanical work stays on Sonnet or Haiku.
+- Match the tier to the task: locations and receipt checks on Haiku, code and prose on Sonnet,
+  judgment on Opus.
 - Subagents do not spawn subagents. They report back.
 
 ## Delegation
