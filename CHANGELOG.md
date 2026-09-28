@@ -6,6 +6,20 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-28
+
+The branch guard now covers notebook edits, the deploy guard accepts a hosted review's neutral check, ADR 0014 records why rules are not shipped as plugin skills, and the rules cite what a gap survey found in the MCP CLI, output styles, and the Agent SDK. Minor under ADR 0012: the guard's deny set tightens, the breaking class under ADR 0011.
+
+### Changed
+- **The branch guard covers `NotebookEdit` (breaking).** The PreToolUse matcher in `plugins/house/hooks/hooks.json` adds `NotebookEdit`, and `no-direct-master.sh` reads its `notebook_path` through the same file rules as Edit and Write, so a notebook edit into the git-hook floor or the git directory is now refused. `MultiEdit` stays in the matcher for older CLIs. A notebook edit with no path is allowed, as an Edit or Write with no path already is.
+- **Rules cite what the gap survey found.** A pass over the `claude mcp` CLI, output styles, and the Agent SDK found no duplicates and no conflicts. The claude-code rule now says an Agent SDK run whose setting sources leave out the project loads no project hooks, names the SDK budget option beside the print-mode ceiling, sends a reviewer as an ordinary subagent rather than a fork, and says a parameter-scoped server rule is dropped with only an interactive notice while the one-session disallowed-tools flag carries it as a deny. The orchestration defaults say which agents can spawn one (the roster and the built-in general-purpose, Explore, and Plan agents cannot by default; a custom agent with unrestricted tools can) and that only a fork inherits the conversation. The llm-output rules attribute the Agent SDK's structured-output gaps to the SDK and state the retry limit.
+
+### Fixed
+- **The deploy guard accepts a `neutral` check conclusion.** `evaluateCiGreen` in the deployment module's `deploy-guards.mjs` required every check run to conclude `success`, so hosted Code Review, which always concludes `neutral`, blocked a deploy when it ran on the checked commit. `neutral` now passes; every other non-success conclusion and zero runs still fail.
+
+### Added
+- **ADR 0014: plugin skills with `paths:` are a declined delivery route.** A plugin update reaches every enabled repo at once with no per-repo pin, config, or deviation record, which is what vendoring gives. It amends ADR 0001.
+
 ## [0.13.5] - 2026-09-28
 
 The rules are re-surveyed against Claude Code 2.1.283 and now name the harness behavior they build on accurately, the hook commands quote the plugin root so the strict validator passes again, and the package gains a procedure and a watcher for adapting to each new Claude Code release. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
