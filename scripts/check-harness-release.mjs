@@ -88,12 +88,14 @@ async function main() {
 
   const here = dirname(fileURLToPath(import.meta.url));
   const root = findRepoRoot(here);
+  if (opts.survey === '') emit(3, 'bad argument (--survey needs a path)');
   const surveyFile = opts.survey || join(root, SURVEY_PATH);
+  const surveyName = opts.survey || SURVEY_PATH;
   let surveyText;
-  try { surveyText = readFileSync(surveyFile, 'utf8'); } catch (e) { emit(3, `could not read ${SURVEY_PATH} (${e.message})`); }
+  try { surveyText = readFileSync(surveyFile, 'utf8'); } catch (e) { emit(3, `could not read ${surveyName} (${e.message})`); }
 
   const surveyed = lastSurveyed(surveyText);
-  if (!surveyed) emit(3, `no surveyed version found in ${SURVEY_PATH}`);
+  if (!surveyed) emit(3, `no surveyed version found in ${surveyName}`);
 
   let changelogText;
   try {
