@@ -259,6 +259,21 @@ test('deploy-guards: evaluateCiGreen passes only when every run concluded succes
   assert.equal(mixed.failing[0].name, 'b');
 });
 
+test('deploy-guards: evaluateCiGreen counts neutral as passing, and nothing else beside success', async () => {
+  const { evaluateCiGreen } = await import(DEPLOY_GUARDS_URL);
+  const neutral = evaluateCiGreen([{ name: 'a', conclusion: 'success' }, { name: 'review', conclusion: 'neutral' }]);
+  assert.equal(neutral.ok, true, 'GitHub defines neutral as non-failing');
+  assert.equal(neutral.passing, 2);
+  const withFailure = evaluateCiGreen([{ name: 'review', conclusion: 'neutral' }, { name: 'b', conclusion: 'failure' }]);
+  assert.equal(withFailure.ok, false);
+  assert.deepEqual(withFailure.failing.map((f) => f.name), ['b']);
+  const skipped = evaluateCiGreen([{ name: 'a', conclusion: 'skipped' }]);
+  assert.equal(skipped.ok, false, 'skipped is not a pass');
+  const pending = evaluateCiGreen([{ name: 'a', conclusion: 'success' }, { name: 'b', conclusion: null }]);
+  assert.equal(pending.ok, false, 'a run still in progress (null conclusion) is not a pass');
+  assert.equal(pending.failing[0].conclusion, null);
+});
+
 test('deploy-guards: evaluatePrProvenance requires at least one merged PR', async () => {
   const { evaluatePrProvenance } = await import(DEPLOY_GUARDS_URL);
   assert.equal(evaluatePrProvenance([]).ok, false);

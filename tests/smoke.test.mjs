@@ -18,7 +18,7 @@ test('hooks.json declares a non-empty InstructionsLoaded array', () => {
   assert.ok(h.hooks && Array.isArray(h.hooks.InstructionsLoaded) && h.hooks.InstructionsLoaded.length > 0);
 });
 
-// #58: the PreToolUse guard now also reads Edit/Write/MultiEdit payloads, since
+// #58: the PreToolUse guard now also reads Edit/Write/MultiEdit/NotebookEdit payloads, since
 // writing a floor file directly is the same disable the Bash text scan refuses.
 // A matcher that lost those tool names would leave that door open silently.
 test('#58 hooks.json: the PreToolUse matcher covers Bash and the file-writing tools', () => {
@@ -26,7 +26,7 @@ test('#58 hooks.json: the PreToolUse matcher covers Bash and the file-writing to
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
   assert.ok(entry, 'no PreToolUse entry runs no-direct-master.sh');
   const names = String(entry.matcher).split('|');
-  for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit']) {
+  for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']) {
     assert.ok(names.includes(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
   }
 });
