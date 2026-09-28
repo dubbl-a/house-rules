@@ -468,11 +468,12 @@ function resolveHousePluginRecord(installed) {
 
 // ── drift ────────────────────────────────────────────────────────────────
 
-// Native floor: the hosted reviewer already flags a documented claim that a
-// pull request makes outdated, at nit severity, only for a newly introduced
-// violation, and only where it runs, so this family is the deterministic
-// local floor that resolves every anchor token in every scanned doc before
-// the push.
+// Native floor: /doctor prompt-audit reports references to files or commands
+// that do not exist when someone asks for it, and the hosted reviewer flags a
+// documented claim that a pull request makes outdated, at nit severity, only
+// for a newly introduced violation, and only where it runs; drift makes that
+// class a gate that runs on every check, resolving every anchor token in every
+// scanned doc before the push.
 
 // ADR 0009 object forms. Both normalizers drop a malformed entry so the drift
 // family degrades gracefully; the manifest family validates the same entries
@@ -1248,6 +1249,11 @@ function checkBehind(ctx) {
 
 // ── shape ────────────────────────────────────────────────────────────────
 
+// Native floor: claude plugin validate checks a plugin's skill, agent, and
+// command frontmatter; shape adds the house rule-file form, which no native
+// validator reads, and keeps its SKILL.md check to what the validator is not
+// documented to cover.
+
 const SHAPE_STOPLIST = new Set([
   'overview', 'background', 'summary', 'context', 'notes', 'rationale', 'scope', 'purpose',
   'goals', 'motivation', 'definitions', 'glossary', 'references', 'examples', 'faq',
@@ -1612,6 +1618,10 @@ function checkLengths(ctx) {
   return { findings, warnings };
 }
 
+// The harness warns at startup and in /status when an instruction file passes
+// its recommended length or the loaded set passes a combined limit; the ratchet
+// adds what that warning lacks, a per-file ceiling that only tightens and rises
+// only with a recorded reason.
 function maybeWriteRatchet(ctx, totalFindings) {
   if (!ctx.familiesRun.has('lengths')) return;
   if (totalFindings > 0) return;
@@ -1628,6 +1638,10 @@ function maybeWriteRatchet(ctx, totalFindings) {
 }
 
 // ── coload ───────────────────────────────────────────────────────────────
+
+// Native floor: the harness warns when the files loaded at session start pass
+// a combined length; coload adds the per-path sum of path-scoped rules that
+// load together on a read, which that warning does not count.
 
 // The docs module's maxCoLoadLines default; also the bar above which a
 // configured ceiling must carry a `coload-ceiling` deviation (manifest family).

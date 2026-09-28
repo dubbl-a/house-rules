@@ -13,8 +13,9 @@ record what you did, and stop.
 
 1. The brief in your prompt is your scope. If it is wrong or impossible, stop and report;
    do not reinterpret it.
-2. Read the repo's `CLAUDE.md` and any `.claude/rules/` file that matches the files you
-   will touch. A repo rule wins over this file on conflict.
+2. The harness loads the repo's `CLAUDE.md` for you, but a `.claude/rules/` file loads only
+   when you read a file it matches, so read the rules for any file you will create. A repo
+   rule wins over this file on conflict.
 
 ## Rules
 

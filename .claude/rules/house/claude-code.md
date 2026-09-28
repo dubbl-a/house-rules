@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.13.4 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4c219081734b431dcbf37cf4c93b0007f5793f4aeafea4fd48b0d893fdb7b726 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.4 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=bc0fa761238d7c7501ca0b95ed9e71c7f91b58d13c6f525b898604ae4e0e9001 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -14,7 +14,7 @@ What belongs in the root file, what belongs in a scoped rule, what belongs in a 
 Ask of every line whether removing it would cause a mistake, and cut the line when the answer is no.
 A file layout, a dependency list, or generic craft advice is derivable from the code; a non-guessable command, a differing convention, and an environment quirk are not.
 Open the file by naming what to read first and which file wins a conflict, and leave learnings to auto-memory so the file holds rules only.
-The harness advises this already but stops at advice: its checkup proposes cutting derivable content, and its size guidance the model may ignore.
+The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file.
 Anchor: `node .house/check.mjs --only=lengths` turns that advice into a gate, holding the root file to a line ceiling and a byte ceiling, and refuses to ratchet it.
 Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-without-it-in-the-root-file`
 
@@ -22,7 +22,7 @@ Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-wit
 
 Write one line per memory as the cue to open the file, not the fact itself, since the index loads every session while the topic file loads only on demand.
 Move any fact the index is the only copy of into its topic file before shortening the line; a trim that loses the fact is worse than the long line it replaced.
-The harness already shortens the index after a write and errors past the load ceiling; treat that as the floor and add what it cannot see.
+The harness reminds Claude to shorten the index after a write that nears its load ceiling and returns an error on one that passes it; treat that as the floor and add what it cannot see.
 Keep the newer cue when a later memory supersedes an earlier one, and let the older topic file record the hand-off so the index never carries two answers.
 Treat the documented load ceiling as a cliff rather than a budget, because everything past it is dropped on the next load and no session says so.
 Anchor: `node .house/check.mjs --only=lengths` warns when the index nears either load ceiling or carries a line too long to be a cue, and stays silent where no memory directory exists.
@@ -33,6 +33,7 @@ Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-
 Scope every domain rule with `paths:` so a session that never touches the domain never pays for it.
 A rule file with no `paths:` is not unscoped, it is always-on at root-file priority, so if it belongs in every session move it into the root file instead.
 Confirm the scoping defers loading before you count on it, and tell the reader to grep the rules directory when no matching file is open.
+Remember a scoped rule is summarized away at compaction and returns only when a matching file is read again, so a rule that must survive compaction belongs in the root file.
 Anchor: check.mjs `drift` validates every rule file's `paths:` first segment against the tree, and `coload` caps the summed budget of the rules that match any one path.
 Receipts: `docs/handbook/claude-code.md#give-a-domain-rule-a-paths-list-and-never-leave-a-rule-file-unscoped`
 
@@ -40,10 +41,10 @@ Receipts: `docs/handbook/claude-code.md#give-a-domain-rule-a-paths-list-and-neve
 
 Move a multi-step procedure and its reference material into a skill, where only the description costs context every session.
 A skill's description, even truncated by the harness, costs less each load than an instruction file's whole body.
-The harness points a growing instruction file to a path-scoped rule and stops there; what it never says is what a skill then owes you.
+The harness points a growing instruction file to a skill or a path-scoped rule and stops there; what it never says is what a skill then owes you.
 Give its description one sentence naming its exact inputs and the filter it applies, then disclose the rest on demand: references read when needed, scripts whose output alone enters context.
 Give the skill a hazards section naming what has gone wrong, and say when an edit to it takes effect.
-Keep personal rules in a separate instruction file so the mechanics stay portable, and write a few evaluations before the prose to fix real gaps, not imagined ones.
+Keep personal rules in a separate instruction file so the mechanics stay portable, and write a few evaluations before the prose, with the native plugin eval runner or skill-creator's evals, to fix real gaps, not imagined ones.
 Anchor: `node .house/check.mjs --only=lengths` caps a rule file far below what a procedure needs, so a procedure that grows has nowhere to hide.
 Receipts: `docs/handbook/claude-code.md#make-a-procedure-a-skill-not-a-rule`
 
@@ -70,16 +71,16 @@ Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with
 
 ## Set the model explicitly on every subagent and workflow agent
 
-Name the model on every agent call, because an omitted one silently inherits the session's, and a wide fan-out then runs at whatever tier you happened to be in.
+Name the model on every agent call, because the harness resolves an omitted one through the subagent model variable and then to the session's model, so a wide fan-out otherwise runs at whatever tier you happened to be in.
 Match the tier to the task: mechanical joins and receipt checks on Haiku, code and prose on Sonnet, judgment and adjudication on Opus, even when the session itself is on Opus, because the verdict is the product and Opus is moderately priced.
 Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor; an explicit call-level model still wins, and Fable never runs on a subagent unless the user asks for it.
 Reach for the plugin's pinned roster before a bare agent call (scout on Haiku, researcher and builder on Sonnet, refuter and debugger on Opus), since each pins its model, effort, and tools in a file the harness enforces.
-Name the effort on an off-roster call too: a subagent without one inherits the session's effort, and a newly released model starts at its own default (medium on Opus 5.5) until an effort level applies to it, so set one per model in user settings.
+Name the effort on an off-roster call too: a subagent without one inherits the session's effort, and a newly released model starts at its own default until an effort level applies to it, so set one per model in user settings.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail, stepping a blocked call down to the newest allowed model in its family: the checker and the fork's model map make that step-down visible.
 State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.
 When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each upgrade: read its verdict by name, since each outcome is its own exit code, unchanged needs nothing, drifted or missing means rebuild (a missing binary or missing bundled script counts as drift; rebuild the fork), a bad argument means fix the call, and SUNSET means delete the fork.
-Give that fork a depth that fits the question: the native fan-out runs roughly 110 agents regardless of what is asked, while the fork scales from about 35 to 130, light for a lookup or a single procedure, standard by default, deep for a contested or multi-domain question a decision rides on, with `args.budget` for a field the presets get wrong.
+Give that fork a depth that fits the question: the bundled workflow runs a fixed, large fan-out regardless of what is asked, while the fork scales it, light for a lookup or a single procedure, standard by default, deep for a contested or multi-domain question a decision rides on, with `args.budget` for a field the presets get wrong.
 Anchor: the eval pair at `plugins/house/evals/explicit-model-tier/`, whose arms differ only in whether each call sets a model.
 Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subagent-and-workflow-agent`
 
@@ -87,7 +88,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 
 Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
 Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a bare, safe-mode, or restricted session never loads project hooks, so anything that must survive needs a deny rule in managed settings too.
-Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since a silent exit reads as no decision and never as approval.
+Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout.
 Know where that exit stops binding: only the pre-tool event reads a failing exit as a block, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, since text left in only adds denials while text wrongly removed hides the verb and bypasses. Pin both directions in the tests.
 Keep the decision in the script rather than a hook's fine-grained filter, which the harness itself documents as best-effort, unfit for a hard allow or deny.
@@ -121,7 +122,7 @@ Receipts: `docs/handbook/claude-code.md#plan-when-the-approach-is-uncertain-and-
 ## Treat git state as shared across sessions
 
 Assume another checkout can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
-Enter a worktree before the first edit or branch, with the harness's worktree tool or `git worktree add -b <branch> <path> origin/<default>`, as the first step of every plan; the main checkout is what every peer and the user hold.
+Enter a worktree before the first edit or branch as the first step of every plan, preferring the harness's worktree tool, which applies its base-branch, include, and isolation defaults, over a manual `git worktree add -b <branch> <path> origin/<default>`, which skips them; the main checkout is what every peer and the user hold.
 Never create a branch in the main checkout, not even for a one-commit change: the rubric that would license an exception is one every session answers in its own favor, and a worktree costs one command.
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.
@@ -139,7 +140,7 @@ Keep the wide accreted list in `settings.local.json`, gitignored and free of mac
 Prune it on a cadence, since permission lists merge across scope rather than override, so one broad grant supersedes every narrow one and a stale entry outlives the rename that orphaned it.
 Shape the list rather than only pruning it: allow a tool broadly and deny its escape hatches, since hazards are finite and stable per tool while safe invocations are unbounded, growing with every approval.
 Write each deny in both the leading and the interior form, and run it against the invocation it must block and the innocent one it might catch; a pattern's reach is not what reading it suggests.
-Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, and never grow the deny list chasing completeness.
+Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, auto mode suspends a broad allow in favor of its classifier, and only the sandbox or a hook enforces independent of command text; never grow the deny list chasing completeness.
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
 Anchor: `plugins/house/templates/settings.json` ships the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags, and `/house-rules:sync` refuses a managed file that was edited locally.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`

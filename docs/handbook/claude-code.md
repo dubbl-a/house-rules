@@ -33,9 +33,9 @@ instruction file and read its proposed trims, which target derivable content whi
 pitfalls and rationale alone (code.claude.com/docs/en/memory, item 13, EXT-013). It proposes;
 the routing call in this module's rules still decides where a trimmed fact goes.
 
-Native floor, as of 2026-09-02: the harness's own checkup proposes trims to a checked-in
-instruction file and the memory page states size guidance, both advisory
-(https://code.claude.com/docs/en/memory). The `lengths` family is what turns that advice into a
+Native floor, as of 2026-09-28: the harness's own checkup proposes trims to a checked-in
+instruction file and warns at startup and in status when a file passes its recommended length,
+both advisory and neither blocking a long file (https://code.claude.com/docs/en/memory). The `lengths` family is what turns that advice into a
 gate.
 
 ## Keep the auto-memory index to hooks, and hold it under its cap
@@ -120,8 +120,8 @@ and build a few evaluations before writing extensive skill or rule documentation
 imagined problems instead of real gaps" (platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices,
 item 11).
 
-Native floor, as of 2026-09-02: the memory page already routes a multi-step procedure to a
-skill rather than an instruction file (https://code.claude.com/docs/en/memory). What it does
+Native floor, as of 2026-09-28: the harness's docs already point reference material in a growing
+instruction file to a skill or a path-scoped rule (https://code.claude.com/docs/en/context-window). What it does
 not say is what the skill then owes its caller.
 
 ## Keep a skill body short, its references one level deep, and its name equal to its directory
@@ -178,7 +178,7 @@ repo-c, model tiering does not appear anywhere in `.claude/`, `CLAUDE.md`, or `d
 states it outright: "No model tiering exists anywhere... If the unified package wants
 model-tiering guidance, it will be written fresh, not harvested." The actual source is a
 repo-a memory feedback item: an omitted model on a subagent or workflow-agent call
-silently inherits the session's model, so a wide fan-out runs at whatever tier the session
+falls through to the session's model when the subagent model variable is unset, so a wide fan-out runs at whatever tier the session
 happened to be in at the time.
 
 Anchor named in the rule file: an eval pair at `plugins/house/evals/explicit-model-tier/`, whose
@@ -221,8 +221,8 @@ tokens with the pins working (109 on Sonnet, 2 on Opus), and 70 percent of the t
 verifiers at a median 57K each, since each one runs its own web searches. The two runs near 200
 were a hand-edited copy with the claim cap raised to 55 (227 agents, 10.5M tokens, 2026-09-09)
 and an older record format that wrote two meta files per agent. The fork now replaces the four
-constants with a depth preset (`args.depth`: light, standard, deep; any field via
-`args.budget`) and bounds the bypass, so the caller sizes the run to the question and the run
+constants with a depth preset (`args.depth`: light at about 35 agents, standard at about 70,
+deep at about 130; any field via `args.budget`) and bounds the bypass, so the caller sizes the run to the question and the run
 logs its ceiling before it starts. The session-side floor is `CLAUDE_CODE_SUBAGENT_MODEL` in
 user settings: the docs put it third in resolution order, after a per-call model and an agent
 definition's own, for subagents, teammates, and workflow agents alike
@@ -419,8 +419,8 @@ worktrees already in flight, and one went on to commit and push five times from 
 checkout over three hours until the user typed "put this session in a worktree." The exception
 clause that let a session judge whether anyone else was in flight was the loophole: every
 session answered it in its own favor. The rule is now unconditional, naming the two concrete
-commands to enter a worktree (the harness's worktree tool, or `git worktree add -b <branch>
-<path> origin/<default>`), putting the worktree step first in every plan, and reserving the
+commands to enter a worktree (the harness's worktree tool, preferred because it applies its
+base-branch and include defaults, or `git worktree add -b <branch> <path> origin/<default>`), putting the worktree step first in every plan, and reserving the
 main checkout for reading, merging, and cleanup; the guard now refuses a `checkout -b` or
 `switch -c` in a main checkout.
 

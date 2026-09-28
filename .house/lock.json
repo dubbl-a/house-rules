@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "6f653d6ebf7790eb7adda508de84b09db3c10b7dd09fc63095960c4e6761dbdf"
+      "bodySha256": "51b4c836314faa3b578e76c960a60e50c92a7ade44a65bbc4dd948d8a7200890"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -16,13 +16,13 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "9ef744e8915e9fbcdad5cba7fb1f45b0911ac469583bc1c1e05abad24f83fe67"
+      "bodySha256": "f1ec5fa9cb4da297b2f82ec27a032bd9c9adf3ff2554a54771b7bb482eea8564"
     },
     {
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "903d6ee581253dd901657db103a05525937c15d4ad9855dd376778465678b00b"
+      "bodySha256": "ef025adb0bfa5e95efab4f622927f3b979d0f2ece569f860bdfc0289123807e8"
     },
     {
       "path": "scripts/house/is-main.mjs",
@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "6bc388d1e7f0baa7247a1d5f1657453c155ba8ab6716c1722f7224901a3a7584"
+      "bodySha256": "a1a961e1d27b86af648c605d3ed31e614342d2ea2d712d4f33a2058333a904d9"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -94,13 +94,13 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "b5e326e2fcb49423713d0ba9b89b73c44a5deb0360ae58df3021839530aaee79"
+      "bodySha256": "4296b8400b19a77afbfae4d65b0ab036f1ee677651f9a1e4bfbbe5ebf03cbeff"
     },
     {
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "581922d27eedc2803da209abaf5e76331ae165be8888a31d6ba1b8f0efb217ee"
+      "bodySha256": "356f91f971346f0cd87479506b24d429fb2c46d2661043febaaf4f61c8342d17"
     }
   ],
   "scaffolds": [

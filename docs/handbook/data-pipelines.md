@@ -42,7 +42,7 @@ repo-b's `revops.md` gates deletion behind one script, one call site, its own br
 
 The plan-validate-execute shape is external, widely-held guidance rather than a fleet-specific pattern: add `--dry-run` to every irreversible script and default a destructive prompt to `[y/N]`, with an explicit `--yes` for automation (see Sources), and for batch or destructive work emit a machine-verifiable plan, validate it with a script, then apply, so an intermediate artifact catches errors before anything is touched (see Sources).
 
-Native floor, as of 2026-09-02: the permission system gates the Read, Edit, and Write tools directly while the sandbox isolates only Bash subprocesses, so nothing native sees what a running script writes (https://code.claude.com/docs/en/sandboxing).
+Native floor, as of 2026-09-02: the permission system gates the Read, Edit, and Write tools directly while the sandbox isolates only Bash subprocesses, bounding where a script may write, so nothing native judges what a running script writes to a store (https://code.claude.com/docs/en/sandboxing).
 
 ## Brake a prune at a share of the table, and unit-test the brake
 

@@ -82,7 +82,10 @@ default-on module, choosing a `branchPolicy` other than `pr`, adding a `carveOut
 raising `maxCoLoadLines` above the checker's default each require one, per the schema's own
 description. The `coload-ceiling` entry carries the configured number as an integer `ceiling`,
 compared exactly and never read out of prose, so a later silent bump invalidates the old entry
-the way a `ratchetRaises` row pins its `to`.
+the way a `ratchetRaises` row pins its `to`. The harness warns at startup and in /status when an
+instruction file passes its recommended length or the loaded set passes a combined limit; the
+ratchet adds what that warning lacks, a per-file ceiling that only tightens and rises only with a
+recorded reason.
 
 The ledger is mirrored, never restated independently, in the consuming repo's own `CLAUDE.md`
 under a `## Deviations from house` section. The skeleton ships the exact prose a fresh adoption

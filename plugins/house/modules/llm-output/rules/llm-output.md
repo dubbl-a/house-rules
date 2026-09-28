@@ -6,7 +6,7 @@ Output that reads as finished is not output that has been checked.
 
 ## Quarantine model output until a human moves it
 
-The harness floor is its approval prompt on a write, pre-approved under accept-edits and gone at session end, so the durable gate must be structural: generate into an untracked directory and let a person move each file into the tracked one; that move is the sign-off, and unlike a review, cannot be skipped.
+The harness floor is its approval prompt on a write, which auto mode, now the built-in starting mode, and accept-edits both waive for edits inside the working directory, and which never outlives the session, so the durable gate must be structural: generate into an untracked directory and let a person move each file into the tracked one; that move is the sign-off, and unlike a review, cannot be skipped.
 The machine may not vouch for its own guess: a queued row stays pending until a person promotes it, a dry run may admit nobody, and a hand-edited review file is never overwritten.
 Surface the real records for a person to direct, then execute the write and carry it through every downstream stage yourself: the decision is theirs, the bookkeeping is yours.
 This governs an artifact heading for the tracked tree or published output, content a user or future session reads as finished; a status-tagged row scoped for auto-approval is a different surface below.
@@ -17,7 +17,7 @@ Receipts: `docs/handbook/llm-output.md#quarantine-model-output-until-a-human-mov
 
 Put the process in data, the constants in config, the arithmetic in code, then let the model supply only judgment; anything re-derived from memory drifts between runs.
 Prefer a fixed code path whenever steps are knowable in advance, and reserve the model for work whose steps you cannot predict.
-Anchor a printed run on a supplied output schema where one applies, since the harness fails the run on an invalid schema and hands back a structured payload; a schema fixes shape, not footing.
+Anchor a printed run or a workflow agent on a supplied output schema where one applies, since the harness fails a printed run on an invalid schema and validates a workflow agent's output against its schema, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing.
 Label which output parts were computed and which were judged, and carry review context inline with the row so a review step never has to resolve a path to know what it sees.
 Anchor: test. The deterministic half carries unit tests under `npm test`; an untested figure is a judgment call and must say so in the output.
 Receipts: `docs/handbook/llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots`
@@ -68,15 +68,15 @@ Receipts: `docs/handbook/llm-output.md#reword-a-locked-claim-never-strengthen-it
 
 ## Treat silence as not approval
 
-Where the harness gates a write, its permission prompt is the floor and an agent message never substitutes; elsewhere, show the diff and wait for an explicit yes before generating a file, since silence is not approval, nor is an unanswered question.
-Plan mode is the harness floor here: it holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, and covers edits, not every write. A printed run has nobody to answer, and where prompts are off it denies, so ask for the yes yourself.
+Where the harness gates a write, its permission prompt is the floor, and it already refuses an agent message as consent on a person's behalf; elsewhere, show the diff and wait for an explicit yes before generating a file, since silence is not approval, nor is an unanswered question.
+Plan mode is the harness floor here: it holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread. A printed run has nobody to answer, and where prompts are off it denies, so ask for the yes yourself.
 The same reading applies to data: said nothing is not said yes; the full rule lives in engineering.md.
 Anchor: none (because a script-grantable approval is not an approval; the gate is the person).
 Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
 
 ## Read agreement with a shown suggestion as anchored, not accurate
 
-A hosted reviewer, where it runs, already collects agreement marks on the findings it shows and feeds them into its own tuning, an anchored measure, not a quality one.
+The harness's skill comparator already judges two outputs without knowing which is which; extend that blinding to every human review, since a person's agreement mark on a finding shown to them is an anchored measure, not a quality one.
 When a reviewer sees the model's suggestion beside the evidence, their agreement measures anchoring, not accuracy, so that rate is never quotable as a quality number.
 Enforce blinding in the file on disk, not the reviewer's instructions, since an instruction is not a control, and audit every field a review packet prints for provenance: a field the tested process wrote is not evidence about it.
 Read unanimity as a reason to audit the instrument, and score a proposal by whether it would have killed something a person approved, not by its hit rate on the rejections.
