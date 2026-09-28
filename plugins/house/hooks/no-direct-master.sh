@@ -109,7 +109,11 @@
 # (in the adopted repo the hook itself runs in, since the payload's cwd is
 # unreadable too), when a Bash command is not a string (in the adopted repo
 # the payload's cwd names), when an MCP scan outruns its time budget (see
-# 16), when the policy JSON will not parse, and on an unexpected internal failure after the policy has been read
+# 16), when a file tool's path is longer than 4096 bytes (PATH_MAX_BYTES), or
+# an MCP string that long names .git, .githooks or a hook (both in an adopted
+# payload cwd; an unmarked over-length MCP string is content and skipped),
+# when the policy
+# JSON will not parse, and on an unexpected internal failure after the policy has been read
 # (the ERR trap below).
 #
 # Accepted false denies, all in the safe direction, all pinned in
@@ -240,6 +244,15 @@ payload=$(cat)
 # builtins: EPOCHREALTIME (bash 5, microseconds), or SECONDS (whole seconds,
 # so the stop comes up to one second early) on the bash 3.2 macOS ships.
 SCAN_BUDGET_MS=2000
+# A path longer than this many bytes names nothing: 4096 is the largest
+# PATH_MAX among the platforms this hook runs on (Linux 4096, macOS 1024), so
+# the OS cannot resolve it. It is also where checking stops being cheap: the
+# path handling below costs time quadratic in a path's length, and a path of
+# a few tens of KB used to outrun the timeout and pass the call. So a longer
+# path is unreadable input, decided before any of that handling runs.
+PATH_MAX_BYTES=4096
+# Sets PATH_BYTES to the length of $1 in bytes (C locale), with a builtin.
+path_bytes() { local LC_ALL=C; PATH_BYTES=${#1}; }
 HOOK_T0_US="${EPOCHREALTIME:-}"; HOOK_T0_US="${HOOK_T0_US//[!0-9]/}"
 HOOK_T0_S="$SECONDS"
 # Returns 0 once the scan has spent its budget.
@@ -393,9 +406,13 @@ else
   esac
 fi
 
+# The reason goes to jq on stdin, never as an argument: it can quote a
+# payload-derived path, and Linux refuses to exec a program with any one
+# argument over 128 KB (MAX_ARG_STRLEN), which would turn a refusal into a
+# crash.
 deny() {
-  jq -n --arg msg "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-    permissionDecision: "deny", permissionDecisionReason: $msg}}'
+  printf '%s' "$1" | jq -Rs '{hookSpecificOutput: {hookEventName: "PreToolUse",
+    permissionDecision: "deny", permissionDecisionReason: .}}'
   exit 0
 }
 
@@ -490,7 +507,11 @@ prep_file_target() {
 }
 # A file tool with no readable path goes on to the decision, which refuses
 # it in an adopted repo: the payload is unreadable, not harmless.
-if [[ "$MODE" == file && -n "$file_path" ]]; then prep_file_target || exit 0; fi
+path_too_long=0
+if [[ "$MODE" == file && -n "$file_path" ]]; then
+  path_bytes "$file_path"
+  if (( PATH_BYTES > PATH_MAX_BYTES )); then path_too_long=1; else prep_file_target || exit 0; fi
+fi
 
 # Remove flag-borne arguments (quoted or bare, `=`-joined or not) whose
 # ALTERNATION is passed in, so their text can neither trigger nor defeat a
@@ -1466,6 +1487,9 @@ memo_put() {
 
 # The file modes' decision, once the repo is known to be adopted.
 decide_file_mode() {
+  if [[ "$MODE" == toolong ]]; then
+    deny "Refusing this $tool_name call: it names a path of $PATH_BYTES bytes, longer than $PATH_MAX_BYTES bytes, the largest PATH_MAX of any platform this hook supports, so no OS can resolve it and this hook cannot tell whether it reaches the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Give the path in its real, shorter form."
+  fi
   if [[ "$MODE" == toolarge ]]; then
     deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
   fi
@@ -1709,6 +1733,9 @@ decide_file_target() {
 }
 
 if [[ "$MODE" == file ]]; then
+  # An overlong path is unreadable: decided against the payload cwd, since
+  # the path itself cannot be resolved.
+  if [[ "$path_too_long" -eq 1 ]]; then MODE='toolong'; decide_for_target '' ''; exit 0; fi
   decide_file_target
   exit 0
 fi
@@ -1773,6 +1800,18 @@ if [[ "$MODE" == mcp ]]; then
     case "$mcp_path" in "~") mcp_path="${HOME:-}" ;; "~/"*) mcp_path="${HOME:-}/${mcp_path#"~/"}" ;; esac
     mcp_bases=('')
     case "$mcp_path" in /*) ;; *) [[ -z "$project_dir" ]] || mcp_bases+=("$project_dir/") ;; esac
+    # Over-length: the OS cannot open it as a path, so it is content (a
+    # minified file, one-line JSON) and is skipped. Only a server that
+    # shortens it could make it a path, and that matters only when it points
+    # at the floor, which the markers flag: a marked one is unreadable,
+    # refused if the cwd's repo is adopted.
+    path_bytes "$mcp_path"
+    if (( PATH_BYTES > PATH_MAX_BYTES )); then
+      case "$mcp_path" in
+        *.[gG][iI][tT]*|*[hH][oO][oO][kK]*) MODE='toolong'; decide_for_target '' ''; MODE='mcp' ;;
+      esac
+      continue
+    fi
     for mcp_base in "${mcp_bases[@]}"; do
       file_path="$mcp_base$mcp_path"
       prep_file_target || continue

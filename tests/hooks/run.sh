@@ -1340,9 +1340,11 @@ expect_allow "Edit through a link to .git in a repo that never adopted house, fr
 
 # ── MCP write tools: no standard path field, so every string is a candidate
 # mk_mcp_payload <tool> <tool_input-json> <cwd>
+# tool_input goes in on stdin: Linux caps one argv string at 128 KB, and the
+# large-input cases below pass several hundred KB.
 mk_mcp_payload() {
-  jq -n --arg tool "$1" --argjson ti "$2" --arg cwd "$3" \
-    '{tool_name: $tool, tool_input: $ti, cwd: $cwd, hook_event_name: "PreToolUse"}'
+  printf '%s' "$2" | jq -c --arg tool "$1" --arg cwd "$3" \
+    '{tool_name: $tool, tool_input: ., cwd: $cwd, hook_event_name: "PreToolUse"}'
 }
 expect_deny "MCP write_file to a vendored .githooks file" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p, content: "x"}')" "$pg")" "git-hook floor"
@@ -1468,6 +1470,39 @@ if [[ -z "$HOOK_OUT" && "$_ms" -lt 4000 ]]; then
 else
   fail "8000 unmarked strings past the budget, nothing adopted, pass" "took ${_ms} ms, out=[$HOOK_OUT]"
 fi
+# Large payloads. Linux caps one argv string at 128 KB (MAX_ARG_STRLEN) where
+# macOS does not, so a payload-sized value handed to a process as an argument
+# fails there with E2BIG. These payloads are built over stdin, and the hook
+# must never put payload text on a command line either.
+_big=$(printf '%0300000d' 0 | tr 0 x)
+# A path longer than 4096 bytes (the largest PATH_MAX of a supported platform)
+# names nothing the OS can resolve, and checking it costs time quadratic in
+# its length, which used to outrun the 5 s timeout and pass the call.
+_long=$(printf '%05000d' 0 | tr 0 a)
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_real_file_payload Edit "$pg/.githooks/$_long" "$pg")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"4096 bytes"* && "$_ms" -lt 1000 ]]; then
+  pass "an Edit path of 5000 bytes in an adopted repo denies as too long in ${_ms} ms"
+else
+  fail "an Edit path of 5000 bytes in an adopted repo denies as too long under 1000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+fi
+expect_allow "an Edit path of 5000 bytes in a repo that never adopted house" \
+  "$(mk_real_file_payload Edit "$n/$_long" "$n")"
+expect_allow "an ordinary Edit path of about 4000 bytes still decides normally" \
+  "$(mk_real_file_payload Edit "$pg/docs/${_long:0:$((4000 - ${#pg} - 6))}" "$pg")"
+# In an MCP input an over-length string is content, not a path, unless it
+# names a floor marker.
+_line="$(printf '%06000d' 0 | tr 0 x)"
+expect_allow "an MCP write whose content is one 6000-byte line with a / and no marker" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/docs/min.js" --arg c "a/$_line" '{path: $p, content: $c}')" "$pg")"
+expect_deny "an MCP write whose content is one 6000-byte line naming .githooks" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/docs/min.js" --arg c "$pg/.githooks/$_line" '{path: $p, content: $c}')" "$pg")" "4096 bytes"
+expect_allow "a Write of 300 KB to an ordinary path in an adopted repo" \
+  "$(printf '%s' "$_big" | jq -Rs --arg fp "$pg/docs/big.md" --arg cwd "$pg" '{tool_name: "Write", tool_input: {file_path: $fp, content: .}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
+expect_deny "an MCP write with a 300 KB string beside a floor path denies for the floor path" \
+  "$(printf '%s' "$_big/x" | jq -Rs --arg p "$pg/.githooks/pre-push" --arg cwd "$pg" '{tool_name: "mcp__fs__write_file", tool_input: {path: $p, content: .}, cwd: $cwd, hook_event_name: "PreToolUse"}')" "git-hook floor"
 # ── a payload jq cannot parse: tool and cwd are unknown, so the hook's own
 # working directory (the project the harness runs it in) decides adoption
 # expect_in_dir <allow|deny> <label> <dir> <stdin>
