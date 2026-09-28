@@ -875,3 +875,18 @@ The gap pass the re-survey above deferred: the `claude mcp` and `claude config` 
 ### Still open
 
 Whether PreToolUse fires on MCP tool calls (the docs imply it and never state it), whether print-mode and workflow schemas share the SDK validator's gaps, and whether plugin agents honor `permissionMode`. The spawn-depth question the addendum left open is answered in the main bank: the default is three layers below the main conversation.
+
+## Addendum, 2026-09-28: Claude Code 2.1.284
+
+Claude Code 2.1.284 (changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md) made these changes that touch house-rules, each with its disposition against the existing rule surface. `npm run check:plugin` passes under 2.1.284 with `--strict`, so the release adds no validator warning.
+
+- Claude Sonnet 5.5 (`claude-sonnet-5-5`) became the default Sonnet model on the Anthropic API, with 1M context at $2/$10 per Mtok and $0.20 cache reads. Complement: the `sonnet` alias pinned by `plugins/house/agents/researcher.md` and `plugins/house/agents/builder.md` now resolves to it, and the ladder in `plugins/house/orchestration/ORCHESTRATION.md` (Fable, Opus, Sonnet, Haiku) still holds on price. The model facts of record in `docs/handbook/claude-code.md` need a dated paragraph, proposed in the addendum PR.
+- Interactive terminal and VS Code sessions start in auto mode when no permission mode is configured, on every plan and provider, and `permissions.defaultMode` still overrides it. Complement: `plugins/house/modules/llm-output/rules/llm-output.md` already calls auto mode the built-in starting mode, and the claude-code rule's permissions paragraph already assumes its classifier; neither claims the older, narrower scope.
+- Ultracode became its own `/effort` toggle and no longer forces xhigh effort. Unique with no impact: no house text names Ultracode or xhigh, and the roster's effort pins sit in agent frontmatter, which the toggle does not touch.
+- The Explore subagent inherits a session model Claude Code does not recognize instead of switching to Opus. Complement to the model-tier section of `plugins/house/orchestration/ORCHESTRATION.md`, which names Explore only for its spawn limit and claims nothing about its model.
+- A rule symlinked into `.claude/rules` from outside the project, or a `.claude` directory symlinked from outside it, now asks for external-imports approval instead of being skipped. No impact: `render --apply` writes `.claude/rules/house/` as regular files, and the `sync` and `bootstrap` skills never create a symlink there.
+- Plugins from marketplaces, claude.ai, and npm lose `allowed-tools` pre-approval under managed `allowManagedPermissionRulesOnly`. No impact: no house skill or agent declares `allowed-tools`.
+- A failed hook now logs its status code, and keeps its stderr in the debug log when it also wrote stdout. Complement to the testing rule's hook anchor (`tests/hooks/run.sh`), which runs the real script and asserts its stdout and exit code without reading the debug log.
+- Auto-memory loading neutralizes invisible characters and imitation markup in `MEMORY.md` and recalled notes. Complement: the lengths family in `.house/check.mjs` still warns on the index's size, which the change does not address.
+
+Model facts change only on the Sonnet tier; the Opus and Fable facts of the 2026-09-22 addendum stand.
