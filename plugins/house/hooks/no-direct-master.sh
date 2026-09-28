@@ -107,7 +107,9 @@
 # tell a safe command from a dangerous one), when a file tool's payload names
 # no path (in an adopted repo), when stdin is empty or does not parse as JSON
 # (in the adopted repo the hook itself runs in, since the payload's cwd is
-# unreadable too), when the policy JSON will not parse, and on an unexpected internal failure after the policy has been read
+# unreadable too), when a Bash command is not a string (in the adopted repo
+# the payload's cwd names), when an MCP scan outruns its time budget (see
+# 16), when the policy JSON will not parse, and on an unexpected internal failure after the policy has been read
 # (the ERR trap below).
 #
 # Accepted false denies, all in the safe direction, all pinned in
@@ -159,6 +161,10 @@
 #      unarmed refusal above applies in a repo that looks fully armed
 #  15. an MCP write-verb tool any of whose single-line strings names a floor
 #      path, even when that string is not where it writes (a note, a label)
+#  16. an MCP input too large to check within the scan's time budget, in an
+#      adopted repo, or anywhere while a string still unchecked names .git,
+#      .githooks or a hook (a large input into a repo that never adopted
+#      house is refused too)
 # Deliberately NOT chased, because the floor covers it: a computed working
 # directory (`cd "$d"`), a `popd`, a refspec the config supplies, xargs, and a
 # git command inside a file this command runs. While the floor IS armed, a
@@ -176,14 +182,17 @@
 # 40 hops; an MCP tool whose name carries none of the write verbs above (in
 # any case), which the script ends after the name check; a path an MCP tool
 # takes in a form that is not a plain single-line string or key (split across
-# fields, percent-encoded, or inside multi-line content); a git directory not
+# fields, percent-encoded outside a file: URI, or inside multi-line content),
+# and a file: URI whose escapes decode to something %b does not (a malformed
+# `%zz` stays literal); a git directory not
 # named .git (`--separate-git-dir`, a worktree's gitdir) written from a cwd in
 # another repo, since its path carries no marker and git run inside it names
 # no toplevel; an Edit through a hard link to a floor file, which no path
 # test can see (the edit changes the floor file's bytes, so the integrity
-# check refuses every guarded command after it); an MCP call with so many
-# path-like strings (well over a thousand) that checking them outruns the
-# 5 s timeout; a planted file more than
+# check refuses every guarded command after it); past the time budget, an
+# unchecked string that reaches the floor with no marker in its text (a
+# plainly named symlink) while nothing adopted has been seen and the cwd is
+# not adopted; a planted file more than
 # three levels under the hooks directory, which no dispatcher can run; and
 # `git config --file <path> --get core.hooksPath`, readable for the same
 # reason `--get` alone is (see 1) because `--file` and its value never reach
@@ -328,12 +337,15 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # that is missing or not a string reads as empty, which file mode refuses.
 # Every field is read type-safely: a number, an array or an object where a
 # string belongs reads as empty rather than throwing, since a throw here used
-# to end in the valid-JSON allow below with the whole call unread.
+# to end in the valid-JSON allow below with the whole call unread. A Bash
+# command that is not a string is flagged (`k1`): what would run cannot be
+# read, so it is an unreadable payload, not an empty command.
 payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
   | ((.tool_input | objects) // {}) as $in
   | "t" + $t, "w" + ((.cwd | strings) // ""),
   "f" + ((if $t == "NotebookEdit" then $in.notebook_path else $in.file_path end
           | strings) // ""),
+  "k" + (if $t == "Bash" and ($in.command | type) != "string" then "1" else "" end),
   "c" + (($in.command | strings) // "")' \
   <<<"$payload" 2>/dev/null) || payload_fields=''
 # A payload that does not parse names neither the tool nor its cwd. Valid JSON
@@ -350,11 +362,15 @@ if [[ -z "$payload_fields" ]]; then
 fi
 tool_name="${payload_fields%%$'\n'*}"; _rest="${payload_fields#*$'\n'}"
 payload_cwd="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
-file_path="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
+file_path="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
+cmd_unreadable="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
 tool_name="${tool_name#t}"; payload_cwd="${payload_cwd#w}"
-file_path="${file_path#f}"; cmd="${cmd#c}"
+file_path="${file_path#f}"; cmd_unreadable="${cmd_unreadable#k}"; cmd="${cmd#c}"
 if [[ "$payload_unreadable" -eq 1 ]]; then
   MODE='unreadable'; payload_cwd="$PWD"; file_path=''; cmd=''
+elif [[ "$cmd_unreadable" == 1 ]]; then
+  # The payload parsed, so its cwd is readable and names the repo.
+  MODE='unreadable'; payload_cwd="${payload_cwd:-$PWD}"; file_path=''; cmd=''
 else
   case "$tool_name" in
     Bash) MODE='bash'; file_path='' ;;
@@ -1454,7 +1470,7 @@ decide_file_mode() {
     deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
   fi
   if [[ "$MODE" == unreadable ]]; then
-    deny "Refusing this tool call: its payload could not be parsed as JSON (empty or malformed stdin), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
+    deny "Refusing this tool call: its payload could not be parsed as a tool call (empty or malformed JSON, or a Bash command that is not a string), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
   fi
   if [[ -z "$file_path" ]]; then
     deny "Refusing this $tool_name call: its payload names no path (file_path, or notebook_path for NotebookEdit, is missing, empty, or not a string), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry with the target given as a path string."
@@ -1712,13 +1728,18 @@ fi
 # the harness names. A multi-line string is content, not a path, and is
 # skipped. Nothing path-like means nothing to check.
 if [[ "$MODE" == mcp ]]; then
-  # Each line carries a one-character tag: `u` for a string that was a file:
-  # URI, which is percent-decoded below, and `p` for the rest.
+  # Each line carries two one-character tags. The first is `0` for a string
+  # that names a floor marker (.git, .githooks, hook, in any case, or a file:
+  # URI still holding a percent escape), `1` otherwise, so the sort puts the
+  # strings most likely to hit first under the time budget. The second is `u`
+  # for a string that was a file: URI, which is percent-decoded below, and `p`
+  # for the rest.
   if ! mcp_paths=$(jq -r '[.tool_input | ((.. | strings), (.. | objects | keys[]))
         | select((contains("\n") or contains("\r")) | not)
         | test("^file:"; "i") as $u | sub("^file:(//[^/]*)?"; ""; "i")
         | select(contains("/") or startswith(".") or startswith("~"))
-        | (if $u then "u" else "p" end) + .] | unique | .[]' \
+        | (if test("\\.git|hook"; "i") or ($u and contains("%")) then "0" else "1" end)
+          + (if $u then "u" else "p" end) + .] | unique | .[]' \
         <<<"$payload" 2>/dev/null); then
     exit 0
   fi
@@ -1726,8 +1747,13 @@ if [[ "$MODE" == mcp ]]; then
   case "$project_dir" in /*) [[ "${project_dir%/}" != "${payload_cwd%/}" ]] || project_dir='' ;; *) project_dir='' ;; esac
   while IFS= read -r mcp_path; do
     [[ -n "$mcp_path" ]] || continue
-    # Out of time: refuse in any adopted repo seen so far, else in the cwd's.
+    # Out of time: refuse outright while a string naming a floor marker is
+    # still unchecked, whatever repo it or the cwd is in; otherwise refuse in
+    # any adopted repo seen so far, else in the cwd's.
     if scan_over_budget; then
+      if [[ "${mcp_path:0:1}" == 0 ]]; then
+        deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a git directory or a hook path. Split the call into smaller ones."
+      fi
       MODE='toolarge'
       for ((memo_j = 0; memo_j < ${#MEMO_KEYS[@]}; memo_j++)); do
         if [[ -n "${MEMO_TOP[$memo_j]}" ]]; then toplevel="${MEMO_TOP[$memo_j]}"; decide_file_mode; fi
@@ -1735,7 +1761,7 @@ if [[ "$MODE" == mcp ]]; then
       decide_for_target '' ''
       exit 0
     fi
-    mcp_tag="${mcp_path:0:1}"; mcp_path="${mcp_path:1}"
+    mcp_tag="${mcp_path:1:1}"; mcp_path="${mcp_path:2}"
     # %XX to the byte it names, with builtins: backslashes doubled first so
     # %b reads only the escapes made here.
     if [[ "$mcp_tag" == u && "$mcp_path" == *%* ]]; then

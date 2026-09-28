@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*",
         "hooks": [
           { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/no-direct-master.sh\"", "timeout": 5 }
         ]

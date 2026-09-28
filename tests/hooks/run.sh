@@ -1431,13 +1431,43 @@ if [[ "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"too large to check"* && "$_m
 else
   fail "4000 MCP strings outrun the scan budget and deny under 4000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
 fi
-expect_allow "the same 4000 strings from a repo that never adopted house" \
-  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_huge" | jq --arg n "$n" '.paths |= map(sub("^.*/many/"; $n + "/many/"))')" "$n")"
+# Past the budget, a string still unchecked that names .git or a hook refuses
+# the call whatever repo it is in, so the same input aimed at a repo that
+# never adopted house is refused too.
+expect_deny "ACCEPTED FALSE DENY: the same 4000 strings in a repo that never adopted house" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_huge" | jq --arg n "$n" '.paths |= map(sub("^.*/many/"; $n + "/many/"))')" "$n")" "too large to check"
 # A file: URI is percent-decoded after its scheme is dropped.
 expect_deny "MCP write with a file:// URI spelling .githooks as %2Egithooks" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/%2Egithooks/pre-push" '{uri: $p}')" "$pg")" "git-hook floor"
 expect_deny "MCP write with a file:// URI spelling .git/config as .git%2Fconfig" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/.git%2Fconfig" '{uri: $p}')" "$n")" "git-hook floor"
+# Strings that name a floor marker are scanned first, and one left unchecked
+# when the budget runs out refuses the call whatever the cwd's adoption. The
+# padding goes through a symlink in a repo that never adopted house (so each
+# string costs a full check) and sorts before the marker string.
+ap="$TMP_ROOT/a-pad"; new_repo "$ap"; mkdir -p "$ap/docs"; ln -s docs "$ap/sl"
+_pad=$(for ((i = 0; i < 3000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s --arg m "$pg/.githooks/pre-push" '{paths: (. + [$m])}')
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_mcp_payload mcp__fs__write_file "$_pad" "$n")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$HOOK_OUT" == *'"deny"'* && "$_ms" -lt 4000 ]]; then
+  pass "3000 padding strings do not hide a .githooks string, from a cwd that never adopted house (${_ms} ms)"
+else
+  fail "3000 padding strings do not hide a .githooks string, from a cwd that never adopted house" "took ${_ms} ms, out=[$HOOK_OUT]"
+fi
+# With no marker left unchecked, an input past the budget is decided by
+# adoption as before: here, nothing adopted, so it passes.
+_pad=$(for ((i = 0; i < 8000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s '{paths: .}')
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_mcp_payload mcp__fs__write_file "$_pad" "$n")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ -z "$HOOK_OUT" && "$_ms" -lt 4000 ]]; then
+  pass "8000 unmarked strings past the budget, nothing adopted, pass (${_ms} ms)"
+else
+  fail "8000 unmarked strings past the budget, nothing adopted, pass" "took ${_ms} ms, out=[$HOOK_OUT]"
+fi
 # ── a payload jq cannot parse: tool and cwd are unknown, so the hook's own
 # working directory (the project the harness runs it in) decides adoption
 # expect_in_dir <allow|deny> <label> <dir> <stdin>
@@ -1474,8 +1504,14 @@ else
   fail "jq missing denies garbage stdin too" "exit=$HOOK_CODE decision=[$decision] out=[$HOOK_OUT]"
 fi
 expect_in_dir allow "parseable JSON that is not an object, from an adopted repo" "$pg" '[1, 2]'
-expect_in_dir allow "a parseable object with a non-string command, from an adopted repo" "$pg" \
+# A Bash command that is not a string is an unreadable payload: the hook
+# cannot read what would run.
+expect_in_dir deny "a Bash payload whose command is a number, from an adopted repo" "$pg" \
   '{"tool_name": "Bash", "tool_input": {"command": 7}, "hook_event_name": "PreToolUse"}'
+expect_in_dir deny "a Bash payload whose command is an object, cwd an adopted repo" "$n" \
+  "$(jq -n --arg cwd "$pg" '{tool_name: "Bash", tool_input: {command: {argv: ["git", "push"]}}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
+expect_in_dir allow "a Bash payload whose command is a number, in a repo that never adopted house" "$n" \
+  "$(jq -n --arg cwd "$n" '{tool_name: "Bash", tool_input: {command: 7}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
 
 payload="$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p}')" "$pg")"
 HOOK_OUT=$(printf '%s' "$payload" | PATH="$STRIPPED" bash "$HOOK")

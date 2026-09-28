@@ -22,32 +22,42 @@ test('hooks.json declares a non-empty InstructionsLoaded array', () => {
   assert.ok(h.hooks && Array.isArray(h.hooks.InstructionsLoaded) && h.hooks.InstructionsLoaded.length > 0);
 });
 
+// How the harness reads a hook matcher, per the hooks docs: a string of only
+// letters, digits, `_`, `|`, `,` and spaces is an exact tool name or list of
+// names; any other character makes the whole string an unanchored regex. A
+// `new RegExp` alone models only the second half, which is how a list ending
+// in a bare `mcp__` once passed here while no MCP call reached the hook.
+function matcherReaches(matcher, tool) {
+  if (/^[A-Za-z0-9_|, ]*$/.test(matcher)) {
+    return matcher.split(/[|,]/).map((n) => n.trim()).includes(tool);
+  }
+  return new RegExp(matcher).test(tool);
+}
+
 // #58: the PreToolUse guard now also reads Edit/Write/MultiEdit/NotebookEdit payloads, since
 // writing a floor file directly is the same disable the Bash text scan refuses.
 // A matcher that lost those tool names would leave that door open silently.
-test('#58 hooks.json: the PreToolUse matcher covers Bash and the file-writing tools', () => {
+test('#58 hooks.json: the PreToolUse matcher covers Bash, the file-writing tools and MCP tools, and not Read', () => {
   const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
   assert.ok(entry, 'no PreToolUse entry runs no-direct-master.sh');
-  // Unanchored, as the harness tests a matcher.
-  const matcher = new RegExp(entry.matcher);
-  for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']) {
-    assert.ok(matcher.test(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
+  for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__fs__write_file']) {
+    assert.ok(matcherReaches(entry.matcher, tool), `the PreToolUse matcher does not reach ${tool}: ${entry.matcher}`);
   }
+  assert.ok(!matcherReaches(entry.matcher, 'Read'), `the PreToolUse matcher reaches Read: ${entry.matcher}`);
 });
 
 // MCP tools have no standard path field and neither path deny rules nor the
 // sandbox cover them, so the docs route an MCP write through a PreToolUse hook
-// matched on the tool name. The harness tests a matcher unanchored, so a verb
-// regex there is no boundary: every MCP tool reaches the hook, and the script
+// matched on the tool name. The harness tests a regex matcher unanchored, so a
+// verb regex there is no boundary: every MCP tool reaches the hook, and the script
 // decides write-likeness from the name, in any case.
 test('hooks.json: every MCP tool reaches the guard, and the script decides the write verbs in any case', () => {
   const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
-  const matcher = new RegExp(entry.matcher);
   const writes = ['mcp__fs__Write_file', 'mcp__fs__copy_file', 'mcp__serena__replace_symbol_body'];
   for (const tool of [...writes, 'mcp__fs__read_file']) {
-    assert.ok(matcher.test(tool), `the PreToolUse matcher does not reach ${tool}: ${entry.matcher}`);
+    assert.ok(matcherReaches(entry.matcher, tool), `the PreToolUse matcher does not reach ${tool}: ${entry.matcher}`);
   }
   const hook = fileURLToPath(new URL('../plugins/house/hooks/no-direct-master.sh', import.meta.url));
   const repo = mkdtempSync(join(tmpdir(), 'mcp-matcher-'));
