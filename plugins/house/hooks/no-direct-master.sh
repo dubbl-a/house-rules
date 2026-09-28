@@ -154,9 +154,11 @@
 # reported rather than guessed at: a Bash mutation of ~/.gitconfig (the Edit
 # tool route is refused, `>> ~/.gitconfig` is not on the literal list); a
 # wildcard that never spells .githooks (`rm -rf .gith*`), after which the next
-# call reads the floor as gone and refuses what it covered; an Edit whose path
-# reaches the hooks directory through a symlink named after neither git nor a
-# hook, which the payload prefilter exits before; a planted file more than
+# call reads the floor as gone and refuses what it covered; an Edit through a
+# symlink above the nearest directory holding .git, which the prefilter does
+# not walk (a symlink named after neither git nor a hook BELOW it, or the file
+# itself being one, goes to the physical check); a symlink chain longer than
+# 40 hops; a planted file more than
 # three levels under the hooks directory, which no dispatcher can run; and
 # `git config --file <path> --get core.hooksPath`, readable for the same
 # reason `--get` alone is (see 1) because `--file` and its value never reach
@@ -340,13 +342,51 @@ if [[ "$MODE" == bash ]]; then
   esac
 else
   [[ -n "$file_path" ]] || exit 0
+  # The path as a lexical resolver lands it: `.` and empty segments go and a
+  # `..` drops the segment before it, whether or not that segment exists. The
+  # raw `<repo>/nosuch/../.githooks/pre-push` puts `nosuch/..` in front of the
+  # hooks directory, and `cd -P` of a parent that does not exist fails. Pure
+  # bash, because every Edit and Write pays for it.
+  file_abs="$file_path"
+  case "$file_abs" in /*) ;; *) file_abs="${payload_cwd:-.}/$file_abs" ;; esac
+  file_norm="$file_abs"
+  case "$file_norm" in
+    /*)
+      _rest="${file_norm#/}/"; file_norm=''
+      while [[ -n "$_rest" ]]; do
+        _seg="${_rest%%/*}"; _rest="${_rest#*/}"
+        case "$_seg" in
+          ''|.) ;;
+          ..) file_norm="${file_norm%/*}" ;;
+          *) file_norm+="/$_seg" ;;
+        esac
+      done
+      file_norm="${file_norm:-/}" ;;
+  esac
+  # A relative path is read without the cwd in front of it, as it always was,
+  # so a checkout under a directory named for hooks costs nothing extra.
+  _norm_text="$file_norm"
+  case "$file_path" in /*) ;; *) _norm_text="${file_norm#"${payload_cwd%/}"/}" ;; esac
   # .githooks, .GITHOOKS, .git/config, .git/hooks, ~/.gitconfig, the XDG
   # spelling of the per-user config (no dot at all), and any path whose name
-  # says "hook", which is how a symlink into the hooks directory usually reads.
-  # A symlink whose name says none of these is residue, documented above.
-  case "$file_path" in
+  # says "hook", in the path as given or as normalized. Anything else goes to
+  # the full scan only when a component of it is a symlink, tested from the
+  # file up to the nearest directory holding .git (the repo root) with
+  # builtins alone: a plainly named link into .githooks or the git directory
+  # spells none of these words. A symlink above that root cannot move the
+  # path out of the repo it resolves in, and on macOS /var and /tmp are
+  # symlinks that every path would otherwise trip.
+  file_symlinked=0
+  case "$file_path"$'\n'"$_norm_text" in
     *.[gG][iI][tT]*|*[gG][iI][tT]/[cC][oO][nN][fF][iI][gG]*|*[hH][oO][oO][kK]*) ;;
-    *) exit 0 ;;
+    *)
+      _p="$file_abs"
+      while [[ "$_p" == */* ]]; do
+        if [[ -L "$_p" ]]; then file_symlinked=1; break; fi
+        [[ -e "$_p/.git" ]] && break
+        _p="${_p%/*}"
+      done
+      [[ "$file_symlinked" -eq 1 ]] || exit 0 ;;
   esac
 fi
 
@@ -1207,8 +1247,8 @@ run_branch_scans() {
 # case-sensitive match saw only the second. Lowercasing preserves length, so
 # the offsets taken from the lowercased copy index the original.
 run_file_scan() {
-  local fp="$file_path" lower pre root rel parent phys tphys target
-  case "$fp" in /*) ;; *) fp="${payload_cwd:-.}/$fp" ;; esac
+  local fp="$file_norm" lower pre root rel parent phys tphys target
+  local parents link dest hops=0 seen=$'\n'
   lower=$(printf '%s' "$fp" | tr '[:upper:]' '[:lower:]')
   # git's per-user config can define an alias or core.hooksPath for every repo
   # on this machine, this one included, and neither the checker nor the floor
@@ -1235,26 +1275,47 @@ run_file_scan() {
         deny "Refusing to write '$rel': it is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel), and an edited or added hook file makes the floor untrusted for every command after it. Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
       fi ;;
   esac
-  # A path that reaches the floor through a symlink or a `..` segment spells
-  # neither .githooks nor .git, so the tests above cannot see it. Resolve the
-  # parent directory physically (cd -P) and compare the directory itself. Only
-  # for a path that says "hook" or ".git" somewhere, because this costs four
-  # processes and an ordinary source file whose NAME merely holds "git"
-  # (src/gitlab-client.ts) should not pay them.
-  case "$lower" in *hook*|*.git*) ;; *) return 0 ;; esac
-  parent="${fp%/*}"; [[ -n "$parent" ]] || parent='/'
-  phys=$(trap - ERR; cd -P "$parent" >/dev/null 2>&1 && pwd -P || echo '')
-  [[ -n "$phys" ]] || return 0
-  phys=$(trap - ERR; printf '%s' "$phys" | tr '[:upper:]' '[:lower:]')
-  for target in "$toplevel/.githooks" "$MAIN_ROOT/.githooks" "$COMMON_DIR"; do
-    [[ -n "$target" && -d "$target" ]] || continue
-    tphys=$(trap - ERR; cd -P "$target" >/dev/null 2>&1 && pwd -P || echo '')
-    [[ -n "$tphys" ]] || continue
-    tphys=$(trap - ERR; printf '%s' "$tphys" | tr '[:upper:]' '[:lower:]')
-    if [[ "$phys" == "$tphys" || "$phys" == "$tphys"/* ]]; then
-      deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
-    fi
+  # A path that reaches the floor through a symlink spells neither .githooks
+  # nor .git, so the tests above cannot see it. Resolve the parent directory
+  # physically (cd -P) and compare the directory itself: the parent of the
+  # path as given (the kernel's reading, where `link/..` climbs out of the
+  # link's target), of the path as normalized (where `nosuch/..` is harmless),
+  # and, when the file itself is a symlink, of every hop of its chain, since a
+  # write through it lands where the last hop points. Only for a path that
+  # says "hook" or ".git" somewhere or that the prefilter saw a symlink on,
+  # because this costs processes and an ordinary source file whose NAME
+  # merely holds "git" (src/gitlab-client.ts) should not pay them.
+  case "$lower$file_symlinked" in *hook*|*.git*|*1) ;; *) return 0 ;; esac
+  parents="${file_abs%/*}"$'\n'"${fp%/*}"
+  for link in "$file_abs" "$fp"; do
+    while [[ -L "$link" && "$hops" -lt 40 ]]; do
+      dest=$(trap - ERR; readlink "$link" 2>/dev/null || echo '')
+      [[ -n "$dest" ]] || break
+      case "$dest" in /*) link="$dest" ;; *) link="${link%/*}/$dest" ;; esac
+      parents+=$'\n'"${link%/*}"
+      hops=$((hops + 1))
+    done
   done
+  while IFS= read -r parent; do
+    [[ -n "$parent" ]] || parent='/'
+    [[ "$seen" != *$'\n'"$parent"$'\n'* ]] || continue
+    seen+="$parent"$'\n'
+    phys=$(trap - ERR; cd -P "$parent" >/dev/null 2>&1 && pwd -P || echo '')
+    [[ -n "$phys" ]] || continue
+    phys=$(trap - ERR; printf '%s' "$phys" | tr '[:upper:]' '[:lower:]')
+    # The checkout's own git directory is named here as well: git reports the
+    # common dir relative (`.git`) outside a linked worktree, which blanks
+    # COMMON_DIR, and a plainly named link to .git has no text to match.
+    for target in "$toplevel/.githooks" "$MAIN_ROOT/.githooks" "$toplevel/.git" "$COMMON_DIR"; do
+      [[ -n "$target" && -d "$target" ]] || continue
+      tphys=$(trap - ERR; cd -P "$target" >/dev/null 2>&1 && pwd -P || echo '')
+      [[ -n "$tphys" ]] || continue
+      tphys=$(trap - ERR; printf '%s' "$tphys" | tr '[:upper:]' '[:lower:]')
+      if [[ "$phys" == "$tphys" || "$phys" == "$tphys"/* ]]; then
+        deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
+      fi
+    done
+  done <<<"$parents"
   return 0
 }
 
@@ -1428,6 +1489,9 @@ decide_for_target() {
 if [[ "$MODE" == file ]]; then
   fdir="${file_path%/*}"
   case "$fdir" in /*) ;; *) fdir='' ;; esac
+  # A parent that does not exist (`nosuch/..`) names no repo; the normalized
+  # one does.
+  if [[ -n "$fdir" && ! -d "$fdir" ]]; then fdir="${file_norm%/*}"; fdir="${fdir:-/}"; fi
   decide_for_target "$fdir" ''
   exit 0
 fi

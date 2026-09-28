@@ -1263,6 +1263,33 @@ expect_deny "Edit on a floor file given as a relative path" \
 # A linked worktree edits the MAIN checkout's hooks directory.
 expect_deny "Edit on the main checkout's .githooks from inside a linked worktree" \
   "$(mk_file_payload Edit "$w/main/.githooks/pre-push" "$w/wt")" "part of the git-hook floor"
+# A `..` through a directory that does not exist, and a symlink whose name
+# says neither git nor hook. These payloads carry hook_event_name, as every
+# real one does: without it the whole-payload prefilter would end a path that
+# spells neither word before the file-mode checks under test ever ran.
+pg="$TMP_ROOT/pathgaps"; new_repo "$pg"; adopt "$pg"; lock_floor "$pg"; install_floor "$pg"
+mkdir -p "$pg/docs"
+ln -s .githooks "$pg/link"
+ln -s .git "$pg/gl"
+ln -s .githooks/pre-push "$pg/notes.txt"
+ln -s docs "$pg/shortcut"
+mk_real_file_payload() { mk_file_payload "$@" | jq -c '. + {hook_event_name: "PreToolUse"}'; }
+for _tool in Edit Write; do
+  expect_deny "$_tool through a .. segment under a directory that does not exist" \
+    "$(mk_real_file_payload "$_tool" "$pg/nosuch/../.githooks/pre-push" "$pg")" "git-hook floor"
+  expect_deny "$_tool through a directory symlink into .githooks with a plain name" \
+    "$(mk_real_file_payload "$_tool" "$pg/link/pre-push" "$pg")" "git-hook floor"
+  expect_deny "$_tool through a directory symlink into the git directory with a plain name" \
+    "$(mk_real_file_payload "$_tool" "$pg/gl/config" "$pg")" "git-hook floor"
+  expect_deny "$_tool on a plainly named file symlink to a floor file" \
+    "$(mk_real_file_payload "$_tool" "$pg/notes.txt" "$pg")" "git-hook floor"
+done
+expect_allow "Edit through a symlink that points somewhere harmless" \
+  "$(mk_real_file_payload Edit "$pg/shortcut/guide.md" "$pg")"
+expect_allow "Edit through a .. segment that lands on an ordinary file" \
+  "$(mk_real_file_payload Edit "$pg/nosuch/../README.md" "$pg")"
+expect_allow "Edit on an ordinary file with no symlink on its path" \
+  "$(mk_real_file_payload Edit "$pg/docs/guide.md" "$pg")"
 # Round 3 (H3): a repo on branchPolicy direct reaches the file scan too. The
 # policy says who decides which BRANCH may move; it is not permission to edit
 # the hooks, and the repo is one merged PR away from "pr".
