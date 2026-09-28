@@ -6,6 +6,17 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.13.5] - 2026-09-28
+
+The rules are re-surveyed against Claude Code 2.1.283 and now name the harness behavior they build on accurately, the hook commands quote the plugin root so the strict validator passes again, and the package gains a procedure and a watcher for adapting to each new Claude Code release. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.
+
+### Changed
+- **Rules cite the native floor the 2.1.283 re-survey confirmed.** The survey classified 148 rules and mechanisms and found no duplicates and no conflicts with the harness, so this is a citation pass across all nine modules, the orchestration defaults, the builder agent, the handoff skill, and the checker's family comments. Rules now name auto mode as the built-in starting mode where it thins a floor they assumed (broad allows suspended, in-directory edits approved, pushes to the default branch allowed), cite `/doctor prompt-audit` as the on-request floor under the docs rules, prefer the harness's worktree tool because a manual `git worktree add` skips its base-branch and include defaults, and say a timed-out pre-tool hook lets the action through. Claims that overstated the harness (a deny evaluated before hooks, any wrapper escaping a deny, a sandbox bounding writes unconditionally, an eval runner that always replays) are corrected, and the orchestration defaults now say a subagent with no model runs on the session's model unless the harness's subagent model variable is set. `docs/handbook/sources/harness-survey.md` records the result, the 2.1.281 to 2.1.283 changelog dispositions, and what was deferred by decision.
+- **The harness prompt audit's findings in the rules are fixed.** A model name and measured agent counts leave the claude-code rule's prose (the counts stay in the handbook), and "Cut, don't append" drops its per-pass deletion quota, which contradicted "finding no candidate is valid".
+
+### Fixed
+- **Every hook command quotes `${CLAUDE_PLUGIN_ROOT}`.** Claude Code 2.1.281 made `claude plugin validate` warn on an unquoted plugin root in a shell-form hook, since a path with a space splits the command, and the strict validator failed every PR. No hook behavior changes.
+
 ## [0.13.4] - 2026-09-22
 
 Model-tier guidance is rewritten for Claude Opus 5.5 as the default Opus model: the ladder becomes Fable, Opus, Sonnet, Haiku, subagents run below the session by default, and judgment stays on Opus even on an Opus session. Patch under ADR 0012: rule content changes with no heading renamed and no change to the guard's deny set.

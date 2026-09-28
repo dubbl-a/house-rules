@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.13.4 module=engineering source=modules/engineering/rules/engineering.md body-sha256=6d10f67f6d3b3d857b81635094eb22126909eaf83b5ee2c7da879b9a76a61e1d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.5 module=engineering source=modules/engineering/rules/engineering.md body-sha256=6d10f67f6d3b3d857b81635094eb22126909eaf83b5ee2c7da879b9a76a61e1d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
