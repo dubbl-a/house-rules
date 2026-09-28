@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.13.5 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=bc0fa761238d7c7501ca0b95ed9e71c7f91b58d13c6f525b898604ae4e0e9001 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.5 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=0cd51cd02fb745fb4f21562868243956189fba754e0b708087c9ea11dea40095 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -78,7 +78,7 @@ Reach for the plugin's pinned roster before a bare agent call (scout on Haiku, r
 Name the effort on an off-roster call too: a subagent without one inherits the session's effort, and a newly released model starts at its own default until an effort level applies to it, so set one per model in user settings.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail, stepping a blocked call down to the newest allowed model in its family: the checker and the fork's model map make that step-down visible.
-State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.
+State the tier a procedure requires and stop when the session is below it, and give a scripted run its budget ceiling, the print-mode flag, or the SDK budget option, which counts subagent spend and refuses further spawns at the cap, so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.
 When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each upgrade: read its verdict by name, since each outcome is its own exit code, unchanged needs nothing, drifted or missing means rebuild (a missing binary or missing bundled script counts as drift; rebuild the fork), a bad argument means fix the call, and SUNSET means delete the fork.
 Give that fork a depth that fits the question: the bundled workflow runs a fixed, large fan-out regardless of what is asked, while the fork scales it, light for a lookup or a single procedure, standard by default, deep for a contested or multi-domain question a decision rides on, with `args.budget` for a field the presets get wrong.
 Anchor: the eval pair at `plugins/house/evals/explicit-model-tier/`, whose arms differ only in whether each call sets a model.
@@ -87,7 +87,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
 Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
-Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a bare, safe-mode, or restricted session never loads project hooks, so anything that must survive needs a deny rule in managed settings too.
+Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a bare, safe-mode, or restricted session, or an SDK run whose setting sources leave out the project, never loads project hooks, so anything that must survive needs a deny rule in managed settings too.
 Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout.
 Know where that exit stops binding: only the pre-tool event reads a failing exit as a block, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, since text left in only adds denials while text wrongly removed hides the verb and bypasses. Pin both directions in the tests.
@@ -99,7 +99,7 @@ Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-clo
 
 ## Run adversarial review in a fresh subagent with a named lens
 
-The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps.
+The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
 Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard or hook, facts or numbers someone will act on, or text many repos follow; a prompted reviewer usually reports something even when the work is sound, so match the review to the risk rather than to a category.
 For a small text or mechanical change a gate covers, reading the diff and rerunning the tests yourself is usually enough.
 Keep reviewing while a round returns a must-fix and stop at the first round that returns none, scoping each later round to the last round's fixes and what they touched, since a verdict, not a count, says whether another round is worth it.
@@ -135,7 +135,7 @@ Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-session
 Commit an allowlist covering the repo's own script surface and read-side platform commands, nothing broader, and authorize deploy and egress verbs through a skill instead.
 Allow-list network fetches per domain rather than blanket, and pin the servers and services the project enables by name rather than inheriting whatever is installed, since a print-mode run loads them with no approval prompt.
 Pin them from the deny side too, since the disable list binds in every session type including an untrusted checkout, and give a scripted run the strict server-config flag so it connects only what it was handed.
-Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule on a server tool out of settings, since the loader silently skips it.
+Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule on a server tool out of settings, since the loader drops it with only a startup notice and a doctor line; pass it as the one-session disallowed-tools flag when a scripted run needs it.
 Keep the wide accreted list in `settings.local.json`, gitignored and free of machine paths, and forward-declare a script you are about to add so its first run prompts nothing.
 Prune it on a cadence, since permission lists merge across scope rather than override, so one broad grant supersedes every narrow one and a stale entry outlives the rename that orphaned it.
 Shape the list rather than only pruning it: allow a tool broadly and deny its escape hatches, since hazards are finite and stable per tool while safe invocations are unbounded, growing with every approval.

@@ -184,9 +184,10 @@ happened to be in at the time.
 Anchor named in the rule file: an eval pair at `plugins/house/evals/explicit-model-tier/`, whose
 two arms differ only in whether each call sets a model explicitly.
 
-Native floor, as of 2026-09-02: the print-mode `--max-budget-usd` ceiling (`claude --help`) and
-the managed `availableModels` list, which is applied as given rather than merged with a
-project's own (https://code.claude.com/docs/en/settings#combine-settings-across-scopes).
+Native floor, as of 2026-09-28: the print-mode `--max-budget-usd` ceiling (`claude --help`), the
+SDK `maxBudgetUsd` option, which counts subagent spend and refuses further spawns at the cap
+(https://code.claude.com/docs/en/agent-sdk/subagents), and the managed `availableModels` list,
+which is applied as given rather than merged with a project's own (https://code.claude.com/docs/en/settings#combine-settings-across-scopes).
 
 Bundled workflows inherit the session model on every agent, 2026-09-18: `/deep-research` in
 Claude Code v2.1.276 names no model on any of its five stages and takes only a question string as
@@ -335,10 +336,11 @@ including the attached form the rejected variant would have exposed. It is also 
 of what the guard's own issue history warns about: three consecutive review rounds on an earlier
 attempt each found bypasses introduced by the previous round's fix.
 
-Native floor, as of 2026-09-02: PreToolUse hook decision mechanics
+Native floor, as of 2026-09-28: PreToolUse hook decision mechanics
 (https://code.claude.com/docs/en/hooks), deny and ask rules evaluated whatever a hook returns
 (https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks), and the startup
-shapes that load no project hooks at all (https://code.claude.com/docs/en/headless).
+shapes that load no project hooks at all (https://code.claude.com/docs/en/headless), including an
+SDK run whose setting sources leave out the project (https://code.claude.com/docs/en/agent-sdk/hooks).
 
 ## Run adversarial review in a fresh subagent with a named lens
 
