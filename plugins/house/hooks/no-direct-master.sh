@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit, and MCP tools
-# whose name carries a write verb) for repos that have adopted house and opted a policy in via house.json. ADR 0013 carries the
-# reasoning; this header states the contract. MultiEdit stays in the matcher
+# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit, and every MCP
+# tool, of which it decides those whose name carries a write verb) for repos
+# that have adopted house and opted a policy in via house.json. ADR 0013
+# carries the reasoning; this header states the contract. MultiEdit stays in the matcher
 # for older CLIs that still offer it: a tool name the harness never sends
 # costs nothing.
 #
@@ -33,9 +34,13 @@
 #      every repository on the machine with nothing in the repo to show it.
 #      A target inside another repo's git directory is decided against THAT
 #      repo. A file tool whose path is missing, empty or not a string is an
-#      unreadable payload and is refused. An MCP tool (`mcp__*`) has no
-#      standard path field, so every single-line string anywhere in its input
-#      that holds a `/` or starts with `.` or `~` gets the same file checks
+#      unreadable payload and is refused. An MCP tool (`mcp__*`) whose name
+#      holds write, edit, create, move, rename, delete, remove, append,
+#      patch, save, put, upload, update, copy, replace or insert, in any case,
+#      has no standard path field, so every single-line string and object key
+#      anywhere in its input that holds a `/` or starts with `.` or `~` (a
+#      leading `file:` URI scheme dropped) gets the same file checks, a
+#      relative one against both the payload cwd and CLAUDE_PROJECT_DIR
 #   C. a commit on a protected branch, refused here so the agent reads one
 #      sentence instead of a git hook's stderr; `git send-pack`, which no git
 #      hook runs for at all; and, only while the floor is NOT intact and armed
@@ -83,7 +88,8 @@
 # lands on the protected branch through a PR, which is the whole point.
 #
 # Fails OPEN (allow, exit 0), as ADR 0002 requires, whenever: the tool is not
-# one of the five or an MCP tool; a Bash command names no git, hook, HUSKY or
+# one of the five or an MCP tool whose name carries a write verb; a Bash
+# command names no git, hook, HUSKY or
 # LEFTHOOK text at all; the target is not inside a git repo; house.json is absent from HEAD and
 # from the working tree (the repo has not adopted house); it sets
 # "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); or
@@ -94,9 +100,8 @@
 # a branch guard and does not defer this one). Deference is a deliberate choice
 # here, not something the harness requires: every matching PreToolUse hook runs
 # and the most restrictive decision wins. It also fails open silently wherever
-# it never runs at all, which a bare, safe or restricted session, Cowork, and
-# an MCP tool the matcher does not name all do. That gap is why the floor
-# exists.
+# it never runs at all, which a bare, safe or restricted session and Cowork
+# do. That gap is why the floor exists.
 #
 # Fails CLOSED (deny) when jq is missing (cannot parse the payload, so cannot
 # tell a safe command from a dangerous one), when a file tool's payload names
@@ -168,10 +173,17 @@
 # symlink above the nearest directory holding .git, which the prefilter does
 # not walk (a symlink named after neither git nor a hook BELOW it, or the file
 # itself being one, goes to the physical check); a symlink chain longer than
-# 40 hops; an MCP tool whose name carries none of the matcher's write verbs,
-# which never reaches this hook; a path an MCP tool takes in a form that is not
-# a plain single-line string (split across fields, encoded, or inside
-# multi-line content); a planted file more than
+# 40 hops; an MCP tool whose name carries none of the write verbs above (in
+# any case), which the script ends after the name check; a path an MCP tool
+# takes in a form that is not a plain single-line string or key (split across
+# fields, percent-encoded, or inside multi-line content); a git directory not
+# named .git (`--separate-git-dir`, a worktree's gitdir) written from a cwd in
+# another repo, since its path carries no marker and git run inside it names
+# no toplevel; an Edit through a hard link to a floor file, which no path
+# test can see (the edit changes the floor file's bytes, so the integrity
+# check refuses every guarded command after it); an MCP call with so many
+# path-like strings (well over a thousand) that checking them outruns the
+# 5 s timeout; a planted file more than
 # three levels under the hooks directory, which no dispatcher can run; and
 # `git config --file <path> --get core.hooksPath`, readable for the same
 # reason `--get` alone is (see 1) because `--file` and its value never reach
@@ -211,6 +223,26 @@
 set -Euf -o pipefail
 
 payload=$(cat)
+
+# The file modes' scan runs against a time budget, since the harness lets a
+# call through once a hook passes its `timeout` (5 s for this hook in
+# hooks.json; a change there is a change here). The budget leaves margin for
+# the jq passes, the deny, and a slow machine. Elapsed time is read with
+# builtins: EPOCHREALTIME (bash 5, microseconds), or SECONDS (whole seconds,
+# so the stop comes up to one second early) on the bash 3.2 macOS ships.
+SCAN_BUDGET_MS=2000
+HOOK_T0_US="${EPOCHREALTIME:-}"; HOOK_T0_US="${HOOK_T0_US//[!0-9]/}"
+HOOK_T0_S="$SECONDS"
+# Returns 0 once the scan has spent its budget.
+scan_over_budget() {
+  local now
+  if [[ -n "$HOOK_T0_US" ]]; then
+    now="${EPOCHREALTIME:-}"; now="${now//[!0-9]/}"
+    (( (now - HOOK_T0_US) / 1000 >= SCAN_BUDGET_MS ))
+  else
+    (( (SECONDS - HOOK_T0_S) * 1000 >= SCAN_BUDGET_MS ))
+  fi
+}
 
 # No early exit on the raw text. There used to be one for a payload naming
 # no git, hook, HUSKY or LEFTHOOK text, but every real payload carries
@@ -294,19 +326,21 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # NotebookEdit names its target in notebook_path; it is read into file_path
 # so the file rules below apply to it unchanged. For the file tools a path
 # that is missing or not a string reads as empty, which file mode refuses.
-payload_fields=$(jq -r '.tool_name as $t | "t" + ($t // ""), "w" + (.cwd // ""),
-  "f" + (if $t == "Edit" or $t == "Write" or $t == "MultiEdit" or $t == "NotebookEdit"
-         then (.tool_input | if type == "object" then
-                 (if $t == "NotebookEdit" then .notebook_path else .file_path end)
-               else null end | if type == "string" then . else "" end)
-         else (.tool_input.file_path // "") end),
-  "c" + (.tool_input.command // "")' \
+# Every field is read type-safely: a number, an array or an object where a
+# string belongs reads as empty rather than throwing, since a throw here used
+# to end in the valid-JSON allow below with the whole call unread.
+payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
+  | ((.tool_input | objects) // {}) as $in
+  | "t" + $t, "w" + ((.cwd | strings) // ""),
+  "f" + ((if $t == "NotebookEdit" then $in.notebook_path else $in.file_path end
+          | strings) // ""),
+  "c" + (($in.command | strings) // "")' \
   <<<"$payload" 2>/dev/null) || payload_fields=''
 # A payload that does not parse names neither the tool nor its cwd. Valid JSON
-# that is simply not a payload (an array, a non-string command) is allowed as
-# before; empty or garbage stdin is unreadable, and is refused below in an
-# adopted repo, found from the hook's own working directory (the project the
-# harness runs it in). This costs a process only on the failure path.
+# whose top level is not an object is not a payload and is allowed as before;
+# empty or garbage stdin is unreadable, and is refused below in an adopted
+# repo, found from the hook's own working directory (the project the harness
+# runs it in). This costs a process only on the failure path.
 if [[ -z "$payload_fields" ]]; then
   _trim="${payload//[[:space:]]/}"
   if [[ -n "$_trim" ]] && jq empty <<<"$payload" >/dev/null 2>&1; then
@@ -325,7 +359,20 @@ else
   case "$tool_name" in
     Bash) MODE='bash'; file_path='' ;;
     Edit|Write|MultiEdit|NotebookEdit) MODE='file'; cmd='' ;;
-    mcp__*) MODE='mcp'; cmd=''; file_path='' ;;
+    # The matcher sends every MCP tool (the harness tests it unanchored, so a
+    # narrower regex there is not a boundary); a write is decided here, from a
+    # verb anywhere in the name, in any case, with builtins only.
+    mcp__*)
+      case "$tool_name" in
+        *[Ww][Rr][Ii][Tt][Ee]*|*[Ee][Dd][Ii][Tt]*|*[Cc][Rr][Ee][Aa][Tt][Ee]*|\
+        *[Mm][Oo][Vv][Ee]*|*[Rr][Ee][Nn][Aa][Mm][Ee]*|\
+        *[Dd][Ee][Ll][Ee][Tt][Ee]*|*[Rr][Ee][Mm][Oo][Vv][Ee]*|\
+        *[Aa][Pp][Pp][Ee][Nn][Dd]*|*[Pp][Aa][Tt][Cc][Hh]*|*[Ss][Aa][Vv][Ee]*|\
+        *[Pp][Uu][Tt]*|*[Uu][Pp][Ll][Oo][Aa][Dd]*|*[Uu][Pp][Dd][Aa][Tt][Ee]*|\
+        *[Cc][Oo][Pp][Yy]*|*[Rr][Ee][Pp][Ll][Aa][Cc][Ee]*|\
+        *[Ii][Nn][Ss][Ee][Rr][Tt]*) MODE='mcp'; cmd=''; file_path='' ;;
+        *) exit 0 ;;
+      esac ;;
     *) exit 0 ;;
   esac
 fi
@@ -1283,12 +1330,12 @@ run_branch_scans() {
 # the tool payload carries the path as the session spelled it (/var).
 # The path tests are case-INSENSITIVE, because the default macOS volume is:
 # `.GITHOOKS/pre-push` and `.githooks/pre-push` are one file there, and a
-# case-sensitive match saw only the second. Lowercasing preserves length, so
-# the offsets taken from the lowercased copy index the original.
+# case-sensitive match saw only the second. The patterns spell each letter
+# both ways, so the offsets they give index the path as written, with no
+# process spent lowercasing it (an MCP call can carry hundreds of paths).
 run_file_scan() {
-  local fp="$file_norm" lower pre root rel parent phys tphys target
+  local fp="$file_norm" pre root rel parent phys tphys target
   local parents link dest hops=0 seen=$'\n'
-  lower=$(printf '%s' "$fp" | tr '[:upper:]' '[:lower:]')
   # git's per-user config can define an alias or core.hooksPath for every repo
   # on this machine, this one included, and neither the checker nor the floor
   # can see it. Editing it from inside an adopted checkout is refused.
@@ -1299,15 +1346,15 @@ run_file_scan() {
       deny "Refusing to write '$fp': it is git's per-user config, which can set core.hooksPath or define an alias for every repository on this machine, including this one (house.json at $toplevel). Nothing in the repo would show the change. Set what you need with an explicit git config command in the repo, or ask house doctor what the floor reads."
     fi
   done
-  case "$lower" in
-    */.git/*|*/.git)
-      pre="${lower%%/.git*}"; root="${fp:0:${#pre}}"
+  case "$fp" in
+    */.[gG][iI][tT]/*|*/.[gG][iI][tT])
+      pre="${fp%%/.[gG][iI][tT]*}"; root="$pre"
       if { [[ -d "$root" ]] && [[ "$root" -ef "$toplevel" ]]; } \
          || { [[ -n "$COMMON_DIR" ]] && [[ "$fp" == "$COMMON_DIR"/* ]]; }; then
         deny "Refusing to write '$fp': it is inside the git directory, where the git-hook floor that enforces this repo's branch policy is wired (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones and house doctor reports what is wrong."
       fi ;;
-    */.githooks/*|*/.githooks)
-      pre="${lower%%/.githooks*}"; root="${fp:0:${#pre}}"
+    */.[gG][iI][tT][hH][oO][oO][kK][sS]/*|*/.[gG][iI][tT][hH][oO][oO][kK][sS])
+      pre="${fp%%/.[gG][iI][tT][hH][oO][oO][kK][sS]*}"; root="$pre"
       rel=".githooks${fp:$((${#pre} + 10))}"
       if [[ -d "$root" ]] \
          && { [[ "$root" -ef "$toplevel" ]] || { [[ -d "$MAIN_ROOT" ]] && [[ "$root" -ef "$MAIN_ROOT" ]]; }; }; then
@@ -1324,7 +1371,7 @@ run_file_scan() {
   # says "hook" or ".git" somewhere or that the prefilter saw a symlink on,
   # because this costs processes and an ordinary source file whose NAME
   # merely holds "git" (src/gitlab-client.ts) should not pay them.
-  case "$lower$file_symlinked" in *hook*|*.git*|*1) ;; *) return 0 ;; esac
+  case "$fp$file_symlinked" in *[hH][oO][oO][kK]*|*.[gG][iI][tT]*|*1) ;; *) return 0 ;; esac
   parents="${file_abs%/*}"$'\n'"${fp%/*}"
   for link in "$file_abs" "$fp"; do
     while [[ -L "$link" && "$hops" -lt 40 ]]; do
@@ -1339,20 +1386,21 @@ run_file_scan() {
     [[ -n "$parent" ]] || parent='/'
     [[ "$seen" != *$'\n'"$parent"$'\n'* ]] || continue
     seen+="$parent"$'\n'
-    phys=$(trap - ERR; cd -P "$parent" >/dev/null 2>&1 && pwd -P || echo '')
+    phys_of "$parent"; phys="$PHYS"
     [[ -n "$phys" ]] || continue
-    phys=$(trap - ERR; printf '%s' "$phys" | tr '[:upper:]' '[:lower:]')
     # The checkout's own git directory is named here as well: git reports the
     # common dir relative (`.git`) outside a linked worktree, which blanks
     # COMMON_DIR, and a plainly named link to .git has no text to match.
     for target in "$toplevel/.githooks" "$MAIN_ROOT/.githooks" "$toplevel/.git" "$COMMON_DIR"; do
       [[ -n "$target" && -d "$target" ]] || continue
-      tphys=$(trap - ERR; cd -P "$target" >/dev/null 2>&1 && pwd -P || echo '')
+      phys_of "$target"; tphys="$PHYS"
       [[ -n "$tphys" ]] || continue
-      tphys=$(trap - ERR; printf '%s' "$tphys" | tr '[:upper:]' '[:lower:]')
+      # Compared without regard to case, as the text tests above are.
+      shopt -s nocasematch
       if [[ "$phys" == "$tphys" || "$phys" == "$tphys"/* ]]; then
         deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
       fi
+      shopt -u nocasematch
     done
   done <<<"$parents"
   return 0
@@ -1360,12 +1408,82 @@ run_file_scan() {
 
 # ── Deciding one candidate ───────────────────────────────────────────────
 MAIN_ROOT=''; COMMON_DIR=''
+
+# The file modes can decide hundreds of targets in one call (an MCP tool's
+# path-like strings), and past the 5 s timeout the harness lets the call
+# through. So a repo is resolved with git once per invocation (the memo
+# below), and a directory is resolved with builtins alone, never a process.
+# Parallel indexed arrays, since bash 3.2 has no associative ones; the memo
+# holds one entry per repo, so scanning it stays short.
+MEMO_KEYS=(); MEMO_TOP=(); MEMO_COMMON=(); MEMO_MAIN=(); MEMO_KEY=''
+# Sets PHYS to directory $1 with every symlink resolved, or to nothing when
+# it cannot be entered: cd in this shell and back, where a subshell would
+# cost a fork per directory.
+phys_of() {
+  local here="$PWD"
+  PHYS=''
+  if cd -P -- "${1:-/}" >/dev/null 2>&1; then
+    PHYS="$PWD"
+    cd -- "$here" >/dev/null 2>&1 || cd / || true
+  fi
+}
+# Sets MEMO_KEY to a name for the repo git would find from directory $1: the
+# nearest physical ancestor holding a .git entry, which is where git's own
+# discovery stops. A directory inside a git directory, where git reports no
+# toplevel, keys on itself. A missing or unreadable directory falls back to
+# the payload cwd, as decide_for_target does.
+repo_memo_key() {
+  local p
+  if [[ -z "$1" ]]; then MEMO_KEY='cwd:'; return 0; fi
+  phys_of "$1"; p="$PHYS"
+  if [[ -z "$p" ]]; then MEMO_KEY='cwd:'; return 0; fi
+  case "$p/" in */.[gG][iI][tT]/*) MEMO_KEY="d:$p"; return 0 ;; esac
+  while [[ -n "$p" && ! -e "$p/.git" ]]; do p="${p%/*}"; done
+  MEMO_KEY="r:${p:-/}"
+}
+# Records what decide_for_target found for MEMO_KEY: the toplevel of an
+# adopted repo (with its common dir and main root), or nothing.
+memo_put() {
+  [[ "$MODE" != bash ]] || return 0
+  MEMO_KEYS+=("$MEMO_KEY"); MEMO_TOP+=("$1"); MEMO_COMMON+=("${2:-}"); MEMO_MAIN+=("${3:-}")
+}
+
+# The file modes' decision, once the repo is known to be adopted.
+decide_file_mode() {
+  if [[ "$MODE" == toolarge ]]; then
+    deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
+  fi
+  if [[ "$MODE" == unreadable ]]; then
+    deny "Refusing this tool call: its payload could not be parsed as JSON (empty or malformed stdin), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
+  fi
+  if [[ -z "$file_path" ]]; then
+    deny "Refusing this $tool_name call: its payload names no path (file_path, or notebook_path for NotebookEdit, is missing, empty, or not a string), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry with the target given as a path string."
+  fi
+  run_file_scan
+}
 decide_for_target() {
   local dir="${1/#\~/$HOME}"
   CAND_TEXT="${2:-}"
   # Disarmed while resolving: a bad guess here is a fail-open by design, and
   # the trap armed by an earlier candidate must not turn it into a crash-deny.
   trap - ERR
+
+  # The file modes decide many targets per call; a repo already resolved in
+  # this invocation is not asked again.
+  local memo_i
+  if [[ "$MODE" != bash ]]; then
+    repo_memo_key "$dir"
+    for ((memo_i = 0; memo_i < ${#MEMO_KEYS[@]}; memo_i++)); do
+      if [[ "${MEMO_KEYS[$memo_i]}" == "$MEMO_KEY" ]]; then
+        [[ -n "${MEMO_TOP[$memo_i]}" ]] || return 0
+        toplevel="${MEMO_TOP[$memo_i]}"; COMMON_DIR="${MEMO_COMMON[$memo_i]}"
+        MAIN_ROOT="${MEMO_MAIN[$memo_i]}"
+        trap crashed ERR
+        decide_file_mode
+        return 0
+      fi
+    done
+  fi
 
   # One rev-parse for the toplevel, the shared git directory and the branch.
   # `--git-common-dir` and `--abbrev-ref HEAD` always print a line (an unborn
@@ -1397,9 +1515,9 @@ decide_for_target() {
     *$'\n'*$'\n'*)
       toplevel="${probe%%$'\n'*}"; rest="${probe#*$'\n'}"
       COMMON_DIR="${rest%%$'\n'*}"; branch="${rest#*$'\n'}" ;;
-    *) return 0 ;;
+    *) memo_put ''; return 0 ;;
   esac
-  [[ -n "$toplevel" ]] || return 0
+  [[ -n "$toplevel" ]] || { memo_put ''; return 0; }
 
   # A linked worktree shares one config and one .githooks with the checkout
   # that created it, so both the arming advice and the file scan have to know
@@ -1432,9 +1550,10 @@ decide_for_target() {
   else
     # Absent means the repo has not adopted house; that is fail-open, not an
     # error (ADR 0002).
+    memo_put ''
     return 0
   fi
-  [[ -n "$house_json" ]] || return 0
+  [[ -n "$house_json" ]] || { memo_put ''; return 0; }
 
   # One jq pass for the whole manifest: policy, then the protected list, then
   # the carve-outs, separated by a record-separator line. An adopted repo whose
@@ -1457,6 +1576,7 @@ decide_for_target() {
     esac
   done <<<"$parsed"
   [[ -n "$protected_list" ]] || protected_list=$'master\nmain'
+  memo_put "$toplevel" "$COMMON_DIR" "$MAIN_ROOT"
 
   # The repo has adopted house. Arm the crash trap: an unexpected failure from
   # here on denies with a message that says so, instead of exiting non-zero
@@ -1489,14 +1609,8 @@ decide_for_target() {
   # reason to let a session unarm core.hooksPath, edit a vendored hook, write a
   # replace ref or commit into a repository it names rather than enters. A repo
   # is adopted for this purpose whenever house.json is on HEAD at all.
-  if [[ "$MODE" == unreadable ]]; then
-    deny "Refusing this tool call: its payload could not be parsed as JSON (empty or malformed stdin), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
-  fi
   if [[ "$MODE" != bash ]]; then
-    if [[ -z "$file_path" ]]; then
-      deny "Refusing this $tool_name call: its payload names no path (file_path, or notebook_path for NotebookEdit, is missing, empty, or not a string), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry with the target given as a path string."
-    fi
-    run_file_scan
+    decide_file_mode
     return 0
   fi
   run_early_scans
@@ -1568,7 +1682,7 @@ decide_file_target() {
         hops=$((hops + 1))
       done
       parent="${link%/*}"
-      phys=$(trap - ERR; cd -P "${parent:-/}" >/dev/null 2>&1 && pwd -P || echo '')
+      phys_of "${parent:-/}"; phys="$PHYS"
       if [[ -n "$phys" ]]; then git_component_root "$phys/${link##*/}"; fi
     fi
   fi
@@ -1590,22 +1704,54 @@ if [[ "$MODE" == unreadable ]]; then
 fi
 
 # MCP tools have no standard path field, so every string anywhere in
-# tool_input that looks like a path (holds a `/`, or starts with `.` or `~`)
-# is read the way an Edit's file_path is. A multi-line string is content, not
-# a path, and is skipped. Nothing path-like means nothing to check.
+# tool_input, and every object key (a map from path to content), that looks
+# like a path (holds a `/`, or starts with `.` or `~`) is read the way an
+# Edit's file_path is, after a leading `file:` URI scheme and its authority
+# (`file:///p`, `file://host/p`, `file:/p`) are dropped. A relative one is
+# read against the payload cwd and, when it differs, the project directory
+# the harness names. A multi-line string is content, not a path, and is
+# skipped. Nothing path-like means nothing to check.
 if [[ "$MODE" == mcp ]]; then
-  if ! mcp_paths=$(jq -r '[.tool_input | .. | strings
+  # Each line carries a one-character tag: `u` for a string that was a file:
+  # URI, which is percent-decoded below, and `p` for the rest.
+  if ! mcp_paths=$(jq -r '[.tool_input | ((.. | strings), (.. | objects | keys[]))
         | select((contains("\n") or contains("\r")) | not)
-        | select(contains("/") or startswith(".") or startswith("~"))] | unique | .[]' \
+        | test("^file:"; "i") as $u | sub("^file:(//[^/]*)?"; ""; "i")
+        | select(contains("/") or startswith(".") or startswith("~"))
+        | (if $u then "u" else "p" end) + .] | unique | .[]' \
         <<<"$payload" 2>/dev/null); then
     exit 0
   fi
-  while IFS= read -r file_path; do
-    [[ -n "$file_path" ]] || continue
+  project_dir="${CLAUDE_PROJECT_DIR:-}"
+  case "$project_dir" in /*) [[ "${project_dir%/}" != "${payload_cwd%/}" ]] || project_dir='' ;; *) project_dir='' ;; esac
+  while IFS= read -r mcp_path; do
+    [[ -n "$mcp_path" ]] || continue
+    # Out of time: refuse in any adopted repo seen so far, else in the cwd's.
+    if scan_over_budget; then
+      MODE='toolarge'
+      for ((memo_j = 0; memo_j < ${#MEMO_KEYS[@]}; memo_j++)); do
+        if [[ -n "${MEMO_TOP[$memo_j]}" ]]; then toplevel="${MEMO_TOP[$memo_j]}"; decide_file_mode; fi
+      done
+      decide_for_target '' ''
+      exit 0
+    fi
+    mcp_tag="${mcp_path:0:1}"; mcp_path="${mcp_path:1}"
+    # %XX to the byte it names, with builtins: backslashes doubled first so
+    # %b reads only the escapes made here.
+    if [[ "$mcp_tag" == u && "$mcp_path" == *%* ]]; then
+      mcp_path="${mcp_path//\\/\\\\}"; mcp_path="${mcp_path//%/\\x}"
+      printf -v mcp_path '%b' "$mcp_path" 2>/dev/null || true
+    fi
+    [[ -n "$mcp_path" ]] || continue
     # shellcheck disable=SC2088 # the literal tilde is what is being matched
-    case "$file_path" in "~") file_path="${HOME:-}" ;; "~/"*) file_path="${HOME:-}/${file_path#"~/"}" ;; esac
-    prep_file_target || continue
-    decide_file_target
+    case "$mcp_path" in "~") mcp_path="${HOME:-}" ;; "~/"*) mcp_path="${HOME:-}/${mcp_path#"~/"}" ;; esac
+    mcp_bases=('')
+    case "$mcp_path" in /*) ;; *) [[ -z "$project_dir" ]] || mcp_bases+=("$project_dir/") ;; esac
+    for mcp_base in "${mcp_bases[@]}"; do
+      file_path="$mcp_base$mcp_path"
+      prep_file_target || continue
+      decide_file_target
+    done
   done <<<"$mcp_paths"
   exit 0
 fi

@@ -92,6 +92,10 @@ done
 [[ "$GIT_NEW_DIR" == none ]] && GIT_NEW_DIR=''
 [[ "$GIT_OLD_DIR" == none ]] && GIT_OLD_DIR=''
 
+# The hook reads relative MCP paths against CLAUDE_PROJECT_DIR too, and a
+# suite run from inside a session inherits the session's; cases set it.
+unset CLAUDE_PROJECT_DIR
+
 # Prepended to PATH for the hook only (empty means: run it as the suite runs).
 HOOK_PATH_PREFIX=''
 
@@ -132,6 +136,10 @@ mk_file_payload() {
   jq -n --arg tool "$1" --arg fp "$2" --arg cwd "$3" \
     '{tool_name: $tool, tool_input: {file_path: $fp}, cwd: $cwd}'
 }
+
+# mk_real_file_payload: mk_file_payload plus hook_event_name, which every real
+# payload carries.
+mk_real_file_payload() { mk_file_payload "$@" | jq -c '. + {hook_event_name: "PreToolUse"}'; }
 
 # mk_notebook_payload <notebook_path> <cwd> -> real NotebookEdit PreToolUse JSON
 mk_notebook_payload() {
@@ -1180,6 +1188,18 @@ else
   ln -s "$TMP_ROOT/copy-pre-push" "$b4d/.githooks/pre-push"
   expect_deny "not intact: a floor file replaced by a symlink to an identical copy" \
     "$(mk_payload "git push origin master" "$b4d")" "protected branch"
+  # A hard link to a floor file carries no path marker, so the Edit itself is
+  # not refused (residue); the edit changes the floor file's bytes, and the
+  # integrity check refuses the next guarded command.
+  b4e="$TMP_ROOT/broken-hardlink"; mk_broken_floor "$b4e"
+  expect_allow "hard link: the floor reads as armed before the edit" \
+    "$(mk_payload "git push origin master" "$b4e")"
+  ln "$b4e/.githooks/pre-push" "$b4e/notes.txt"
+  expect_allow "RESIDUE: an Edit through a hard link to a floor file is not refused" \
+    "$(mk_real_file_payload Edit "$b4e/notes.txt" "$b4e")"
+  printf '\nexit 0\n' >>"$b4e/notes.txt"
+  expect_deny "hard link: an edit through it makes the floor read as not intact" \
+    "$(mk_payload "git push origin master" "$b4e")" "protected branch"
 
   b5="$TMP_ROOT/broken-devnull"; mk_broken_floor "$b5"
   printf '[core]\n\thooksPath = /dev/null\n' >"$b5/../broken-devnull-include"
@@ -1286,7 +1306,6 @@ ln -s .githooks "$pg/link"
 ln -s .git "$pg/gl"
 ln -s .githooks/pre-push "$pg/notes.txt"
 ln -s docs "$pg/shortcut"
-mk_real_file_payload() { mk_file_payload "$@" | jq -c '. + {hook_event_name: "PreToolUse"}'; }
 for _tool in Edit Write; do
   expect_deny "$_tool through a .. segment under a directory that does not exist" \
     "$(mk_real_file_payload "$_tool" "$pg/nosuch/../.githooks/pre-push" "$pg")" "git-hook floor"
@@ -1345,6 +1364,80 @@ expect_allow "MCP write_file whose strings are not paths" \
   "$(mk_mcp_payload mcp__fs__write_file '{"name": "notes", "content": "git hooks"}' "$pg")"
 expect_allow "MCP write_file to a .githooks file in a repo that never adopted house" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$n/.githooks/pre-push" '{path: $p}')" "$n")"
+# A field of the wrong type used to throw in the one jq pass, and the
+# valid-JSON fallback then allowed the whole call.
+for _extra in '1' '{"op": "x"}'; do
+  expect_deny "MCP write_file whose command field is $_extra" \
+    "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" --argjson c "$_extra" '{path: $p, command: $c}')" "$pg")" "git-hook floor"
+done
+expect_deny "MCP write_file with a numeric file_path beside the real path" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p, file_path: 7}')" "$pg")" "git-hook floor"
+expect_deny "Edit whose file_path is an array holding a floor path" \
+  "$(jq -n --arg p "$pg/.githooks/pre-push" --arg cwd "$pg" '{tool_name: "Edit", tool_input: {file_path: [$p]}, cwd: $cwd, hook_event_name: "PreToolUse"}')" "names no path"
+for _ti in '"x"' '["x"]'; do
+  expect_deny "Edit whose tool_input is $_ti" \
+    "$(jq -n --arg cwd "$pg" --argjson ti "$_ti" '{tool_name: "Edit", tool_input: $ti, cwd: $cwd, hook_event_name: "PreToolUse"}')" "names no path"
+done
+expect_deny "an MCP write whose cwd is not a string" \
+  "$(jq -n --arg p "$pg/.githooks/pre-push" '{tool_name: "mcp__fs__write_file", tool_input: {path: $p}, cwd: 5, hook_event_name: "PreToolUse"}')" "git-hook floor"
+# A file:// URI names a path too.
+expect_deny "MCP write with a file:// URI into .githooks" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/.githooks/pre-push" '{uri: $p}')" "$pg")" "git-hook floor"
+expect_deny "MCP write with a file:// URI into another repo's .git, from another cwd" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/.git/config" '{uri: $p}')" "$n")" "git-hook floor"
+expect_deny "MCP write with a file://localhost URI into .githooks" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://localhost$pg/.githooks/pre-push" '{uri: $p}')" "$pg")" "git-hook floor"
+# An object key can be the path.
+expect_deny "MCP write whose path is an object key" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{files: {($p): "x"}}')" "$pg")" "git-hook floor"
+# The hooks.json matcher is plain mcp__; the script decides write-likeness
+# from the name, in any case.
+for _tool in mcp__fs__Write_file mcp__fs__copy_file mcp__serena__replace_symbol_body mcp__x__INSERT_row; do
+  expect_deny "$_tool is decided as a write" \
+    "$(mk_mcp_payload "$_tool" "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p}')" "$pg")" "git-hook floor"
+done
+expect_allow "an MCP tool with no write verb in its name is not decided" \
+  "$(mk_mcp_payload mcp__fs__read_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p}')" "$pg")"
+# A relative MCP path is read against the project directory as well as cwd.
+HOOK_ENV=(CLAUDE_PROJECT_DIR="$pg")
+expect_deny "MCP relative path from a subdirectory, read against CLAUDE_PROJECT_DIR" \
+  "$(mk_mcp_payload mcp__fs__write_file '{"path": ".githooks/pre-push"}' "$pg/docs")" "git-hook floor"
+HOOK_ENV=()
+expect_allow "the same relative path with no project directory set is an ordinary path" \
+  "$(mk_mcp_payload mcp__fs__write_file '{"path": ".githooks/pre-push"}' "$pg/docs")"
+# Many path-like strings: git calls must not scale with them, or the 5 s
+# timeout lets the call through. The deny sorts last.
+mkdir -p "$pg/many"
+_many=$(for ((i = 0; i < 200; i++)); do mkdir -p "$pg/many/d$i"; printf '%s\n' "$pg/many/d$i/.gitkeep"; done | jq -R . | jq -s --arg last "$pg/zz/../.git/config" '{paths: (. + [$last])}')
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_mcp_payload mcp__fs__write_file "$_many" "$pg")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)" == deny && "$_ms" -lt 2500 ]]; then
+  pass "201 .git-bearing MCP strings into one repo deny in ${_ms} ms"
+else
+  fail "201 .git-bearing MCP strings into one repo deny under 2500 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+fi
+# Past the scan's time budget (kept under the 5 s timeout in hooks.json, which
+# would let the call through) the hook stops and refuses. 4000 ordinary
+# .git-bearing strings take well over the budget to check one by one.
+_huge=$(for ((i = 0; i < 200; i++)); do for ((j = 0; j < 20; j++)); do printf '%s\n' "$pg/many/d$i/f$j.gitkeep"; done; done | jq -R . | jq -s '{paths: .}')
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_mcp_payload mcp__fs__write_file "$_huge" "$pg")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"too large to check"* && "$_ms" -lt 4000 ]]; then
+  pass "4000 MCP strings outrun the scan budget and deny in ${_ms} ms"
+else
+  fail "4000 MCP strings outrun the scan budget and deny under 4000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+fi
+expect_allow "the same 4000 strings from a repo that never adopted house" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_huge" | jq --arg n "$n" '.paths |= map(sub("^.*/many/"; $n + "/many/"))')" "$n")"
+# A file: URI is percent-decoded after its scheme is dropped.
+expect_deny "MCP write with a file:// URI spelling .githooks as %2Egithooks" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/%2Egithooks/pre-push" '{uri: $p}')" "$pg")" "git-hook floor"
+expect_deny "MCP write with a file:// URI spelling .git/config as .git%2Fconfig" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/.git%2Fconfig" '{uri: $p}')" "$n")" "git-hook floor"
 # ── a payload jq cannot parse: tool and cwd are unknown, so the hook's own
 # working directory (the project the harness runs it in) decides adoption
 # expect_in_dir <allow|deny> <label> <dir> <stdin>

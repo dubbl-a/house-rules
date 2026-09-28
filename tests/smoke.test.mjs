@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 test('plugin manifest is valid JSON with the plugin name', () => {
   const m = JSON.parse(readFileSync(new URL('../plugins/house/.claude-plugin/plugin.json', import.meta.url), 'utf8'));
   assert.equal(m.name, 'house-rules');
@@ -25,7 +29,8 @@ test('#58 hooks.json: the PreToolUse matcher covers Bash and the file-writing to
   const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
   assert.ok(entry, 'no PreToolUse entry runs no-direct-master.sh');
-  const matcher = new RegExp(`^(?:${entry.matcher})$`);
+  // Unanchored, as the harness tests a matcher.
+  const matcher = new RegExp(entry.matcher);
   for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']) {
     assert.ok(matcher.test(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
   }
@@ -33,18 +38,32 @@ test('#58 hooks.json: the PreToolUse matcher covers Bash and the file-writing to
 
 // MCP tools have no standard path field and neither path deny rules nor the
 // sandbox cover them, so the docs route an MCP write through a PreToolUse hook
-// matched on the tool name. The matcher reaches the write verbs, not the reads.
-test('hooks.json: the PreToolUse matcher covers MCP write-verb tools and not MCP reads', () => {
+// matched on the tool name. The harness tests a matcher unanchored, so a verb
+// regex there is no boundary: every MCP tool reaches the hook, and the script
+// decides write-likeness from the name, in any case.
+test('hooks.json: every MCP tool reaches the guard, and the script decides the write verbs in any case', () => {
   const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
-  const matcher = new RegExp(`^(?:${entry.matcher})$`);
-  for (const tool of ['mcp__fs__write_file', 'mcp__fs__edit_file', 'mcp__fs__create_directory', 'mcp__fs__move_file',
-    'mcp__git__rename', 'mcp__fs__delete', 'mcp__fs__remove_file', 'mcp__fs__append', 'mcp__fs__patch',
-    'mcp__notes__save_note', 'mcp__s3__put_object', 'mcp__drive__upload', 'mcp__db__update_row']) {
-    assert.ok(matcher.test(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
+  const matcher = new RegExp(entry.matcher);
+  const writes = ['mcp__fs__Write_file', 'mcp__fs__copy_file', 'mcp__serena__replace_symbol_body'];
+  for (const tool of [...writes, 'mcp__fs__read_file']) {
+    assert.ok(matcher.test(tool), `the PreToolUse matcher does not reach ${tool}: ${entry.matcher}`);
   }
-  for (const tool of ['mcp__fs__read_file', 'mcp__fs__list_directory', 'mcp__github__search_code']) {
-    assert.ok(!matcher.test(tool), `the PreToolUse matcher should not cover ${tool}: ${entry.matcher}`);
+  const hook = fileURLToPath(new URL('../plugins/house/hooks/no-direct-master.sh', import.meta.url));
+  const repo = mkdtempSync(join(tmpdir(), 'mcp-matcher-'));
+  try {
+    execFileSync('git', ['init', '-q', repo]);
+    writeFileSync(join(repo, 'house.json'), '{}\n');
+    const decide = (tool) => {
+      const payload = JSON.stringify({ tool_name: tool, tool_input: { path: join(repo, '.githooks', 'pre-push') },
+        cwd: repo, hook_event_name: 'PreToolUse' });
+      const out = execFileSync('bash', [hook], { input: payload, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '' } });
+      return out ? JSON.parse(out).hookSpecificOutput.permissionDecision : 'allow';
+    };
+    for (const tool of writes) assert.equal(decide(tool), 'deny', `${tool} was not decided as a write`);
+    assert.equal(decide('mcp__fs__read_file'), 'allow', 'a read-only MCP tool name was decided as a write');
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
   }
 });
 
