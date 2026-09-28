@@ -274,6 +274,15 @@ test('deploy-guards: evaluateCiGreen counts neutral as passing, and nothing else
   assert.equal(pending.failing[0].conclusion, null);
 });
 
+test('deploy-guards: evaluateCiGreen fails stale, action_required, cancelled, and an upper-case NEUTRAL', async () => {
+  const { evaluateCiGreen } = await import(DEPLOY_GUARDS_URL);
+  for (const conclusion of ['stale', 'action_required', 'cancelled', 'NEUTRAL']) {
+    const result = evaluateCiGreen([{ name: 'a', conclusion: 'success' }, { name: 'b', conclusion }]);
+    assert.equal(result.ok, false, `${conclusion} is not a pass`);
+    assert.deepEqual(result.failing, [{ name: 'b', conclusion }]);
+  }
+});
+
 test('deploy-guards: evaluatePrProvenance requires at least one merged PR', async () => {
   const { evaluatePrProvenance } = await import(DEPLOY_GUARDS_URL);
   assert.equal(evaluatePrProvenance([]).ok, false);

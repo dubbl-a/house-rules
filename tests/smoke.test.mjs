@@ -25,9 +25,26 @@ test('#58 hooks.json: the PreToolUse matcher covers Bash and the file-writing to
   const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
   assert.ok(entry, 'no PreToolUse entry runs no-direct-master.sh');
-  const names = String(entry.matcher).split('|');
+  const matcher = new RegExp(`^(?:${entry.matcher})$`);
   for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']) {
-    assert.ok(names.includes(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
+    assert.ok(matcher.test(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
+  }
+});
+
+// MCP tools have no standard path field and neither path deny rules nor the
+// sandbox cover them, so the docs route an MCP write through a PreToolUse hook
+// matched on the tool name. The matcher reaches the write verbs, not the reads.
+test('hooks.json: the PreToolUse matcher covers MCP write-verb tools and not MCP reads', () => {
+  const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
+  const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
+  const matcher = new RegExp(`^(?:${entry.matcher})$`);
+  for (const tool of ['mcp__fs__write_file', 'mcp__fs__edit_file', 'mcp__fs__create_directory', 'mcp__fs__move_file',
+    'mcp__git__rename', 'mcp__fs__delete', 'mcp__fs__remove_file', 'mcp__fs__append', 'mcp__fs__patch',
+    'mcp__notes__save_note', 'mcp__s3__put_object', 'mcp__drive__upload', 'mcp__db__update_row']) {
+    assert.ok(matcher.test(tool), `the PreToolUse matcher does not cover ${tool}: ${entry.matcher}`);
+  }
+  for (const tool of ['mcp__fs__read_file', 'mcp__fs__list_directory', 'mcp__github__search_code']) {
+    assert.ok(!matcher.test(tool), `the PreToolUse matcher should not cover ${tool}: ${entry.matcher}`);
   }
 });
 

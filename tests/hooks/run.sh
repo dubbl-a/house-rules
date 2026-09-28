@@ -4,7 +4,7 @@
 # For each case, builds a REAL PreToolUse JSON payload (Bash:
 # {"tool_name":"Bash","tool_input":{"command":"..."},"cwd":"..."}; Edit,
 # Write and MultiEdit: tool_input.file_path; NotebookEdit:
-# tool_input.notebook_path), pipes it into the REAL hook
+# tool_input.notebook_path; an MCP tool: any tool_input), pipes it into the REAL hook
 # script, and asserts on the captured stdout JSON (via jq,
 # .hookSpecificOutput.permissionDecision) and the exit code.
 #
@@ -1233,16 +1233,29 @@ expect_deny "MultiEdit on a vendored .githooks file" \
 expect_deny "Write on .git/config" \
   "$(mk_file_payload Write "$a/.git/config" "$a")" "git-hook floor"
 # NotebookEdit names its target in notebook_path, not file_path, and gets
-# exactly the Edit/Write rules. A payload with no notebook_path writes nothing,
-# so it is allowed the way an Edit with no file_path is.
+# exactly the Edit/Write rules. A payload with no readable notebook_path is an
+# unreadable payload, refused in an adopted repo the way an Edit with no
+# file_path is.
 expect_deny "NotebookEdit on a vendored .githooks file" \
   "$(mk_notebook_payload "$a/.githooks/pre-push" "$a")" "part of the git-hook floor"
 expect_deny "NotebookEdit on .git/config given as a relative path" \
   "$(mk_notebook_payload ".git/config" "$a")" "git-hook floor"
 expect_allow "NotebookEdit on an ordinary notebook" \
   "$(mk_notebook_payload "$a/analysis.ipynb" "$a")"
-expect_allow "NotebookEdit with no notebook_path" \
-  "$(jq -n --arg cwd "$a" '{tool_name:"NotebookEdit", tool_input:{new_source:"x"}, cwd:$cwd}')"
+expect_deny "NotebookEdit with no notebook_path" \
+  "$(jq -n --arg cwd "$a" '{tool_name:"NotebookEdit", tool_input:{new_source:"x"}, cwd:$cwd, hook_event_name:"PreToolUse"}')" "names no path"
+expect_deny "NotebookEdit with a notebook_path that is not a string" \
+  "$(jq -n --arg cwd "$a" '{tool_name:"NotebookEdit", tool_input:{notebook_path:["x.ipynb"], new_source:"x"}, cwd:$cwd, hook_event_name:"PreToolUse"}')" "names no path"
+for _tool in Edit Write MultiEdit; do
+  expect_deny "$_tool with no file_path" \
+    "$(jq -n --arg t "$_tool" --arg cwd "$a" '{tool_name:$t, tool_input:{old_string:"x"}, cwd:$cwd, hook_event_name:"PreToolUse"}')" "names no path"
+  expect_deny "$_tool with an empty file_path" \
+    "$(mk_file_payload "$_tool" "" "$a" | jq -c '. + {hook_event_name: "PreToolUse"}')" "names no path"
+  expect_deny "$_tool with a file_path that is not a string" \
+    "$(jq -n --arg t "$_tool" --arg cwd "$a" '{tool_name:$t, tool_input:{file_path:7}, cwd:$cwd, hook_event_name:"PreToolUse"}')" "names no path"
+done
+expect_allow "Write with no file_path in a repo that never adopted house" \
+  "$(jq -n --arg cwd "$n" '{tool_name:"Write", tool_input:{content:"x"}, cwd:$cwd, hook_event_name:"PreToolUse"}')"
 expect_allow "NotebookEdit does not read a stray file_path" \
   "$(jq -n --arg cwd "$a" --arg fp "$a/.githooks/pre-push" '{tool_name:"NotebookEdit", tool_input:{file_path:$fp, notebook_path:($cwd + "/n.ipynb")}, cwd:$cwd}')"
 expect_deny "Write on .git/hooks/pre-commit" \
@@ -1290,6 +1303,96 @@ expect_allow "Edit through a .. segment that lands on an ordinary file" \
   "$(mk_real_file_payload Edit "$pg/nosuch/../README.md" "$pg")"
 expect_allow "Edit on an ordinary file with no symlink on its path" \
   "$(mk_real_file_payload Edit "$pg/docs/guide.md" "$pg")"
+# A target inside ANOTHER repo's git directory, from a cwd in a different
+# repo. git run from inside a git directory reports no toplevel, so the
+# decision used to fall back to the cwd's repo and allow. The repo is the
+# parent of the .git component, adopted or not.
+po="$TMP_ROOT/plain-other"; new_repo "$po"; ln -s .git "$po/gl"
+for _cwd in "$a" "$n"; do
+  expect_deny "Edit on another adopted repo's .git/config from cwd ${_cwd##*/}" \
+    "$(mk_real_file_payload Edit "$pg/.git/config" "$_cwd")" "git-hook floor"
+  expect_deny "Edit through another adopted repo's plainly named link to .git from cwd ${_cwd##*/}" \
+    "$(mk_real_file_payload Edit "$pg/gl/config" "$_cwd")" "git-hook floor"
+done
+expect_allow "Edit on a repo's .git/config that never adopted house, from an adopted cwd" \
+  "$(mk_real_file_payload Edit "$po/.git/config" "$a")"
+expect_allow "Edit through a link to .git in a repo that never adopted house, from an adopted cwd" \
+  "$(mk_real_file_payload Edit "$po/gl/config" "$a")"
+
+# ── MCP write tools: no standard path field, so every string is a candidate
+# mk_mcp_payload <tool> <tool_input-json> <cwd>
+mk_mcp_payload() {
+  jq -n --arg tool "$1" --argjson ti "$2" --arg cwd "$3" \
+    '{tool_name: $tool, tool_input: $ti, cwd: $cwd, hook_event_name: "PreToolUse"}'
+}
+expect_deny "MCP write_file to a vendored .githooks file" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p, content: "x"}')" "$pg")" "git-hook floor"
+expect_deny "MCP edit_file with the git directory nested in an edits array" \
+  "$(mk_mcp_payload mcp__fs__edit_file "$(jq -n --arg p "$pg/.git/config" '{edits: [{target: $p, text: "x"}]}')" "$pg")" "git-hook floor"
+expect_deny "MCP write_file through a plainly named link into .githooks" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/link/pre-push" '{path: $p}')" "$pg")" "git-hook floor"
+expect_deny "MCP write_file to a relative path into the git directory" \
+  "$(mk_mcp_payload mcp__fs__write_file '{"path": ".git/hooks/pre-commit"}' "$pg")" "git-hook floor"
+HOOK_ENV=(HOME="$pg")
+expect_deny "MCP write_file to a ~ path into the git directory" \
+  "$(mk_mcp_payload mcp__fs__write_file '{"path": "~/.git/config"}' "$n")" "git-hook floor"
+HOOK_ENV=()
+expect_allow "MCP write_file to an ordinary path" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/docs/guide.md" '{path: $p, content: "see .githooks/pre-push"}')" "$pg")"
+expect_deny "ACCEPTED FALSE DENY: MCP write_file with a floor path in a field it does not write" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/docs/guide.md" '{path: $p, note: ".githooks/pre-push"}')" "$pg")" "git-hook floor"
+expect_allow "MCP write_file whose strings are not paths" \
+  "$(mk_mcp_payload mcp__fs__write_file '{"name": "notes", "content": "git hooks"}' "$pg")"
+expect_allow "MCP write_file to a .githooks file in a repo that never adopted house" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$n/.githooks/pre-push" '{path: $p}')" "$n")"
+# ── a payload jq cannot parse: tool and cwd are unknown, so the hook's own
+# working directory (the project the harness runs it in) decides adoption
+# expect_in_dir <allow|deny> <label> <dir> <stdin>
+expect_in_dir() {
+  local want="$1" label="$2" dir="$3" decision
+  HOOK_OUT=$(cd "$dir" && printf '%s' "$4" | bash "$HOOK")
+  HOOK_CODE=$?
+  decision=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
+  if [[ "$HOOK_CODE" -ne 0 ]]; then
+    fail "$label" "expected exit 0, got $HOOK_CODE (out=[$HOOK_OUT])"
+  elif [[ "$want" == deny && "$decision" == deny && "$HOOK_OUT" == *"could not be parsed"* ]]; then
+    pass "$label"
+  elif [[ "$want" == allow && -z "$HOOK_OUT" ]]; then
+    pass "$label"
+  else
+    fail "$label" "expected ${want}, got out=[$HOOK_OUT]"
+  fi
+}
+expect_in_dir deny "garbage stdin from an adopted repo's directory" "$pg" 'this is not json'
+expect_in_dir deny "garbage stdin naming git from an adopted repo's directory" "$pg" '{"tool_name": "Edit", git'
+expect_in_dir deny "empty stdin from an adopted repo's directory" "$pg" ''
+expect_in_dir allow "garbage stdin from a repo that never adopted house" "$n" 'this is not json'
+expect_in_dir allow "garbage stdin naming git from a repo that never adopted house" "$n" '{"tool_name": "Edit", git'
+expect_in_dir allow "empty stdin from a repo that never adopted house" "$n" ''
+expect_in_dir allow "garbage stdin from a directory that is no repo" "$TMP_ROOT" 'this is not json'
+expect_in_dir deny "a brace-wrapped malformed payload with no hook text, from an adopted repo" "$pg" '{not json}'
+expect_in_dir allow "a valid object with no hook text naming no guarded tool, from an adopted repo" "$pg" '{"tool_name": "Read", "tool_input": {"file_path": "README.md"}}'
+HOOK_OUT=$(cd "$n" && printf '%s' 'this is not json' | PATH="$STRIPPED" bash "$HOOK")
+HOOK_CODE=$?
+decision=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
+if [[ "$HOOK_CODE" -eq 0 && "$decision" == "deny" && "$HOOK_OUT" == *"could not find jq"* ]]; then
+  pass "jq missing denies garbage stdin too"
+else
+  fail "jq missing denies garbage stdin too" "exit=$HOOK_CODE decision=[$decision] out=[$HOOK_OUT]"
+fi
+expect_in_dir allow "parseable JSON that is not an object, from an adopted repo" "$pg" '[1, 2]'
+expect_in_dir allow "a parseable object with a non-string command, from an adopted repo" "$pg" \
+  '{"tool_name": "Bash", "tool_input": {"command": 7}, "hook_event_name": "PreToolUse"}'
+
+payload="$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "$pg/.githooks/pre-push" '{path: $p}')" "$pg")"
+HOOK_OUT=$(printf '%s' "$payload" | PATH="$STRIPPED" bash "$HOOK")
+HOOK_CODE=$?
+decision=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
+if [[ "$HOOK_CODE" -eq 0 && "$decision" == "deny" ]]; then
+  pass "jq missing still denies an MCP write"
+else
+  fail "jq missing still denies an MCP write" "exit=$HOOK_CODE decision=[$decision] out=[$HOOK_OUT]"
+fi
 # Round 3 (H3): a repo on branchPolicy direct reaches the file scan too. The
 # policy says who decides which BRANCH may move; it is not permission to edit
 # the hooks, and the repo is one merged PR away from "pr".
@@ -1302,7 +1405,7 @@ expect_allow "Edit on a .githooks file in a repo that never adopted house" \
 
 # ── latency: the hook runs on every Bash call, so it has a budget ─────────
 echo
-echo "=== latency (informational; 20 runs each) ==="
+echo "=== latency (informational; 20 runs each, real payloads carrying hook_event_name) ==="
 now_ms() { perl -MTime::HiRes=time -e 'printf "%d", time()*1000' 2>/dev/null || echo 0; }
 latency() {
   local label="$1" payload="$2" i start end
@@ -1315,17 +1418,20 @@ latency() {
     printf '  %-46s %s ms per call\n' "$label" "$(( (end - start) / 20 ))"
   fi
 }
-latency "baseline: a non-git command (early exit)" "$(mk_payload 'ls -la' "$a")"
-latency "git status, armed fixture" "$(mk_payload 'git status' "$a")"
-latency "git status, unarmed fixture" "$(mk_payload 'git status' "$u")"
-latency "git status, not-adopted repo" "$(mk_payload 'git status' "$n")"
+# Every payload below carries hook_event_name, as a real one does, so each
+# line measures the path a real call takes.
+mk_real_payload() { mk_payload "$@" | jq -c '. + {hook_event_name: "PreToolUse"}'; }
+latency "baseline: a non-git command (early exit)" "$(mk_real_payload 'ls -la' "$a")"
+latency "git status, armed fixture" "$(mk_real_payload 'git status' "$a")"
+latency "git status, unarmed fixture" "$(mk_real_payload 'git status' "$u")"
+latency "git status, not-adopted repo" "$(mk_real_payload 'git status' "$n")"
 latency "six clauses, armed fixture" \
-  "$(mk_payload 'git fetch origin && git status && git diff --stat && git log --oneline -5 && git branch --list && git remote -v' "$a")"
+  "$(mk_real_payload 'git fetch origin && git status && git diff --stat && git log --oneline -5 && git branch --list && git remote -v' "$a")"
 latency "six clauses, unarmed fixture" \
-  "$(mk_payload 'git fetch origin && git status && git diff --stat && git log --oneline -5 && git branch --list && git remote -v' "$u")"
-latency "Edit on an ordinary file (early exit)" "$(mk_file_payload Edit "$a/README.md" "$a")"
-latency "Edit on a file whose name holds git" "$(mk_file_payload Edit "$a/src/gitlab-client.ts" "$a")"
-latency "Edit on a floor file (the deny)" "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")"
+  "$(mk_real_payload 'git fetch origin && git status && git diff --stat && git log --oneline -5 && git branch --list && git remote -v' "$u")"
+latency "Edit on an ordinary file (early exit)" "$(mk_real_file_payload Edit "$a/README.md" "$a")"
+latency "Edit on a file whose name holds git" "$(mk_real_file_payload Edit "$a/src/gitlab-client.ts" "$a")"
+latency "Edit on a floor file (the deny)" "$(mk_real_file_payload Edit "$a/.githooks/pre-push" "$a")"
 
 echo
 echo "=== shellcheck (informational; does not gate this suite) ==="
