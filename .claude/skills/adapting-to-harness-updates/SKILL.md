@@ -50,7 +50,9 @@ every fact in it still holds. This skill finds all four and fixes them.
    it as a declared duplicate that names the native floor. Reword a complement only where the rule
    claims or implies a floor, and cite the fact. Record a unique and leave it. A prompt-audit
    finding changes wording, never a rule's claim, and it has to fit the rule shape the checker
-   enforces.
+   enforces. Before accepting an agent's deviation, a reviewer's "non-blocking" note, or a
+   "known limit", name the house rule or doc recommendation that governs it and take the
+   recommended option unless you can say why not.
 9. **Record** in the three places described in
    [references/recording-and-release.md](references/recording-and-release.md). Then ship through
    the release flow there.

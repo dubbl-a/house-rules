@@ -72,6 +72,38 @@ test('CLI: exits 0 when the fixture changelog has no version newer than the surv
   }
 });
 
+// Runs the CLI with --json and returns its exit status and parsed report.
+function runCli(args) {
+  let stdout, status;
+  try {
+    stdout = execFileSync(process.execPath, [SCRIPT, ...args, '--json'], { encoding: 'utf8' });
+    status = 0;
+  } catch (e) {
+    stdout = e.stdout;
+    status = e.status;
+  }
+  return { status, report: JSON.parse(stdout) };
+}
+
+test('CLI: an empty --survey= exits 3 as a bad argument', () => {
+  const { status, report } = runCli(['--survey=', '--changelog=/nonexistent/CHANGELOG.md']);
+  assert.equal(status, 3);
+  assert.equal(report.status, 3);
+  assert.match(report.verdict, /--survey needs a path/);
+});
+
+test('CLI: an unreadable survey file exits 3 and names the file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'harness-release-'));
+  try {
+    const surveyPath = join(dir, 'no-such-survey.md');
+    const { status, report } = runCli([`--survey=${surveyPath}`, '--changelog=/nonexistent/CHANGELOG.md']);
+    assert.equal(status, 3);
+    assert.ok(report.verdict.includes(surveyPath), `the verdict does not name ${surveyPath}: ${report.verdict}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('CLI: exits 1 when the fixture changelog has a version newer than the survey', () => {
   const dir = mkdtempSync(join(tmpdir(), 'harness-release-'));
   try {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit) for repos that
-# have adopted house and opted a policy in via house.json. ADR 0013 carries the
-# reasoning; this header states the contract. MultiEdit stays in the matcher
+# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit, and every MCP
+# tool, of which it decides those whose name carries a write verb) for repos
+# that have adopted house and opted a policy in via house.json. ADR 0013
+# carries the reasoning; this header states the contract. MultiEdit stays in the matcher
 # for older CLIs that still offer it: a tool name the harness never sends
 # costs nothing.
 #
@@ -30,7 +31,16 @@
 #      .githooks/ or under its git directory, in any case and through any
 #      symlink or `..`, plus git's per-user config (~/.gitconfig,
 #      $XDG_CONFIG_HOME/git/config), which can set hooksPath or an alias for
-#      every repository on the machine with nothing in the repo to show it
+#      every repository on the machine with nothing in the repo to show it.
+#      A target inside another repo's git directory is decided against THAT
+#      repo. A file tool whose path is missing, empty or not a string is an
+#      unreadable payload and is refused. An MCP tool (`mcp__*`) whose name
+#      holds write, edit, create, move, rename, delete, remove, append,
+#      patch, save, put, upload, update, copy, replace or insert, in any case,
+#      has no standard path field, so every single-line string and object key
+#      anywhere in its input that holds a `/` or starts with `.` or `~` (a
+#      leading `file:` URI scheme dropped) gets the same file checks, a
+#      relative one against both the payload cwd and CLAUDE_PROJECT_DIR
 #   C. a commit on a protected branch, refused here so the agent reads one
 #      sentence instead of a git hook's stderr; `git send-pack`, which no git
 #      hook runs for at all; and, only while the floor is NOT intact and armed
@@ -78,8 +88,9 @@
 # lands on the protected branch through a PR, which is the whole point.
 #
 # Fails OPEN (allow, exit 0), as ADR 0002 requires, whenever: the tool is not
-# one of the four; the payload names no git, hook, HUSKY or LEFTHOOK text at
-# all; the target is not inside a git repo; house.json is absent from HEAD and
+# one of the five or an MCP tool whose name carries a write verb; a Bash
+# command names no git, hook, HUSKY or
+# LEFTHOOK text at all; the target is not inside a git repo; house.json is absent from HEAD and
 # from the working tree (the repo has not adopted house); it sets
 # "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); or
 # the target repo has its own substantive
@@ -89,12 +100,20 @@
 # a branch guard and does not defer this one). Deference is a deliberate choice
 # here, not something the harness requires: every matching PreToolUse hook runs
 # and the most restrictive decision wins. It also fails open silently wherever
-# it never runs at all, which a bare, safe or restricted session and every
-# non-Bash route (Cowork, MCP) do. That gap is why the floor exists.
+# it never runs at all, which a bare, safe or restricted session and Cowork
+# do. That gap is why the floor exists.
 #
 # Fails CLOSED (deny) when jq is missing (cannot parse the payload, so cannot
-# tell a safe command from a dangerous one), when the policy JSON will not
-# parse, and on an unexpected internal failure after the policy has been read
+# tell a safe command from a dangerous one), when a file tool's payload names
+# no path (in an adopted repo), when stdin is empty or does not parse as JSON
+# (in the adopted repo the hook itself runs in, since the payload's cwd is
+# unreadable too), when a Bash command is not a string (in the adopted repo
+# the payload's cwd names), when an MCP scan outruns its time budget (see
+# 16), when a file tool's path is longer than 4096 bytes (PATH_MAX_BYTES), or
+# an MCP string that long names .git, .githooks or a hook (both in an adopted
+# payload cwd; an unmarked over-length MCP string is content and skipped),
+# when the policy
+# JSON will not parse, and on an unexpected internal failure after the policy has been read
 # (the ERR trap below).
 #
 # Accepted false denies, all in the safe direction, all pinned in
@@ -144,6 +163,12 @@
 #      its body is a script this hook cannot read
 #  14. on git older than 2.28 an armed floor reads as unarmed, so every
 #      unarmed refusal above applies in a repo that looks fully armed
+#  15. an MCP write-verb tool any of whose single-line strings names a floor
+#      path, even when that string is not where it writes (a note, a label)
+#  16. an MCP input too large to check within the scan's time budget, in an
+#      adopted repo, or anywhere while a string still unchecked names .git,
+#      .githooks or a hook (a large input into a repo that never adopted
+#      house is refused too)
 # Deliberately NOT chased, because the floor covers it: a computed working
 # directory (`cd "$d"`), a `popd`, a refspec the config supplies, xargs, and a
 # git command inside a file this command runs. While the floor IS armed, a
@@ -154,9 +179,24 @@
 # reported rather than guessed at: a Bash mutation of ~/.gitconfig (the Edit
 # tool route is refused, `>> ~/.gitconfig` is not on the literal list); a
 # wildcard that never spells .githooks (`rm -rf .gith*`), after which the next
-# call reads the floor as gone and refuses what it covered; an Edit whose path
-# reaches the hooks directory through a symlink named after neither git nor a
-# hook, which the payload prefilter exits before; a planted file more than
+# call reads the floor as gone and refuses what it covered; an Edit through a
+# symlink above the nearest directory holding .git, which the prefilter does
+# not walk (a symlink named after neither git nor a hook BELOW it, or the file
+# itself being one, goes to the physical check); a symlink chain longer than
+# 40 hops; an MCP tool whose name carries none of the write verbs above (in
+# any case), which the script ends after the name check; a path an MCP tool
+# takes in a form that is not a plain single-line string or key (split across
+# fields, percent-encoded outside a file: URI, or inside multi-line content),
+# and a file: URI whose escapes decode to something %b does not (a malformed
+# `%zz` stays literal); a git directory not
+# named .git (`--separate-git-dir`, a worktree's gitdir) written from a cwd in
+# another repo, since its path carries no marker and git run inside it names
+# no toplevel; an Edit through a hard link to a floor file, which no path
+# test can see (the edit changes the floor file's bytes, so the integrity
+# check refuses every guarded command after it); past the time budget, an
+# unchecked string that reaches the floor with no marker in its text (a
+# plainly named symlink) while nothing adopted has been seen and the cwd is
+# not adopted; a planted file more than
 # three levels under the hooks directory, which no dispatcher can run; and
 # `git config --file <path> --get core.hooksPath`, readable for the same
 # reason `--get` alone is (see 1) because `--file` and its value never reach
@@ -197,22 +237,61 @@ set -Euf -o pipefail
 
 payload=$(cat)
 
-# Cheap early exit before any jq work: a payload naming none of these can
-# carry neither a git command nor a way to disable the floor. A backslash can
-# spell the word (`gi\t`); JSON doubles it, so it shows here.
-# The word is matched in ANY case: the default macOS volume is
-# case-insensitive, so `.GITHOOKS/pre-push` is the same file as
-# `.githooks/pre-push` and a case-sensitive prefilter never saw it.
-case "$payload" in
-  *[gG][iI][tT]*|*[hH][oO][oO][kK]*|*HUSKY*|*LEFTHOOK*|*\\*) ;;
-  *) exit 0 ;;
+# The file modes' scan runs against a time budget, since the harness lets a
+# call through once a hook passes its `timeout` (5 s for this hook in
+# hooks.json; a change there is a change here). The budget leaves margin for
+# the jq passes, the deny, and a slow machine. Elapsed time is read with
+# builtins: EPOCHREALTIME (bash 5, microseconds), or SECONDS (whole seconds,
+# so the stop comes up to one second early) on the bash 3.2 macOS ships.
+SCAN_BUDGET_MS=2000
+# HOUSE_SCAN_BUDGET_MS, a positive integer, LOWERS the budget (the suite sets
+# 1 so an overrun does not depend on machine speed). It is only ever taken
+# when smaller, so no environment can make the guard scan longer or pass more.
+case "${HOUSE_SCAN_BUDGET_MS:-}" in
+  ''|*[!0-9]*) ;;
+  *) if (( 10#$HOUSE_SCAN_BUDGET_MS > 0 && 10#$HOUSE_SCAN_BUDGET_MS < SCAN_BUDGET_MS )); then
+       SCAN_BUDGET_MS=$((10#$HOUSE_SCAN_BUDGET_MS))
+     fi ;;
 esac
+# A path longer than this many bytes names nothing: 4096 is the largest
+# PATH_MAX among the platforms this hook runs on (Linux 4096, macOS 1024), so
+# the OS cannot resolve it. It is also where checking stops being cheap: the
+# path handling below costs time quadratic in a path's length, and a path of
+# a few tens of KB used to outrun the timeout and pass the call. So a longer
+# path is unreadable input, decided before any of that handling runs.
+PATH_MAX_BYTES=4096
+# Sets PATH_BYTES to the length of $1 in bytes (C locale), with a builtin.
+path_bytes() { local LC_ALL=C; PATH_BYTES=${#1}; }
+HOOK_T0_US="${EPOCHREALTIME:-}"; HOOK_T0_US="${HOOK_T0_US//[!0-9]/}"
+HOOK_T0_S="$SECONDS"
+# Returns 0 once the scan has spent its budget.
+scan_over_budget() {
+  local now
+  if [[ -n "$HOOK_T0_US" ]]; then
+    now="${EPOCHREALTIME:-}"; now="${now//[!0-9]/}"
+    (( (now - HOOK_T0_US) / 1000 >= SCAN_BUDGET_MS ))
+  else
+    # Whole seconds only: count the current second as spent, which leaves
+    # the 2000 ms default at two ticks and makes a sub-second budget trip at
+    # once rather than at the next tick.
+    (( (SECONDS - HOOK_T0_S) * 1000 + 999 >= SCAN_BUDGET_MS ))
+  fi
+}
+
+# No early exit on the raw text. There used to be one for a payload naming
+# no git, hook, HUSKY or LEFTHOOK text, but every real payload carries
+# hook_event_name, so it only ever ended payloads that were not the harness's,
+# a malformed one included, which the house hook rule says must deny. Every
+# payload goes to the jq pass; the cheap exits are the per-mode ones below.
+payload_unreadable=0
 
 # jq is a hard dependency for parsing the payload and house.json. Missing, we
 # cannot read tool_input at all, so we cannot tell a safe command from a
 # dangerous one. Fail CLOSED rather than let the harness treat a crash as
 # "hook produced no decision" (non-blocking, i.e. the guard silently
 # vanishes). Hand-written JSON, since jq is exactly what is missing.
+# Every payload, a malformed one included, and in any repo: without jq not
+# even adoption can be tested.
 if ! command -v jq >/dev/null 2>&1; then
   cat <<'EOF'
 {
@@ -279,26 +358,73 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # one-character prefix so an empty value still occupies a line, and the
 # command goes LAST because it is the only field that can hold newlines.
 # NotebookEdit names its target in notebook_path; it is read into file_path
-# so the file rules below apply to it unchanged.
-payload_fields=$(jq -r '"t" + (.tool_name // ""), "w" + (.cwd // ""),
-  "f" + ((if .tool_name == "NotebookEdit" then .tool_input.notebook_path
-          else .tool_input.file_path end) // ""),
-  "c" + (.tool_input.command // "")' \
-  <<<"$payload" 2>/dev/null || echo "")
+# so the file rules below apply to it unchanged. For the file tools a path
+# that is missing or not a string reads as empty, which file mode refuses.
+# Every field is read type-safely: a number, an array or an object where a
+# string belongs reads as empty rather than throwing, since a throw here used
+# to end in the valid-JSON allow below with the whole call unread. A Bash
+# command that is not a string is flagged (`k1`): what would run cannot be
+# read, so it is an unreadable payload, not an empty command.
+payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
+  | ((.tool_input | objects) // {}) as $in
+  | "t" + $t, "w" + ((.cwd | strings) // ""),
+  "f" + ((if $t == "NotebookEdit" then $in.notebook_path else $in.file_path end
+          | strings) // ""),
+  "k" + (if $t == "Bash" and ($in.command | type) != "string" then "1" else "" end),
+  "c" + (($in.command | strings) // "")' \
+  <<<"$payload" 2>/dev/null) || payload_fields=''
+# A payload that does not parse names neither the tool nor its cwd. Valid JSON
+# whose top level is not an object is not a payload and is allowed as before;
+# empty or garbage stdin is unreadable, and is refused below in an adopted
+# repo, found from the hook's own working directory (the project the harness
+# runs it in). This costs a process only on the failure path.
+if [[ -z "$payload_fields" ]]; then
+  _trim="${payload//[[:space:]]/}"
+  if [[ -n "$_trim" ]] && jq empty <<<"$payload" >/dev/null 2>&1; then
+    exit 0
+  fi
+  payload_unreadable=1
+fi
 tool_name="${payload_fields%%$'\n'*}"; _rest="${payload_fields#*$'\n'}"
 payload_cwd="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
-file_path="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
+file_path="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
+cmd_unreadable="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
 tool_name="${tool_name#t}"; payload_cwd="${payload_cwd#w}"
-file_path="${file_path#f}"; cmd="${cmd#c}"
-case "$tool_name" in
-  Bash) MODE='bash'; file_path='' ;;
-  Edit|Write|MultiEdit|NotebookEdit) MODE='file'; cmd='' ;;
-  *) exit 0 ;;
-esac
+file_path="${file_path#f}"; cmd_unreadable="${cmd_unreadable#k}"; cmd="${cmd#c}"
+if [[ "$payload_unreadable" -eq 1 ]]; then
+  MODE='unreadable'; payload_cwd="$PWD"; file_path=''; cmd=''
+elif [[ "$cmd_unreadable" == 1 ]]; then
+  # The payload parsed, so its cwd is readable and names the repo.
+  MODE='unreadable'; payload_cwd="${payload_cwd:-$PWD}"; file_path=''; cmd=''
+else
+  case "$tool_name" in
+    Bash) MODE='bash'; file_path='' ;;
+    Edit|Write|MultiEdit|NotebookEdit) MODE='file'; cmd='' ;;
+    # The matcher sends every MCP tool (the harness tests it unanchored, so a
+    # narrower regex there is not a boundary); a write is decided here, from a
+    # verb anywhere in the name, in any case, with builtins only.
+    mcp__*)
+      case "$tool_name" in
+        *[Ww][Rr][Ii][Tt][Ee]*|*[Ee][Dd][Ii][Tt]*|*[Cc][Rr][Ee][Aa][Tt][Ee]*|\
+        *[Mm][Oo][Vv][Ee]*|*[Rr][Ee][Nn][Aa][Mm][Ee]*|\
+        *[Dd][Ee][Ll][Ee][Tt][Ee]*|*[Rr][Ee][Mm][Oo][Vv][Ee]*|\
+        *[Aa][Pp][Pp][Ee][Nn][Dd]*|*[Pp][Aa][Tt][Cc][Hh]*|*[Ss][Aa][Vv][Ee]*|\
+        *[Pp][Uu][Tt]*|*[Uu][Pp][Ll][Oo][Aa][Dd]*|*[Uu][Pp][Dd][Aa][Tt][Ee]*|\
+        *[Cc][Oo][Pp][Yy]*|*[Rr][Ee][Pp][Ll][Aa][Cc][Ee]*|\
+        *[Ii][Nn][Ss][Ee][Rr][Tt]*) MODE='mcp'; cmd=''; file_path='' ;;
+        *) exit 0 ;;
+      esac ;;
+    *) exit 0 ;;
+  esac
+fi
 
+# The reason goes to jq on stdin, never as an argument: it can quote a
+# payload-derived path, and Linux refuses to exec a program with any one
+# argument over 128 KB (MAX_ARG_STRLEN), which would turn a refusal into a
+# crash.
 deny() {
-  jq -n --arg msg "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse",
-    permissionDecision: "deny", permissionDecisionReason: $msg}}'
+  printf '%s' "$1" | jq -Rs '{hookSpecificOutput: {hookEventName: "PreToolUse",
+    permissionDecision: "deny", permissionDecisionReason: .}}'
   exit 0
 }
 
@@ -332,22 +458,71 @@ EOF
 # scans then see, never split one apart.
 if [[ "$MODE" == bash ]]; then
   cmd="${cmd//\\$'\n'/}"; cmd="${cmd//\\\"/}"; cmd="${cmd//\\\'/}"; cmd="${cmd//\\/}"
-  # Precise re-check on the parsed field: the raw-payload prefilter above can
-  # false-positive (a cwd path holding "git" with a non-git command).
+  # The cheap exit for Bash, on the parsed command rather than the raw
+  # payload, whose cwd or hook_event_name always names one of these words.
   case "$cmd" in
     *[gG][iI][tT]*|*[hH][oO][oO][kK]*|*HUSKY*|*LEFTHOOK*) ;;
     *) exit 0 ;;
   esac
-else
-  [[ -n "$file_path" ]] || exit 0
+fi
+
+# Sets file_abs, file_norm and file_symlinked for file_path. Returns 1 for a
+# path that needs nothing further, which is every ordinary Edit and Write.
+prep_file_target() {
+  # The path as a lexical resolver lands it: `.` and empty segments go and a
+  # `..` drops the segment before it, whether or not that segment exists. The
+  # raw `<repo>/nosuch/../.githooks/pre-push` puts `nosuch/..` in front of the
+  # hooks directory, and `cd -P` of a parent that does not exist fails. Pure
+  # bash, because every Edit and Write pays for it.
+  file_abs="$file_path"
+  case "$file_abs" in /*) ;; *) file_abs="${payload_cwd:-.}/$file_abs" ;; esac
+  file_norm="$file_abs"
+  case "$file_norm" in
+    /*)
+      _rest="${file_norm#/}/"; file_norm=''
+      while [[ -n "$_rest" ]]; do
+        _seg="${_rest%%/*}"; _rest="${_rest#*/}"
+        case "$_seg" in
+          ''|.) ;;
+          ..) file_norm="${file_norm%/*}" ;;
+          *) file_norm+="/$_seg" ;;
+        esac
+      done
+      file_norm="${file_norm:-/}" ;;
+  esac
+  # A relative path is read without the cwd in front of it, as it always was,
+  # so a checkout under a directory named for hooks costs nothing extra.
+  _norm_text="$file_norm"
+  case "$file_path" in /*) ;; *) _norm_text="${file_norm#"${payload_cwd%/}"/}" ;; esac
   # .githooks, .GITHOOKS, .git/config, .git/hooks, ~/.gitconfig, the XDG
   # spelling of the per-user config (no dot at all), and any path whose name
-  # says "hook", which is how a symlink into the hooks directory usually reads.
-  # A symlink whose name says none of these is residue, documented above.
-  case "$file_path" in
+  # says "hook", in the path as given or as normalized. Anything else goes to
+  # the full scan only when a component of it is a symlink, tested from the
+  # file up to the nearest directory holding .git (the repo root) with
+  # builtins alone: a plainly named link into .githooks or the git directory
+  # spells none of these words. A symlink above that root cannot move the
+  # path out of the repo it resolves in, and on macOS /var and /tmp are
+  # symlinks that every path would otherwise trip.
+  file_symlinked=0
+  case "$file_path"$'\n'"$_norm_text" in
     *.[gG][iI][tT]*|*[gG][iI][tT]/[cC][oO][nN][fF][iI][gG]*|*[hH][oO][oO][kK]*) ;;
-    *) exit 0 ;;
+    *)
+      _p="$file_abs"
+      while [[ "$_p" == */* ]]; do
+        if [[ -L "$_p" ]]; then file_symlinked=1; break; fi
+        [[ -e "$_p/.git" ]] && break
+        _p="${_p%/*}"
+      done
+      [[ "$file_symlinked" -eq 1 ]] || return 1 ;;
   esac
+  return 0
+}
+# A file tool with no readable path goes on to the decision, which refuses
+# it in an adopted repo: the payload is unreadable, not harmless.
+path_too_long=0
+if [[ "$MODE" == file && -n "$file_path" ]]; then
+  path_bytes "$file_path"
+  if (( PATH_BYTES > PATH_MAX_BYTES )); then path_too_long=1; else prep_file_target || exit 0; fi
 fi
 
 # Remove flag-borne arguments (quoted or bare, `=`-joined or not) whose
@@ -1204,12 +1379,12 @@ run_branch_scans() {
 # the tool payload carries the path as the session spelled it (/var).
 # The path tests are case-INSENSITIVE, because the default macOS volume is:
 # `.GITHOOKS/pre-push` and `.githooks/pre-push` are one file there, and a
-# case-sensitive match saw only the second. Lowercasing preserves length, so
-# the offsets taken from the lowercased copy index the original.
+# case-sensitive match saw only the second. The patterns spell each letter
+# both ways, so the offsets they give index the path as written, with no
+# process spent lowercasing it (an MCP call can carry hundreds of paths).
 run_file_scan() {
-  local fp="$file_path" lower pre root rel parent phys tphys target
-  case "$fp" in /*) ;; *) fp="${payload_cwd:-.}/$fp" ;; esac
-  lower=$(printf '%s' "$fp" | tr '[:upper:]' '[:lower:]')
+  local fp="$file_norm" pre root rel parent phys tphys target
+  local parents link dest hops=0 seen=$'\n'
   # git's per-user config can define an alias or core.hooksPath for every repo
   # on this machine, this one included, and neither the checker nor the floor
   # can see it. Editing it from inside an adopted checkout is refused.
@@ -1220,52 +1395,147 @@ run_file_scan() {
       deny "Refusing to write '$fp': it is git's per-user config, which can set core.hooksPath or define an alias for every repository on this machine, including this one (house.json at $toplevel). Nothing in the repo would show the change. Set what you need with an explicit git config command in the repo, or ask house doctor what the floor reads."
     fi
   done
-  case "$lower" in
-    */.git/*|*/.git)
-      pre="${lower%%/.git*}"; root="${fp:0:${#pre}}"
+  case "$fp" in
+    */.[gG][iI][tT]/*|*/.[gG][iI][tT])
+      pre="${fp%%/.[gG][iI][tT]*}"; root="$pre"
       if { [[ -d "$root" ]] && [[ "$root" -ef "$toplevel" ]]; } \
          || { [[ -n "$COMMON_DIR" ]] && [[ "$fp" == "$COMMON_DIR"/* ]]; }; then
         deny "Refusing to write '$fp': it is inside the git directory, where the git-hook floor that enforces this repo's branch policy is wired (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones and house doctor reports what is wrong."
       fi ;;
-    */.githooks/*|*/.githooks)
-      pre="${lower%%/.githooks*}"; root="${fp:0:${#pre}}"
+    */.[gG][iI][tT][hH][oO][oO][kK][sS]/*|*/.[gG][iI][tT][hH][oO][oO][kK][sS])
+      pre="${fp%%/.[gG][iI][tT][hH][oO][oO][kK][sS]*}"; root="$pre"
       rel=".githooks${fp:$((${#pre} + 10))}"
       if [[ -d "$root" ]] \
          && { [[ "$root" -ef "$toplevel" ]] || { [[ -d "$MAIN_ROOT" ]] && [[ "$root" -ef "$MAIN_ROOT" ]]; }; }; then
         deny "Refusing to write '$rel': it is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel), and an edited or added hook file makes the floor untrusted for every command after it. Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
       fi ;;
   esac
-  # A path that reaches the floor through a symlink or a `..` segment spells
-  # neither .githooks nor .git, so the tests above cannot see it. Resolve the
-  # parent directory physically (cd -P) and compare the directory itself. Only
-  # for a path that says "hook" or ".git" somewhere, because this costs four
-  # processes and an ordinary source file whose NAME merely holds "git"
-  # (src/gitlab-client.ts) should not pay them.
-  case "$lower" in *hook*|*.git*) ;; *) return 0 ;; esac
-  parent="${fp%/*}"; [[ -n "$parent" ]] || parent='/'
-  phys=$(trap - ERR; cd -P "$parent" >/dev/null 2>&1 && pwd -P || echo '')
-  [[ -n "$phys" ]] || return 0
-  phys=$(trap - ERR; printf '%s' "$phys" | tr '[:upper:]' '[:lower:]')
-  for target in "$toplevel/.githooks" "$MAIN_ROOT/.githooks" "$COMMON_DIR"; do
-    [[ -n "$target" && -d "$target" ]] || continue
-    tphys=$(trap - ERR; cd -P "$target" >/dev/null 2>&1 && pwd -P || echo '')
-    [[ -n "$tphys" ]] || continue
-    tphys=$(trap - ERR; printf '%s' "$tphys" | tr '[:upper:]' '[:lower:]')
-    if [[ "$phys" == "$tphys" || "$phys" == "$tphys"/* ]]; then
-      deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
-    fi
+  # A path that reaches the floor through a symlink spells neither .githooks
+  # nor .git, so the tests above cannot see it. Resolve the parent directory
+  # physically (cd -P) and compare the directory itself: the parent of the
+  # path as given (the kernel's reading, where `link/..` climbs out of the
+  # link's target), of the path as normalized (where `nosuch/..` is harmless),
+  # and, when the file itself is a symlink, of every hop of its chain, since a
+  # write through it lands where the last hop points. Only for a path that
+  # says "hook" or ".git" somewhere or that the prefilter saw a symlink on,
+  # because this costs processes and an ordinary source file whose NAME
+  # merely holds "git" (src/gitlab-client.ts) should not pay them.
+  case "$fp$file_symlinked" in *[hH][oO][oO][kK]*|*.[gG][iI][tT]*|*1) ;; *) return 0 ;; esac
+  parents="${file_abs%/*}"$'\n'"${fp%/*}"
+  for link in "$file_abs" "$fp"; do
+    while [[ -L "$link" && "$hops" -lt 40 ]]; do
+      dest=$(trap - ERR; readlink "$link" 2>/dev/null || echo '')
+      [[ -n "$dest" ]] || break
+      case "$dest" in /*) link="$dest" ;; *) link="${link%/*}/$dest" ;; esac
+      parents+=$'\n'"${link%/*}"
+      hops=$((hops + 1))
+    done
   done
+  while IFS= read -r parent; do
+    [[ -n "$parent" ]] || parent='/'
+    [[ "$seen" != *$'\n'"$parent"$'\n'* ]] || continue
+    seen+="$parent"$'\n'
+    phys_of "$parent"; phys="$PHYS"
+    [[ -n "$phys" ]] || continue
+    # The checkout's own git directory is named here as well: git reports the
+    # common dir relative (`.git`) outside a linked worktree, which blanks
+    # COMMON_DIR, and a plainly named link to .git has no text to match.
+    for target in "$toplevel/.githooks" "$MAIN_ROOT/.githooks" "$toplevel/.git" "$COMMON_DIR"; do
+      [[ -n "$target" && -d "$target" ]] || continue
+      phys_of "$target"; tphys="$PHYS"
+      [[ -n "$tphys" ]] || continue
+      # Compared without regard to case, as the text tests above are.
+      shopt -s nocasematch
+      if [[ "$phys" == "$tphys" || "$phys" == "$tphys"/* ]]; then
+        deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
+      fi
+      shopt -u nocasematch
+    done
+  done <<<"$parents"
   return 0
 }
 
 # ── Deciding one candidate ───────────────────────────────────────────────
 MAIN_ROOT=''; COMMON_DIR=''
+
+# The file modes can decide hundreds of targets in one call (an MCP tool's
+# path-like strings), and past the 5 s timeout the harness lets the call
+# through. So a repo is resolved with git once per invocation (the memo
+# below), and a directory is resolved with builtins alone, never a process.
+# Parallel indexed arrays, since bash 3.2 has no associative ones; the memo
+# holds one entry per repo, so scanning it stays short.
+MEMO_KEYS=(); MEMO_TOP=(); MEMO_COMMON=(); MEMO_MAIN=(); MEMO_KEY=''
+# Sets PHYS to directory $1 with every symlink resolved, or to nothing when
+# it cannot be entered: cd in this shell and back, where a subshell would
+# cost a fork per directory.
+phys_of() {
+  local here="$PWD"
+  PHYS=''
+  if cd -P -- "${1:-/}" >/dev/null 2>&1; then
+    PHYS="$PWD"
+    cd -- "$here" >/dev/null 2>&1 || cd / || true
+  fi
+}
+# Sets MEMO_KEY to a name for the repo git would find from directory $1: the
+# nearest physical ancestor holding a .git entry, which is where git's own
+# discovery stops. A directory inside a git directory, where git reports no
+# toplevel, keys on itself. A missing or unreadable directory falls back to
+# the payload cwd, as decide_for_target does.
+repo_memo_key() {
+  local p
+  if [[ -z "$1" ]]; then MEMO_KEY='cwd:'; return 0; fi
+  phys_of "$1"; p="$PHYS"
+  if [[ -z "$p" ]]; then MEMO_KEY='cwd:'; return 0; fi
+  case "$p/" in */.[gG][iI][tT]/*) MEMO_KEY="d:$p"; return 0 ;; esac
+  while [[ -n "$p" && ! -e "$p/.git" ]]; do p="${p%/*}"; done
+  MEMO_KEY="r:${p:-/}"
+}
+# Records what decide_for_target found for MEMO_KEY: the toplevel of an
+# adopted repo (with its common dir and main root), or nothing.
+memo_put() {
+  [[ "$MODE" != bash ]] || return 0
+  MEMO_KEYS+=("$MEMO_KEY"); MEMO_TOP+=("$1"); MEMO_COMMON+=("${2:-}"); MEMO_MAIN+=("${3:-}")
+}
+
+# The file modes' decision, once the repo is known to be adopted.
+decide_file_mode() {
+  if [[ "$MODE" == toolong ]]; then
+    deny "Refusing this $tool_name call: it names a path of $PATH_BYTES bytes, longer than $PATH_MAX_BYTES bytes, the largest PATH_MAX of any platform this hook supports, so no OS can resolve it and this hook cannot tell whether it reaches the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Give the path in its real, shorter form."
+  fi
+  if [[ "$MODE" == toolarge ]]; then
+    deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
+  fi
+  if [[ "$MODE" == unreadable ]]; then
+    deny "Refusing this tool call: its payload could not be parsed as a tool call (empty or malformed JSON, or a Bash command that is not a string), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
+  fi
+  if [[ -z "$file_path" ]]; then
+    deny "Refusing this $tool_name call: its payload names no path (file_path, or notebook_path for NotebookEdit, is missing, empty, or not a string), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry with the target given as a path string."
+  fi
+  run_file_scan
+}
 decide_for_target() {
   local dir="${1/#\~/$HOME}"
   CAND_TEXT="${2:-}"
   # Disarmed while resolving: a bad guess here is a fail-open by design, and
   # the trap armed by an earlier candidate must not turn it into a crash-deny.
   trap - ERR
+
+  # The file modes decide many targets per call; a repo already resolved in
+  # this invocation is not asked again.
+  local memo_i
+  if [[ "$MODE" != bash ]]; then
+    repo_memo_key "$dir"
+    for ((memo_i = 0; memo_i < ${#MEMO_KEYS[@]}; memo_i++)); do
+      if [[ "${MEMO_KEYS[$memo_i]}" == "$MEMO_KEY" ]]; then
+        [[ -n "${MEMO_TOP[$memo_i]}" ]] || return 0
+        toplevel="${MEMO_TOP[$memo_i]}"; COMMON_DIR="${MEMO_COMMON[$memo_i]}"
+        MAIN_ROOT="${MEMO_MAIN[$memo_i]}"
+        trap crashed ERR
+        decide_file_mode
+        return 0
+      fi
+    done
+  fi
 
   # One rev-parse for the toplevel, the shared git directory and the branch.
   # `--git-common-dir` and `--abbrev-ref HEAD` always print a line (an unborn
@@ -1297,9 +1567,9 @@ decide_for_target() {
     *$'\n'*$'\n'*)
       toplevel="${probe%%$'\n'*}"; rest="${probe#*$'\n'}"
       COMMON_DIR="${rest%%$'\n'*}"; branch="${rest#*$'\n'}" ;;
-    *) return 0 ;;
+    *) memo_put ''; return 0 ;;
   esac
-  [[ -n "$toplevel" ]] || return 0
+  [[ -n "$toplevel" ]] || { memo_put ''; return 0; }
 
   # A linked worktree shares one config and one .githooks with the checkout
   # that created it, so both the arming advice and the file scan have to know
@@ -1332,9 +1602,10 @@ decide_for_target() {
   else
     # Absent means the repo has not adopted house; that is fail-open, not an
     # error (ADR 0002).
+    memo_put ''
     return 0
   fi
-  [[ -n "$house_json" ]] || return 0
+  [[ -n "$house_json" ]] || { memo_put ''; return 0; }
 
   # One jq pass for the whole manifest: policy, then the protected list, then
   # the carve-outs, separated by a record-separator line. An adopted repo whose
@@ -1357,6 +1628,7 @@ decide_for_target() {
     esac
   done <<<"$parsed"
   [[ -n "$protected_list" ]] || protected_list=$'master\nmain'
+  memo_put "$toplevel" "$COMMON_DIR" "$MAIN_ROOT"
 
   # The repo has adopted house. Arm the crash trap: an unexpected failure from
   # here on denies with a message that says so, instead of exiting non-zero
@@ -1389,8 +1661,8 @@ decide_for_target() {
   # reason to let a session unarm core.hooksPath, edit a vendored hook, write a
   # replace ref or commit into a repository it names rather than enters. A repo
   # is adopted for this purpose whenever house.json is on HEAD at all.
-  if [[ "$MODE" == file ]]; then
-    run_file_scan
+  if [[ "$MODE" != bash ]]; then
+    decide_file_mode
     return 0
   fi
   run_early_scans
@@ -1425,10 +1697,139 @@ decide_for_target() {
 }
 
 # ── Decide ───────────────────────────────────────────────────────────────
-if [[ "$MODE" == file ]]; then
+# Sets GIT_ROOT to the directory holding the first `.git` component (in any
+# case) of the absolute path $1, or to nothing when it has none.
+git_component_root() {
+  local rest="${1#/}/" seg acc=''
+  GIT_ROOT=''
+  while [[ -n "$rest" ]]; do
+    seg="${rest%%/*}"; rest="${rest#*/}"
+    case "$seg" in .[gG][iI][tT]) GIT_ROOT="${acc:-/}"; return 0 ;; esac
+    acc+="/$seg"
+  done
+}
+
+# Decides the file target prep_file_target read. git run from inside a git
+# directory reports no toplevel, so a target in ANOTHER repo's .git (spelled
+# out, or through a plainly named link such as `gl -> .git`) used to fall
+# back to the cwd's repo and pass. When the path as normalized, or else as
+# physically resolved, has a .git component, the repo that component belongs
+# to is decided as well, adopted or not.
+decide_file_target() {
+  local fdir link dest parent phys hops=0
   fdir="${file_path%/*}"
   case "$fdir" in /*) ;; *) fdir='' ;; esac
+  # A parent that does not exist (`nosuch/..`) names no repo; the normalized
+  # one does.
+  if [[ -n "$fdir" && ! -d "$fdir" ]]; then fdir="${file_norm%/*}"; fdir="${fdir:-/}"; fi
+  GIT_ROOT=''
+  if [[ -n "$file_path" ]]; then
+    git_component_root "$file_norm"
+    if [[ -z "$GIT_ROOT" ]]; then
+      link="$file_abs"
+      while [[ -L "$link" && "$hops" -lt 40 ]]; do
+        dest=$(trap - ERR; readlink "$link" 2>/dev/null || echo '')
+        [[ -n "$dest" ]] || break
+        case "$dest" in /*) link="$dest" ;; *) link="${link%/*}/$dest" ;; esac
+        hops=$((hops + 1))
+      done
+      parent="${link%/*}"
+      phys_of "${parent:-/}"; phys="$PHYS"
+      if [[ -n "$phys" ]]; then git_component_root "$phys/${link##*/}"; fi
+    fi
+  fi
+  local git_root="$GIT_ROOT"
   decide_for_target "$fdir" ''
+  if [[ -n "$git_root" ]]; then decide_for_target "$git_root" ''; fi
+  return 0
+}
+
+if [[ "$MODE" == file ]]; then
+  # An overlong path is unreadable: decided against the payload cwd, since
+  # the path itself cannot be resolved.
+  if [[ "$path_too_long" -eq 1 ]]; then MODE='toolong'; decide_for_target '' ''; exit 0; fi
+  decide_file_target
+  exit 0
+fi
+
+# An unreadable payload is decided against the hook's own working directory.
+if [[ "$MODE" == unreadable ]]; then
+  decide_for_target '' ''
+  exit 0
+fi
+
+# MCP tools have no standard path field, so every string anywhere in
+# tool_input, and every object key (a map from path to content), that looks
+# like a path (holds a `/`, or starts with `.` or `~`) is read the way an
+# Edit's file_path is, after a leading `file:` URI scheme and its authority
+# (`file:///p`, `file://host/p`, `file:/p`) are dropped. A relative one is
+# read against the payload cwd and, when it differs, the project directory
+# the harness names. A multi-line string is content, not a path, and is
+# skipped. Nothing path-like means nothing to check.
+if [[ "$MODE" == mcp ]]; then
+  # Each line carries two one-character tags. The first is `0` for a string
+  # that names a floor marker (.git, .githooks, hook, in any case, or a file:
+  # URI still holding a percent escape), `1` otherwise, so the sort puts the
+  # strings most likely to hit first under the time budget. The second is `u`
+  # for a string that was a file: URI, which is percent-decoded below, and `p`
+  # for the rest.
+  if ! mcp_paths=$(jq -r '[.tool_input | ((.. | strings), (.. | objects | keys[]))
+        | select((contains("\n") or contains("\r")) | not)
+        | test("^file:"; "i") as $u | sub("^file:(//[^/]*)?"; ""; "i")
+        | select(contains("/") or startswith(".") or startswith("~"))
+        | (if test("\\.git|hook"; "i") or ($u and contains("%")) then "0" else "1" end)
+          + (if $u then "u" else "p" end) + .] | unique | .[]' \
+        <<<"$payload" 2>/dev/null); then
+    exit 0
+  fi
+  project_dir="${CLAUDE_PROJECT_DIR:-}"
+  case "$project_dir" in /*) [[ "${project_dir%/}" != "${payload_cwd%/}" ]] || project_dir='' ;; *) project_dir='' ;; esac
+  while IFS= read -r mcp_path; do
+    [[ -n "$mcp_path" ]] || continue
+    # Out of time: refuse outright while a string naming a floor marker is
+    # still unchecked, whatever repo it or the cwd is in; otherwise refuse in
+    # any adopted repo seen so far, else in the cwd's.
+    if scan_over_budget; then
+      if [[ "${mcp_path:0:1}" == 0 ]]; then
+        deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a git directory or a hook path. Split the call into smaller ones."
+      fi
+      MODE='toolarge'
+      for ((memo_j = 0; memo_j < ${#MEMO_KEYS[@]}; memo_j++)); do
+        if [[ -n "${MEMO_TOP[$memo_j]}" ]]; then toplevel="${MEMO_TOP[$memo_j]}"; decide_file_mode; fi
+      done
+      decide_for_target '' ''
+      exit 0
+    fi
+    mcp_tag="${mcp_path:1:1}"; mcp_path="${mcp_path:2}"
+    # %XX to the byte it names, with builtins: backslashes doubled first so
+    # %b reads only the escapes made here.
+    if [[ "$mcp_tag" == u && "$mcp_path" == *%* ]]; then
+      mcp_path="${mcp_path//\\/\\\\}"; mcp_path="${mcp_path//%/\\x}"
+      printf -v mcp_path '%b' "$mcp_path" 2>/dev/null || true
+    fi
+    [[ -n "$mcp_path" ]] || continue
+    # shellcheck disable=SC2088 # the literal tilde is what is being matched
+    case "$mcp_path" in "~") mcp_path="${HOME:-}" ;; "~/"*) mcp_path="${HOME:-}/${mcp_path#"~/"}" ;; esac
+    mcp_bases=('')
+    case "$mcp_path" in /*) ;; *) [[ -z "$project_dir" ]] || mcp_bases+=("$project_dir/") ;; esac
+    # Over-length: the OS cannot open it as a path, so it is content (a
+    # minified file, one-line JSON) and is skipped. Only a server that
+    # shortens it could make it a path, and that matters only when it points
+    # at the floor, which the markers flag: a marked one is unreadable,
+    # refused if the cwd's repo is adopted.
+    path_bytes "$mcp_path"
+    if (( PATH_BYTES > PATH_MAX_BYTES )); then
+      case "$mcp_path" in
+        *.[gG][iI][tT]*|*[hH][oO][oO][kK]*) MODE='toolong'; decide_for_target '' ''; MODE='mcp' ;;
+      esac
+      continue
+    fi
+    for mcp_base in "${mcp_bases[@]}"; do
+      file_path="$mcp_base$mcp_path"
+      prep_file_target || continue
+      decide_file_target
+    done
+  done <<<"$mcp_paths"
   exit 0
 fi
 

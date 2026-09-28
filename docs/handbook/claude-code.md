@@ -282,6 +282,19 @@ https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md), whi
 off-roster call now names its effort explicitly rather than assuming the new model's default
 matches what an older one needed.
 
+Sonnet 5.5 as the default Sonnet, 2026-09-28: Claude Code 2.1.284 made Claude Sonnet 5.5
+(`claude-sonnet-5-5`) the default Sonnet model on the Anthropic API: $2/$10 per Mtok with cache
+reads at 10 percent, "Fast" latency, 1M context, 128K output, adaptive thinking that is not
+always on, and an API default effort of high
+(https://platform.claude.com/docs/en/about-claude/models/overview; changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md). The recommendation
+to start with Opus 5.5 and reach for Fable 5.1 is unchanged, so the ladder stands. The roster's
+researcher and builder pin the `sonnet` alias and their own effort, so they now run on Sonnet 5.5
+at the effort their frontmatter names. An off-roster call that lands on Sonnet through the
+subagent model variable runs at Sonnet 5.5's default of high until
+`modelSettings["claude-sonnet-5-5"].effortLevel` is set in user settings, which is the concrete
+case the effort line in the rule exists for.
+
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
 repo-c's `.claude/settings.json` scopes its hook entry with a declarative `"if": "Bash(git *)"`

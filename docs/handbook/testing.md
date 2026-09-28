@@ -67,7 +67,7 @@ Then grade the grader. skill-creator's `grader.md` agent does double duty: it gr
 
 A final grading preference from the same article, worth stating even though it did not earn its own rule: "It's often better to grade what the agent produced, not the path it took" (EXT-094). The `file_exists` grader globbing over created paths is that preference expressed as a grader type, and this fleet already grades end state in `scripts/lib/retro.mjs` invariants.
 
-Native floor, as of 2026-09-02: the plugin eval runner's ablation mode, which stands up the with and without arms and repeats each case by default, and its grader types, which separate the free deterministic graders from the paid llm and baseline ones. Documented in `claude plugin eval --help`; no public docs page covers the runner as of that date, and the grader material it complements is written up in the skill-creator article (https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills).
+Native floor, as of 2026-09-28: the plugin eval runner's ablation mode, which stands up the with and without arms and repeats each case by default, and its grader types, which separate the free deterministic graders from the paid llm and baseline ones (https://code.claude.com/docs/en/plugin-evals; also `claude plugin eval --help`), and the grader material it complements is written up in the skill-creator article (https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills).
 
 ## Read the snapshot diff before accepting it, because a snapshot is a drift gate
 
