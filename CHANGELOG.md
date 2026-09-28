@@ -6,6 +6,31 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-28
+
+The branch guard fails closed on input it cannot read, closes the path and symlink gaps a review found, and guards file writes made through MCP tools. The rules and handbook record Claude Code 2.1.284, Sonnet 5.5 as the default Sonnet, and the answers to the surveys' open questions. Minor under ADR 0012: the guard's deny set tightens, the breaking class under ADR 0011.
+
+### Changed
+- **The branch guard fails closed on input it cannot read (breaking).** In an adopted repo, these now deny rather than pass:
+  - an Edit, Write, MultiEdit, or NotebookEdit whose path is missing or not a string;
+  - a Bash call whose command is missing or not a string;
+  - a payload whose fields have the wrong types, or that does not parse at all;
+  - a file-tool path longer than 4096 bytes, past any supported system's path limit.
+
+  A missing jq denies for every payload. This follows the hook rule's clause that a crash, a missing helper, or an unreadable payload denies.
+- **The branch guard closes three path gaps (breaking).** Each of these is now refused:
+  - a `..` through a directory that does not exist;
+  - a plainly named symlink, whether a directory or the file itself, pointing into `.githooks/` or the git directory;
+  - an edit into another repo's git directory made from a different working directory.
+
+  An ordinary edit still exits without starting a process.
+- **The branch guard covers MCP writes (breaking).** The hooks docs recommend a pre-tool hook matched on MCP tool names that reads the input itself, because path deny rules and the sandbox do not reach MCP tools. The matcher adds `mcp__.*`, since a matcher of letters and underscores alone is read as an exact list, which a live run confirmed. For a tool whose name carries a write verb, checked case-insensitively, the hook checks every path-like string and object key in the input against the floor. It decodes `file:` URIs and resolves a relative path against both the session and the project directory. A time budget inside the hook's timeout keeps a large input from timing out, which would let it through. Residue, each for a stated reason, is listed in the script header; issue #92 tracks narrowing one accepted false deny.
+- **The llm-output rule says a printed run leaves a schema's `format` unenforced too,** confirmed by a live run and the headless docs. The orchestration defaults say a fork can spawn agents.
+- **The handbook records Claude Sonnet 5.5 as the default Sonnet** (Claude Code 2.1.284). Its API default effort is high. The roster's researcher and builder pin `effort: medium`, so an off-roster call that falls to Sonnet runs at high until a per-model effort is set in user settings.
+
+### Fixed
+- **The hook reads a payload over Linux's 128 KB argument limit.** A deny message quoting a long path passed it to jq as an argument; it now goes through stdin.
+
 ## [0.14.0] - 2026-09-28
 
 The branch guard now covers notebook edits, the deploy guard accepts a hosted review's neutral check, ADR 0014 records why rules are not shipped as plugin skills, and the rules cite what a gap survey found in the MCP CLI, output styles, and the Agent SDK. Minor under ADR 0012: the guard's deny set tightens, the breaking class under ADR 0011.
