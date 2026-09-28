@@ -20,7 +20,7 @@
 - Make a must-hold rule a hook, fail it closed, and test it with real payloads
   Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
 - Run adversarial review in a fresh subagent with a named lens
-  The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps.
+  The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
 - Plan when the approach is uncertain, and clear the context after two failed corrections
   Plan first when the approach is uncertain or the change spans files, and skip it when you could describe the diff in one sentence, since planning has real overhead.
 - Treat git state as shared across sessions

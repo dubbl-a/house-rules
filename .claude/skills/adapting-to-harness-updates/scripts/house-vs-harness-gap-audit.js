@@ -1,9 +1,9 @@
 export const meta = {
   name: 'house-vs-harness-gap-audit',
-  description: 'Close the completeness critic gaps from the harness audit: research MCP, output styles, plan mode, headless mode, and observability; classify the affected house rules including the one the first pass skipped; verify claims adversarially; write an addendum',
+  description: 'Close the completeness critic gaps from a harness audit: research the areas passed in args.areas, classify the house rules in args.targets against them, verify duplicate and conflict claims adversarially, and write an addendum',
   phases: [
-    { title: 'Gap research', detail: 'three readers over the harness areas the first audit missed' },
-    { title: 'Classify', detail: 'four targeted judges over the rules those areas could touch' },
+    { title: 'Gap research', detail: 'one reader per harness area the main audit missed' },
+    { title: 'Classify', detail: 'one targeted judge per rule file those areas could touch' },
     { title: 'Verify', detail: 'two skeptics per duplicate-or-conflict claim' },
     { title: 'Addendum', detail: 'one synthesis agent' },
   ],
@@ -105,13 +105,13 @@ You may read the rule file (${t.path}). Return refuted, a one-paragraph reason, 
 }
 
 function synthPrompt(facts, results) {
-  return `Write a short addendum (markdown, plain language, no em dashes) to an audit of the house-rules package against Claude Code's native features, dated ${DATE}. The first audit found no confirmed duplicates or conflicts across 133 items; a completeness critic then named five unresearched areas (MCP configuration and permissioning, output styles, plan mode, headless mode, observability) and one skipped rule. This addendum reports what those areas change.
+  return `Write a short addendum (markdown, plain language, no em dashes) to an audit of the house-rules package against Claude Code's native features, dated ${DATE}. ${args && args.context ? args.context : 'A main audit ran first, and its completeness critic named areas it did not research.'} This addendum reports what those areas change: ${AREAS.map(a => a.key).join(', ')}.
 
 Facts gathered: ${JSON.stringify(facts)}
 
 Classifications with skeptic votes (a DUPLICATE or CONFLICT is confirmed only if neither skeptic refuted it; otherwise downgrade to the skeptic's downgradeTo, or COMPLEMENT if they disagree): ${JSON.stringify(results)}
 
-Shape: 1. What changed (two sentences). 2. Confirmed duplicates or conflicts, if any, as a table with item, heading, native feature, citation, action, and a resolution sentence. 3. New complements worth a reword, each with the proposed wording. 4. The skipped docs rule's disposition. 5. Facts from these areas that the main report's rewords should cite (for example whether hooks fire headless, whether MCP tool calls reach PreToolUse, what an output style changes), one line each with the citation. 6. Anything still unreachable. Under 700 words.`
+Shape: 1. What changed (two sentences). 2. Confirmed duplicates or conflicts, if any, as a table with item, heading, native feature, citation, action, and a resolution sentence. 3. New complements worth a reword, each with the proposed wording. 4. The disposition of any single rule a target was scoped to specifically, if one was. 5. Facts from these areas that the main report's rewords should cite (for example whether hooks fire headless, whether MCP tool calls reach PreToolUse, what an output style changes), one line each with the citation. 6. Anything still unreachable. Under 700 words.`
 }
 
 phase('Gap research')

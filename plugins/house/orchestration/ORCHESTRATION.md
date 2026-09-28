@@ -23,7 +23,8 @@ every important finding.
 ## Roster
 
 Pinned agents ship with the plugin as `house-rules:<name>`. Each pins its model, effort, and
-tools, and none can spawn an agent.
+tools in frontmatter. A tool left off that list is absent from the agent's session, and none
+lists the Agent tool, so none can spawn an agent.
 
 | Agent | Model | For |
 |---|---|---|
@@ -51,7 +52,9 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   builder call; routine and mechanical work stays on Sonnet or Haiku.
 - Match the tier to the task: locations and receipt checks on Haiku, code and prose on Sonnet,
   judgment on Opus.
-- Subagents do not spawn subagents. They report back.
+- Subagents do not spawn subagents. They report back. Roster agents cannot, since none lists the
+  Agent tool. The built-in general-purpose, Explore, and Plan agents cannot by default; a
+  custom off-roster agent with unrestricted tools can, so its brief forbids it under DO NOT.
 
 ## Delegation
 
@@ -77,7 +80,8 @@ diffs."):
 
 - Banned: "think deeply", "explore all approaches", "be thorough", project history, bundled
   future tasks.
-- A brief stands alone. The agent inherits no conversation. "As we discussed" is a bug.
+- A brief stands alone. A subagent gets its own prompt and the repo's CLAUDE.md, never the
+  conversation; only a fork inherits that. "As we discussed" is a bug.
 - A scope change is a new brief, never an edit to the running one.
 
 ## Parallelism

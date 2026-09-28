@@ -75,7 +75,8 @@ addendum is not enough:
 
 The scripts are `scripts/house-vs-harness-audit.js` (main) and `scripts/house-vs-harness-gap-audit.js`
 (gap). Each takes `args.repo` (an absolute path to the clean worktree) and `args.date`. The gap run
-also takes `args.areas` and `args.targets` from the critic's findings. They run through the
+also takes `args.areas` and `args.targets` from the critic's findings, plus an optional
+`args.context` sentence stating the main run's result for its addendum. They run through the
 Workflow tool, which needs the user's explicit opt-in. Before asking, state the agent count: the
 main run is one researcher per area, one Opus classifier per module plus one for mechanisms, two
 skeptics per duplicate-or-conflict claim, and two synthesis agents.

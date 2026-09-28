@@ -853,3 +853,25 @@ Applied here: a model name and measured agent counts moved out of the claude-cod
 - A decision record declaring plugin skills with `paths:` frontmatter a considered and declined delivery route for rules. The reason is recorded here: a plugin update reaches every enabled repo at once, with no per-repo pin, config, or deviation record.
 - `deploy-guards.mjs` requiring every check run on the SHA to conclude `success`, which a hosted review's `neutral` conclusion would fail. A patch, pending confirmation that such a run lands on the checked SHA.
 - A gap run over what the critic named as unresearched: the `claude mcp` and `claude config` CLI help, output styles, and the Agent SDK docs.
+
+## Gap survey, 2026-09-28 (Claude Code 2.1.283)
+
+The gap pass the re-survey above deferred: the `claude mcp` and `claude config` command surface, output styles, and the Claude Agent SDK, judged against the claude-code, llm-output, and docs rules and the orchestration defaults with the pinned roster. 12 agents, 68 cited facts, 44 items classified.
+
+### Result
+
+0 confirmed duplicates, 0 confirmed conflicts. Two conflict claims fell to the skeptics. The hook rule's timeout clause is right as written: a timed-out command, http, or MCP-tool hook does not block, while an Agent SDK callback hook does. "Treat silence as not approval" does not conflict with the proactive output style, because a style is advisory and the instruction files outrank it. Ten complements were reworded, among them: an Agent SDK run whose setting sources leave out the project loads no project hooks; a reviewer sent as a fork inherits the conversation it should not see; a parameter-scoped rule on a server tool is dropped with only an interactive notice, and the one-session disallowed-tools flag carries a parameter-scoped deny; the roster can spawn no agent because none lists the Agent tool, the built-in general-purpose, Explore, and Plan agents cannot by default, and a custom agent with unrestricted tools can; in an Agent SDK run structured output does not enforce `format`, and a success can arrive with no structured result. Against output styles, which shape replies and never file contents, the docs rules are unique except "Put a fact where its litmus test says it belongs", a complement left unchanged.
+
+`claude config` is not a command in 2.1.283: `/config` and the settings files are the routes. No house rule named it.
+
+### Where the bank lives
+
+`/Users/DoubleA/Documents/house-rules-harness-research/2026-09-28/gap/`: `gap-addendum.md`, `facts.json`, `classifications.json`, `verifications.json`.
+
+### Deferred by decision
+
+- The addendum's optional declaration that a proactive output style is not consent under "Treat silence as not approval". The instruction files already outrank a style, so the line would load every session to restate that.
+
+### Still open
+
+Whether PreToolUse fires on MCP tool calls (the docs imply it and never state it), whether print-mode and workflow schemas share the SDK validator's gaps, and whether plugin agents honor `permissionMode`. The spawn-depth question the addendum left open is answered in the main bank: the default is three layers below the main conversation.
