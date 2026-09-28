@@ -95,6 +95,9 @@ done
 # The hook reads relative MCP paths against CLAUDE_PROJECT_DIR too, and a
 # suite run from inside a session inherits the session's; cases set it.
 unset CLAUDE_PROJECT_DIR
+# The hook's scan budget can be lowered from the environment; the overrun
+# cases set it themselves, and nothing else may inherit one.
+unset HOUSE_SCAN_BUDGET_MS
 
 # Prepended to PATH for the hook only (empty means: run it as the suite runs).
 HOOK_PATH_PREFIX=''
@@ -1421,9 +1424,13 @@ else
   fail "201 .git-bearing MCP strings into one repo deny under 2500 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
 fi
 # Past the scan's time budget (kept under the 5 s timeout in hooks.json, which
-# would let the call through) the hook stops and refuses. 4000 ordinary
-# .git-bearing strings take well over the budget to check one by one.
+# would let the call through) the hook stops and refuses. Whether a given
+# input outruns the default budget depends on the machine (a fast CI runner
+# finished these 4000 strings inside it), so every overrun case lowers the
+# budget to 1 ms through HOUSE_SCAN_BUDGET_MS, which can only shrink it, and
+# the overrun is certain anywhere.
 _huge=$(for ((i = 0; i < 200; i++)); do for ((j = 0; j < 20; j++)); do printf '%s\n' "$pg/many/d$i/f$j.gitkeep"; done; done | jq -R . | jq -s '{paths: .}')
+HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
 _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_huge" "$pg")"
 _end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
@@ -1438,6 +1445,7 @@ fi
 # never adopted house is refused too.
 expect_deny "ACCEPTED FALSE DENY: the same 4000 strings in a repo that never adopted house" \
   "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_huge" | jq --arg n "$n" '.paths |= map(sub("^.*/many/"; $n + "/many/"))')" "$n")" "too large to check"
+HOOK_ENV=()
 # A file: URI is percent-decoded after its scheme is dropped.
 expect_deny "MCP write with a file:// URI spelling .githooks as %2Egithooks" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/%2Egithooks/pre-push" '{uri: $p}')" "$pg")" "git-hook floor"
@@ -1461,8 +1469,10 @@ fi
 # With no marker left unchecked, an input past the budget is decided by
 # adoption as before: here, nothing adopted, so it passes.
 _pad=$(for ((i = 0; i < 8000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s '{paths: .}')
+HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
 _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_pad" "$n")"
+HOOK_ENV=()
 _end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
 _ms=$((_end - _start))
 if [[ -z "$HOOK_OUT" && "$_ms" -lt 4000 ]]; then

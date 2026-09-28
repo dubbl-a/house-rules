@@ -244,6 +244,15 @@ payload=$(cat)
 # builtins: EPOCHREALTIME (bash 5, microseconds), or SECONDS (whole seconds,
 # so the stop comes up to one second early) on the bash 3.2 macOS ships.
 SCAN_BUDGET_MS=2000
+# HOUSE_SCAN_BUDGET_MS, a positive integer, LOWERS the budget (the suite sets
+# 1 so an overrun does not depend on machine speed). It is only ever taken
+# when smaller, so no environment can make the guard scan longer or pass more.
+case "${HOUSE_SCAN_BUDGET_MS:-}" in
+  ''|*[!0-9]*) ;;
+  *) if (( 10#$HOUSE_SCAN_BUDGET_MS > 0 && 10#$HOUSE_SCAN_BUDGET_MS < SCAN_BUDGET_MS )); then
+       SCAN_BUDGET_MS=$((10#$HOUSE_SCAN_BUDGET_MS))
+     fi ;;
+esac
 # A path longer than this many bytes names nothing: 4096 is the largest
 # PATH_MAX among the platforms this hook runs on (Linux 4096, macOS 1024), so
 # the OS cannot resolve it. It is also where checking stops being cheap: the
@@ -262,7 +271,10 @@ scan_over_budget() {
     now="${EPOCHREALTIME:-}"; now="${now//[!0-9]/}"
     (( (now - HOOK_T0_US) / 1000 >= SCAN_BUDGET_MS ))
   else
-    (( (SECONDS - HOOK_T0_S) * 1000 >= SCAN_BUDGET_MS ))
+    # Whole seconds only: count the current second as spent, which leaves
+    # the 2000 ms default at two ticks and makes a sub-second budget trip at
+    # once rather than at the next tick.
+    (( (SECONDS - HOOK_T0_S) * 1000 + 999 >= SCAN_BUDGET_MS ))
   fi
 }
 
