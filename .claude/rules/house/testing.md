@@ -3,7 +3,7 @@ paths:
   - tests/**
   - .github/workflows/**
 ---
-<!-- house-managed v0.13.4 module=testing source=modules/testing/rules/testing.md body-sha256=3d0d561e77b3be96dfd88ab14f659854228201aa72afaa0e13f67c275f431bf4 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.4 module=testing source=modules/testing/rules/testing.md body-sha256=b11eeda71ef1d45e33c3161f4ac348c8dc8da41d8f7f98b2e4c58aea1d9c543f DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -11,7 +11,7 @@ These rules cover the checks a repo runs on itself: the suite, the gates that gu
 
 ## Give the agent a check it can run before you walk away
 
-Ship one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
+The harness's own guidance already says to give the agent a check that produces a pass or fail; treat that as the floor and ship it as one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
 Make it exit non-zero on failure, and chain the suite, the guard tests, and the repo checker behind it.
 Name it in the root instruction file, which the harness loads at the start of every session as advisory context and nothing stronger, so an agent finds the command without being told; escalating it from advice to something the harness enforces is a hook, and that ladder is claude-code.md's.
 Anchor: a single `verify` script that runs the suite, the hook harness, and the checker in one pass, so one command covers the tree.
@@ -29,7 +29,7 @@ Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-r
 
 Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
 Keep the deterministic tier in the gate and run the eval tier nightly or on demand, because a paid, nondeterministic tier that can block a merge gets switched off the first week it is wrong for a reason nobody can reproduce.
-Give the eval tier its own budget using the runner's own controls rather than a promise: set the hard cost ceiling that aborts a run and reports partial results, and the per-case threshold that exits non-zero, then keep that tier out of the merge gate and on a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
+Give the eval tier its own budget using the runner's own controls rather than a promise: set the cost ceiling, which stops new runs once spent and exits with partial results while in-flight runs finish, and the threshold that exits non-zero when a case scores below it, then keep that tier out of the merge gate and on a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
 Anchor: `plugins/house/evals/`, whose cases run on demand under their own ceiling, beside `npm test` and `tests/hooks/run.sh`, which are the tiers the gate runs on every pull request.
 Receipts: `docs/handbook/testing.md#split-deterministic-tests-from-model-behavior-evals-and-give-each-its-own-budget-and-cadence`
 
@@ -45,7 +45,7 @@ Receipts: `docs/handbook/testing.md#test-the-guard-itself-as-its-own-ci-step`
 ## Feed a real payload through the real wiring, and never re-implement the logic under test
 
 Drive the test through the real entry point with a real payload, never through a helper that restates the rule, because two copies of one rule pass together whenever both are wrong.
-Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning is fixed per event, and stdout that counts as a decision only when it is a bare JSON object. A test that reaches past the entry point proves only that the internals agree with themselves.
+Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning the hooks reference fixes per event, and stdout that decides only when it parses as JSON passing the hook output schema, since a malformed decision is a non-blocking error that lets the action through. A test that reaches past the entry point proves only that the internals agree with themselves.
 Never assert against a value the test computed the way the code computes it, and run a shipped script as a subprocess rather than importing its internals when the shipped script is what you mean to test. Authoring the hook this drives, and failing it closed, are claude-code.md's.
 Anchor: `tests/hooks/run.sh`, which pipes a real event payload into the real script and asserts its stdout and exit code without restating any of its matching logic.
 Receipts: `docs/handbook/testing.md#feed-a-real-payload-through-the-real-wiring-and-never-re-implement-the-logic-under-test`

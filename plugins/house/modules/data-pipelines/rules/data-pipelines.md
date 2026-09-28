@@ -32,7 +32,7 @@ Receipts: `docs/handbook/data-pipelines.md#write-nothing-when-a-record-is-unchan
 
 ## Default to a dry run and require an explicit flag to write
 
-Make the dry run the default and `--apply` the opt-in: the harness gates file tools Claude calls directly but can't see what a script writes once running, so a new script's first run is a plan a human reads, not an unasked change.
+Make the dry run the default and `--apply` the opt-in: the harness gates the file tools Claude calls directly, and its sandbox, when enabled, bounds where a script may write, but neither judges what a running script writes to a store, and rewind cannot undo it. So a new script's first run is a plan a human reads, not an unasked change.
 Plan, validate, execute: emit a machine-verifiable diff, check it, then write, and leave an audit row per write. Gate deletion behind one script, one call site, its own breadcrumb.
 Roll out in tiers, small push before full, and head a script whose dry run would itself surface regressions with a do-not-run note, since the dry half isn't always the safe half.
 
@@ -41,7 +41,7 @@ Receipts: `docs/handbook/data-pipelines.md#default-to-a-dry-run-and-require-an-e
 
 ## Brake a prune at a share of the table, and unit-test the brake
 
-Refuse to delete more than a set share of a table per run and require explicit `--force` to override: the harness prompts for a destructive filesystem command but never sees a script's row deletes, so a table-emptying run looks like one clearing a few stale rows until the count returns.
+Refuse to delete more than a set share of a table per run and require explicit `--force` to override: the harness's permission check and auto mode classifier judge the command line, never the rows a script deletes once running, so a table-emptying run looks like one clearing a few stale rows until the count returns.
 Unit-test the brake rule at both sides of the share; a brake nobody has watched trip is a comment.
 
 Anchor: a unit test of the brake predicate just under and just over the share, run in CI.

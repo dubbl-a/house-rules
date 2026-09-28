@@ -21,13 +21,13 @@ Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-bui
 ## Give every rule file a paths list whose first segment resolves
 
 Give every rule file a `paths:` list, and make each glob's first segment resolve on disk. A glob resolving to nothing means the rule never loads, so it rots with no warning.
-A rule file with no `paths:` is not unscoped, it is always-on at root-file priority: if it belongs in every session put it in the root file; if not, scope it.
+The harness loads a rule with no `paths:` at launch at project-instruction priority, loads one whose frontmatter fails to parse as if it had none, and gives no warning when a glob matches no file, so this check is the only signal. A rule that must hold in every session, or survive compaction, belongs in the root file; everything else gets scoped.
 Anchor: `npm run check:docs` validates each rule file's frontmatter and fails on a missing or unresolvable glob.
 Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-segment-resolves`
 
 ## Put a fact where its litmus test says it belongs
 
-The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
+The harness advises keeping only broad facts in the root file, moving procedures to a skill and path-bound facts to a path-scoped rule, and its checkup proposes cutting what the code already says. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
 Index a set of reference docs with a start-here pointer instead of restating them, say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file).
@@ -38,6 +38,7 @@ Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belong
 Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to its receipt. A reader who disagrees needs the why and the evidence in front of them, or the rule gets worked around, not revised.
 Cite a receipt by its quoted heading so the pointer survives a reorder, and title each archive entry as a one-line lesson so it reads as a claim, not a filename.
 Pitch each rule at the right altitude: specific enough to act on, general enough to leave judgment open. End every rule file with a `## Don't` section, and keep em dashes out of prose, naming the ban's surfaces in `modules.docs.config.emDash`.
+The why and the Anchor line are what the harness's prompt audit looks for when it judges a prohibition by its provenance and an instruction by whether anything enforces it; keep each `## Don't` line the negative of a rule above, so it inherits that rule's reason instead of reading as a bare ban.
 Anchor: `npm run check:house` (shape) requires an imperative heading, an `Anchor:` line per rule, a `## Don't` section, and no em dash in any file `modules.docs.config.emDash` puts in scope.
 Receipts: `docs/handbook/docs.md#state-a-rule-as-imperative-why-anchor-receipts`
 
@@ -46,12 +47,13 @@ Receipts: `docs/handbook/docs.md#state-a-rule-as-imperative-why-anchor-receipts`
 A rule that needs a date, a name, or a measured number to state itself is history wearing a rule's clothes. Move the evidence to the archive; leave the rule, the part that must survive the next change.
 Keep tuned constants in code and reference them by name from the docs; a threshold copied into prose reads as a rule and goes stale with nothing to catch it.
 A pinned figure is the one exception, not a stale one: its as-of date is part of the claim, so it travels with the figure, never the rule.
+The harness's prompt audit flags volatile specifics and a one-session lesson written as a permanent rule, but only when run and only as a proposal; the shape check makes the same test a gate on every commit.
 Anchor: `npm run check:house` (shape) fails a date-like or percent-like token in rule prose.
 Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-rule-prose`
 
 ## Keep files under budget, and raise a ceiling only with a written reason
 
-The harness gives the root file a soft line target and skips only a file past its hard size cap, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
+The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work, not renegotiated.
 Raising a ceiling takes an entry naming the path, the old and new limit, the reason, and the date decided, so it argues for itself in the diff, not as a quiet edit; it takes effect only with `--accept-lengths`.
 Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema.
@@ -60,7 +62,7 @@ Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-onl
 ## Cut, don't append, and trim on a fixed cadence
 
 When you add to a document, trade something out; a file that only grows is one nobody reads to the end. Cut any paragraph that records something happened rather than changes what the next session does.
-The harness proposes trims when asked and advises periodic review, but sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, delete at least one section across the root file and the rule files each time, and let the ratchet hold the floor; finding no candidate is valid, since the prompt to look is what does the work.
+The harness proposes trims when asked and advises periodic review, but sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, looking across the root file and the rule files for a section to delete, and let the ratchet hold the floor. A pass that finds no candidate cuts nothing, since the harness's own audit holds that an empty diff beats a manufactured one, and the prompt to look is what does the work.
 Know the bloat smells: a script walkthrough, a versioned stack list, a file-conventions list, three-level nesting, and example code that is not a workaround.
 Prune on evidence too: a rule that keeps getting ignored means the file is too long; a question the file already answers means the phrasing is ambiguous.
 Anchor: `npm run check:house` (ratchet) tightens on every shrink, so a trimmed file cannot quietly grow back.
@@ -69,6 +71,7 @@ Receipts: `docs/handbook/docs.md#cut-dont-append-and-trim-on-a-fixed-cadence`
 ## Split a file only when splitting narrows what loads
 
 Split a topic only when the split makes a session load less. Two files that always load together are worse than one: identical context, plus a second place a rule can hide.
+The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads.
 Pick the escape valve by what is squeezing: too many rules split into a path-scoped directory along a real axis (write-side, measurement, dated evidence), never size alone; too much history moves to the archive with one-hop links; a new subsystem starts as its own path-scoped file, not more of the root file.
 When you do split, name the sibling and the structural blind spot it fills, then cross-reference it and say its rules are never restated here.
 Resolve a co-load collision in order: narrow the colliding module's path slot in `house.json`, tighten this repo's own `paths:`, trim what loads together, and only then raise `maxCoLoadLines`, with a dated `coload-ceiling` deviation carrying the new number as `ceiling`.
@@ -81,13 +84,14 @@ Scan the archive tier by default: a repo's docs are checked for drift unless it 
 Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (an archive tier excluded wholesale, not marked file by file) instead of scan-by-default; this is a real difference in what gets caught, so say plainly which posture it runs.
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what happened instead of deleting it, and state the supersession inside the new doc.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
-Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in HTML comments, which the harness strips before context; a document only opened with the Read tool keeps comments visible, so write those for that reader.
+Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in block-level HTML comments, which the harness strips from a CLAUDE.md file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader.
 Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, and the reason text after the colon runs to the closing marker.
 Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-reason`
 
 ## Don't document a command that does not exist
 
 Never write a command, script, path, or environment variable into a document before it exists. A README telling you to run a missing command is worse than a short one; the reader spends trust before time.
+The harness's prompt audit flags a command or file that does not exist in instruction files when someone runs it; the gate carries that check to the README, the changelog, and every scanned doc, on every commit.
 Before opening a docs pull request, walk each documented command against the repo's script list and hooks, and fix any contradiction in the same pull request instead of filing it.
 Mark a deliberately archival command inline with its reason, so a later reader reads it as history, not drift.
 Anchor: `npm run check:docs` resolves each `npm run <name>` and each bare script token against the repo's script list.

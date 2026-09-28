@@ -1,6 +1,6 @@
 // Tests for scripts/check-harness-release.mjs: the pure parsing functions
 // directly, and the CLI end to end against a fixture changelog via
-// --changelog (offline, no network).
+// --changelog and --survey (offline, no network).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,12 +55,9 @@ test('CLI: exits 0 when the fixture changelog has no version newer than the surv
     writeFileSync(changelogPath, '## 2.1.280\n\nnothing new\n\n## 2.1.278\n\nolder\n');
     const surveyPath = join(dir, 'harness-survey.md');
     writeFileSync(surveyPath, '## Addendum, 2026-09-22: Claude Code 2.1.280\n\nbody\n');
-    // The script resolves the survey path relative to the repo root, so this
-    // case exercises versionsSince against the real repo's surveyed version
-    // via the fixture changelog instead of a fixture survey.
     let stdout, status;
     try {
-      stdout = execFileSync(process.execPath, [SCRIPT, `--changelog=${changelogPath}`, '--json'], { encoding: 'utf8' });
+      stdout = execFileSync(process.execPath, [SCRIPT, `--changelog=${changelogPath}`, `--survey=${surveyPath}`, '--json'], { encoding: 'utf8' });
       status = 0;
     } catch (e) {
       stdout = e.stdout;
@@ -80,9 +77,11 @@ test('CLI: exits 1 when the fixture changelog has a version newer than the surve
   try {
     const changelogPath = join(dir, 'CHANGELOG.md');
     writeFileSync(changelogPath, '## 2.1.283\n\nnewer\n\n## 2.1.280\n\nolder\n');
+    const surveyPath = join(dir, 'harness-survey.md');
+    writeFileSync(surveyPath, '## Addendum, 2026-09-22: Claude Code 2.1.280\n\nbody\n');
     let stdout, status;
     try {
-      stdout = execFileSync(process.execPath, [SCRIPT, `--changelog=${changelogPath}`, '--json'], { encoding: 'utf8' });
+      stdout = execFileSync(process.execPath, [SCRIPT, `--changelog=${changelogPath}`, `--survey=${surveyPath}`, '--json'], { encoding: 'utf8' });
       status = 0;
     } catch (e) {
       stdout = e.stdout;

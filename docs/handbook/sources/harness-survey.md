@@ -816,3 +816,40 @@ Claude Code 2.1.280 (changelog: https://raw.githubusercontent.com/anthropics/cla
 - A write through a symlink is now judged by where the write lands rather than by the symlink path itself. Complement to the permissions rule; no rule here claimed the older behavior.
 - `PermissionRequest` agent-type hooks no longer run. Unique with no impact: no house hook registers a `PermissionRequest` agent-type matcher.
 - A newly released model starts at its own default effort until a per-model level is set. Complement: handled by the new effort line in the claude-code rule ("Set the model explicitly on every subagent and workflow agent").
+
+## Re-survey, 2026-09-28 (Claude Code 2.1.283)
+
+Run with the `adapting-to-harness-updates` skill's full path: the main survey workflow over 13 harness areas (the eight from 2026-09-20 plus settings and admin, security and data, checkpointing, best practices, and tools and context, the five the 2026-09-20 critic named), a changelog triage of 2.1.281 to 2.1.283, a model-docs check, and the harness's own `/doctor prompt-audit` over this repo.
+
+### Result
+
+148 items classified: 0 confirmed duplicates, 0 confirmed conflicts, 96 complements (5 of them downgraded from a duplicate or conflict claim), 52 uniques, 46 rewords proposed. Every downgrade fell to the enforcement lens: the house text reaches the model where the native guidance does not, or sets a stricter policy than the native default. The rewords are a citation pass. Four themes ran across modules: auto mode as the built-in starting mode thins several floors the rules assumed; `/doctor prompt-audit` and the root-file trim check are the advisory floor under most docs rules; the harness's worktree tool applies defaults a manual `git worktree add` skips; and several anchors overstated native behavior while a few understated it. A refuter checked each shipped reword against the banked facts, since the skeptics see only duplicate and conflict claims.
+
+### Changelog, 2.1.281 to 2.1.283
+
+- `claude plugin validate` warns on a shell-form hook that leaves `${CLAUDE_PLUGIN_ROOT}` unquoted (2.1.281). Conflict with this repo's gate, not a rule: `check:plugin` runs `--strict`, so CI failed on every PR. Fixed by quoting all four commands in `plugins/house/hooks/hooks.json` (#84). The first triage filed this entry as noise; the skill now runs the gate under the new CLI before reading the changelog.
+- `/doctor prompt-audit` audits instruction files, skills, agents, and commands for stale references and prompting patterns written for older models (2.1.283). Complement: the docs rules and the `drift` family now cite it as the on-request, propose-only floor that the gate turns into a check on every commit.
+- `claude plugin eval` requires git 2.31 or later (2.1.283). Complement: recorded beside the eval command in `docs/handbook/testing.md`.
+- Auto mode uses the server-side classifier by default on a direct Anthropic API connection with telemetry off, and where that review runs it holds read-only and sandboxed shell commands for it too (2.1.281, 2.1.282). Complement: the claude-code rule already expects a classifier on a production deploy.
+- The large-instruction-file startup notice counts files and `@` imports together (2.1.281). Complement to the root-file and co-load rules; `coload` still counts the path-scoped sum the notice does not.
+- `availableModelsMatch` and `deniedModels` managed settings (2.1.283). Complement to "Expect a managed model list to apply as given"; the rule text stays true.
+- Auto-memory writes from a subdirectory of a repository no longer read as sensitive-file writes (2.1.283), and `/deep-research` reliability changes (2.1.281). No rule change; the deep-research fork's own upstream check covers the second.
+
+Model facts are unchanged since the 2026-09-22 addendum.
+
+### Prompt audit
+
+Applied here: a model name and measured agent counts moved out of the claude-code rule's prose (the numbers stay in `docs/handbook/claude-code.md`), the per-pass deletion quota in "Cut, don't append" that contradicted "finding no candidate is valid", and a history reference in the root `CLAUDE.md`. Its other findings sit in user-level skills and third-party plugins outside this repo.
+
+### Where the bank lives
+
+`/Users/DoubleA/Documents/house-rules-harness-research/2026-09-28/`: `main-synthesize-report.md` (the disposition report, with the PR plan and the open questions in its sections 7 and 8), `main-completeness-critic.md`, `facts.json`, `classifications.json`, `verifications.json`, and the workflow scripts as run.
+
+### Deferred by decision
+
+- The docs rule "Anchor every claim to a grep-able token" does not gain the prompt-audit citation the report proposed. The same floor is cited on "Don't document a command that does not exist" and in the `drift` family's header, and a third copy would add a co-loaded line for no new fact.
+
+- Adding `NotebookEdit` to the branch guard's matcher and dropping the stale `MultiEdit` name. It tightens the guard's deny set, the breaking class under ADR 0011, so it waits for the owner's call and the next minor.
+- A decision record declaring plugin skills with `paths:` frontmatter a considered and declined delivery route for rules. The reason is recorded here: a plugin update reaches every enabled repo at once, with no per-repo pin, config, or deviation record.
+- `deploy-guards.mjs` requiring every check run on the SHA to conclude `success`, which a hosted review's `neutral` conclusion would fail. A patch, pending confirmation that such a run lands on the checked SHA.
+- A gap run over what the critic named as unresearched: the `claude mcp` and `claude config` CLI help, output styles, and the Agent SDK docs.

@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.13.4 module=github source=modules/github/rules/github.md body-sha256=886d2b26ee26c097de82c5b1b22592418beff34fdb7f1409d651d6a037f1c8c4 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.4 module=github source=modules/github/rules/github.md body-sha256=15aaf6b633ed69dc6600dfa616bf4bb32fe5d05532f0157bc07bfe9eb5d6308b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -42,7 +42,7 @@ Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 Have a scheduled audit open or update an issue rather than turn the run red, since a recurring red X trains you to ignore it.
 Keep a read-only data-quality report non-failing on purpose, and say so in a comment, so a finding never reads as a broken build.
 Comment a cron out with its reason instead of deleting it, so restoring the cadence is two lines. Verify a stale issue's premise against current code and live data first.
-Anchor: none (because a failure policy is a per-workflow editorial choice no checker can read).
+Anchor: none (because a failure policy is a per-workflow editorial choice no checker can read). A scheduled agent run writes only to its run log unless its prompt directs it to post and its allowed tools include the issue command, so grant those before counting on the issue.
 Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-run-and-comment-out-a-cron-with-its-reason`
 
 ## Turn on push protection, head-branch deletion, and grouped dependency updates
@@ -73,13 +73,13 @@ Receipts: `docs/handbook/github.md#never-put-a-closing-keyword-beside-an-issue-n
 
 Ship a multi-phase change as commits on one PR with one reviewer, since a PR per step buys review nobody performs.
 After merging a stack's parent, confirm each child re-targeted its base, and fix forward from the leaf if a merge landed on a feature branch instead.
-Anchor: none (because PR granularity is a judgment call; base-retarget confirmation is a look at the open PR list). A background session opens a draft PR on its own; the parallel-change command opens one per unit, so say which shape phased work takes first.
+Anchor: none (because PR granularity is a judgment call; base-retarget confirmation is a look at the open PR list). A fan-out command such as /batch or a background session works each unit in its own worktree, so say which shape phased work takes before launching one.
 Receipts: `docs/handbook/github.md#ship-phased-work-as-commits-on-one-pr`
 
 ## Stage explicit paths, never everything at once
 
 Stage by path, since staging everything sweeps in untracked local-only files never meant to leave the machine.
-Anchor: the `pre-commit` template refuses a staged secret, backstop for a wide add, not a licence to make one. A staging-broad permission rule allows sweep-everything too, so the prompt filters nothing.
+Anchor: the `pre-commit` template refuses a staged secret, and auto mode's classifier blocks a secret-bearing commit by default; both backstop a wide add without licensing one, and neither catches a local-only file that holds no secret. A staging-broad permission rule allows sweep-everything too, so the prompt filters nothing.
 Receipts: `docs/handbook/github.md#stage-explicit-paths-never-everything-at-once`
 
 ## Classify a merged branch by its PR state, not by merge detection
@@ -102,7 +102,7 @@ Receipts: `docs/handbook/github.md#never-delete-the-branch-from-the-worktree-bei
 Keep env files, account ids, and API keys out of the repo, and set every secret through the platform's secret command, not a config file.
 Load a vendor key from an env-file flag at run time, never a committed file.
 Run a credentialed diagnostic as a workflow so the token stays with the runner and never enters an agent session.
-Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; remote is the guard, hook the backstop. Credential files stay readable to a session, and a subprocess inherits its environment unless denied, so nothing local keeps a key from the chat.
+Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; remote is the guard, hook the backstop. By default credential files stay readable to a session and a subprocess inherits its environment; a Read deny rule, the sandbox's credential deny or mask, and the subprocess scrub variable narrow that, but none is on until configured.
 Receipts: `docs/handbook/github.md#keep-credentials-out-of-the-repo-the-commit-and-the-chat`
 
 ## Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
@@ -154,7 +154,7 @@ Receipts: `docs/handbook/github.md#ship-the-community-files-the-platform-looks-f
 Enforce a protected-branch policy inside `.githooks/pre-commit` and `.githooks/pre-push`, where git has already resolved the real repository, HEAD, and ref, not by reading a command's text.
 Arm the floor with `core.hooksPath`, set by `house render --apply` and every session start: a hook `.git/config` never points at never runs.
 Read the policy from `HEAD:house.json`, never the working tree, so a flipped `branchPolicy` counts only once landed.
-Keep the PreToolUse hook's job to verifying the floor is intact (every vendored hook byte-identical to the plugin's copy, `core.hooksPath` pointing at it) and refusing its short disable/bypass list (`--no-verify`, `core.hooksPath` or `include.path` in any form, `GIT_CONFIG_*`, `git replace`, `send-pack`, a `GIT_DIR`-named repo), never inferring a branch or tree from text.
+Keep the PreToolUse hook's job to verifying the floor is intact (every vendored hook byte-identical to the plugin's copy, `core.hooksPath` pointing at it) and refusing its short disable/bypass list (`--no-verify`, `core.hooksPath` or `include.path` in any form, `GIT_CONFIG_*`, `git replace`, `send-pack`, a `GIT_DIR`-named repo), never inferring a branch or tree from text, since the harness documents text-matched rules as no boundary, lets auto mode push to the default branch by default, and loads no project hooks in a bare or safe-mode session while git still runs its own.
 Read `house doctor` for whether the floor is armed here, since `core.hooksPath` is machine-local state a repo-only checker cannot see.
 Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb.
 Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`

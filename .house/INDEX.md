@@ -16,7 +16,7 @@
 - Disable model invocation on a skill with side effects
   Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so nothing in the session can fire it on its own and its body costs nothing until a caller names it.
 - Set the model explicitly on every subagent and workflow agent
-  Name the model on every agent call, because an omitted one silently inherits the session's, and a wide fan-out then runs at whatever tier you happened to be in.
+  Name the model on every agent call, because the harness resolves an omitted one through the subagent model variable and then to the session's model, so a wide fan-out otherwise runs at whatever tier you happened to be in.
 - Make a must-hold rule a hook, fail it closed, and test it with real payloads
   Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
 - Run adversarial review in a fresh subagent with a named lens
@@ -44,13 +44,13 @@
 - Give every rule file a paths list whose first segment resolves
   Give every rule file a `paths:` list, and make each glob's first segment resolve on disk. A glob resolving to nothing means the rule never loads, so it rots with no warning.
 - Put a fact where its litmus test says it belongs
-  The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
+  The harness advises keeping only broad facts in the root file, moving procedures to a skill and path-bound facts to a path-scoped rule, and its checkup proposes cutting what the code already says. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
 - State a rule as imperative, why, anchor, receipts
   Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to its receipt. A reader who disagrees needs the why and the evidence in front of them, or the rule gets worked around, not revised.
 - Move dates, names, and measured numbers out of rule prose
   A rule that needs a date, a name, or a measured number to state itself is history wearing a rule's clothes. Move the evidence to the archive; leave the rule, the part that must survive the next change.
 - Keep files under budget, and raise a ceiling only with a written reason
-  The harness gives the root file a soft line target and skips only a file past its hard size cap, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
+  The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
 - Cut, don't append, and trim on a fixed cadence
   When you add to a document, trade something out; a file that only grows is one nobody reads to the end. Cut any paragraph that records something happened rather than changes what the next session does.
 - Split a file only when splitting narrows what loads
@@ -154,7 +154,7 @@
 
 ## .claude/rules/house/testing.md
 - Give the agent a check it can run before you walk away
-  Ship one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
+  The harness's own guidance already says to give the agent a check that produces a pass or fail; treat that as the floor and ship it as one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford
   Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 - Split deterministic tests from model-behavior evals, and give each its own budget and cadence

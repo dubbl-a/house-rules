@@ -13,9 +13,10 @@ every important finding.
 
 ## Workspace
 
-- Enter a worktree before the first edit or branch: the harness's worktree tool, or
-  `git worktree add -b <branch> <path> origin/<default>`. The main checkout is for reading,
-  merging, and cleanup.
+- Enter a worktree before the first edit or branch through the harness's worktree tool. A manual
+  `git worktree add -b <branch> <path> origin/<default>` skips its base-branch setting and its
+  copy of gitignored files; use it only when the tool cannot reach the branch you need. The main
+  checkout is for reading, merging, and cleanup.
 - Never `git checkout -b` or `git switch -c` in the main checkout, not even for one commit.
 - A plan's first step is the worktree.
 
@@ -39,8 +40,10 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - The ladder, by capability and cost together: Fable, Opus, Sonnet, Haiku. Opus is the default
   session for most work; reach for Fable for demanding reasoning, long-horizon agentic work,
   or where Opus at higher effort still falls short.
-- A subagent, teammate, or workflow agent runs below the session by default unless the call says
-  otherwise. Roster agents are pinned; anything off-roster gets an explicit `model` and effort.
+- The harness runs a subagent, teammate, or workflow agent with no assigned model on the
+  session's model unless `CLAUDE_CODE_SUBAGENT_MODEL` says otherwise, so every off-roster call
+  names a `model` and effort below the session unless the task needs the session's tier. Roster
+  agents are pinned.
 - Fable never runs on a subagent unless the user asks for it.
 - Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
   or synthesis whose verdict decides, because the verdict is the product and Opus is moderately
@@ -55,7 +58,8 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Do inline: a one-line fix, a single grep, a single read, a question you can answer.
 - Batch related fixes into one brief so large files are read once.
-- Large workflows stay off unless the user asks; when they ask, name the agent count.
+- Workflows run only when the user asks; when they do, name the agent count, and treat the
+  harness's workflow size guideline as advice to stay under rather than a target.
 
 ## Briefs
 

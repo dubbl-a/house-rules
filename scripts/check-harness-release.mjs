@@ -4,10 +4,11 @@
 // since the vendored rules and skills describe a harness surface that moves.
 //
 // Usage:
-//   node scripts/check-harness-release.mjs [--changelog=<path>] [--json]
+//   node scripts/check-harness-release.mjs [--changelog=<path>] [--survey=<path>] [--json]
 //
 // --changelog reads a local changelog file instead of fetching the upstream
-// one, for tests and offline runs.
+// one, for tests and offline runs. --survey reads a survey file other than
+// the repo's own, so a test's baseline does not move with each new survey.
 //
 // Exit codes (read the verdict by name, never "unchanged" vs "changed"):
 //   0  no Claude Code version has shipped past the last surveyed one
@@ -60,9 +61,10 @@ function compareVersions(a, b) {
 }
 
 export function parseArgs(argv) {
-  const out = { changelog: null, json: false };
+  const out = { changelog: null, survey: null, json: false };
   for (const a of argv) {
     if (a.startsWith('--changelog=')) out.changelog = a.slice(12);
+    else if (a.startsWith('--survey=')) out.survey = a.slice(9);
     else if (a === '--json') out.json = true;
     else throw new Error(`unknown argument: ${a}`);
   }
@@ -86,12 +88,14 @@ async function main() {
 
   const here = dirname(fileURLToPath(import.meta.url));
   const root = findRepoRoot(here);
-  const surveyFile = join(root, SURVEY_PATH);
+  if (opts.survey === '') emit(3, 'bad argument (--survey needs a path)');
+  const surveyFile = opts.survey || join(root, SURVEY_PATH);
+  const surveyName = opts.survey || SURVEY_PATH;
   let surveyText;
-  try { surveyText = readFileSync(surveyFile, 'utf8'); } catch (e) { emit(3, `could not read ${SURVEY_PATH} (${e.message})`); }
+  try { surveyText = readFileSync(surveyFile, 'utf8'); } catch (e) { emit(3, `could not read ${surveyName} (${e.message})`); }
 
   const surveyed = lastSurveyed(surveyText);
-  if (!surveyed) emit(3, `no surveyed version found in ${SURVEY_PATH}`);
+  if (!surveyed) emit(3, `no surveyed version found in ${surveyName}`);
 
   let changelogText;
   try {

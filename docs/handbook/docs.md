@@ -107,9 +107,9 @@ No incident recorded for a fact landing in the wrong tier and causing a visible 
 routing rule is a judgment call by design; a gate can measure a file's length, not whether a
 fact is in the right file.
 
-Native floor, as of 2026-09-02: the memory page's own routing of always-true facts to the root
-file, procedures to a skill, and path-bound facts to a path-scoped rule, plus the checkup's
-trim of what is derivable from the code (https://code.claude.com/docs/en/memory).
+Native floor, as of 2026-09-28: the memory page's own advice to keep only broad facts in the
+root file, moving procedures to a skill and path-bound facts to a path-scoped rule, plus the
+checkup's proposed trim of what is derivable from the code (https://code.claude.com/docs/en/memory).
 
 ## State a rule as imperative, why, anchor, receipts
 
@@ -179,7 +179,8 @@ so a raise takes a written entry naming the path, the old and new limit, the rea
 decided, validated against the manifest schema, rather than landing as a quiet edit; the recorded
 raise takes effect only on a run with `--accept-lengths`.
 
-Native floor, as of 2026-09-02: the root instruction file's soft size guidance and the hard
+Native floor, as of 2026-09-28: the warning at startup and in status when an instruction file
+passes its recommended length or the loaded set passes a combined limit, and the hard
 file-size cap past which the harness skips the file entirely
 (https://code.claude.com/docs/en/memory). No other document in a repo has a native budget.
 
@@ -279,7 +280,7 @@ entry as a one-line lesson, dated, so the pointer from a rule's `Receipts:` line
 rather than a filename. The escape hatch that makes this possible carries its parsing quirk
 inline: only the closing `-->` terminates the reason text, so the reason itself may contain
 hyphens and most punctuation. Maintainer notes live in the same HTML-comment mechanism, since
-Anthropic strips block comments before context injection, so they cost no context and are
+Anthropic strips block comments from a CLAUDE.md file before context injection, so they cost no context and are
 excluded from the gate.
 
 Two repo-a documents show the opt-out is not only for finished history. repo-b's

@@ -37,7 +37,7 @@ Receipts: `docs/handbook/database.md#let-row-lifecycle-decide-a-new-table-never-
 Ship the registry line for a new table in the same PR as the migration that creates it, because a registry filled in later is a registry filled in from memory.
 Record purpose, writer, readers, and data class for each table, so the next database review starts from a lookup instead of archaeology.
 Check the registry against live grants in both directions, because a table missing from the registry and a registry line whose grants no longer exist are both drift, and only the two-way check catches the second.
-Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy, because the hosted review that notices a doc going stale raises it as a non-blocking nit and is not available in every org.
+Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy, because the hosted review flags an outdated CLAUDE.md statement only as a non-blocking nit, reads a registry elsewhere only when a review instructions file asks it to, and is not available in every org.
 Receipts: `docs/handbook/database.md#add-the-table-registry-line-in-the-same-pr-as-the-migration`
 
 ## Store money as integer cents and reconcile against the books

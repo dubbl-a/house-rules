@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.13.4 module=engineering source=modules/engineering/rules/engineering.md body-sha256=42c41313b47cbb35dd18e53d0378837b9e26b3fb1b382787d7e135e1bc5101ed DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.4 module=engineering source=modules/engineering/rules/engineering.md body-sha256=6d10f67f6d3b3d857b81635094eb22126909eaf83b5ee2c7da879b9a76a61e1d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -57,14 +57,14 @@ Receipts: `docs/handbook/engineering.md#never-let-a-gate-mint-the-answer-key-it-
 
 Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
 Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
-Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial on failure, so carrying that outcome in every verdict is this repo's addition
+Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early and omits a delta when its arms are not comparable, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
 Receipts: `docs/handbook/engineering.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
 
 ## Show the ratio and the sample, because one number is never the accuracy
 
 Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
 Never average disagreeing estimands or quote one conditional against another, filter before publishing a count, print the true total under any capped list, label a dataset a floor when amendments will move it, keep the caveat attached, prefer a measured floor and ceiling to a modelled point, and measure recall rather than assume it.
-Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); published guidance alone lets one set of runs read as near certain or near impossible, so attaching sample and estimand to every rate is this repo's requirement
+Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); the harness's eval runner repeats each case and reports a mean score, but a mean alone lets one set of runs read as near certain or near impossible, so attaching the sample and estimand to every rate is this repo's requirement
 Receipts: `docs/handbook/engineering.md#show-the-ratio-and-the-sample-because-one-number-is-never-the-accuracy`
 
 ## Make a measuring instrument reproducible
@@ -72,7 +72,7 @@ Receipts: `docs/handbook/engineering.md#show-the-ratio-and-the-sample-because-on
 Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
 Regenerate a fixture from its source under a seed instead of curating it, treat a holdout as spent once validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with its re-pull command, move the baseline in the change that moves the numbers with the why in the PR, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
 When the instrument drives an agent, pin the bare non-interactive invocation that skips ambient discovery, and record the pricing basis beside any reported cost, since a rate or residency multiplier can move that figure without moving the bill.
-Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness pins the model and prices at list but leaves sampling and pricing basis free to move, so seeding the fixture and recording the basis are this repo's addition
+Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness advises pinning the model, can replay mock answers copied into its replay directory, and reports cost at list price, but leaves fixture sampling and the pricing basis free to move, so seeding the fixture and recording the pricing basis are this repo's addition
 Receipts: `docs/handbook/engineering.md#make-a-measuring-instrument-reproducible`
 
 ## Assert an invariant where its state is created, with a why and a remedy

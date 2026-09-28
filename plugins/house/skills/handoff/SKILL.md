@@ -13,7 +13,9 @@ opens an issue only for work someone will do: each next-cycle item becomes one, 
 open issues first. Anything deferred by decision is recorded with its reason where the decision
 already lives, because that reason is the one thing the next session cannot reconstruct.
 
-The snapshot carries only what the next session cannot reconstruct on its own. Gate verdicts and
+The harness already resumes a session's full history with --continue or --resume and keeps
+machine-local auto memory, so the snapshot carries only what those cannot: next steps and
+decisions another machine or person has to find in the repo or its issues. Gate verdicts and
 count tables are deliberately not in it: both re-run in seconds against the recorded SHA, and a
 re-run number cannot be fabricated the way a copied one can.
 
