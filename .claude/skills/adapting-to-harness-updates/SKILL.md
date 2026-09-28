@@ -26,7 +26,10 @@ every fact in it still holds. This skill finds all four and fixes them.
    `HARNESS_ROUTINE_TOKEN` secrets are set, the Action also fires a cloud routine. The routine runs
    the delta addendum path and opens a draft PR on `claude/harness-addendum-<version>`. When that
    PR exists, start from it rather than re-triaging. Compare against `claude --version` too.
-3. **Collect the delta** into the scratchpad, one source per agent:
+3. **Run the gate under the new CLI** before reading anything: `npm run verify` on a clean
+   checkout. The plugin validator runs with `--strict`, so a warning a release adds fails the
+   gate, and a changelog triage can read that entry as noise.
+4. **Collect the delta** into the scratchpad, one source per agent:
    - the Claude Code changelog sections since the baseline
      (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md), the only source
      that dates a change;
@@ -34,21 +37,21 @@ every fact in it still holds. This skill finds all four and fixes them.
    - the harness's own prompt audit over this repo (`/doctor prompt-audit` in a session). It
      reports stale paths, dead commands, contradicting instructions, and prompting patterns
      written for older models.
-4. **Choose the depth.** Use the judgment below. Say which one you picked and why.
-5. **Triage and classify.** Every candidate gets one disposition: DUPLICATE, CONFLICT, COMPLEMENT,
+5. **Choose the depth.** Use the judgment below. Say which one you picked and why.
+6. **Triage and classify.** Every candidate gets one disposition: DUPLICATE, CONFLICT, COMPLEMENT,
    or UNIQUE (definitions in [references/dispositions.md](references/dispositions.md)). Grep the
    rule files, `plugins/house/orchestration/ORCHESTRATION.md`, the agents, the hooks, the skills,
    and the evals for any text that claims the old behavior.
-6. **Verify.** A DUPLICATE or CONFLICT counts only after two skeptics fail to refute it. One reads
+7. **Verify.** A DUPLICATE or CONFLICT counts only after two skeptics fail to refute it. One reads
    for doc accuracy and one for enforcement reality, and each defaults to refuted when unsure. The
    session then reads the cited line and the rule text itself. Anything you can settle by running
    it (`--help`, a hook with a real payload, the checker), run.
-7. **Act on the disposition.** Resolve a conflict in the rule or hook. Retire a duplicate, or keep
+8. **Act on the disposition.** Resolve a conflict in the rule or hook. Retire a duplicate, or keep
    it as a declared duplicate that names the native floor. Reword a complement only where the rule
    claims or implies a floor, and cite the fact. Record a unique and leave it. A prompt-audit
    finding changes wording, never a rule's claim, and it has to fit the rule shape the checker
    enforces.
-8. **Record** in the three places described in
+9. **Record** in the three places described in
    [references/recording-and-release.md](references/recording-and-release.md). Then ship through
    the release flow there.
 
