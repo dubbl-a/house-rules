@@ -53,8 +53,8 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Match the tier to the task: locations and receipt checks on Haiku, code and prose on Sonnet,
   judgment on Opus.
 - Subagents do not spawn subagents. They report back. Roster agents cannot, since none lists the
-  Agent tool. An off-roster agent can, because the spawn-depth cap allows nesting by default, so
-  its brief forbids it under DO NOT.
+  Agent tool. The built-in general-purpose, Explore, and Plan agents cannot by default; a
+  custom off-roster agent with unrestricted tools can, so its brief forbids it under DO NOT.
 
 ## Delegation
 

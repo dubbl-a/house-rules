@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.13.5 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=0cd51cd02fb745fb4f21562868243956189fba754e0b708087c9ea11dea40095 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.13.5 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9113c39f98025d31fe37629d6f4e177dcda930567e97505349214384865d8009 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -135,7 +135,7 @@ Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-session
 Commit an allowlist covering the repo's own script surface and read-side platform commands, nothing broader, and authorize deploy and egress verbs through a skill instead.
 Allow-list network fetches per domain rather than blanket, and pin the servers and services the project enables by name rather than inheriting whatever is installed, since a print-mode run loads them with no approval prompt.
 Pin them from the deny side too, since the disable list binds in every session type including an untrusted checkout, and give a scripted run the strict server-config flag so it connects only what it was handed.
-Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule on a server tool out of settings, since the loader drops it with only a startup notice and a doctor line; pass it as the one-session disallowed-tools flag when a scripted run needs it.
+Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule on a server tool out of settings, since the loader drops it, noting that only in the interactive start dialog and a doctor line; pass a parameter-scoped deny as the one-session disallowed-tools flag when a scripted run needs it.
 Keep the wide accreted list in `settings.local.json`, gitignored and free of machine paths, and forward-declare a script you are about to add so its first run prompts nothing.
 Prune it on a cadence, since permission lists merge across scope rather than override, so one broad grant supersedes every narrow one and a stale entry outlives the rename that orphaned it.
 Shape the list rather than only pruning it: allow a tool broadly and deny its escape hatches, since hazards are finite and stable per tool while safe invocations are unbounded, growing with every approval.

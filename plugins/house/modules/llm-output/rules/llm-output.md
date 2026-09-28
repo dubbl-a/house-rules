@@ -17,7 +17,7 @@ Receipts: `docs/handbook/llm-output.md#quarantine-model-output-until-a-human-mov
 
 Put the process in data, the constants in config, the arithmetic in code, then let the model supply only judgment; anything re-derived from memory drifts between runs.
 Prefer a fixed code path whenever steps are knowable in advance, and reserve the model for work whose steps you cannot predict.
-Anchor a printed run or a workflow agent on a supplied output schema where one applies, since the harness fails a printed run on an invalid schema and validates a workflow agent's output against its schema, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing, and not every keyword: a format annotation passes unenforced, and a run reported as a success with no structured result is a failure to handle, not an answer.
+Anchor a printed run or a workflow agent on a supplied output schema where one applies, since the harness fails a printed run on an invalid schema and validates a workflow agent's output against its schema, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing, and in an Agent SDK run not every keyword either: a format annotation passes unenforced, and a success that arrives with no structured result is a failure to handle, not an answer.
 Label which output parts were computed and which were judged, and carry review context inline with the row so a review step never has to resolve a path to know what it sees.
 Anchor: test. The deterministic half carries unit tests under `npm test`; an untested figure is a judgment call and must say so in the output.
 Receipts: `docs/handbook/llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots`
@@ -27,7 +27,7 @@ Receipts: `docs/handbook/llm-output.md#keep-a-deterministic-backbone-and-let-the
 Hold a high bar for a finding: review surfaces treat a run reporting nothing as normal, and this extends that floor to every report, so a real finding is a named edit with exact text, shipped as a pull request, not accumulated.
 Report an unmet requirement in a gap report instead of papering over it with the nearest substitute; that is the shape fabrication takes when a slot has to be filled.
 Close every report with a limitations section naming what was not checked, so a thin pass never reads thorough.
-Anchor: schema. The report schema accepts an empty findings list and rejects a missing limitations section: silence validates, a hollow finding does not; never require a non-empty findings list, since the harness re-prompts a schema-bound run until it conforms and would press a finding out of nothing.
+Anchor: schema. The report schema accepts an empty findings list and rejects a missing limitations section: silence validates, a hollow finding does not; never require a non-empty findings list, since the harness re-prompts a schema-bound run up to its retry limit and would press a finding out of nothing.
 Receipts: `docs/handbook/llm-output.md#report-no-finding-rather-than-manufacture-one`
 
 ## Refute with named lenses, drop by default, and log the drops
