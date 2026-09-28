@@ -5,6 +5,8 @@ date: 2026-08-24
 
 # Vendor rules over imports, symlinks, and replay
 
+> Amended by [0014](0014-plugin-skills-with-paths-are-a-declined-delivery-route.md) on 2026-09-28: plugin skills with `paths:` frontmatter, a route this record did not weigh, are declined too. The decision below stands.
+
 ## Context and problem statement
 
 house has to get rule content into eight repos and keep it current without turning every repo into a fork. Three delivery mechanisms already exist on the platform or in public tooling: `@path` imports, native `.claude/rules/` symlinks, and copier-style regenerate-diff-replay. Each one is free. None of them gives a per-repo deviation record, and the package needs a decision that survives the pull of "just symlink it."

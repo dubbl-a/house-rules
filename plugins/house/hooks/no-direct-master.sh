@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash, Edit, Write, MultiEdit) for repos that have adopted
-# house and opted a policy in via house.json. ADR 0013 carries the reasoning;
-# this header states the contract.
+# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit) for repos that
+# have adopted house and opted a policy in via house.json. ADR 0013 carries the
+# reasoning; this header states the contract. MultiEdit stays in the matcher
+# for older CLIs that still offer it: a tool name the harness never sends
+# costs nothing.
 #
 # Since #58 this hook is NOT the branch guard. The guard is the git-hook floor
 # the github module vendors (.githooks/pre-commit, pre-push,
@@ -23,7 +25,8 @@
 #      rewrites an object (update-ref, symbolic-ref including a refs/remotes
 #      spoof, branch -f/-M, push --delete, git replace and any refs/replace/
 #      ref, which changes what HEAD:house.json even says)
-#   B. an Edit/Write/MultiEdit whose file_path is anywhere under the repo's
+#   B. an Edit/Write/MultiEdit whose file_path, or a NotebookEdit whose
+#      notebook_path, is anywhere under the repo's
 #      .githooks/ or under its git directory, in any case and through any
 #      symlink or `..`, plus git's per-user config (~/.gitconfig,
 #      $XDG_CONFIG_HOME/git/config), which can set hooksPath or an alias for
@@ -275,8 +278,12 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # process it spawns is latency the session pays. Every field is emitted with a
 # one-character prefix so an empty value still occupies a line, and the
 # command goes LAST because it is the only field that can hold newlines.
+# NotebookEdit names its target in notebook_path; it is read into file_path
+# so the file rules below apply to it unchanged.
 payload_fields=$(jq -r '"t" + (.tool_name // ""), "w" + (.cwd // ""),
-  "f" + (.tool_input.file_path // ""), "c" + (.tool_input.command // "")' \
+  "f" + ((if .tool_name == "NotebookEdit" then .tool_input.notebook_path
+          else .tool_input.file_path end) // ""),
+  "c" + (.tool_input.command // "")' \
   <<<"$payload" 2>/dev/null || echo "")
 tool_name="${payload_fields%%$'\n'*}"; _rest="${payload_fields#*$'\n'}"
 payload_cwd="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
@@ -285,7 +292,7 @@ tool_name="${tool_name#t}"; payload_cwd="${payload_cwd#w}"
 file_path="${file_path#f}"; cmd="${cmd#c}"
 case "$tool_name" in
   Bash) MODE='bash'; file_path='' ;;
-  Edit|Write|MultiEdit) MODE='file'; cmd='' ;;
+  Edit|Write|MultiEdit|NotebookEdit) MODE='file'; cmd='' ;;
   *) exit 0 ;;
 esac
 
@@ -1187,7 +1194,7 @@ run_branch_scans() {
   return 0
 }
 
-# ── B for Edit/Write/MultiEdit ───────────────────────────────────────────
+# ── B for Edit/Write/MultiEdit/NotebookEdit ──────────────────────────────
 # EVERY path under the repo's .githooks/ is refused, not only the lock-listed
 # ones: the scaffold the repo owns (.githooks/pre-commit.d/20-secrets) runs
 # inside the same dispatcher and an unmanaged .d file added here is exactly

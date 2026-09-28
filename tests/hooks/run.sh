@@ -3,7 +3,8 @@
 #
 # For each case, builds a REAL PreToolUse JSON payload (Bash:
 # {"tool_name":"Bash","tool_input":{"command":"..."},"cwd":"..."}; Edit,
-# Write and MultiEdit: tool_input.file_path), pipes it into the REAL hook
+# Write and MultiEdit: tool_input.file_path; NotebookEdit:
+# tool_input.notebook_path), pipes it into the REAL hook
 # script, and asserts on the captured stdout JSON (via jq,
 # .hookSpecificOutput.permissionDecision) and the exit code.
 #
@@ -130,6 +131,12 @@ mk_payload() {
 mk_file_payload() {
   jq -n --arg tool "$1" --arg fp "$2" --arg cwd "$3" \
     '{tool_name: $tool, tool_input: {file_path: $fp}, cwd: $cwd}'
+}
+
+# mk_notebook_payload <notebook_path> <cwd> -> real NotebookEdit PreToolUse JSON
+mk_notebook_payload() {
+  jq -n --arg np "$1" --arg cwd "$2" \
+    '{tool_name: "NotebookEdit", tool_input: {notebook_path: $np, new_source: "x"}, cwd: $cwd}'
 }
 
 # run_hook <payload-json> -> sets HOOK_OUT / HOOK_CODE. HOOK_PATH_PREFIX picks
@@ -1218,13 +1225,26 @@ else
 fi
 git -C "$a" checkout -q feat/a
 
-# ── Edit/Write/MultiEdit: nothing under .githooks/ or the git dir ─────────
+# ── Edit/Write/MultiEdit/NotebookEdit: nothing under .githooks/ or the git dir
 expect_deny "Edit on a vendored .githooks file" \
   "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "part of the git-hook floor"
 expect_deny "MultiEdit on a vendored .githooks file" \
   "$(mk_file_payload MultiEdit "$a/.githooks/pre-commit.d/10-house-branch" "$a")" "part of the git-hook floor"
 expect_deny "Write on .git/config" \
   "$(mk_file_payload Write "$a/.git/config" "$a")" "git-hook floor"
+# NotebookEdit names its target in notebook_path, not file_path, and gets
+# exactly the Edit/Write rules. A payload with no notebook_path writes nothing,
+# so it is allowed the way an Edit with no file_path is.
+expect_deny "NotebookEdit on a vendored .githooks file" \
+  "$(mk_notebook_payload "$a/.githooks/pre-push" "$a")" "part of the git-hook floor"
+expect_deny "NotebookEdit on .git/config given as a relative path" \
+  "$(mk_notebook_payload ".git/config" "$a")" "git-hook floor"
+expect_allow "NotebookEdit on an ordinary notebook" \
+  "$(mk_notebook_payload "$a/analysis.ipynb" "$a")"
+expect_allow "NotebookEdit with no notebook_path" \
+  "$(jq -n --arg cwd "$a" '{tool_name:"NotebookEdit", tool_input:{new_source:"x"}, cwd:$cwd}')"
+expect_allow "NotebookEdit does not read a stray file_path" \
+  "$(jq -n --arg cwd "$a" --arg fp "$a/.githooks/pre-push" '{tool_name:"NotebookEdit", tool_input:{file_path:$fp, notebook_path:($cwd + "/n.ipynb")}, cwd:$cwd}')"
 expect_deny "Write on .git/hooks/pre-commit" \
   "$(mk_file_payload Write "$a/.git/hooks/pre-commit" "$a")" "git-hook floor"
 # Round 2: the repo's own scaffold is refused too. It runs inside the same

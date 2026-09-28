@@ -9,8 +9,10 @@
  * prints a reason, so it's auditable after the fact instead of silent:
  *
  *   assertCiGreen — origin/<branch>'s tip commit must have at least one CI
- *     check run and every one must have concluded 'success'. Fails CLOSED on
- *     zero runs — a commit nothing has checked yet is not "passing".
+ *     check run and every one must have concluded 'success' or 'neutral'
+ *     (GitHub's non-failing conclusion; hosted Code Review always concludes
+ *     neutral). Fails CLOSED on zero runs — a commit nothing has checked yet
+ *     is not "passing".
  *   assertPrProvenance — origin/<branch>'s tip commit must belong to a
  *     merged pull request.
  *
@@ -106,10 +108,12 @@ function ghApiJson(scriptName, apiPath, purpose) {
 
 /**
  * evaluateCiGreen — given the check-runs GitHub reports for one commit,
- * decide whether CI is green. Fails CLOSED on zero runs: a commit nothing
- * has checked yet must never read as passing, so `ok` is false whenever
- * `total` is 0, not vacuously true. Pure (no network, no process exit) so
- * it's directly testable with plain fixtures.
+ * decide whether CI is green. A run passes when it concluded 'success' or
+ * 'neutral', which GitHub defines as non-failing; every other conclusion,
+ * 'skipped' included, and a null one (still pending) fails. Fails CLOSED on
+ * zero runs: a commit nothing has checked yet must never read as passing, so
+ * `ok` is false whenever `total` is 0, not vacuously true. Pure (no network,
+ * no process exit) so it's directly testable with plain fixtures.
  *
  * @param {Array<{name?: string|null, conclusion?: string|null}>} checkRuns
  * @returns {{ ok: boolean, total: number, passing: number, failing: Array<{name: string, conclusion: string|null}> }}
@@ -120,7 +124,7 @@ export function evaluateCiGreen(checkRuns = []) {
     return { ok: false, total: 0, passing: 0, failing: [] };
   }
   const failing = runs
-    .filter((r) => r.conclusion !== 'success')
+    .filter((r) => r.conclusion !== 'success' && r.conclusion !== 'neutral')
     .map((r) => ({ name: r.name ?? '(unnamed check)', conclusion: r.conclusion ?? null }));
   return { ok: failing.length === 0, total: runs.length, passing: runs.length - failing.length, failing };
 }
@@ -141,7 +145,8 @@ export function evaluatePrProvenance(pulls = []) {
 
 /**
  * assertCiGreen — require every CI check run on a commit (origin/<branch>'s
- * tip by default) to have concluded 'success'. Fails closed on zero runs.
+ * tip by default) to have concluded 'success' or 'neutral'. Fails closed on
+ * zero runs.
  *
  * @param {string} scriptName
  * @param {{ sha?: string, branch?: string, repo?: string }} [opts] — sha
