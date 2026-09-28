@@ -28,7 +28,7 @@ test('hooks.json declares a non-empty InstructionsLoaded array', () => {
 // `new RegExp` alone models only the second half, which is how a list ending
 // in a bare `mcp__` once passed here while no MCP call reached the hook.
 function matcherReaches(matcher, tool) {
-  if (/^[A-Za-z0-9_|, ]*$/.test(matcher)) {
+  if (/^[A-Za-z0-9_|, -]*$/.test(matcher)) {
     return matcher.split(/[|,]/).map((n) => n.trim()).includes(tool);
   }
   return new RegExp(matcher).test(tool);
