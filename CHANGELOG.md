@@ -6,6 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-29
+
+The branch guard stops refusing large MCP writes in repos that never adopted house-rules for a string that merely mentions a hook. Patch under ADR 0012: the guard's deny set narrows, not the breaking class.
+
+### Fixed
+- **The overrun deny ignores adoption only for a `.git` or `.githooks` path (#92).** When the guard's MCP scan runs out its time budget, it still denies an unchecked string with a `.git` or `.githooks` path component in any repo. A string whose only marker is `hook` (`src/hooks/`, `webhook`) now denies there only where an adopted repo is involved. A `file:` string is always checked as a path, so a URI that decodes to `.git/config` is not skipped. One case stays open by decision and is pinned as a test: a symlink named with a marker, pointing into an adopted repo's floor, named in an input large enough to use up the budget, from a repo that never adopted the guard. Checking every string for a symlink would push the hook past its timeout and refuse system paths in repos that never adopted it.
+
 ## [0.15.0] - 2026-09-28
 
 The branch guard fails closed on input it cannot read, closes the path and symlink gaps a review found, and guards file writes made through MCP tools. The rules and handbook record Claude Code 2.1.284, Sonnet 5.5 as the default Sonnet, and the answers to the surveys' open questions. Minor under ADR 0012: the guard's deny set tightens, the breaking class under ADR 0011.
