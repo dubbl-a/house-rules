@@ -1440,11 +1440,21 @@ if [[ "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"too large to check"* && "$_m
 else
   fail "4000 MCP strings outrun the scan budget and deny under 4000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
 fi
-# Past the budget, a string still unchecked that names .git or a hook refuses
-# the call whatever repo it is in, so the same input aimed at a repo that
-# never adopted house is refused too.
-expect_deny "ACCEPTED FALSE DENY: the same 4000 strings in a repo that never adopted house" \
-  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_huge" | jq --arg n "$n" '.paths |= map(sub("^.*/many/"; $n + "/many/"))')" "$n")" "too large to check"
+# Past the budget, only a string still unchecked with a .git or .githooks
+# path component refuses the call whatever repo it is in. A string whose only
+# marker is a substring (`.gitkeep`, `src/hooks/`, `webhook`) is decided by
+# adoption, so the same input aimed at a repo that never adopted house passes.
+expect_allow "the same 4000 strings in a repo that never adopted house" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_huge" | jq --arg n "$n" '.paths |= map(sub("^.*/many/"; $n + "/many/"))')" "$n")"
+_hooky=$(for ((i = 0; i < 2000; i++)); do printf '%s\n' "src/hooks/use$i.ts" "api/webhook$i/route.ts"; done | jq -R . | jq -s '{paths: .}')
+expect_allow "4000 src/hooks and webhook strings past the budget in a repo that never adopted house" \
+  "$(mk_mcp_payload mcp__fs__write_file "$_hooky" "$n")"
+expect_deny "the same src/hooks and webhook strings past the budget from an adopted cwd" \
+  "$(mk_mcp_payload mcp__fs__write_file "$_hooky" "$pg")" "too large to check"
+expect_deny "4000 strings past the budget in a repo that never adopted house, one a .githooks path" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq --arg m "$n/.GitHooks/pre-push" '.paths += [$m]')" "$n")" "too large to check"
+expect_deny "4000 strings past the budget in a repo that never adopted house, one a file: URI into .git" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq --arg m "file://$n/%2Egit" '.paths += [$m]')" "$n")" "too large to check"
 HOOK_ENV=()
 # A file: URI is percent-decoded after its scheme is dropped.
 expect_deny "MCP write with a file:// URI spelling .githooks as %2Egithooks" \
@@ -1457,8 +1467,10 @@ expect_deny "MCP write with a file:// URI spelling .git/config as .git%2Fconfig"
 # string costs a full check) and sorts before the marker string.
 ap="$TMP_ROOT/a-pad"; new_repo "$ap"; mkdir -p "$ap/docs"; ln -s docs "$ap/sl"
 _pad=$(for ((i = 0; i < 3000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s --arg m "$pg/.githooks/pre-push" '{paths: (. + [$m])}')
+HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
 _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_pad" "$n")"
+HOOK_ENV=()
 _end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
 _ms=$((_end - _start))
 if [[ "$HOOK_OUT" == *'"deny"'* && "$_ms" -lt 4000 ]]; then

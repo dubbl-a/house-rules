@@ -108,8 +108,11 @@
 # no path (in an adopted repo), when stdin is empty or does not parse as JSON
 # (in the adopted repo the hook itself runs in, since the payload's cwd is
 # unreadable too), when a Bash command is not a string (in the adopted repo
-# the payload's cwd names), when an MCP scan outruns its time budget (see
-# 16), when a file tool's path is longer than 4096 bytes (PATH_MAX_BYTES), or
+# the payload's cwd names), when an MCP scan outruns its time budget (in
+# any repo while a string still unchecked has a .git or .githooks path
+# component after file: decoding, see 16; otherwise in an adopted repo seen
+# so far or an adopted payload cwd, so a string whose only marker is a
+# substring such as `hook` never refuses where nothing adopted), when a file tool's path is longer than 4096 bytes (PATH_MAX_BYTES), or
 # an MCP string that long names .git, .githooks or a hook (both in an adopted
 # payload cwd; an unmarked over-length MCP string is content and skipped),
 # when the policy
@@ -166,9 +169,9 @@
 #  15. an MCP write-verb tool any of whose single-line strings names a floor
 #      path, even when that string is not where it writes (a note, a label)
 #  16. an MCP input too large to check within the scan's time budget, in an
-#      adopted repo, or anywhere while a string still unchecked names .git,
-#      .githooks or a hook (a large input into a repo that never adopted
-#      house is refused too)
+#      adopted repo, or anywhere while a string still unchecked has a .git or
+#      .githooks path component (a large input naming the own .git of a repo
+#      that never adopted house is refused too)
 # Deliberately NOT chased, because the floor covers it: a computed working
 # directory (`cd "$d"`), a `popd`, a refspec the config supplies, xargs, and a
 # git command inside a file this command runs. While the floor IS armed, a
@@ -1786,13 +1789,28 @@ if [[ "$MODE" == mcp ]]; then
   case "$project_dir" in /*) [[ "${project_dir%/}" != "${payload_cwd%/}" ]] || project_dir='' ;; *) project_dir='' ;; esac
   while IFS= read -r mcp_path; do
     [[ -n "$mcp_path" ]] || continue
-    # Out of time: refuse outright while a string naming a floor marker is
-    # still unchecked, whatever repo it or the cwd is in; otherwise refuse in
-    # any adopted repo seen so far, else in the cwd's.
+    # Out of time: refuse outright while a string still unchecked has a .git
+    # or .githooks path component (after file: decoding), whatever repo it or
+    # the cwd is in; otherwise refuse in any adopted repo seen so far, else in
+    # the cwd's. A marker that is only a substring (`src/hooks/`, `webhook`,
+    # `.gitkeep`) is left to adoption. The marked strings sort first, so the
+    # look stops at the first unmarked one.
     if scan_over_budget; then
-      if [[ "${mcp_path:0:1}" == 0 ]]; then
-        deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a git directory or a hook path. Split the call into smaller ones."
-      fi
+      mcp_rest="$mcp_path"
+      while [[ "${mcp_rest:0:1}" == 0 ]]; do
+        mcp_tag="${mcp_rest:1:1}"; mcp_rest="${mcp_rest:2}"
+        if [[ "$mcp_tag" == u && "$mcp_rest" == *%* ]]; then
+          mcp_rest="${mcp_rest//\\/\\\\}"; mcp_rest="${mcp_rest//%/\\x}"
+          printf -v mcp_rest '%b' "$mcp_rest" 2>/dev/null || true
+        fi
+        case "$mcp_rest" in
+          .[gG][iI][tT]|.[gG][iI][tT]/*|*/.[gG][iI][tT]|*/.[gG][iI][tT]/*|\
+          .[gG][iI][tT][hH][oO][oO][kK][sS]|.[gG][iI][tT][hH][oO][oO][kK][sS]/*|\
+          */.[gG][iI][tT][hH][oO][oO][kK][sS]|*/.[gG][iI][tT][hH][oO][oO][kK][sS]/*)
+            deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a .git or .githooks path. Split the call into smaller ones." ;;
+        esac
+        IFS= read -r mcp_rest || break
+      done
       MODE='toolarge'
       for ((memo_j = 0; memo_j < ${#MEMO_KEYS[@]}; memo_j++)); do
         if [[ -n "${MEMO_TOP[$memo_j]}" ]]; then toplevel="${MEMO_TOP[$memo_j]}"; decide_file_mode; fi
