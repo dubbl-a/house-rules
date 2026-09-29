@@ -110,14 +110,16 @@
 # unreadable too), when a Bash command is not a string (in the adopted repo
 # the payload's cwd names), when an MCP scan outruns its time budget (in
 # any repo while a string still unchecked has a .git or .githooks path
-# component after file: decoding, see 16; otherwise in an adopted repo seen
-# so far or an adopted payload cwd, so a string whose only marker is a
-# substring such as `hook` never refuses where nothing adopted), when a file tool's path is longer than 4096 bytes (PATH_MAX_BYTES), or
-# an MCP string that long names .git, .githooks or a hook (both in an adopted
-# payload cwd; an unmarked over-length MCP string is content and skipped),
-# when the policy
-# JSON will not parse, and on an unexpected internal failure after the policy has been read
-# (the ERR trap below).
+# component after file: decoding, or another marker and a symlink among its
+# path components, see 16; otherwise in an adopted repo seen so far or an
+# adopted payload cwd, so a string whose only marker is a substring such as
+# `hook`, in a path of plain directories, never refuses where nothing
+# adopted), when a file tool's path is longer than 4096 bytes
+# (PATH_MAX_BYTES), or an MCP string that long names .git, .githooks or a
+# hook (both in an adopted payload cwd; an unmarked over-length MCP string is
+# content and skipped), when the policy JSON will not parse, and on an
+# unexpected internal failure after the policy has been read (the ERR trap
+# below).
 #
 # Accepted false denies, all in the safe direction, all pinned in
 # tests/hooks/run.sh:
@@ -170,8 +172,10 @@
 #      path, even when that string is not where it writes (a note, a label)
 #  16. an MCP input too large to check within the scan's time budget, in an
 #      adopted repo, or anywhere while a string still unchecked has a .git or
-#      .githooks path component (a large input naming the own .git of a repo
-#      that never adopted house is refused too)
+#      .githooks path component, or another marker and a symlink among its
+#      path components (a large input naming the own .git of a repo that
+#      never adopted house is refused too, and so is one naming a symlinked
+#      path that holds `hook` or `.git` anywhere in it)
 # Deliberately NOT chased, because the floor covers it: a computed working
 # directory (`cd "$d"`), a `popd`, a refspec the config supplies, xargs, and a
 # git command inside a file this command runs. While the floor IS armed, a
@@ -1761,14 +1765,48 @@ if [[ "$MODE" == unreadable ]]; then
   exit 0
 fi
 
+# Past the scan budget, a string whose only marker is a substring (`hook`,
+# `my.git`) can still land in .git or .githooks through a symlink, which its
+# text does not show. Succeeds when any existing component of MCP string $1,
+# read against the payload cwd and the project directory, is a symlink, with
+# builtins only. The walk stops at the directory it is read against or any
+# ancestor of it (a system symlink such as /var on macOS is not the string's
+# own), and a string deeper than 256 components counts as linked.
+MCP_LINK_CLEAN=''
+mcp_path_has_link() {
+  local p="$1" q depth next=''
+  local -a cands
+  # shellcheck disable=SC2088 # the literal tilde is what is being matched
+  case "$p" in "~") p="${HOME:-}" ;; "~/"*) p="${HOME:-}/${p#"~/"}" ;; esac
+  case "$p" in
+    /*) cands=("$p") ;;
+    *) cands=("${payload_cwd:-.}/$p"); [[ -z "$project_dir" ]] || cands+=("$project_dir/$p") ;;
+  esac
+  for q in "${cands[@]}"; do
+    depth=0
+    while :; do
+      q="${q%"${q##*[!/]}"}"
+      [[ -n "$q" && "$q" != "$MCP_LINK_CLEAN" ]] || break
+      [[ "${payload_cwd%/}/" != "$q/"* && "${project_dir%/}/" != "$q/"* ]] || break
+      [[ ! -L "$q" ]] || return 0
+      (( ++depth <= 256 )) || return 0
+      [[ "$q" == */* ]] || break
+      q="${q%/*}"
+      (( depth > 1 )) || next="$q"
+    done
+  done
+  MCP_LINK_CLEAN="$next"
+  return 1
+}
+
 # MCP tools have no standard path field, so every string anywhere in
 # tool_input, and every object key (a map from path to content), that looks
-# like a path (holds a `/`, or starts with `.` or `~`) is read the way an
-# Edit's file_path is, after a leading `file:` URI scheme and its authority
-# (`file:///p`, `file://host/p`, `file:/p`) are dropped. A relative one is
-# read against the payload cwd and, when it differs, the project directory
-# the harness names. A multi-line string is content, not a path, and is
-# skipped. Nothing path-like means nothing to check.
+# like a path (is a file: URI, holds a `/`, or starts with `.` or `~`) is read
+# the way an Edit's file_path is, after a leading `file:` URI scheme and its
+# authority (`file:///p`, `file://host/p`, `file:/p`) are dropped. A relative
+# one is read against the payload cwd and, when it differs, the project
+# directory the harness names. A multi-line string is content, not a path,
+# and is skipped. Nothing path-like means nothing to check.
 if [[ "$MODE" == mcp ]]; then
   # Each line carries two one-character tags. The first is `0` for a string
   # that names a floor marker (.git, .githooks, hook, in any case, or a file:
@@ -1779,7 +1817,7 @@ if [[ "$MODE" == mcp ]]; then
   if ! mcp_paths=$(jq -r '[.tool_input | ((.. | strings), (.. | objects | keys[]))
         | select((contains("\n") or contains("\r")) | not)
         | test("^file:"; "i") as $u | sub("^file:(//[^/]*)?"; ""; "i")
-        | select(contains("/") or startswith(".") or startswith("~"))
+        | select($u or contains("/") or startswith(".") or startswith("~"))
         | (if test("\\.git|hook"; "i") or ($u and contains("%")) then "0" else "1" end)
           + (if $u then "u" else "p" end) + .] | unique | .[]' \
         <<<"$payload" 2>/dev/null); then
@@ -1790,11 +1828,12 @@ if [[ "$MODE" == mcp ]]; then
   while IFS= read -r mcp_path; do
     [[ -n "$mcp_path" ]] || continue
     # Out of time: refuse outright while a string still unchecked has a .git
-    # or .githooks path component (after file: decoding), whatever repo it or
-    # the cwd is in; otherwise refuse in any adopted repo seen so far, else in
-    # the cwd's. A marker that is only a substring (`src/hooks/`, `webhook`,
-    # `.gitkeep`) is left to adoption. The marked strings sort first, so the
-    # look stops at the first unmarked one.
+    # or .githooks path component (after file: decoding), or any other marker
+    # and a symlink among its path components, whatever repo it or the cwd is
+    # in; otherwise refuse in any adopted repo seen so far, else in the cwd's.
+    # A marker that is only a substring (`src/hooks/`, `webhook`, `.gitkeep`)
+    # in a path of plain directories is left to adoption. The marked strings
+    # sort first, so the look stops at the first unmarked one.
     if scan_over_budget; then
       mcp_rest="$mcp_path"
       while [[ "${mcp_rest:0:1}" == 0 ]]; do
@@ -1809,6 +1848,9 @@ if [[ "$MODE" == mcp ]]; then
           */.[gG][iI][tT][hH][oO][oO][kK][sS]|*/.[gG][iI][tT][hH][oO][oO][kK][sS]/*)
             deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a .git or .githooks path. Split the call into smaller ones." ;;
         esac
+        if mcp_path_has_link "$mcp_rest"; then
+          deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a git or hook path through a symlink, which could lead into .git or .githooks. Split the call into smaller ones."
+        fi
         IFS= read -r mcp_rest || break
       done
       MODE='toolarge'

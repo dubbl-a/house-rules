@@ -1455,16 +1455,34 @@ expect_deny "4000 strings past the budget in a repo that never adopted house, on
   "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq --arg m "$n/.GitHooks/pre-push" '.paths += [$m]')" "$n")" "too large to check"
 expect_deny "4000 strings past the budget in a repo that never adopted house, one a file: URI into .git" \
   "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq --arg m "file://$n/%2Egit" '.paths += [$m]')" "$n")" "too large to check"
+expect_deny "4000 strings past the budget in a repo that never adopted house, one a bare file: URI into .git" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq '.paths += ["file:%2egit%2Fconfig"]')" "$n")" "too large to check"
+# A weak marker through a symlink can still land in .git or .githooks, so
+# past the budget one with a symlink among its path components refuses too.
+mkdir -p "$n/A" "$n/B"; ln -s "$pg/.githooks" "$n/A/hooklink"; ln -s "$pg/.git" "$n/B/my.git"
+expect_deny "4000 strings past the budget in a repo that never adopted house, one through a hooklink symlink to .githooks" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq '.paths += ["A/hooklink/pre-push"]')" "$n")" "too large to check"
+expect_deny "4000 strings past the budget in a repo that never adopted house, one through a my.git symlink to .git" \
+  "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq '.paths += ["B/my.git/config"]')" "$n")" "too large to check"
+# A strong-marker string that sorts last among the marked ones, behind 300
+# src/hooks strings, is still reached by the look past the budget.
+_last=$(for ((i = 0; i < 300; i++)); do printf '%s\n' "src/hooks/use$i.ts"; done | jq -R . | jq -s '{paths: (. + ["zz/.git/config"])}')
+expect_deny "300 src/hooks strings past the budget, then a .git path sorting last" \
+  "$(mk_mcp_payload mcp__fs__write_file "$_last" "$n")" "too large to check"
 HOOK_ENV=()
 # A file: URI is percent-decoded after its scheme is dropped.
 expect_deny "MCP write with a file:// URI spelling .githooks as %2Egithooks" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/%2Egithooks/pre-push" '{uri: $p}')" "$pg")" "git-hook floor"
 expect_deny "MCP write with a file:// URI spelling .git/config as .git%2Fconfig" \
   "$(mk_mcp_payload mcp__fs__write_file "$(jq -n --arg p "file://$pg/.git%2Fconfig" '{uri: $p}')" "$n")" "git-hook floor"
+# A file: URI is a path whatever it holds, a `/` or not.
+expect_deny "MCP write with a bare file: URI spelling .git/config as %2egit%2Fconfig" \
+  "$(mk_mcp_payload mcp__fs__write_file '{"uri": "file:%2egit%2Fconfig"}' "$pg")" "git-hook floor"
 # Strings that name a floor marker are scanned first, and one left unchecked
 # when the budget runs out refuses the call whatever the cwd's adoption. The
-# padding goes through a symlink in a repo that never adopted house (so each
-# string costs a full check) and sorts before the marker string.
+# padding, through a symlink in a repo that never adopted house, is unmarked,
+# so it sorts after the marker string, which the look past the budget meets
+# first.
 ap="$TMP_ROOT/a-pad"; new_repo "$ap"; mkdir -p "$ap/docs"; ln -s docs "$ap/sl"
 _pad=$(for ((i = 0; i < 3000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s --arg m "$pg/.githooks/pre-push" '{paths: (. + [$m])}')
 HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
