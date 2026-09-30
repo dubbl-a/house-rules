@@ -6,8 +6,21 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-09-30
+
+Codex and Gemini CLI become render targets, worktrees get a cost-lever scaffold and guide, the kit upstream is watched weekly, and one llm-output sentence follows Claude Code 2.1.285. Patch under ADR 0012: `targets` and the scaffold are additive and nothing tightens the guard's deny set.
+
 ### Added
 - **Codex and Gemini CLI as render targets (ADR 0015).** A new `house.json` key, `targets`, lists `claude-code`, `codex`, and `gemini`; absent means `["claude-code"]`, which must be present. With `codex` or `gemini` listed, `house render` writes a house-managed block into the root `AGENTS.md`: per module, the globs, the rule file, and its headings, never the rule text. Text outside the markers is yours and is never read. The block is locked, a hand edit inside it is refused unless `--force-managed AGENTS.md`, and dropping both targets removes it. A `gemini` target also gets a `GEMINI.md` importing `@AGENTS.md` unless Gemini CLI is already pointed at it. The checker validates `targets`, reports block tampering, prints one verdict line per target in the guard family, fails an unwired Gemini CLI, and warns when `AGENTS.md` passes Codex's default 32 KiB cap. `house doctor` prints one line per target; only Claude Code can show verified load evidence.
+- **A `.worktreeinclude` scaffold and the worktree cost levers (#101).** `SCAFFOLDS` in the claude-code module gains a row so `house render` writes the deliberately empty `.worktreeinclude` once, unhashed and editable. The handbook gains the subsection "What a worktree costs, and the levers that cut it" (the include file, a WorktreeCreate recipe kept as prose, `worktree.baseRef`, the per-directory prompt cache), and the worktree rule's Anchor line points at it.
+- **A weekly upstream watch (#63 item 1).** `.github/workflows/upstream-watch.yml` runs `check-orchestration-kit-upstream.mjs` weekly and opens or updates one `upstream-update` issue when the kit upstream moves. Items 2 to 5 of #63 stay open.
+- **ADR 0016 records the choices kept from the Claude era (closes #100).** Five decisions, each with its reason and revisit trigger: rule volume is measured before any trim (#102), `.claude/rules/house/` stays the one vendored copy, Anchor lines stay, the guard is neither shrunk nor ported now, and phase 2 of the multi-agent work ships as a Codex plugin and a Gemini extension (#103).
+
+### Changed
+- **The llm-output rule says a printed run can start in auto mode.** Claude Code 2.1.285 starts `claude -p` and SDK sessions on third-party providers or with telemetry off in auto mode when no permission mode is configured, and `--permission-mode` overrides it. The "Treat silence as not approval" rule now says the classifier rather than a person can clear a write there; it says "can start" because a first-party printed run was not confirmed live. The handbook chapter records the fact.
+
+### Notes
+- **The harness survey gains addenda for Claude Code 2.1.285 and 2.1.286.** `docs/handbook/sources/harness-survey.md` records each change that touches the package and its disposition: no conflicts, no duplicates, and `claude plugin validate --strict` passes under both. The 2.1.285 addendum proposed the reword above.
 
 ## [0.15.1] - 2026-09-29
 
