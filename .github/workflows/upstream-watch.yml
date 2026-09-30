@@ -73,8 +73,12 @@ jobs:
           else
             gh issue create --title "$TITLE" --body-file issue-body.md --label upstream-update
           fi
-      - name: Fail on an unreadable remote
-        if: steps.check.outputs.status == '3'
+      # Exit 3 is an unreadable remote; anything else (a crash, a kill) is not
+      # "unchanged" either, so both fail the job, and the checker's own JSON is
+      # printed first because --json sends the cause to kit.json, not the log.
+      - name: Fail on an unreadable remote or an unexpected exit
+        if: steps.check.outputs.status != '0' && steps.check.outputs.status != '1'
         run: |
-          echo "the orchestration kit remote could not be read (exit 3); see the job log above"
+          echo "check-orchestration-kit-upstream.mjs exited ${{ steps.check.outputs.status }}; its report follows"
+          cat kit.json 2>/dev/null || echo "(no kit.json was written)"
           exit 1
