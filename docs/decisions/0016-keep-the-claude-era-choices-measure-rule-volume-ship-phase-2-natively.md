@@ -32,7 +32,7 @@ would reopen each.
 * **1. Rule volume.** Shrink the rule set by argument until every agent gets full text, or keep
   it and measure.
 * **2. Rule location.** Move the canonical vendored copy to a neutral path such as
-  `.house/rules/`, or keep `.claude/rules/house/`.
+  `.house/rules/`, or keep `.claude/rules/house/`. <!-- docs-drift-ignore: a declined option, not a path in this tree -->
 * **3. Anchor lines.** Move native-floor statements out of the rule body into the handbook or a
   per-target note, or keep them.
 * **4. Guard weight.** Shrink the PreToolUse hook to floor-integrity checks and port that to
