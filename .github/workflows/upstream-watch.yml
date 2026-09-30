@@ -78,7 +78,9 @@ jobs:
       # printed first because --json sends the cause to kit.json, not the log.
       - name: Fail on an unreadable remote or an unexpected exit
         if: steps.check.outputs.status != '0' && steps.check.outputs.status != '1'
+        env:
+          CHECK_STATUS: ${{ steps.check.outputs.status }}
         run: |
-          echo "check-orchestration-kit-upstream.mjs exited ${{ steps.check.outputs.status }}; its report follows"
+          echo "check-orchestration-kit-upstream.mjs exited ${CHECK_STATUS}; its report follows"
           cat kit.json 2>/dev/null || echo "(no kit.json was written)"
           exit 1
