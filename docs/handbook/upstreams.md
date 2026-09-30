@@ -17,6 +17,10 @@ authority (CITED). REUSE and BORROW are the two that carry an ongoing rule:
   (docs module) includes glancing at this ledger for upstream movement worth
   re-importing. Re-importing is a normal PR against this package.
 
+The orchestration-kit row is watched weekly by
+`.github/workflows/upstream-watch.yml`, which opens an `upstream-update` issue
+when it moves; every other row is still re-checked by hand at the quarterly trim.
+
 | Upstream | Consulted | License | Relationship | What was taken | Re-check |
 | --- | --- | --- | --- | --- | --- |
 | adr.github.io/madr (MADR 4.0.0) | 2026-08-23 | MIT/CC0 | BORROW | the decision-record template in `docs/decisions/0000-template.md` | diff the template against the MADR repo's current `template/` |
