@@ -323,3 +323,64 @@ test('guard floor: check.mjs, arm-git-hooks.sh and the github module agree on wh
   // to the floor cannot slip past this file untested either.
   assert.deepEqual(sorted(FLOOR_FILES), sorted(checkerList));
 });
+
+// ADR 0015: a per-target verdict, one line per declared target, and findings
+// only for what a repo can fix: a missing block or unwired Gemini CLI.
+const AGENTS_BLOCK = '<!-- house-managed:begin v0.1.0 -->\n## House rules\n<!-- house-managed:end -->\n';
+const targetInfo = (json) => (json.info || []).filter((i) => i.family === 'guard' && i.kind === 'target');
+const targetFindings = (json) => (json.findings || []).filter((f) => f.family === 'guard' && f.kind === 'target');
+
+test('guard: declared targets print one verdict line each; codex and gemini say AGENTS.md, git floor, and unverified load', () => {
+  const dir = sandbox({ 'house.json': houseJson({ targets: ['claude-code', 'codex', 'gemini'] }), 'AGENTS.md': AGENTS_BLOCK, 'GEMINI.md': '@AGENTS.md\n' });
+  const { code, json, out } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 0, out);
+  const lines = targetInfo(json).map((i) => i.message);
+  assert.equal(lines.length, 3, JSON.stringify(lines));
+  assert.match(lines[0], /^claude-code: /);
+  for (const [i, name] of [[1, 'codex'], [2, 'gemini']]) {
+    assert.match(lines[i], new RegExp(`^${name}: instructions via AGENTS\\.md block; guard = git floor plus remote ruleset \\(no native hook yet\\); load = unverified`));
+  }
+  assert.equal(targetFindings(json).length, 0);
+  const text = run(dir, ['--only=guard']).out;
+  assert.match(text, /^== guard ==$/m);
+  assert.match(text, /\[target\] codex: .*\(info\)$/m);
+});
+
+test('guard: a repo that declares no targets prints no target lines (claude-code output unchanged)', () => {
+  const dir = sandbox({ 'house.json': houseJson() });
+  assert.equal(targetInfo(run(dir, ['--only=guard', '--json']).json).length, 0);
+});
+
+test('guard: a codex target with no AGENTS.md block is a finding', () => {
+  for (const files of [{}, { 'AGENTS.md': '# ours, no block\n' }]) {
+    const dir = sandbox({ 'house.json': houseJson({ targets: ['claude-code', 'codex'] }), ...files });
+    const { code, json } = run(dir, ['--only=guard', '--json']);
+    assert.equal(code, 1);
+    assert.ok(targetFindings(json).some((f) => f.path === 'AGENTS.md' && /house render --apply/.test(f.message)), JSON.stringify(json.findings));
+  }
+});
+
+test('guard: Gemini wiring passes through GEMINI.md\'s import or settings context.fileName, and is a finding otherwise', () => {
+  const house = houseJson({ targets: ['claude-code', 'gemini'] });
+  for (const files of [
+    { 'GEMINI.md': '# ours\n@AGENTS.md\n' },
+    { 'GEMINI.md': '@./AGENTS.md\n' },
+    { '.gemini/settings.json': JSON.stringify({ context: { fileName: 'AGENTS.md' } }) },
+    { '.gemini/settings.json': JSON.stringify({ context: { fileName: ['GEMINI.md', 'AGENTS.md'] } }) },
+  ]) {
+    const dir = sandbox({ 'house.json': house, 'AGENTS.md': AGENTS_BLOCK, ...files });
+    const { code, json } = run(dir, ['--only=guard', '--json']);
+    assert.equal(code, 0, `${JSON.stringify(files)} wires Gemini: ${JSON.stringify(json.findings)}`);
+  }
+  for (const files of [
+    {},
+    { 'GEMINI.md': '# ours, mentions AGENTS.md but imports nothing\n' },
+    { '.gemini/settings.json': JSON.stringify({ context: { fileName: ['GEMINI.md'] } }) },
+    { '.gemini/settings.json': '{ not json' },
+  ]) {
+    const dir = sandbox({ 'house.json': house, 'AGENTS.md': AGENTS_BLOCK, ...files });
+    const { code, json } = run(dir, ['--only=guard', '--json']);
+    assert.equal(code, 1, `${JSON.stringify(files)} leaves Gemini unwired`);
+    assert.ok(targetFindings(json).some((f) => /Gemini CLI/.test(f.message) && /@AGENTS\.md/.test(f.message)), JSON.stringify(json.findings));
+  }
+});

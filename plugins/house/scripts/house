@@ -776,6 +776,273 @@ function buildIndex(plan) {
   return `${lines.join('\n').replace(/\n+$/, '')}\n`;
 }
 
+// ── targets: the AGENTS.md block (ADR 0015) ──────────────────────────────
+//
+// Claude Code loads the vendored rules by path; Codex and Gemini CLI read a
+// root AGENTS.md and nothing under .claude/. For those targets render owns a
+// delimited BLOCK inside AGENTS.md, never the file: everything outside the
+// markers is the adopter's, preserved byte for byte and never read. The block
+// is a routing table (globs, rule file, H2 headings), not the rule text, so it
+// stays far under Codex's 32 KiB project-doc cap.
+const TARGETS = ['claude-code', 'codex', 'gemini'];
+const AGENTS_MD = 'AGENTS.md';
+const GEMINI_MD = 'GEMINI.md';
+const BLOCK_END = '<!-- house-managed:end -->';
+const BLOCK_BEGIN_RE = /^\s*<!--\s*house-managed:begin\b.*-->\s*$/;
+const BLOCK_END_RE = /^\s*<!--\s*house-managed:end\s*-->\s*$/;
+
+// Absent means ["claude-code"]. Render refuses a malformed value (see
+// targetsProblem) before it gets here, so this only ever filters a valid list
+// into canonical order; doctor, which never refuses, reads it the same way.
+function houseTargets(houseData) {
+  const t = isPlainObject(houseData) ? houseData.targets : undefined;
+  if (!Array.isArray(t)) return ['claude-code'];
+  return TARGETS.filter((x) => t.includes(x));
+}
+function wantsAgentsBlock(targets) { return targets.includes('codex') || targets.includes('gemini'); }
+
+// Unreadable input fails closed: a `targets` render cannot read would
+// otherwise fall back to ["claude-code"] and remove a block the repo asked
+// for. Same rules as the checker's manifest family. null when valid or absent.
+function targetsProblem(houseData) {
+  if (!isPlainObject(houseData) || !('targets' in houseData)) return null;
+  const t = houseData.targets;
+  if (!Array.isArray(t)) return `"targets" must be an array drawn from ${JSON.stringify(TARGETS)}, got ${JSON.stringify(t)}`;
+  const seen = new Set();
+  for (const x of t) {
+    if (!TARGETS.includes(x)) return `"targets" entry ${JSON.stringify(x)} is not one of ${JSON.stringify(TARGETS)}`;
+    if (seen.has(x)) return `"targets" lists ${JSON.stringify(x)} more than once`;
+    seen.add(x);
+  }
+  if (!t.includes('claude-code')) return '"targets" must include "claude-code"';
+  return null;
+}
+
+// Where the block sits in `raw`. The two marker lines are RESERVED for the
+// house block: a line matching either is a marker wherever it appears, a
+// code example included, because every attempt to parse Markdown fences
+// around them found another edge. Zero markers is `absent`; exactly one begin
+// followed by exactly one end is `ok`; anything else is `malformed`, and
+// `markers` names every marker line. The body is the lines strictly between
+// the markers, the begin line excluded the way managedBody excludes a managed
+// header, so a version bump alone never reads as a hand edit. Verbatim copy
+// of check.mjs's agentsBlock(), so the lock hash here is the one tamper
+// recomputes; tests/check/tamper.test.mjs pins the two copies.
+function agentsBlock(raw) {
+  const lines = raw.split('\n');
+  const markers = [];
+  lines.forEach((l, i) => {
+    if (BLOCK_BEGIN_RE.test(l)) markers.push({ i, kind: 'begin' });
+    else if (BLOCK_END_RE.test(l)) markers.push({ i, kind: 'end' });
+  });
+  const begins = markers.filter((m) => m.kind === 'begin').map((m) => m.i);
+  const ends = markers.filter((m) => m.kind === 'end').map((m) => m.i);
+  if (!markers.length) return { status: 'absent', lines, markers };
+  if (begins.length !== 1 || ends.length !== 1 || ends[0] < begins[0]) return { status: 'malformed', lines, markers, begins, ends };
+  return { status: 'ok', lines, markers, begin: begins[0], end: ends[0], body: lines.slice(begins[0] + 1, ends[0]).join('\n') };
+}
+
+// The block's lines, begin marker to end marker, built from the rule plan so
+// "Applies to" is exactly the pruned `paths:` render wrote into each rule.
+function buildAgentsBlock(plan, pluginVersion) {
+  const byModule = new Map();
+  for (const p of plan) {
+    if (p.target.kind !== 'rule' || p.target.module === 'claude-code') continue;
+    if (!byModule.has(p.target.module)) byModule.set(p.target.module, []);
+    byModule.get(p.target.module).push(p.target);
+  }
+  const body = [
+    '## House rules',
+    '',
+    'These rules live in `.claude/rules/house/`. Claude Code loads them automatically by path.',
+    'Other agents: before editing a file matching a module\'s globs, read that module\'s rule file.',
+  ];
+  for (const [mod, rules] of byModule) {
+    const globs = [...new Set(rules.flatMap((r) => r.globs))];
+    body.push('', `### ${mod}`, `Applies to: ${globs.map((g) => `\`${g}\``).join(', ')}`);
+    body.push(`Full text: ${rules.map((r) => `\`${r.path}\``).join(', ')}`);
+    // A bare "Don't" heading only introduces a list, so as a bullet it says nothing.
+    for (const r of rules) for (const h of extractH2WithFirstLine(r.content)) if (h.text !== "Don't") body.push(`- ${h.text}`);
+  }
+  const header = `<!-- house-managed:begin v${pluginVersion} DO NOT EDIT between these markers: house render rewrites it; text outside them is yours. Propose upstream, or house render --force-managed ${AGENTS_MD} -->`;
+  return { lines: [header, ...body, BLOCK_END], body: body.join('\n') };
+}
+
+// The line ranges [start, end] (0-based, inclusive) that are house's in a
+// file whose markers are broken, attributed by the lock rather than guessed:
+// a begin..end pair is house's outright; a lone begin owns the lines after it
+// only when they hash to the body the lock recorded, and a lone end the lines
+// before it likewise. Anything that cannot be attributed is a `problem`
+// (1-based line range) and the caller refuses, naming it, since leaving the
+// stale body behind as plain text doubles the file and deleting it could
+// take the adopter's own lines.
+function attributeBlockRegions(blk, recordedHash) {
+  const { lines, markers } = blk;
+  const regions = [];
+  const problems = [];
+  const lastLine = (idx) => (idx === lines.length - 1 && lines[idx] === '' && idx > 0 ? idx - 1 : idx);
+  let floor = 0;
+  for (let k = 0; k < markers.length; k++) {
+    const m = markers[k];
+    const next = markers[k + 1];
+    if (m.kind === 'begin' && next && next.kind === 'end') {
+      regions.push([m.i, next.i]); floor = next.i + 1; k += 1; continue;
+    }
+    if (m.kind === 'begin') {
+      const limit = next ? next.i : lines.length;
+      let hit = -1;
+      for (let j = m.i + 1; j <= limit && recordedHash; j++) {
+        if (sha256Hex(lines.slice(m.i + 1, j).join('\n')) === recordedHash) { hit = j; break; }
+      }
+      if (hit === -1) problems.push([m.i + 1, lastLine(limit - 1) + 1]);
+      else regions.push([m.i, hit - 1]);
+      floor = limit;
+      continue;
+    }
+    let hit = -1;
+    for (let j = m.i; j >= floor && recordedHash; j--) {
+      if (sha256Hex(lines.slice(j, m.i).join('\n')) === recordedHash) { hit = j; break; }
+    }
+    if (hit === -1) problems.push([floor + 1, m.i + 1]);
+    else regions.push([hit, m.i]);
+    floor = m.i + 1;
+  }
+  return { regions, problems };
+}
+
+// Rebuilds `raw` with each region's lines cut out, byte-exact everywhere
+// else, and `insert` (or nothing) where the first region was.
+function spliceRegions(raw, lines, regions, insert) {
+  const off = [];
+  let n = 0;
+  for (const l of lines) { off.push(n); n += l.length + 1; }
+  const after = (e) => (e + 1 < lines.length ? off[e + 1] : raw.length);
+  let out = '';
+  let cur = 0;
+  regions.forEach(([s, e], k) => {
+    out += raw.slice(cur, off[s]);
+    if (k === 0 && insert) out += insert;
+    cur = after(e);
+  });
+  return { text: out + raw.slice(cur), atEnd: cur === raw.length };
+}
+
+// Appending to an adopter's file separates the block with the bytes `sep`
+// names, which the lock records, so removal strips exactly what was added
+// and add-then-remove is byte-identical whatever the file's line endings.
+function blockSeparator(raw) {
+  if (raw === '') return '';
+  return raw.endsWith('\n') ? '\n' : '\n\n';
+}
+function blockText(blockLines) { return `${blockLines.join('\n')}\n`; }
+
+// Whether the bytes before the begin marker are still the adopter's text
+// plus the separator render added. Either separator always leaves the text
+// ending in a blank line ("\n" after a final newline, "\n\n" after none), so
+// a prefix that does not end in "\n\n" has lost it to a hand edit, and
+// stripping `sep` then would eat the adopter's own final newline.
+function separatorStillThere(prefix, sep) {
+  return Boolean(sep) && prefix.endsWith('\n\n') && prefix.endsWith(sep);
+}
+
+// The refusal for marker lines render cannot attribute to one block. Names
+// every marker line, since any of them may be the adopter's quoted example.
+function reservedMarkerMessage(markerLines, repairable) {
+  const where = markerLines.map((n) => `${AGENTS_MD}:${n}`).join(', ');
+  return `${where} ${markerLines.length === 1 ? 'is a house-managed marker line' : 'are house-managed marker lines'}, and they do not form one block render recorded. These lines are reserved for the house block and cannot appear elsewhere in ${AGENTS_MD}, including inside code examples; the file needs exactly one begin line followed by one end line. Remove or reword the extra marker lines (in an example, write house_managed instead of house-managed), then \`house render --apply\`${repairable ? `; if this is what is left of a house block whose other marker was deleted, \`house render --force-managed ${AGENTS_MD}\` removes it` : ''}.`;
+}
+function reservedRefusal(blk) {
+  return { reason: 'reserved', markerLines: blk.markers.map((m) => m.i + 1), repairable: blk.markers.length === 1 };
+}
+
+function markerProblemLines(problems) {
+  return problems.map(([a, b]) => (a === b ? `${AGENTS_MD}:${a}` : `${AGENTS_MD}:${a}-${b}`)).join(', ');
+}
+
+// One plan entry for the block, classified like a managed file but on the
+// block body alone: create, restore (locked but gone), clean, clean-forced,
+// or refuse. `content` is the whole new AGENTS.md, spliced into what is on
+// disk now, so the adopter's text is carried through untouched.
+function planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedPath) {
+  const { lines: blockLines, body } = buildAgentsBlock(plan, pluginVersion);
+  const lockHash = sha256Hex(body);
+  const priorEntry = priorLock.get(AGENTS_MD);
+  const priorSep = priorEntry && typeof priorEntry.sep === 'string' ? priorEntry.sep : '';
+  const target = { path: AGENTS_MD, module: '_targets', source: 'targets', lockHash, kind: 'block', sep: priorSep };
+  const abs = path.join(repoRoot, AGENTS_MD);
+  const raw = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
+  const blk = agentsBlock(raw);
+  const forced = forceManagedPath === AGENTS_MD;
+  if (blk.status === 'absent') {
+    const sep = blockSeparator(raw);
+    return { status: priorEntry ? 'missing' : 'create', target: { ...target, sep, content: `${raw}${sep}${blockText(blockLines)}` } };
+  }
+  if (blk.status === 'malformed') {
+    // --force-managed repairs only a single lone marker, whose stale body the
+    // lock can attribute; two or more markers, or no block in the lock to
+    // attribute against, are never guessed at.
+    if (!forced || blk.markers.length !== 1 || !priorEntry) return { status: 'refuse', target: { ...target, content: raw }, ...reservedRefusal(blk) };
+    const { regions, problems } = attributeBlockRegions(blk, priorEntry && priorEntry.bodySha256);
+    if (problems.length) return { status: 'refuse', target: { ...target, content: raw }, reason: 'unattributed', problems };
+    return { status: 'clean-forced', target: { ...target, content: spliceRegions(raw, blk.lines, regions, blockText(blockLines)).text } };
+  }
+  const content = spliceRegions(raw, blk.lines, [[blk.begin, blk.end]], blockText(blockLines)).text;
+  const onDisk = sha256Hex(blk.body);
+  // With no block in the lock, a marker pair that is not byte-for-byte what
+  // this render would write cannot be told from an adopter's quoted example,
+  // so it is refused even under --force-managed rather than overwritten.
+  if (!priorEntry && onDisk !== lockHash) return { status: 'refuse', target: { ...target, content: raw }, ...reservedRefusal(blk) };
+  const compare = priorEntry ? priorEntry.bodySha256 : lockHash;
+  if (onDisk === compare) return { status: 'clean', target: { ...target, content } };
+  if (forced) return { status: 'clean-forced', target: { ...target, content } };
+  return { status: 'refuse', target: { ...target, content: raw } };
+}
+
+// When no target wants the block, a block left from an earlier render is
+// removed, under the same refusal a rewrite gets: a hand-edited block is not
+// silently thrown away. null when there is nothing to remove.
+function planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath) {
+  // No block in the lock means render never wrote one here, so there is
+  // nothing to remove: marker lines in such a file are the adopter's own
+  // (a quoted example), and a repo without codex or gemini never reads them.
+  const recorded = priorLock.get(AGENTS_MD);
+  if (!recorded || recorded.kind !== 'block') return null;
+  const abs = path.join(repoRoot, AGENTS_MD);
+  if (!existsSync(abs)) return null;
+  const raw = readFileSync(abs, 'utf8');
+  const blk = agentsBlock(raw);
+  if (blk.status === 'absent') return null;
+  const priorEntry = priorLock.get(AGENTS_MD);
+  const forced = forceManagedPath === AGENTS_MD;
+  let regions;
+  if (blk.status === 'ok') {
+    regions = [[blk.begin, blk.end]];
+    const edited = !priorEntry || sha256Hex(blk.body) !== priorEntry.bodySha256;
+    if (edited && !forced) return { status: 'refuse', path: AGENTS_MD };
+  } else {
+    if (!forced || blk.markers.length !== 1 || !priorEntry) return { status: 'refuse', path: AGENTS_MD, ...reservedRefusal(blk) };
+    const loc = attributeBlockRegions(blk, priorEntry && priorEntry.bodySha256);
+    if (loc.problems.length) return { status: 'refuse', path: AGENTS_MD, problems: loc.problems };
+    regions = loc.regions;
+  }
+  const sep = priorEntry && typeof priorEntry.sep === 'string' ? priorEntry.sep : '';
+  let { text, atEnd } = spliceRegions(raw, blk.lines, regions, null);
+  if (atEnd && separatorStillThere(text, sep)) text = text.slice(0, -sep.length);
+  return { status: 'remove', path: AGENTS_MD, content: text, deleteFile: text.trim() === '' };
+}
+
+// Gemini CLI reads GEMINI.md, not AGENTS.md, unless `.gemini/settings.json`
+// names AGENTS.md in context.fileName. Shared by render (which scaffolds a
+// GEMINI.md importing AGENTS.md only when neither is true) and doctor.
+function geminiSettingsReadsAgents(repoRoot) {
+  try {
+    const j = JSON.parse(readFileSync(path.join(repoRoot, '.gemini', 'settings.json'), 'utf8'));
+    const f = isPlainObject(j) && isPlainObject(j.context) ? j.context.fileName : undefined;
+    return (Array.isArray(f) ? f : [f]).includes(AGENTS_MD);
+  } catch { return false; }
+}
+const GEMINI_SCAFFOLD = '<!-- house: Gemini CLI reads GEMINI.md, not AGENTS.md; this import points it at the house rules block there. Yours to edit. -->\n@AGENTS.md\n';
+
 // RATCHET: when a docs lengthLimits entry would fail an existing tracked
 // file, record its live line count so the build stays green instead of
 // blocking on pre-existing size. CLAUDE.md is never ratchet-eligible; it
@@ -1056,7 +1323,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       const header = `<!-- house-managed v${pluginVersion} module=${name} source=${source} body-sha256=${headerHash} DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->`;
       const content = `${fm}${header}\n${sourceBody}`;
       const lockHash = sha256Hex(managedBody(content));
-      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'rule' }, priorLock, forceManagedPath, treatAsAbsent));
+      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'rule', globs: expanded }, priorLock, forceManagedPath, treatAsAbsent));
     }
 
     for (const fEntry of arr(m.json.files)) {
@@ -1084,7 +1351,13 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     plan.push(classify(repoRoot, { path: '.house/check.mjs', module: '_payload', source: 'payload/check.mjs', content, lockHash, kind: 'payload' }, priorLock, forceManagedPath));
   }
 
-  return { plan, skips, moduleWarnings, droppedDefaults };
+  // ADR 0015: last, because the block is built from the rule entries above.
+  const targets = houseTargets(houseData);
+  let blockRemoval = null;
+  if (wantsAgentsBlock(targets)) plan.push(planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedPath));
+  else blockRemoval = planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath);
+
+  return { plan, skips, moduleWarnings, droppedDefaults, blockRemoval, targets };
 }
 
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
@@ -1101,12 +1374,18 @@ function migrationLine(m, applied) {
     : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
-function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, json, apply }) {
+function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
-      plan: plan.map((p) => ({ status: p.status, path: p.target.path, module: p.target.module, kind: p.target.kind })),
+      plan: plan.map((p) => ({
+        status: p.status, path: p.target.path, module: p.target.module, kind: p.target.kind,
+        // A reserved-marker refusal is not a hand edit; say which lines.
+        ...(p.reason === 'reserved' ? { reason: p.reason, markerLines: p.markerLines } : {}),
+      })),
       skips, moduleWarnings, droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
       migrations: arr(migrations),
+      blockRemoval: blockRemoval ? { status: blockRemoval.status, path: blockRemoval.path, deleteFile: Boolean(blockRemoval.deleteFile) } : null,
+      scaffolds: geminiScaffold ? [GEMINI_MD] : [],
     }, null, 2));
     return;
   }
@@ -1118,10 +1397,28 @@ function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignored
   for (const p of plan) {
     const label = STATUS_LABEL[p.status] || p.status;
     console.log(`${label.padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
-    if (p.status === 'refuse') {
+    if (p.status === 'refuse' && p.reason === 'reserved') {
+      console.log(`  ${reservedMarkerMessage(p.markerLines, p.repairable)}`);
+    } else if (p.status === 'refuse' && p.reason === 'unattributed') {
+      console.log(`  ${AGENTS_MD}'s house-managed markers are broken, and ${markerProblemLines(p.problems)} do not match the block the lock recorded, so they cannot be told apart from your own text. Delete the stale block lines there by hand (keep anything of yours), then \`house render --apply\`.`);
+    } else if (p.status === 'refuse' && p.target.kind === 'block') {
+      console.log(`  the house-managed block in ${AGENTS_MD} was edited by hand since the last render (text outside the markers is never read). Exits: move your edit outside the markers and \`house render --force-managed ${AGENTS_MD}\`, or propose the change upstream in house.`);
+    } else if (p.status === 'refuse') {
       console.log(`  on-disk body no longer matches its managed source. Exits: propose the change upstream in house, record a deviation and unmanage this file, or \`house render --force-managed ${p.target.path}\`.`);
     }
   }
+  if (blockRemoval) {
+    const label = blockRemoval.status === 'refuse' ? 'REFUSE' : 'remove-block';
+    console.log(`${label.padEnd(15)} ${blockRemoval.path}  (no codex or gemini target; ${blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'text outside the markers stays'})`);
+    if (blockRemoval.status === 'refuse' && blockRemoval.reason === 'reserved') {
+      console.log(`  ${reservedMarkerMessage(blockRemoval.markerLines, blockRemoval.repairable)}`);
+    } else if (blockRemoval.status === 'refuse' && blockRemoval.problems) {
+      console.log(`  the house-managed markers are broken, and ${markerProblemLines(blockRemoval.problems)} do not match the block the lock recorded, so they cannot be told apart from your own text. Delete the stale block lines there by hand, then \`house render --apply\`.`);
+    } else if (blockRemoval.status === 'refuse') {
+      console.log(`  the house-managed block was edited by hand (or its markers are broken), so it is not removed silently. Exits: move your edit outside the markers, or \`house render --force-managed ${AGENTS_MD}\` to remove it anyway.`);
+    }
+  }
+  if (geminiScaffold) console.log(`${'scaffold'.padEnd(15)} ${GEMINI_MD}  (one-time, yours to edit; imports @${AGENTS_MD} so Gemini CLI reads the block)`);
   for (const s of skips) {
     console.log(`${'skip'.padEnd(15)} ${s.path}  (module: ${s.module}) -- ${s.reason}`);
   }
@@ -1145,6 +1442,12 @@ function cmdRender(args) {
     process.exit(2);
   }
 
+  const badTargets = targetsProblem(houseData);
+  if (badTargets) {
+    console.error(`house render: ${housePath}: ${badTargets}. Render refuses rather than guess, since reading it as ["claude-code"] would remove the AGENTS.md block. Fix the value (for example ["claude-code", "codex"]) or delete the key.`);
+    process.exit(2);
+  }
+
   const pluginVersion = readPluginVersion();
   const modules = findModules();
   const forceManagedPath = args.forceManaged ? normalizeRepoPath(args.forceManaged) : null;
@@ -1161,15 +1464,22 @@ function cmdRender(args) {
   const migration = planOldPreCommitMigration(repoRoot, houseData, modules, loadPriorLock(repoRoot));
   const migrations = migration ? [migration] : [];
   const treatAsAbsent = new Set(migrations.map((m) => m.from));
-  const { plan, skips, moduleWarnings, droppedDefaults } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
+  const { plan, skips, moduleWarnings, droppedDefaults, blockRemoval, targets } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
   const ignoredDests = gitIgnored(repoRoot, [...plan.map((p) => p.target.path), '.house/lock.json', '.house/INDEX.md']) || [];
-  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, json: args.json, apply: args.apply });
+  // ADR 0015: decided once, before anything writes, so the dry run lists the
+  // same GEMINI.md scaffold the apply phase below writes.
+  const geminiScaffold = targets.includes('gemini') && !existsSync(path.join(repoRoot, GEMINI_MD)) && !geminiSettingsReadsAgents(repoRoot);
+  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, json: args.json, apply: args.apply });
 
   const refusals = plan.filter((p) => p.status === 'refuse');
-  if (refusals.length > 0) process.exit(1);
+  // Marker lines render cannot attribute to one block are unreadable input,
+  // not drift, so they exit 2 like an unusable house.json.
+  const unreadable = (x) => x && (x.reason === 'reserved' || x.reason === 'unattributed' || Boolean(x.problems));
+  if (refusals.some(unreadable) || unreadable(blockRemoval)) process.exit(2);
+  if (refusals.length > 0 || (blockRemoval && blockRemoval.status === 'refuse')) process.exit(1);
 
   if (!args.apply) process.exit(0);
 
@@ -1219,7 +1529,10 @@ function cmdRender(args) {
       if (!planDests.has(rel)) orphans.add(rel);
     }
   }
-  for (const rel of loadPriorLock(repoRoot).keys()) {
+  for (const [rel, e] of loadPriorLock(repoRoot)) {
+    // A block entry names a file render never owned whole (ADR 0015): the
+    // block removal below takes out the markers and leaves the rest.
+    if (e.kind === 'block') continue;
     if (!planDests.has(rel)) orphans.add(rel);
   }
   const removed = [];
@@ -1228,6 +1541,12 @@ function cmdRender(args) {
     const abs = path.join(repoRoot, rel);
     if (!existsSync(abs)) continue;
     try { unlinkSync(abs); removed.push(rel); } catch { /* best effort: an un-removable orphan stays and is re-reported next render */ }
+  }
+  if (blockRemoval) {
+    const abs = path.join(repoRoot, blockRemoval.path);
+    if (blockRemoval.deleteFile) unlinkSync(abs);
+    else writeIfChanged(abs, blockRemoval.content);
+    removed.push(blockRemoval.deleteFile ? blockRemoval.path : `${blockRemoval.path} (house-managed block only; your text stays)`);
   }
   removed.sort();
   if (removed.length && !args.json) {
@@ -1281,6 +1600,14 @@ function cmdRender(args) {
     scaffoldRecord.set(s.tmpl, s.dest);
     scaffoldWritten.push(s.dest);
   }
+  // ADR 0015: Gemini CLI reads GEMINI.md by default, so a gemini target needs
+  // it to import AGENTS.md. Create-if-absent and adopter-owned like the rows
+  // above, but not recorded: it is offered whenever Gemini is unwired, since
+  // the checker's guard family fails an unwired gemini target.
+  if (geminiScaffold) {
+    writeFileSync(path.join(repoRoot, GEMINI_MD), GEMINI_SCAFFOLD, 'utf8');
+    scaffoldWritten.push(GEMINI_MD);
+  }
   if (scaffoldWritten.length && !args.json) {
     console.log('\nScaffolded (one-time, yours to edit; not managed):');
     for (const d of scaffoldWritten) console.log(`  ${d}`);
@@ -1310,7 +1637,12 @@ function cmdRender(args) {
   writeIfChanged(housePath, `${JSON.stringify(houseData, null, 2)}\n`);
 
   const lockData = {
-    files: plan.map((p) => ({ path: p.target.path, module: p.target.module, source: p.target.source, bodySha256: p.target.lockHash })),
+    files: plan.map((p) => ({
+      path: p.target.path, module: p.target.module, source: p.target.source,
+      // A block entry also records the separator render put before it, so
+      // removal strips exactly those bytes (ADR 0015).
+      ...(p.target.kind === 'block' ? { kind: 'block', sep: p.target.sep } : {}), bodySha256: p.target.lockHash,
+    })),
     // #23: not hash-checked and never refused, unlike files[]. This is a record
     // of what was offered once, so the tamper family ignores it by construction
     // (it reads files[] only) and a repo may delete a scaffold freely.
@@ -1403,6 +1735,28 @@ function gitHookFloorLines(probe) {
   return lines;
 }
 
+// ADR 0015: one line per target. Only Claude Code emits a load event
+// (InstructionsLoaded), so only its line can ever say `verified`; the others
+// say plainly that their load cannot be observed, and name the git floor,
+// which is the one guard they get until they have native hooks.
+const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI' };
+function targetLines(targets, ruleLoadProbe, floor) {
+  const floorState = floor === null ? 'unknown'
+    : (!floor.applicable ? 'not applicable' : (!floor.rendered ? 'not rendered' : (floor.armed ? 'armed' : 'NOT armed')));
+  return targets.map((t) => {
+    if (t === 'claude-code') {
+      const verified = Boolean(ruleLoadProbe.lastLoadAt);
+      return {
+        target: t, verified,
+        line: verified
+          ? `verified: InstructionsLoaded log shows a load at ${ruleLoadProbe.lastLoadAt} (see the rule-load positive control line)`
+          : 'unverified here: no InstructionsLoaded load logged for this checkout yet (see the rule-load positive control line)',
+      };
+    }
+    return { target: t, verified: false, line: `unverified: ${TARGET_AGENT_NAMES[t]} fires no instructions-loaded event; git floor ${floorState}` };
+  });
+}
+
 function cmdDoctor(args) {
   const repoRoot = resolveRepoRoot(args);
   const pluginVersion = readPluginVersion();
@@ -1458,11 +1812,12 @@ function cmdDoctor(args) {
     : 'no version pin (house.json absent, unparseable, or missing "version")';
 
   const gitHookFloor = gitHookFloorProbe(repoRoot);
+  const targets = targetLines(houseTargets(houseData), ruleLoadProbe, gitHookFloor);
 
   const result = {
     effectiveBranchGuard: guard, guardRecorded, caveat, jqOnPath, pluginVersion,
     housePin: houseData && houseData.version ? houseData.version : null,
-    pinStatus, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests, gitHookFloor,
+    pinStatus, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests, gitHookFloor, targets,
     houseJsonPresent: houseExists, houseJsonParseError: houseParseError,
   };
 
@@ -1487,6 +1842,7 @@ function cmdDoctor(args) {
     } else {
       console.log('rule-load positive control: none wired (add an InstructionsLoaded hook to log which rule files load; without it a rule whose glob never matches looks exactly like a rule that does nothing)');
     }
+    for (const t of targets) console.log(`target ${t.target}: ${t.line}`);
     console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);
   }

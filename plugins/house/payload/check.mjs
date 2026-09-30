@@ -368,6 +368,31 @@ function managedBody(raw) {
   return raw;
 }
 
+// ADR 0015: where the house-managed block sits in AGENTS.md. The two marker
+// lines are reserved for the block: a line matching either is a marker
+// wherever it appears, a code example included. Zero markers is `absent`;
+// exactly one begin followed by exactly one end is `ok`; anything else is
+// `malformed`, with every marker line in `markers`. The body is the lines
+// strictly between the markers, the begin line (which carries the version)
+// excluded the way managedBody excludes a header. Verbatim copy of the house
+// CLI's agentsBlock(), so tamper recomputes exactly the hash render locked;
+// tests/check/tamper.test.mjs pins the two copies.
+const BLOCK_BEGIN_RE = /^\s*<!--\s*house-managed:begin\b.*-->\s*$/;
+const BLOCK_END_RE = /^\s*<!--\s*house-managed:end\s*-->\s*$/;
+function agentsBlock(raw) {
+  const lines = raw.split('\n');
+  const markers = [];
+  lines.forEach((l, i) => {
+    if (BLOCK_BEGIN_RE.test(l)) markers.push({ i, kind: 'begin' });
+    else if (BLOCK_END_RE.test(l)) markers.push({ i, kind: 'end' });
+  });
+  const begins = markers.filter((m) => m.kind === 'begin').map((m) => m.i);
+  const ends = markers.filter((m) => m.kind === 'end').map((m) => m.i);
+  if (!markers.length) return { status: 'absent', lines, markers };
+  if (begins.length !== 1 || ends.length !== 1 || ends[0] < begins[0]) return { status: 'malformed', lines, markers, begins, ends };
+  return { status: 'ok', lines, markers, begin: begins[0], end: ends[0], body: lines.slice(begins[0] + 1, ends[0]).join('\n') };
+}
+
 // True when this document carries the managed header render writes: the
 // first line, or the first line after a closing frontmatter fence, is an
 // HTML comment opening with `house-managed`. This is the only marker a
@@ -380,7 +405,9 @@ function isHouseManagedDoc(raw) {
   for (let i = start; i < Math.min(start + 3, lines.length); i++) {
     const t = lines[i].trim();
     if (!t) continue;
-    return /^<!--\s*house-managed\b/.test(t);
+    // `house-managed:begin` opens an AGENTS.md block (ADR 0015), which makes
+    // only the lines inside it house's, never the file it sits in.
+    return /^<!--\s*house-managed\b(?!:)/.test(t);
   }
   return false;
 }
@@ -819,6 +846,8 @@ function checkDrift(ctx) {
   // a finding (a forged managed header).
   const lockedManaged = loadLockManagedPaths(ctx.repoRoot);
   const lockedHashes = loadLockManagedHashes(ctx.repoRoot);
+  const lockedBlocks = new Set((readLockEntries(ctx.repoRoot) || [])
+    .filter((e) => isPlainObject(e) && e.kind === 'block' && typeof e.path === 'string').map((e) => e.path));
 
   const ALWAYS_INCLUDE = ['.claude/rules/', '.claude/skills/', '.claude/commands/'];
   const allMd = ctx.allTracked.filter((f) => f.endsWith('.md'));
@@ -1073,9 +1102,19 @@ function checkDrift(ctx) {
     let fenceStart = -1;
     let inComment = false;
     let pendingIgnore = false;
+    // ADR 0015: in a file the lock records a block for, only the lines between
+    // the markers are house's (generated, and tamper-checked); every line
+    // outside them is the adopter's and is gated like any other doc.
+    // Exempt only while the block is the body the lock recorded, the same
+    // condition bodyMatchesLock puts on ADR 0010's silent drop: a hand-edited
+    // block is the adopter's text now, and the gate reads it.
+    const blk = lockedBlocks.has(docPath) ? agentsBlock(raw) : null;
+    const blockExempt = blk !== null && blk.status === 'ok' && lockedHashes.get(docPath) === sha256Hex(blk.body);
+    const inBlock = (idx) => blockExempt && idx >= blk.begin && idx <= blk.end;
 
     lines.forEach((line, idx) => {
       const lineNo = idx + 1;
+      if (inBlock(idx)) return;
       if (/^\s*```/.test(line)) { inFence = !inFence; fenceStart = inFence ? lineNo : -1; return; }
       if (inFence) return;
 
@@ -1180,6 +1219,25 @@ function checkTamper(ctx) {
       continue;
     }
     const localRaw = readFileSync(abs, 'utf8');
+    // ADR 0015: a block entry owns only the lines between its markers, so
+    // text outside them is never hashed and never reported.
+    if (entry.kind === 'block') {
+      const blk = agentsBlock(localRaw);
+      if (blk.status === 'absent') {
+        findings.push(mk('tamper', relPath, null, 'missing', `the house-managed block is gone from ${relPath} (both markers removed). Run \`house render --apply\` to put it back; your text outside it is left alone.`));
+      } else if (blk.status === 'malformed') {
+        const where = blk.markers.map((m) => `${relPath}:${m.i + 1}`).join(', ');
+        // Render's force repair handles only a single lone marker, so it is
+        // offered only then; with more, the extra lines go by hand.
+        const fix = blk.markers.length === 1
+          ? `If it is what is left of the block after its other marker was deleted, \`house render --force-managed ${relPath}\` repairs it; if it is your own text, reword it, then \`house render --apply\`.`
+          : `Remove or reword the extra marker lines by hand (in an example, write house_managed), then \`house render --apply\`.`;
+        findings.push(mk('tamper', relPath, null, 'tamper', `${where}: ${blk.begins.length} house-managed:begin and ${blk.ends.length} house-managed:end marker line(s), where the block needs exactly one of each, begin first. These lines are reserved for the house block and cannot appear elsewhere in ${relPath}, including inside code examples. ${fix}`));
+      } else if (typeof bodySha256 === 'string' && sha256Hex(blk.body) !== bodySha256) {
+        findings.push(mk('tamper', relPath, null, 'tamper', `the house-managed block in ${relPath} was edited by hand. Exits: move your edit outside the markers (that text is yours and never checked), propose the change upstream in house, or run \`house render --force-managed ${relPath}\` to restore the block.`));
+      }
+      continue;
+    }
     const localHash = sha256Hex(managedBody(localRaw));
 
     // PRIMARY, and version-robust: the lock records exactly the body render
@@ -1456,6 +1514,7 @@ const MEMORY_INDEX_CAP_BYTES = 25000;
 const MEMORY_INDEX_WARN_LINES = 140;
 const MEMORY_INDEX_WARN_BYTES = 17500;
 const MEMORY_INDEX_MAX_LINE_CHARS = 160;
+const CODEX_PROJECT_DOC_MAX_BYTES = 32768;
 
 // Where the harness keeps this repo's auto-memory index. CLAUDE_CONFIG_DIR
 // relocates the whole config tree (the same variable readInstalledPlugins
@@ -1539,6 +1598,18 @@ function checkLengths(ctx) {
     }
     if (over.length) {
       warnings.push(mk('lengths', memIndex, null, 'memory-index', `${over.join('; ')}. The harness loads the first ${MEMORY_INDEX_CAP_LINES} lines or ${MEMORY_INDEX_CAP_BYTES} bytes, whichever comes first, and drops the rest silently. Move each entry's detail into its topic file first, then shorten the index line to the cue that says when to open it.`));
+    }
+  }
+
+  // ADR 0015: Codex reads a repo's AGENTS.md files only up to a combined
+  // project_doc_max_bytes, 32 KiB by default, and drops the rest without
+  // saying so. A warning, not a finding: the cap is a Codex setting a repo can
+  // raise, and most of the file is usually the adopter's own text.
+  const agentsAbs = join(ctx.repoRoot, 'AGENTS.md');
+  if (existsSync(agentsAbs)) {
+    const bytes = Buffer.byteLength(safeRead(agentsAbs), 'utf8');
+    if (bytes > CODEX_PROJECT_DOC_MAX_BYTES) {
+      warnings.push(mk('lengths', 'AGENTS.md', null, 'length', `${bytes} bytes, over ${CODEX_PROJECT_DOC_MAX_BYTES}, which is Codex's default cap (project_doc_max_bytes) on the AGENTS.md text it reads; past it Codex silently drops the rest, the house-managed block included when it sits below the cut. Trim the file, or move the block nearer the top.`));
     }
   }
 
@@ -1701,7 +1772,10 @@ function checkCoload(ctx) {
 
 // ── manifest ─────────────────────────────────────────────────────────────
 
-const MANIFEST_TOP_KEYS = new Set(['version', 'defaultBranch', 'branchPolicy', 'protectedBranches', 'carveOuts', 'guard', 'modules', 'deviations', 'ratchet', 'ratchetRaises']);
+const MANIFEST_TOP_KEYS = new Set(['version', 'defaultBranch', 'branchPolicy', 'protectedBranches', 'carveOuts', 'guard', 'targets', 'modules', 'deviations', 'ratchet', 'ratchetRaises']);
+// ADR 0015. Absent means ["claude-code"]; the package ships as a Claude Code
+// plugin, so claude-code is required whenever the key is present.
+const TARGETS = ['claude-code', 'codex', 'gemini'];
 const DEVIATION_KINDS = new Set(['disabled-module', 'branch-policy', 'carve-out', 'unmanaged-file', 'coload-ceiling', 'other']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -1862,6 +1936,20 @@ function checkManifest(ctx) {
       for (const k of Object.keys(g)) {
         if (!['by', 'decided', 'why'].includes(k)) findings.push(mk('manifest', 'house.json', null, 'manifest', `\`guard\` has unknown key \`${k}\``));
       }
+    }
+  }
+
+  if ('targets' in d) {
+    if (!Array.isArray(d.targets)) {
+      findings.push(mk('manifest', 'house.json', null, 'manifest', `\`targets\` must be an array drawn from ${JSON.stringify(TARGETS)}, like ["claude-code", "codex"]`));
+    } else {
+      const seen = new Set();
+      for (const t of d.targets) {
+        if (!TARGETS.includes(t)) findings.push(mk('manifest', 'house.json', null, 'manifest', `\`targets\` entry \`${typeof t === 'string' ? t : JSON.stringify(t)}\` is not one of ${JSON.stringify(TARGETS)}`));
+        else if (seen.has(t)) findings.push(mk('manifest', 'house.json', null, 'manifest', `\`targets\` lists \`${t}\` more than once`));
+        seen.add(t);
+      }
+      if (!d.targets.includes('claude-code')) findings.push(mk('manifest', 'house.json', null, 'manifest', '`targets` must include "claude-code": the package is delivered as a Claude Code plugin, and the other targets read what it renders'));
     }
   }
 
@@ -2240,10 +2328,50 @@ function checkGuardFloor(ctx, d) {
   return { findings, warnings };
 }
 
+// ADR 0015: one verdict line per declared target, as info, since a verdict is
+// not a defect. Printed only when house.json declares `targets`, so a repo on
+// the implicit ["claude-code"] reads exactly what it read before. Findings are
+// only what a repo can fix: codex or gemini with no block in AGENTS.md (when
+// the lock records one, tamper owns the report), and gemini left unwired.
+const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI' };
+function geminiReadsAgents(repoRoot) {
+  if (/^\s*@(\.\/)?AGENTS\.md\s*$/m.test(safeRead(join(repoRoot, 'GEMINI.md')))) return true;
+  try {
+    const j = JSON.parse(readFileSync(join(repoRoot, '.gemini', 'settings.json'), 'utf8'));
+    const f = isPlainObject(j) && isPlainObject(j.context) ? j.context.fileName : undefined;
+    return (Array.isArray(f) ? f : [f]).includes('AGENTS.md');
+  } catch { return false; }
+}
+function checkTargets(ctx, d) {
+  const findings = [];
+  const info = [];
+  if (!Array.isArray(d.targets)) return { findings, info };
+  const targets = TARGETS.filter((t) => d.targets.includes(t));
+  const pr = d.branchPolicy === 'pr';
+  for (const t of targets) {
+    info.push(mk('guard', 'house.json', null, 'target', t === 'claude-code'
+      ? `claude-code: instructions via .claude/rules/house/ (loaded by path); guard = ${pr ? 'PreToolUse hook plus git floor' : 'none (branchPolicy direct)'}; load = verifiable (InstructionsLoaded; \`house doctor\` reports it)`
+      : `${t}: instructions via AGENTS.md block; guard = ${pr ? 'git floor plus remote ruleset (no native hook yet)' : 'none (branchPolicy direct; no native hook yet)'}; load = unverified (${TARGET_AGENT_NAMES[t]} fires no load event)`));
+  }
+  if (targets.includes('codex') || targets.includes('gemini')) {
+    const lockHasBlock = (readLockEntries(ctx.repoRoot) || []).some((e) => isPlainObject(e) && e.path === 'AGENTS.md' && e.kind === 'block');
+    const abs = join(ctx.repoRoot, 'AGENTS.md');
+    if (!lockHasBlock && (!existsSync(abs) || agentsBlock(safeRead(abs)).status === 'absent')) {
+      findings.push(mk('guard', 'AGENTS.md', null, 'target', `targets names ${targets.filter((t) => t !== 'claude-code').join(' and ')}, which read the house rules only through the house-managed block in AGENTS.md, and there is none. Run \`house render --apply\` to write it; your own AGENTS.md text is kept.`));
+    }
+  }
+  if (targets.includes('gemini') && !geminiReadsAgents(ctx.repoRoot)) {
+    findings.push(mk('guard', 'GEMINI.md', null, 'target', 'targets names gemini, but Gemini CLI reads GEMINI.md, not AGENTS.md, and nothing here points it at AGENTS.md. Add an `@AGENTS.md` import line to GEMINI.md (`house render --apply` writes one when GEMINI.md is absent), or name "AGENTS.md" in `.gemini/settings.json` context.fileName.'));
+  }
+  return { findings, info };
+}
+
 function checkGuard(ctx) {
   const warnings = [];
   const d = ctx.house.data;
-  if (!isPlainObject(d) || d.branchPolicy !== 'pr') return { findings: [], warnings };
+  if (!isPlainObject(d)) return { findings: [], warnings };
+  const tgt = checkTargets(ctx, d);
+  if (d.branchPolicy !== 'pr') return { findings: tgt.findings, warnings, info: tgt.info };
   const hookPath = join(ctx.repoRoot, '.claude', 'hooks', 'no-direct-master.sh');
   const repoHook = localGuardHookIsSubstantive(ctx.repoRoot);
   const stubHook = !repoHook && existsSync(hookPath);
@@ -2259,7 +2387,7 @@ function checkGuard(ctx) {
       'branchPolicy is "pr" but no reachable branch guard was found in the repo: no `.claude/hooks/no-direct-master.sh`, no PreToolUse hook in `.claude/settings.json`, and no recorded plugin-guard choice. Wire a PreToolUse hook, vendor the hook file, or record the plugin as this repo\'s guard with a dated why: `"guard": {"by": "plugin", "decided": "YYYY-MM-DD", "why": "..."}` in house.json (`house doctor` shows whether the choice is recorded). The session-time scan is only half of it: the git-hook floor under `.githooks/` is what holds when no session is in the loop, and it is reported separately below.'));
   }
   const floor = checkGuardFloor(ctx, d);
-  return { findings: floor.findings, warnings: [...warnings, ...floor.warnings] };
+  return { findings: [...tgt.findings, ...floor.findings], warnings: [...warnings, ...floor.warnings], info: tgt.info };
 }
 
 // ── CLI / orchestration ──────────────────────────────────────────────────
@@ -2283,19 +2411,23 @@ function formatLine(f) {
   return `${loc} [${f.kind}] ${f.message}`;
 }
 
-function report({ families, results, findings, warnings, scannedDocs, coloadWorst, json }) {
+function report({ families, results, findings, warnings, info, scannedDocs, coloadWorst, json }) {
   if (json) {
-    console.log(JSON.stringify({ findings, warnings, scannedDocs, coloadWorst }, null, 2));
+    console.log(JSON.stringify({ findings, warnings, info, scannedDocs, coloadWorst }, null, 2));
     return;
   }
   for (const fam of families) {
     const r = results[fam];
     if (!r) continue;
     if (r.skipped) { console.log(`== ${fam} == (skipped: house.json unusable)`); continue; }
-    if (r.findings.length === 0 && r.warnings.length === 0) continue;
+    // Info lines (ADR 0015's per-target verdict) print but never count: the
+    // summary below tallies findings and warnings only.
+    const famInfo = arr(r.info);
+    if (r.findings.length === 0 && r.warnings.length === 0 && famInfo.length === 0) continue;
     console.log(`== ${fam} ==`);
     for (const f of r.findings) console.log(formatLine(f));
     for (const w of r.warnings) console.log(`${formatLine(w)}  (warning)`);
+    for (const i of famInfo) console.log(`${formatLine(i)}  (info)`);
   }
   const famSummaries = families
     .map((f) => {
@@ -2358,6 +2490,7 @@ function main() {
   const results = {};
   const allFindings = [];
   const allWarnings = [];
+  const allInfo = [];
   let scannedDocs = [];
   let coloadWorst = null;
 
@@ -2383,11 +2516,12 @@ function main() {
     results[fam] = r;
     allFindings.push(...r.findings);
     allWarnings.push(...r.warnings);
+    allInfo.push(...arr(r.info));
   }
 
   maybeWriteRatchet(ctx, allFindings.length);
 
-  report({ families, results, findings: allFindings, warnings: allWarnings, scannedDocs, coloadWorst, json: args.json });
+  report({ families, results, findings: allFindings, warnings: allWarnings, info: allInfo, scannedDocs, coloadWorst, json: args.json });
 
   let exitCode = 0;
   if (houseUnusable && needsHouse) exitCode = 2;

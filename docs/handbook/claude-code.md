@@ -91,6 +91,16 @@ claims they can load globally regardless: "do not assume the scoping works witho
 `/context`." That is the reason the heading's own text says to confirm the scoping really defers
 loading before counting on it.
 
+**Other agents get a routing table, not the scoping.** Codex and Gemini CLI never read
+`.claude/rules/`, and neither has a `paths:` equivalent. A repo that lists them in `house.json`'s
+`targets` key gets a house-managed block in its root `AGENTS.md` instead: one section per module,
+naming the same globs render wrote into that rule's `paths:`, the rule file, and its headings, and
+telling the agent to read the rule file before editing a matching file (ADR 0015). The scoping is
+advisory there: nothing loads the rule for the agent, and neither agent emits a load event, so
+`house doctor` reports those targets as unverified. Text outside the block's markers is the repo's
+own and is never checked. Gemini CLI reads `GEMINI.md` by default, so a `gemini` target also needs
+an `@AGENTS.md` import there, or `AGENTS.md` named in `.gemini/settings.json`'s `context.fileName`.
+
 ## Make a procedure a skill, not a rule
 
 repo-a's six `.claude/commands/*.md` files are each a one-sentence `description:`

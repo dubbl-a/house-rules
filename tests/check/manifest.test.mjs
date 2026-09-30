@@ -406,3 +406,21 @@ test('manifest: an absent emDash slot is not a finding', () => {
   const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
   assert.equal(code, 0, out);
 });
+
+test('manifest: `targets` is validated against the schema enum; claude-code must be present', () => {
+  const schemaPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'plugins', 'house', 'schema', 'house.schema.json');
+  const allowed = JSON.parse(readFileSync(schemaPath, 'utf8')).properties.targets.items.enum;
+  const ok = sandbox({ 'house.json': houseJson({ targets: allowed }) });
+  assert.equal(run(ok, ['--only=manifest']).code, 0, 'every schema target at once is valid');
+  assert.equal(run(sandbox({ 'house.json': houseJson({ targets: ['claude-code'] }) }), ['--only=manifest']).code, 0);
+  for (const [targets, re] of [
+    ['codex', /`targets` must be an array/],
+    [['claude-code', 'cursor'], /`targets` entry `cursor` is not one of/],
+    [['claude-code', 'codex', 'codex'], /`targets` lists `codex` more than once/],
+    [['codex', 'gemini'], /`targets` must include "claude-code"/],
+  ]) {
+    const { code, out } = run(sandbox({ 'house.json': houseJson({ targets }) }), ['--only=manifest']);
+    assert.equal(code, 1, `${JSON.stringify(targets)}: ${out}`);
+    assert.match(out, re);
+  }
+});

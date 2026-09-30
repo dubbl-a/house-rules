@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { sandbox, run, houseJson, fakeClaudeConfigDir, writeTree } from './helpers.mjs';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { sandbox, run, houseJson, fakeClaudeConfigDir, writeTree, CHECK_SRC } from './helpers.mjs';
 
 function bodyHash(body) {
   // The managed body is everything after the first line (the header).
@@ -185,4 +187,84 @@ test('P2: a forged house-managed marker on an unlocked file does not demote its 
   const fs2 = json.findings || [];
   assert.ok(fs2.some((f) => /forged managed header/.test(f.kind)), 'a marker on an unlocked file is flagged as forged');
   assert.ok(fs2.some((f) => /does-not-exist/.test(f.message)), 'its real drift stays a finding, not a warning');
+});
+
+// ADR 0015: the AGENTS.md block is a lock entry of kind "block". Only the
+// lines between the two markers are the managed body; everything outside them
+// is the adopter's and is never read.
+const BLOCK_BEGIN = '<!-- house-managed:begin v0.1.0 DO NOT EDIT -->';
+const BLOCK_END = '<!-- house-managed:end -->';
+const BLOCK_INNER = '## House rules\n\n### docs\nApplies to: `README.md`\n- Anchor every claim';
+const blockHash = createHash('sha256').update(BLOCK_INNER, 'utf8').digest('hex');
+const blockFile = (above = '', below = '') => `${above}${BLOCK_BEGIN}\n${BLOCK_INNER}\n${BLOCK_END}\n${below}`;
+const blockLock = () => lockJson([{ path: 'AGENTS.md', module: '_targets', source: 'targets', kind: 'block', bodySha256: blockHash }]);
+
+test('tamper: an unedited AGENTS.md block passes, and an edit outside the markers is never read', () => {
+  const dir = sandbox({ 'house.json': houseJson(), '.house/lock.json': blockLock(), 'AGENTS.md': blockFile('# Ours\n\n', '\nOurs below, edited freely.\n') });
+  const { code, out } = run(dir, ['--only=tamper']);
+  assert.equal(code, 0, out);
+});
+
+// The marker lines are reserved: one quoted in the adopter's own text, a code
+// example included, makes the file malformed rather than being parsed around.
+test('tamper: a stray marker line outside the block is malformed, a finding naming every marker line', () => {
+  const quoted = `\n\`\`\`md\n${BLOCK_END}\n\`\`\`\n`;
+  const dir = sandbox({ 'house.json': houseJson(), '.house/lock.json': blockLock(), 'AGENTS.md': blockFile('# Ours\n\n', quoted) });
+  const { code, out } = run(dir, ['--only=tamper']);
+  assert.equal(code, 1, out);
+  assert.match(out, /AGENTS\.md \[tamper\].*AGENTS\.md:3, AGENTS\.md:9, AGENTS\.md:12/);
+  assert.match(out, /reserved for the house block/);
+  assert.match(out, /by hand/);
+  assert.doesNotMatch(out, /--force-managed/, 'force repairs only a single lone marker, so it is not offered here');
+});
+
+test('tamper: an indented stray marker is reserved too; a single lone marker is offered --force-managed', () => {
+  const indented = sandbox({ 'house.json': houseJson(), '.house/lock.json': blockLock(), 'AGENTS.md': blockFile('# Ours\n\n', '\n  <!-- house-managed:end -->\n') });
+  const a = run(indented, ['--only=tamper']);
+  assert.equal(a.code, 1, a.out);
+  assert.match(a.out, /AGENTS\.md:11\b/);
+
+  const lone = sandbox({ 'house.json': houseJson(), '.house/lock.json': blockLock(), 'AGENTS.md': blockFile('# Ours\n\n').replace(`${BLOCK_END}\n`, '') });
+  const b = run(lone, ['--only=tamper']);
+  assert.equal(b.code, 1, b.out);
+  assert.match(b.out, /AGENTS\.md:3\b/);
+  assert.match(b.out, /--force-managed AGENTS\.md/);
+});
+
+// The CLI writes the lock hash and the checker recomputes it, so the block
+// parser exists twice. This pins the two copies to the same text, and pins
+// that neither carries the fence parsing the reserved-marker rule replaced.
+test('tamper: the block parser is textually identical in the house CLI and check.mjs', () => {
+  const cli = readFileSync(join(dirname(CHECK_SRC), '..', 'scripts', 'house'), 'utf8');
+  const chk = readFileSync(CHECK_SRC, 'utf8');
+  for (const src of [cli, chk]) assert.doesNotMatch(src, /fencedLines|FENCE_RE|FENCE_CLOSE_RE|'unclosed'/);
+  const pick = (src, re) => { const m = src.match(re); assert.ok(m, `missing ${re}`); return m[0]; };
+  for (const re of [
+    /^const BLOCK_BEGIN_RE = .*$/m,
+    /^const BLOCK_END_RE = .*$/m,
+    /^function agentsBlock\(raw\) \{\n[^]*?\n\}$/m,
+  ]) {
+    assert.equal(pick(cli, re), pick(chk, re), `${re} differs between the two copies`);
+  }
+});
+
+test('tamper: a hand edit inside the AGENTS.md block is a finding naming --force-managed', () => {
+  const dir = sandbox({ 'house.json': houseJson(), '.house/lock.json': blockLock(), 'AGENTS.md': blockFile('# Ours\n\n').replace('Anchor every claim', 'Anchor most claims') });
+  const { code, out } = run(dir, ['--only=tamper']);
+  assert.equal(code, 1, out);
+  assert.match(out, /AGENTS\.md \[tamper\]/);
+  assert.match(out, /--force-managed AGENTS\.md/);
+});
+
+test('tamper: a removed block, a missing end marker, and a duplicated begin marker are each a finding', () => {
+  for (const body of [
+    '# Ours only\n',
+    `${BLOCK_BEGIN}\n${BLOCK_INNER}\n`,
+    `${BLOCK_BEGIN}\n${blockFile()}`,
+  ]) {
+    const dir = sandbox({ 'house.json': houseJson(), '.house/lock.json': blockLock(), 'AGENTS.md': body });
+    const { code, out } = run(dir, ['--only=tamper']);
+    assert.equal(code, 1, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /AGENTS\.md \[(missing|tamper)\]/);
+  }
 });

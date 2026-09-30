@@ -1,0 +1,87 @@
+<!-- house-managed:begin v0.15.1 DO NOT EDIT between these markers: house render rewrites it; text outside them is yours. Propose upstream, or house render --force-managed AGENTS.md -->
+## House rules
+
+These rules live in `.claude/rules/house/`. Claude Code loads them automatically by path.
+Other agents: before editing a file matching a module's globs, read that module's rule file.
+
+### docs
+Applies to: `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `.claude/rules/**`, `.claude/skills/**`, `.claude/commands/**`, `docs/**`
+Full text: `.claude/rules/house/docs.md`
+- Anchor every claim to a grep-able token
+- Run the docs gate before pushing and in the build
+- Give every rule file a paths list whose first segment resolves
+- Put a fact where its litmus test says it belongs
+- State a rule as imperative, why, anchor, receipts
+- Move dates, names, and measured numbers out of rule prose
+- Keep files under budget, and raise a ceiling only with a written reason
+- Cut, don't append, and trim on a fixed cadence
+- Split a file only when splitting narrows what loads
+- Opt a point-in-time doc out with a file-level reason
+- Don't document a command that does not exist
+- Ship the docs and changelog edit in the same PR as the change
+
+### engineering
+Applies to: `scripts/**`
+Full text: `.claude/rules/house/engineering.md`
+- Build the simplest thing that answers the question
+- Keep one implementation per computation, and let the gate and the report share it
+- Prove a check can fail before trusting that it passed
+- Verify the served artifact, not the source
+- Validate the body before writing it, because a status code is not a content check
+- Never let a gate mint the answer key it grades against
+- Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
+- Show the ratio and the sample, because one number is never the accuracy
+- Make a measuring instrument reproducible
+- Assert an invariant where its state is created, with a why and a remedy
+- Make every waiver print its reason, and give an integrity gate none
+- Read a missing field as missing, because absence is not confidence
+- Demote a gate that has been wrong before
+- Record a significant decision as a numbered, immutable record
+- Land a build-time guard with the code it protects
+- Search public prior art before building a tool, and record what you did not adopt
+- Pin a framework default your output depends on, with the reason beside it
+- Enumerate from the system of record, and fail hard on a missing member
+- Normalize against fixed anchors, never against the live population
+- Make an error message teach the fix
+- Read config from the environment, and keep build, release, and run separate
+
+### github
+Applies to: `.github/**`, `.githooks/**`, `.env.example`
+Full text: `.claude/rules/house/github.md`
+- Gate every PR on checks that need no credential, and name what is not gated
+- Give a workflow read-only permissions and pin every action by SHA
+- Budget Actions minutes as account-wide money
+- Open an issue instead of failing a scheduled run, and comment out a cron with its reason
+- Turn on push protection, head-branch deletion, and grouped dependency updates
+- Make the PR template force a docs-check answer
+- Never put a closing keyword beside an issue number you do not mean to close
+- Ship phased work as commits on one PR
+- Stage explicit paths, never everything at once
+- Classify a merged branch by its PR state, not by merge detection
+- Never delete the branch from the worktree being merged
+- Keep credentials out of the repo, the commit, and the chat
+- Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
+- Give a restricted key exactly one writable scope
+- Never log a vendor object
+- Treat a preview URL as production for exposure
+- Label a non-secret as a non-secret
+- Ship the community files the platform looks for, and keep issue intake as forms
+- Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it
+
+### testing
+Applies to: `tests/**`, `.github/workflows/**`
+Full text: `.claude/rules/house/testing.md`
+- Give the agent a check it can run before you walk away
+- Scale the pyramid to the repo you have, and route what the PR gate cannot afford
+- Split deterministic tests from model-behavior evals, and give each its own budget and cadence
+- Test the guard itself, as its own CI step
+- Feed a real payload through the real wiring, and never re-implement the logic under test
+- Ship every gate with a positive control and a negative control
+- Prove an eval can fail, then grade it with the cheapest grader that can
+- Read the snapshot diff before accepting it, because a snapshot is a drift gate
+- Quarantine a flaky test loudly, and never retry it into silence
+- Treat coverage as a search-light, never as a target
+- Mirror the module layout in the test tree, and keep each fixture beside its test
+- Explain a test-runner config quirk in the config, with the incident that produced it
+- Keep a demoted check running, reported, and counted
+<!-- house-managed:end -->
