@@ -121,7 +121,7 @@ Never create a branch in the main checkout, not even for a one-commit change: th
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.
 Squash-merge another session's branch, not rebase it, and never force-clean a checkout you do not own.
-Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout.
+Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout. If the worktree feels costly, the levers are a `.worktreeinclude` file, `worktree.baseRef`, and a `WorktreeCreate` hook recipe, in the receipt.
 Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-sessions`
 
 ## Keep the committed settings narrow and the local settings local

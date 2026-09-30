@@ -459,6 +459,35 @@ is in the shared laptop database, not the state the merges imply, so the rule sq
 another session's branch rather than rebasing it, and never force-cleans a checkout it does not
 own.
 
+### What a worktree costs, and the levers that cut it
+
+An unconditional worktree rule has a price, and three levers lower it (source:
+https://code.claude.com/docs/en/worktrees). First, a `.worktreeinclude` file at the repo root, in
+gitignore syntax, copies matching gitignored files into every worktree the harness creates; only a
+file that both matches a pattern and is gitignored is copied, so tracked files are never
+duplicated. The plugin scaffolds it once, empty, and never hash-checks it. `.env*` and
+`.claude/settings.local.json` are the entries adopters most often want, and they are not the
+default: a copied secret is a secret spread across every checkout, and an entry pays for itself
+only when work that legitimately happens in a worktree needs the file.
+
+Second, `worktree.baseRef` picks where a new worktree branches from. `"fresh"`, the default,
+branches from the remote default branch and so drops unpushed local commits from the new tree. It
+refetches `origin/HEAD` only if nothing was fetched in the last 24 hours, capped at 5 seconds, so a
+new worktree can branch from remote state up to a day old. `"head"` branches from the current local
+`HEAD` and is the setting for a session that builds on unpushed local commits. It cannot name an
+arbitrary branch.
+
+Third, a `WorktreeCreate` hook, which most git repos do not want: use `.worktreeinclude` plus
+`baseRef` and skip the hook. A hook replaces git worktree creation entirely (location, checkout,
+cleanup) and `.worktreeinclude` is not processed on that path, so the plugin does not ship one. A
+hook that is worth writing, for a non-git VCS or per-worktree setup, has to do the creation
+itself: create the worktree, copy the include files itself, and only then link or install
+dependencies and assign each worktree its own port the way Cursor's `worktrees.json` and
+Conductor's `CONDUCTOR_PORT` do, so two dev servers do not collide.
+
+The one cost with no lever is the prompt cache, which is per directory. Parallel sessions in one
+directory share a cache, and each worktree starts cold.
+
 ## Keep the committed settings narrow and the local settings local
 
 repo-a's `.claude/settings.json` (1,062 bytes, 24 entries) allows only read-only or
