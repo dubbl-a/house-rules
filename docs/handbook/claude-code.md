@@ -454,37 +454,39 @@ half of this rule: on 2026-06-05, a peer session moved the branch mid-run on a s
 which is why the rule reads "check the current branch immediately before every commit and push
 instead of trusting what it was at session start."
 
+A second repo-a memory item covers the deploy-time corollary: a deploy publishes whatever
+is in the shared laptop database, not the state the merges imply, so the rule squash-merges
+another session's branch rather than rebasing it, and never force-cleans a checkout it does not
+own.
+
 ### What a worktree costs, and the levers that cut it
 
-An unconditional worktree rule has a price, and four levers lower it (source:
+An unconditional worktree rule has a price, and three levers lower it (source:
 https://code.claude.com/docs/en/worktrees). First, a `.worktreeinclude` file at the repo root, in
 gitignore syntax, copies matching gitignored files into every worktree the harness creates; only a
 file that both matches a pattern and is gitignored is copied, so tracked files are never
 duplicated. The plugin scaffolds it once, empty, and never hash-checks it. `.env*` and
 `.claude/settings.local.json` are the entries adopters most often want, and they are not the
 default: a copied secret is a secret spread across every checkout, and an entry pays for itself
-only when work that legitimately happens in a worktree needs the file. A `WorktreeCreate` hook
-replaces the default creation and skips `.worktreeinclude` entirely, so a hook has to copy config
-files itself.
+only when work that legitimately happens in a worktree needs the file.
 
-Second, a `WorktreeCreate` hook is the place for per-worktree setup, and the plugin does not ship
-one. The recipe, in prose: link or install dependencies so a new worktree is not a cold install,
-and assign each worktree its own port the way Cursor's `worktrees.json` and Conductor's
-`CONDUCTOR_PORT` do, so two dev servers do not collide.
+Second, `worktree.baseRef` picks where a new worktree branches from. `"fresh"`, the default,
+branches from the remote default branch and so drops unpushed local commits from the new tree. It
+refetches `origin/HEAD` only if nothing was fetched in the last 24 hours, capped at 5 seconds, so a
+new worktree can branch from remote state up to a day old. `"head"` branches from the current local
+`HEAD` and is the setting for a session that builds on unpushed local commits. It cannot name an
+arbitrary branch.
 
-Third, `worktree.baseRef` picks where a new worktree branches from. `"fresh"`, the default,
-branches from the remote default branch, refreshing `origin/HEAD` when it is stale, and so drops
-unpushed local commits from the new tree; `"head"` branches from the current local `HEAD` and is
-the setting for a session that builds on unpushed local commits. It cannot name an arbitrary
-branch.
+Third, a `WorktreeCreate` hook, which most git repos do not want: use `.worktreeinclude` plus
+`baseRef` and skip the hook. A hook replaces git worktree creation entirely (location, checkout,
+cleanup) and `.worktreeinclude` is not processed on that path, so the plugin does not ship one. A
+hook that is worth writing, for a non-git VCS or per-worktree setup, has to do the creation
+itself: create the worktree, copy the include files itself, and only then link or install
+dependencies and assign each worktree its own port the way Cursor's `worktrees.json` and
+Conductor's `CONDUCTOR_PORT` do, so two dev servers do not collide.
 
-Fourth is the one cost with no lever: the prompt cache is per directory. Parallel sessions in one
+The one cost with no lever is the prompt cache, which is per directory. Parallel sessions in one
 directory share a cache, and each worktree starts cold.
-
-A second repo-a memory item covers the deploy-time corollary: a deploy publishes whatever
-is in the shared laptop database, not the state the merges imply, so the rule squash-merges
-another session's branch rather than rebasing it, and never force-cleans a checkout it does not
-own.
 
 ## Keep the committed settings narrow and the local settings local
 
