@@ -1,0 +1,86 @@
+# Weekly watch on the orchestration-kit upstream this package's roster and
+# session-start text were ported from (docs/handbook/upstreams.md, BORROW).
+# Runs scripts/check-orchestration-kit-upstream.mjs: exit 0 is unchanged, exit 1
+# opens or updates one `upstream-update` issue instead of failing the run (the
+# github rule "Open an issue instead of failing a scheduled run"), exit 3 fails
+# the job because an unreadable remote is not "unchanged".
+# scripts/house/check-deep-research-upstream.mjs is not run here: it reads the
+# installed Claude Code binary, which a bare CI runner lacks, so it runs after a
+# local Claude Code upgrade instead.
+name: upstream-watch
+on:
+  schedule:
+    # Offset off the top of the hour to dodge the cron stampede (see
+    # pr-checks.yml's header note on the same choice).
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+# Read-only by default; issues: write is what lets the job open or edit the issue.
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    # --diff shallow-clones the upstream, so allow more than harness-watch does.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22 }
+      - name: Run the upstream check
+        id: check
+        run: |
+          set +e
+          node scripts/check-orchestration-kit-upstream.mjs --json --diff > kit.json
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+      - name: File or update the issue
+        if: steps.check.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          PINNED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('kit.json','utf8')).pinned)")
+          HEAD_SHA=$(node -e "console.log(JSON.parse(require('fs').readFileSync('kit.json','utf8')).head)")
+          REMOTE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('kit.json','utf8')).remote)")
+          STAT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('kit.json','utf8')).diffStat)")
+          TITLE="Orchestration kit upstream moved past ${PINNED:0:7}"
+          cat > issue-body.md <<EOF
+          The orchestration kit upstream moved past the commit this repo last ported from.
+
+          - Pinned: ${PINNED}
+          - Current head: ${HEAD_SHA}
+          - Remote: ${REMOTE}
+
+          Changed under the ported paths:
+
+          \`\`\`
+          ${STAT}
+          \`\`\`
+
+          Run \`npm run check:kit -- --diff\` locally, re-port what is worth taking, then record the new sha in PINNED.
+          EOF
+          if ! gh label list --search upstream-update --json name -q '.[].name' | grep -qx upstream-update; then
+            gh label create upstream-update --description "An upstream this repo ported from has moved" --color "0E8A16"
+          fi
+          EXISTING=$(gh issue list --state open --label upstream-update --json number -q '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            OLD_TITLE=$(gh issue view "$EXISTING" --json title -q .title)
+            [ "$OLD_TITLE" = "$TITLE" ] && exit 0
+            gh issue edit "$EXISTING" --title "$TITLE" --body-file issue-body.md
+          else
+            gh issue create --title "$TITLE" --body-file issue-body.md --label upstream-update
+          fi
+      # Exit 3 is an unreadable remote; anything else (a crash, a kill) is not
+      # "unchanged" either, so both fail the job, and the checker's own JSON is
+      # printed first because --json sends the cause to kit.json, not the log.
+      - name: Fail on an unreadable remote or an unexpected exit
+        if: steps.check.outputs.status != '0' && steps.check.outputs.status != '1'
+        env:
+          CHECK_STATUS: ${{ steps.check.outputs.status }}
+        run: |
+          echo "check-orchestration-kit-upstream.mjs exited ${CHECK_STATUS}; its report follows"
+          cat kit.json 2>/dev/null || echo "(no kit.json was written)"
+          exit 1
