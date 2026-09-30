@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.15.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9113c39f98025d31fe37629d6f4e177dcda930567e97505349214384865d8009 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.15.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=55c3647ff540b7693d464924192ed44d009dce351c65c8e9f04ac69ce816853a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -127,7 +127,7 @@ Never create a branch in the main checkout, not even for a one-commit change: th
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.
 Squash-merge another session's branch, not rebase it, and never force-clean a checkout you do not own.
-Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout.
+Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout. If the worktree feels costly, the levers are a `.worktreeinclude` file, `worktree.baseRef`, and a `WorktreeCreate` hook recipe, in the receipt.
 Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-sessions`
 
 ## Keep the committed settings narrow and the local settings local

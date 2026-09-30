@@ -1,0 +1,12 @@
+# Gitignored files copied into every new worktree (.gitignore syntax; a
+# file is copied only when it matches BOTH this list and .gitignore).
+#
+# DELIBERATELY EMPTY. Nothing is copied by default — each entry has to
+# earn its place by naming why work that legitimately happens in a
+# worktree needs the file, not just why copying it would be convenient.
+#
+# Some state is a singleton (a local database, a large corpus) that every
+# worktree should read from the main checkout instead of copying, and a
+# secret copied here is a secret spread across every checkout for no
+# reason the checkout needs. Say why, in the commit, when adding OR
+# removing an entry.
