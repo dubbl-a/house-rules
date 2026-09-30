@@ -11,6 +11,11 @@
     "decided": "2026-08-31",
     "why": "the user-scope house-rules plugin supplies the PreToolUse hook; no repo-local copy is kept so the two cannot drift"
   },
+  "targets": [
+    "claude-code",
+    "codex",
+    "gemini"
+  ],
   "modules": {
     "claude-code": {
       "enabled": true,

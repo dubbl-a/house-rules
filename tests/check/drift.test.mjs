@@ -1023,3 +1023,22 @@ test('docs-drift-ignore-file in the top window still counts when a leading --- l
   assert.equal(res.code, 0, res.out);
   assert.ok(!(res.json.warnings || []).some((w) => w.kind === 'ignore-file'), res.out);
 });
+
+// ADR 0015 with ADR 0010's condition: the lines inside an AGENTS.md block are
+// exempt from drift only while the block is the one the lock recorded. A
+// hand-edited block is the adopter's text now, and gated like it.
+test('drift: an AGENTS.md block is exempt only while its body matches the lock', () => {
+  const inner = '## House rules\n\n### x\nFull text: `src/nope.js`';
+  const hash = createHash('sha256').update(inner, 'utf8').digest('hex');
+  const lock = JSON.stringify({ files: [{ path: 'AGENTS.md', module: '_targets', source: 'targets', kind: 'block', sep: '', bodySha256: hash }] });
+  const file = (body) => `# Ours\n\n<!-- house-managed:begin v0.1.0 -->\n${body}\n<!-- house-managed:end -->\n`;
+  const nope = (json) => (json.findings || []).filter((f) => f.path === 'AGENTS.md' && /src\/nope\.js/.test(f.message));
+
+  const clean = sandbox({ 'house.json': houseJson(), 'src/a.js': '//a\n', '.house/lock.json': lock, 'AGENTS.md': file(inner) });
+  assert.equal(nope(run(clean, ['--only=drift', '--json']).json).length, 0, 'the unedited block is exempt');
+
+  const edited = sandbox({ 'house.json': houseJson(), 'src/a.js': '//a\n', '.house/lock.json': lock, 'AGENTS.md': file(`${inner}\nedited by hand`) });
+  const res = run(edited, ['--only=drift', '--json']);
+  assert.equal(res.code, 1, res.out);
+  assert.equal(nope(res.json).length, 1, res.out);
+});

@@ -374,3 +374,17 @@ test('P7: an untracked rule file does not trigger the authored-rule nudge', () =
   const res = run(dir, ['--only=lengths', '--json']);
   assert.ok(!(res.json.warnings || []).some((w) => /repo-authored rule file/.test(w.message)), res.out);
 });
+
+// Codex stops reading project docs past project_doc_max_bytes, 32 KiB by
+// default, so a root AGENTS.md past it has a tail no Codex session sees.
+test('lengths: a root AGENTS.md over 32768 bytes warns naming Codex\'s default cap; at the cap it does not', () => {
+  const over = sandbox({ 'house.json': houseJson(), 'AGENTS.md': 'x'.repeat(32769) });
+  const res = run(over, ['--only=lengths', '--json']);
+  assert.equal(res.code, 0, res.out);
+  const w = (res.json.warnings || []).filter((x) => x.path === 'AGENTS.md');
+  assert.equal(w.length, 1, res.out);
+  assert.match(w[0].message, /32769 bytes/);
+  assert.match(w[0].message, /Codex's default cap/);
+  const at = sandbox({ 'house.json': houseJson(), 'AGENTS.md': 'x'.repeat(32768) });
+  assert.ok(!(run(at, ['--only=lengths', '--json']).json.warnings || []).some((x) => x.path === 'AGENTS.md'));
+});

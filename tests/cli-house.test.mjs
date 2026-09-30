@@ -1432,3 +1432,344 @@ test('#18 doctor: one ignore rule is reported once, not once per vendored file, 
   const line = text.split('\n').find((l) => l.startsWith('git-ignored house destinations:'));
   assert.equal((line.match(/\.gitignore:1/g) || []).length, 1, `the rule is cited once on the line: ${line}`);
 });
+
+// ── targets: the AGENTS.md block for Codex and Gemini CLI (ADR 0015) ──────
+//
+// A fixture with a claude-code module beside alpha, so the block can be shown
+// to omit it: Claude Code already loads the vendored rules by path.
+const CC_BODY = `# Claude Code rules
+
+## Keep the root file short
+Anchor: none (because fixture)
+`;
+
+function buildTargetsFixture() {
+  const fx = buildFixturePlugin();
+  writeTree(fx.dir, {
+    'modules/claude-code/module.json': `${JSON.stringify({ name: 'claude-code', default: 'on', rules: ['rules/claude-code.md'], files: [], configSlots: [], defaultPaths: ['CLAUDE.md'] }, null, 2)}\n`,
+    'modules/claude-code/rules/claude-code.md': CC_BODY,
+  });
+  return fx;
+}
+
+function targetsRepo(extra = {}) {
+  return buildTargetRepo({ 'README.md': '# hi\n', 'CLAUDE.md': '# root\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n', ...extra });
+}
+
+function targetsHouse(targets, modules = { 'claude-code': { enabled: true, config: {} }, alpha: { enabled: true, config: {} } }) {
+  return { ...BASE_HOUSE_JSON, ...(targets ? { targets } : {}), modules };
+}
+
+test('targets: render --apply creates AGENTS.md holding only the block, lists every module but claude-code, and locks the block', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo();
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const raw = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  assert.match(raw.split('\n')[0], /^<!-- house-managed:begin v9\.9\.9 .*-->$/);
+  assert.ok(raw.endsWith('<!-- house-managed:end -->\n'), 'the block is the whole file');
+  assert.equal((raw.match(/house-managed:begin/g) || []).length, 1);
+  assert.match(raw, /\.claude\/rules\/house\//);
+  assert.match(raw, /^### alpha$/m);
+  assert.match(raw, /^Applies to: `src\/\*\*`, `scripts\/\*\*`$/m);
+  assert.match(raw, /^Full text: `\.claude\/rules\/house\/alpha\.md`$/m);
+  assert.match(raw, /^- Do the thing$/m);
+  assert.doesNotMatch(raw, /^- Don't$/m, 'a bare Don\'t heading carries nothing as a bullet');
+  assert.doesNotMatch(raw, /Body text for alpha/, 'headings only, never rule bodies');
+  assert.doesNotMatch(raw, /### claude-code/, 'Claude Code loads its rules by path; the block omits the module');
+  const lock = JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'));
+  const entry = lock.files.find((e) => e.path === 'AGENTS.md');
+  assert.ok(entry, 'the block has its own lock entry');
+  assert.equal(entry.kind, 'block');
+  assert.match(entry.bodySha256, /^[0-9a-f]{64}$/);
+  assert.ok(!existsSync(join(repo, 'GEMINI.md')), 'no gemini target, no GEMINI.md');
+  // Idempotent: a second render writes nothing new.
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(again.code, 0, again.out + again.err);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), raw);
+});
+
+test('targets: an adopter\'s text above and below the block survives a re-render byte for byte', () => {
+  const { cliPath } = buildTargetsFixture();
+  const above = '# Our agents\n\nShared text every agent reads.\n';
+  const repo = targetsRepo({ 'AGENTS.md': above });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  let raw = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  assert.ok(raw.startsWith(above), 'existing text kept as the prefix');
+  const below = '\n## After the block\n\nMore adopter text.\n';
+  writeFileSync(join(repo, 'AGENTS.md'), `${raw}${below}`);
+  const withBlock = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  // Change the plan so the block really is rewritten: enable beta.
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex'], {
+    'claude-code': { enabled: true, config: {} }, alpha: { enabled: true, config: {} }, beta: { enabled: true, config: { slot: ['src/**'] } },
+  }));
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  raw = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  assert.match(raw, /^### beta$/m, 'the block was rewritten');
+  assert.notEqual(raw, withBlock);
+  assert.ok(raw.startsWith(above), 'text above the block unchanged');
+  assert.ok(raw.endsWith(`<!-- house-managed:end -->\n${below}`), 'text below the block unchanged');
+});
+
+test('targets: dropping codex and gemini removes the block, restores the adopter file, and deletes a file that held only the block', () => {
+  const { cliPath } = buildTargetsFixture();
+  const mine = '# Ours\n\nKeep me.\n';
+  const repoA = targetsRepo({ 'AGENTS.md': mine });
+  writeHouseJson(repoA, targetsHouse(['claude-code', 'codex', 'gemini']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repoA, '--apply']).code, 0);
+  assert.notEqual(readFileSync(join(repoA, 'AGENTS.md'), 'utf8'), mine);
+  writeHouseJson(repoA, targetsHouse(['claude-code']));
+  const r = runCli(cliPath, ['render', '--repo', repoA, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(join(repoA, 'AGENTS.md'), 'utf8'), mine, 'adopter text restored exactly');
+  assert.ok(!JSON.parse(readFileSync(join(repoA, '.house', 'lock.json'), 'utf8')).files.some((e) => e.path === 'AGENTS.md'));
+
+  const repoB = targetsRepo();
+  writeHouseJson(repoB, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repoB, '--apply']).code, 0);
+  assert.ok(existsSync(join(repoB, 'AGENTS.md')));
+  writeHouseJson(repoB, targetsHouse(null));
+  assert.equal(runCli(cliPath, ['render', '--repo', repoB, '--apply']).code, 0);
+  assert.ok(!existsSync(join(repoB, 'AGENTS.md')), 'nothing but the block was there, so the file goes');
+});
+
+test('targets: a hand edit inside the block is refused and --force-managed AGENTS.md restores it; an edit outside is never refused', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo({ 'AGENTS.md': '# Ours\n' });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const rendered = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+
+  // Outside the markers: the adopter's own text, never read.
+  const outside = rendered.replace('# Ours\n', '# Ours, edited\n');
+  writeFileSync(join(repo, 'AGENTS.md'), outside);
+  const ok = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(ok.code, 0, ok.out + ok.err);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), outside);
+
+  // Inside the markers: refused, file untouched.
+  const inside = outside.replace('- Do the thing\n', '- Do the thing, locally reworded\n');
+  assert.notEqual(inside, outside);
+  writeFileSync(join(repo, 'AGENTS.md'), inside);
+  const refused = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(refused.code, 1, refused.out + refused.err);
+  assert.match(refused.out, /REFUSE\s+AGENTS\.md/);
+  assert.match(refused.out, /--force-managed AGENTS\.md/);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), inside);
+
+  const forced = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', 'AGENTS.md']);
+  assert.equal(forced.code, 0, forced.out + forced.err);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), outside, 'block restored, outside edit kept');
+});
+
+test('targets: gemini scaffolds GEMINI.md importing AGENTS.md, unless Gemini is already wired or GEMINI.md exists', () => {
+  const { cliPath } = buildTargetsFixture();
+  const bare = targetsRepo();
+  writeHouseJson(bare, targetsHouse(['claude-code', 'gemini']));
+  const r = runCli(cliPath, ['render', '--repo', bare, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const gemini = readFileSync(join(bare, 'GEMINI.md'), 'utf8');
+  assert.match(gemini, /^@AGENTS\.md$/m);
+  assert.ok(existsSync(join(bare, 'AGENTS.md')), 'gemini alone still gets the block');
+  assert.ok(!JSON.parse(readFileSync(join(bare, '.house', 'lock.json'), 'utf8')).files.some((e) => e.path === 'GEMINI.md'), 'adopter-owned, never hash-checked');
+
+  const settings = targetsRepo({ '.gemini/settings.json': JSON.stringify({ context: { fileName: ['AGENTS.md', 'GEMINI.md'] } }) });
+  writeHouseJson(settings, targetsHouse(['claude-code', 'gemini']));
+  assert.equal(runCli(cliPath, ['render', '--repo', settings, '--apply']).code, 0);
+  assert.ok(!existsSync(join(settings, 'GEMINI.md')), 'settings already point Gemini CLI at AGENTS.md');
+
+  const own = targetsRepo({ 'GEMINI.md': '# our gemini notes\n' });
+  writeHouseJson(own, targetsHouse(['claude-code', 'gemini']));
+  assert.equal(runCli(cliPath, ['render', '--repo', own, '--apply']).code, 0);
+  assert.equal(readFileSync(join(own, 'GEMINI.md'), 'utf8'), '# our gemini notes\n', 'an existing GEMINI.md is never overwritten');
+});
+
+test('targets: doctor prints one line per target; only claude-code can carry verified evidence', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo();
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex', 'gemini']));
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^target claude-code: /m);
+  assert.match(r.out, /^target codex: unverified: Codex fires no instructions-loaded event; git floor /m);
+  assert.match(r.out, /^target gemini: unverified: Gemini CLI fires no instructions-loaded event; git floor /m);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.targets.map((t) => t.target), ['claude-code', 'codex', 'gemini']);
+  assert.ok(j.targets.filter((t) => t.target !== 'claude-code').every((t) => t.verified === false));
+
+  const plain = targetsRepo();
+  writeHouseJson(plain, targetsHouse(null));
+  const p = runCli(cliPath, ['doctor', '--repo', plain]);
+  assert.match(p.out, /^target claude-code: /m);
+  assert.doesNotMatch(p.out, /^target codex/m, 'absent targets means claude-code only');
+});
+
+// ── ADR 0015 review fixes ─────────────────────────────────────────────────
+
+test('targets: add then remove restores a CRLF file with no trailing newline byte for byte', () => {
+  const { cliPath } = buildTargetsFixture();
+  for (const mine of ['# Ours\r\nline two', '# Ours\r\n', '# Ours\n\n\n', 'no newline']) {
+    const repo = targetsRepo({ 'AGENTS.md': mine });
+    writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+    assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+    assert.ok(readFileSync(join(repo, 'AGENTS.md'), 'utf8').startsWith(mine));
+    writeHouseJson(repo, targetsHouse(null));
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), mine, `${JSON.stringify(mine)} restored exactly`);
+  }
+});
+
+const FENCED_EXAMPLE = '# Ours\n\nAn example of the markers:\n\n```md\n<!-- house-managed:begin v1.0.0 -->\nexample body\n<!-- house-managed:end -->\n```\n';
+
+// The marker lines are reserved for the house block (ADR 0015): a marker
+// anywhere else, a code example included, is refused with every marker line
+// named rather than parsed around, since each round of fence parsing found a
+// new Markdown edge.
+test('targets: marker lines quoted in an adopter code example refuse (exit 2) naming every marker line, file untouched', () => {
+  const { cliPath } = buildTargetsFixture();
+  for (const [mine, named] of [
+    [FENCED_EXAMPLE, [6, 8]],
+    ['# Ours\n\n<!-- house-managed:end -->\n', [3]],
+  ]) {
+    const repo = targetsRepo({ 'AGENTS.md': mine });
+    writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+    for (const extra of [[], ['--force-managed', 'AGENTS.md']]) {
+      const r = runCli(cliPath, ['render', '--repo', repo, '--apply', ...extra]);
+      assert.equal(r.code, 2, `${JSON.stringify(mine)} ${extra.join(' ')}: ${r.out}${r.err}`);
+      for (const n of named) assert.match(r.out, new RegExp(`AGENTS\\.md:${n}\\b`));
+      assert.match(r.out, /reserved for the house block/);
+      assert.match(r.out, /code examples/);
+      assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), mine, 'file untouched');
+    }
+  }
+});
+
+test('targets: a repo with no block in the lock and no codex or gemini target never touches an AGENTS.md that quotes the markers', () => {
+  const { cliPath } = buildTargetsFixture();
+  for (const mine of [FENCED_EXAMPLE, '# Ours\n\n```\n<!-- house-managed:end -->\n```\n']) {
+    for (const extra of [[], ['--force-managed', 'AGENTS.md']]) {
+      const repo = targetsRepo({ 'AGENTS.md': mine });
+      writeHouseJson(repo, targetsHouse(null));
+      const r = runCli(cliPath, ['render', '--repo', repo, '--apply', ...extra]);
+      assert.equal(r.code, 0, `${JSON.stringify(mine)} ${extra.join(' ')}: ${r.out}${r.err}`);
+      assert.doesNotMatch(r.out, /REFUSE/);
+      assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), mine, 'AGENTS.md byte-identical');
+      assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'alpha.md')), 'the rules still render');
+    }
+  }
+});
+
+test('targets: an indented marker line is reserved too, and named', () => {
+  const { cliPath } = buildTargetsFixture();
+  const mine = '# Ours\n\n    <!-- house-managed:end -->\n';
+  const repo = targetsRepo({ 'AGENTS.md': mine });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.out, /AGENTS\.md:3\b/);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), mine);
+});
+
+test('targets: the --json plan marks a reserved-marker refusal with its reason and 1-based marker lines', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo({ 'AGENTS.md': FENCED_EXAMPLE });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  const r = runCli(cliPath, ['render', '--repo', repo, '--json']);
+  assert.equal(r.code, 2, r.out + r.err);
+  const entry = JSON.parse(r.out).plan.find((p) => p.path === 'AGENTS.md');
+  assert.equal(entry.status, 'refuse');
+  assert.equal(entry.reason, 'reserved');
+  assert.deepEqual(entry.markerLines, [6, 8]);
+});
+
+test('targets: removal refuses (exit 2) naming the lines when the adopter quoted a marker beside the real block', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo({ 'AGENTS.md': '# Ours\n' });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const quoted = `${readFileSync(join(repo, 'AGENTS.md'), 'utf8')}\n\`\`\`\n<!-- house-managed:begin v1.0.0 -->\n\`\`\`\n`;
+  writeFileSync(join(repo, 'AGENTS.md'), quoted);
+  writeHouseJson(repo, targetsHouse(null));
+  for (const extra of [[], ['--force-managed', 'AGENTS.md']]) {
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply', ...extra]);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.out, /AGENTS\.md:3\b/);
+    assert.match(r.out, /reserved for the house block/);
+    assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), quoted, 'file untouched');
+  }
+});
+
+test('targets: --force-managed after the end marker was deleted removes the stale body instead of doubling it', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo({ 'AGENTS.md': '# Ours\n' });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const good = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  writeFileSync(join(repo, 'AGENTS.md'), good.replace('<!-- house-managed:end -->\n', ''));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 2, 'refused without force');
+  const forced = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', 'AGENTS.md']);
+  assert.equal(forced.code, 0, forced.out + forced.err);
+  const raw = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  assert.equal((raw.match(/^## House rules$/gm) || []).length, 1, raw);
+  assert.equal(raw, good);
+});
+
+test('targets: --force-managed refuses, naming the lines, when a broken block\'s stale body cannot be attributed', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo({ 'AGENTS.md': '# Ours\n' });
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const broken = readFileSync(join(repo, 'AGENTS.md'), 'utf8').replace('<!-- house-managed:end -->\n', '').replace('- Do the thing\n', '- Do the thing, edited\n');
+  writeFileSync(join(repo, 'AGENTS.md'), broken);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', 'AGENTS.md']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.out, /AGENTS\.md:3-\d+/, 'names the unattributable lines');
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), broken, 'nothing written');
+});
+
+test('targets: an invalid `targets` value makes render refuse instead of falling back and removing the block', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo();
+  writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const before = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  for (const bad of ['codex', ['codex'], ['claude-code', 'cursor'], ['claude-code', 'codex', 'codex']]) {
+    writeHouseJson(repo, targetsHouse(bad));
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 2, `${JSON.stringify(bad)} must refuse as unreadable input`);
+    assert.match(r.err, /targets/);
+    assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), before, 'the block is left alone');
+  }
+});
+
+test('targets: removal strips nothing when the adopter already deleted the separator render added', () => {
+  const { cliPath } = buildTargetsFixture();
+  for (const mine of ['foo\n', 'foo\r\n']) {
+    const repo = targetsRepo({ 'AGENTS.md': mine });
+    writeHouseJson(repo, targetsHouse(['claude-code', 'codex']));
+    assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+    const raw = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+    assert.ok(raw.startsWith(`${mine}\n<!-- house-managed:begin`), 'render added one separator newline');
+    writeFileSync(join(repo, 'AGENTS.md'), `${mine}${raw.slice(mine.length + 1)}`);
+    writeHouseJson(repo, targetsHouse(null));
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), mine, `${JSON.stringify(mine)} keeps its own bytes`);
+  }
+});
+
+test('targets: the dry-run plan lists the GEMINI.md scaffold --apply would write', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo();
+  writeHouseJson(repo, targetsHouse(['claude-code', 'gemini']));
+  const r = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^scaffold\s+GEMINI\.md/m);
+  assert.ok(!existsSync(join(repo, 'GEMINI.md')), 'dry run writes nothing');
+  const j = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.ok(j.scaffolds.includes('GEMINI.md'));
+});

@@ -700,3 +700,25 @@ test('parity: a house.json with every slot absent renders and checks identically
   assert.equal(fullCheck, sparseCheck,
     `checker output must be identical whether a slot is absent or spelled out at its default:\nsparse:\n${sparseCheck}\nfull:\n${fullCheck}`);
 });
+
+// ADR 0015 review: a render-created AGENTS.md opens with the block's begin
+// marker, which used to read as a managed header, so drift demoted the
+// adopter's own tokens below the block to warnings. Only the lines between
+// the markers are house's; everything outside is gated like any other doc.
+test('targets: an adopter token below a render-created AGENTS.md block is a drift finding, not a warning', () => {
+  const repo = fixtureRepo({ 'README.md': '# hi\n', 'src/a.js': '//a\n', 'CLAUDE.md': '# root\n' });
+  house(repo, 'init', '--apply');
+  const hj = readHouseJson(repo);
+  hj.targets = ['claude-code', 'codex'];
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(hj, null, 2)}\n`);
+  house(repo, 'render', '--apply');
+  const agents = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  assert.match(agents.split('\n')[0], /house-managed:begin/, 'render created the file with the block first');
+  writeFileSync(join(repo, 'AGENTS.md'), `${agents}\nSee \`src/nope.js\` for details.\n`);
+  git(repo, 'add', '-A');
+  const res = spawnSync('node', [join(repo, '.house/check.mjs'), '--repo', repo, '--only=drift', '--json'], { encoding: 'utf8' });
+  const j = JSON.parse(res.stdout);
+  assert.ok((j.findings || []).some((f) => f.path === 'AGENTS.md' && /src\/nope\.js/.test(f.message)), res.stdout);
+  assert.ok(!(j.warnings || []).some((w) => /src\/nope\.js/.test(w.message)), 'not demoted to a warning');
+  assert.ok(!(j.findings || []).some((f) => f.path === 'AGENTS.md' && /forged/.test(f.kind)), 'the begin marker is not a forged header');
+});

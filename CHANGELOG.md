@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+- **Codex and Gemini CLI as render targets (ADR 0015).** A new `house.json` key, `targets`, lists `claude-code`, `codex`, and `gemini`; absent means `["claude-code"]`, which must be present. With `codex` or `gemini` listed, `house render` writes a house-managed block into the root `AGENTS.md`: per module, the globs, the rule file, and its headings, never the rule text. Text outside the markers is yours and is never read. The block is locked, a hand edit inside it is refused unless `--force-managed AGENTS.md`, and dropping both targets removes it. A `gemini` target also gets a `GEMINI.md` importing `@AGENTS.md` unless Gemini CLI is already pointed at it. The checker validates `targets`, reports block tampering, prints one verdict line per target in the guard family, fails an unwired Gemini CLI, and warns when `AGENTS.md` passes Codex's default 32 KiB cap. `house doctor` prints one line per target; only Claude Code can show verified load evidence.
+
 ## [0.15.1] - 2026-09-29
 
 The branch guard stops refusing large MCP writes in repos that never adopted house-rules for a string that merely mentions a hook. Patch under ADR 0012: the guard's deny set narrows, not the breaking class.

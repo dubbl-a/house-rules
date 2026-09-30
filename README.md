@@ -99,7 +99,7 @@ Wire the checker in by hand: add `"check:house": "node .house/check.mjs"` and
 `"check:docs": "node .house/check.mjs --only=drift,todo"` to `package.json`'s scripts, and run
 `node .house/check.mjs` as a CI step. `house.json` records which modules are on, a dated ledger of
 what the repo declined and why, per-file line ceilings that tighten as files shrink, and the guard
-record; `plugins/house/schema/house.schema.json` describes every key.
+record; `plugins/house/schema/house.schema.json` describes every key. Its `targets` key adds Codex or Gemini CLI, which read the rules through a block in `AGENTS.md`.
 
 ## The checker
 

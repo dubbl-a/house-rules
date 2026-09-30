@@ -100,7 +100,15 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "356f91f971346f0cd87479506b24d429fb2c46d2661043febaaf4f61c8342d17"
+      "bodySha256": "64f31fa56c362f2d0ece85eb4e9dee9980aeb87ff9ca01a0f26643778b4cee37"
+    },
+    {
+      "path": "AGENTS.md",
+      "module": "_targets",
+      "source": "targets",
+      "kind": "block",
+      "sep": "",
+      "bodySha256": "fec58179dbb0a97b8cc59c2da83146acf4d11f9f03ac1a368d6076252e5241dc"
     }
   ],
   "scaffolds": [
