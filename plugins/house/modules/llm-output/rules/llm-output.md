@@ -69,7 +69,7 @@ Receipts: `docs/handbook/llm-output.md#reword-a-locked-claim-never-strengthen-it
 ## Treat silence as not approval
 
 Where the harness gates a write, its permission prompt is the floor, and it already refuses an agent message as consent on a person's behalf; elsewhere, show the diff and wait for an explicit yes before generating a file, since silence is not approval, nor is an unanswered question.
-Plan mode is the harness floor here: it holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread. A printed run has nobody to answer, and where prompts are off it denies, so ask for the yes yourself.
+Plan mode is the harness floor here: it holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread. A printed run has nobody to answer: with no mode configured it can start in auto mode, where the classifier rather than a person clears a write, and where prompts are off it denies, so ask for the yes yourself.
 The same reading applies to data: said nothing is not said yes; the full rule lives in engineering.md.
 Anchor: none (because a script-grantable approval is not an approval; the gate is the person).
 Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
