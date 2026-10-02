@@ -24,8 +24,8 @@ records the default-branch head as of the Consulted date; a row that names a
 version pins that tag. `npm run check:upstreams` walks the pins and prints one
 verdict per row (exit 0 unchanged, 1 a row moved, 3 a remote or the pins file
 could not be read), and `.github/workflows/upstream-watch.yml` runs it weekly
-beside `npm run check:kit`, opening or updating one `upstream-update` issue per
-moved upstream. A branch pin moves on any commit to that branch, so a move is a
+beside `npm run check:kit`, keeping one `upstream-update` issue whose table lists
+every moved row, updated in place and closed only by the maintainer. A branch pin moves on any commit to that branch, so a move is a
 prompt to look, not proof the taken paths changed. Two REUSE or BORROW rows have
 no pin, and the pins file lists them with the reason: the evals article is a web
 page with no git remote, and the deep-research fork is read from the installed
