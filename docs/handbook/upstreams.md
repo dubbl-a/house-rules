@@ -17,16 +17,43 @@ authority (CITED). REUSE and BORROW are the two that carry an ongoing rule:
   (docs module) includes glancing at this ledger for upstream movement worth
   re-importing. Re-importing is a normal PR against this package.
 
-The orchestration-kit row is watched weekly by
-`.github/workflows/upstream-watch.yml`, which opens an `upstream-update` issue
-when it moves; every other row is still re-checked by hand at the quarterly trim.
+Every REUSE and BORROW row with a git remote carries a machine-readable pin in
+`scripts/upstream-pins.json`, keyed by the row's Upstream cell: the remote, the
+branch or tag, the commit consulted, and the paths that were taken. A branch pin
+records the default-branch head as of the Consulted date; a row that names a
+version pins that tag. `npm run check:upstreams` walks the pins and prints one
+verdict per row (exit 0 unchanged, 1 a row moved, 3 a remote or the pins file
+could not be read), and `.github/workflows/upstream-watch.yml` runs it weekly
+beside `npm run check:kit`, opening or updating one `upstream-update` issue per
+moved upstream. A branch pin moves on any commit to that branch, so a move is a
+prompt to look, not proof the taken paths changed. Two REUSE or BORROW rows have
+no pin, and the pins file lists them with the reason: the evals article is a web
+page with no git remote, and the deep-research fork is read from the installed
+Claude Code binary, which its own checker watches after each upgrade. Rows with
+no ongoing rule (INFORMED, CONSULTED, REJECTED, CITED) are not pinned.
+
+What a move means depends on the relationship, and nothing is ever pulled for
+you. A moved REUSE row is a re-vendor at the new version, landed as a normal PR
+that passes this package's own controls. A moved BORROW row is a review: the
+checker names the paths to re-read, and re-importing anything is an editorial
+choice made in a normal PR, never a merge. Either way, the pin's sha (and tag)
+and the row's Consulted date move together in that PR.
+
+The three `anthropics/claude-plugins-official` rows (`claude-md-management`,
+`plugin-dev`, `skill-creator`) are pinned to the marketplace repo on each
+plugin's path, not to whatever version sits in this machine's plugin cache,
+because a cache is machine-local and a pin has to read the same everywhere.
+
+Adopters need nothing new: roster, hook, and rule updates that come out of an
+upstream review reach them through the plugin release flow, and this ledger and
+its pins stay in the package repo.
 
 | Upstream | Consulted | License | Relationship | What was taken | Re-check |
 | --- | --- | --- | --- | --- | --- |
 | adr.github.io/madr (MADR 4.0.0) | 2026-08-23 | MIT/CC0 | BORROW | the decision-record template in `docs/decisions/0000-template.md` | diff the template against the MADR repo's current `template/` |
 | github.com/obra/superpowers | 2026-08-23 | MIT | BORROW | starting text and hazard framing for worktree and finish-branch guidance (v0.2 skills; handbook worked examples) | re-read `using-git-worktrees`, `finishing-a-development-branch`, `writing-skills` |
-| anthropics/claude-plugins-official `claude-md-management` | 2026-08-23 | Apache-2.0 | BORROW | the audit half of its prompt for `/house-rules:revise-docs`; its append-to-CLAUDE.md default is the failure mode the routing replaces | local marketplace cache updates with the plugin |
-| anthropics/claude-plugins-official `plugin-dev` | 2026-08-23 | Apache-2.0 | BORROW | plugin/hook schema shapes used to author this package | same |
+| anthropics/claude-plugins-official `claude-md-management` | 2026-08-23 | Apache-2.0 | BORROW | the audit half of its prompt for `/house-rules:revise-docs`; its append-to-CLAUDE.md default is the failure mode the routing replaces | `npm run check:upstreams` against `plugins/claude-md-management/` in the marketplace repo |
+| anthropics/claude-plugins-official `plugin-dev` | 2026-08-23 | Apache-2.0 | BORROW | plugin/hook schema shapes used to author this package | `npm run check:upstreams` against `plugins/plugin-dev/` in the marketplace repo |
 | github.com/Goldziher/ai-rulez | 2026-08-23 | MIT | BORROW (ideas only) | the remote-include shape, the local-override merge strategy, and a `verify` command that proves committed output still matches its sources; the closest OSS analogue, not adopted because its include refs are unpinned, it has no lock, and it never emits `paths:`-scoped rules | re-read its README on a minor release; check whether include pinning or a lock has landed |
 | github.com/PackmindHub/packmind | 2026-08-23 | Apache-2.0 | BORROW (framing only) | the framing of context as a versioned, auditable artifact with a drift evaluator over it; not adopted because it is a Docker/Kubernetes server with submission and approval workflows, sized for an org rather than one person | re-read if house ever needs a multi-user approval path |
 | github.com/karanb192/claude-code-hooks | 2026-08-23 | MIT | BORROW (ideas only) | guard-pack single-process batching noted for a future multi-hook version; config-guard considered and not adopted | re-check if house ships more than one PreToolUse hook |
@@ -38,7 +65,7 @@ when it moves; every other row is still re-checked by hand at the quarterly trim
 | github.com/microsoft/code-with-engineering-playbook | 2026-08-23 | CC-BY-4.0 | BORROW (links) | handbook chapters link out for generic engineering material instead of rewriting it | links checked by the drift gate's external-link posture |
 | FlorianBruniaux/claude-code-ultimate-guide | 2026-08-23 | CC BY-SA 4.0 | BORROW (idea only) | the idea of matching model tier to task kind, re-expressed for the claude-code chapter in this package's own structure and words (checked 2026-09-01: no shared prose, only shared links); credited in that chapter's Sources and in NOTICE | re-read on a Claude Code major |
 | github.com/obra/superpowers (testing) | 2026-08-24 | MIT | BORROW | two-tier harness/eval split with cost posture; pressure-scenario skill-testing method; headless `claude -p` probe shape with premature-action detection | re-read `docs/testing.md` and `writing-skills` on plugin update (installed locally) |
-| anthropics/claude-plugins-official `skill-creator` | 2026-08-24 | Apache-2.0 | BORROW | evals/grading/benchmark schema triple; grader-critiques-the-eval; blind comparator then unblinding analyzer; train/test split; variance aggregation | local marketplace cache updates with the plugin |
+| anthropics/claude-plugins-official `skill-creator` | 2026-08-24 | Apache-2.0 | BORROW | evals/grading/benchmark schema triple; grader-critiques-the-eval; blind comparator then unblinding analyzer; train/test split; variance aggregation | `npm run check:upstreams` against `plugins/skill-creator/` in the marketplace repo |
 | github.com/karanb192/claude-code-hooks (testing) | 2026-08-24 | MIT | BORROW | zero-dependency node --test colocated per plugin; explicit stdin/stdout integration tier | re-check on major |
 | github.com/VoxCore84/claude-code-hook-tester | 2026-08-24 | MIT | BORROW | per-event mock payloads on stdin, and the three-way outcome contract a hook test must assert (0 passes, 2 is an intentional block, anything else is a crash) rather than reading any non-zero exit as a failure | re-check on a hook-protocol change |
 | anthropic.com/engineering/demystifying-evals-for-ai-agents | 2026-08-24 | docs | BORROW (citation anchor) | grader classes; isolation; outcome-over-path; two-experts task quality; pass@k vs pass^k; two-sided case design | re-read on republication |

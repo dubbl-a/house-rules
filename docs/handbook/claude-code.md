@@ -256,7 +256,8 @@ SirRuggie's claude-code-orchestration-kit (MIT, consulted 2026-09-20 at its comm
 minus its task-bucket system and `/task` command, which this package has not adopted;
 `scripts/check-orchestration-kit-upstream.mjs` pins that commit and exits 1 when the upstream
 branch moves, with `--diff` for the stat of the ported paths, so re-porting stays a deliberate PR
-rather than a re-fork.
+rather than a re-fork. The same commit is the kit's entry in `scripts/upstream-pins.json`, which
+`npm run check:upstreams` walks for every REUSE and BORROW row in `docs/handbook/upstreams.md`.
 
 The "fail loudly" floor the rule once stated does not hold on v2.1.278. The same binary's strings
 show the real behavior: "Subagent model … is not in the availableModels allowlist; using the newest

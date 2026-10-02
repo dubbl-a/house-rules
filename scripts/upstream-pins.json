@@ -1,0 +1,186 @@
+{
+  "about": "Machine-readable pins for the REUSE and BORROW rows of docs/handbook/upstreams.md, keyed by each row's Upstream cell text. scripts/check-upstreams.mjs walks this file; tests/upstreams.test.mjs holds it to the ledger. A branch pin records the default-branch head as of the Consulted date; a tag pin records the tag the row names and the commit it points at. Rows with no git remote are listed under unpinned with the reason.",
+  "pins": [
+    {
+      "upstream": "adr.github.io/madr (MADR 4.0.0)",
+      "relationship": "BORROW",
+      "remote": "https://github.com/adr/madr",
+      "ref": { "tag": "4.0.0" },
+      "sha": "2475fe1973f66a12aaf58a91d8fa7b42c0f5ea3d",
+      "consulted": "2026-08-23",
+      "paths": ["template/"],
+      "recheck": "diff docs/decisions/0000-template.md against the new tag's template/"
+    },
+    {
+      "upstream": "github.com/obra/superpowers",
+      "relationship": "BORROW",
+      "remote": "https://github.com/obra/superpowers",
+      "ref": { "branch": "main" },
+      "sha": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797",
+      "consulted": "2026-08-23",
+      "paths": ["skills/using-git-worktrees/", "skills/finishing-a-development-branch/", "skills/writing-skills/"],
+      "recheck": "re-read the three skills against the worktree and finish-branch guidance"
+    },
+    {
+      "upstream": "anthropics/claude-plugins-official `claude-md-management`",
+      "relationship": "BORROW",
+      "remote": "https://github.com/anthropics/claude-plugins-official",
+      "ref": { "branch": "main" },
+      "sha": "340e33aef211d95769d252324854497af871dafe",
+      "consulted": "2026-08-23",
+      "paths": ["plugins/claude-md-management/"],
+      "recheck": "re-read the audit prompt against /house-rules:revise-docs"
+    },
+    {
+      "upstream": "anthropics/claude-plugins-official `plugin-dev`",
+      "relationship": "BORROW",
+      "remote": "https://github.com/anthropics/claude-plugins-official",
+      "ref": { "branch": "main" },
+      "sha": "340e33aef211d95769d252324854497af871dafe",
+      "consulted": "2026-08-23",
+      "paths": ["plugins/plugin-dev/"],
+      "recheck": "re-read the plugin and hook schema skills against this package's manifests"
+    },
+    {
+      "upstream": "github.com/Goldziher/ai-rulez",
+      "relationship": "BORROW",
+      "remote": "https://github.com/Goldziher/ai-rulez",
+      "ref": { "branch": "main" },
+      "sha": "3c056acdada8fbc7d84cb2f29441852da464807e",
+      "consulted": "2026-08-23",
+      "paths": ["README.md"],
+      "recheck": "check whether include pinning or a lock has landed"
+    },
+    {
+      "upstream": "github.com/PackmindHub/packmind",
+      "relationship": "BORROW",
+      "remote": "https://github.com/PackmindHub/packmind",
+      "ref": { "branch": "main" },
+      "sha": "d9a55bdd36f3b175b21c1f04cfca0d6786e112ce",
+      "consulted": "2026-08-23",
+      "paths": ["README.md"],
+      "recheck": "re-read only if house needs a multi-user approval path"
+    },
+    {
+      "upstream": "github.com/karanb192/claude-code-hooks",
+      "relationship": "BORROW",
+      "remote": "https://github.com/karanb192/claude-code-hooks",
+      "ref": { "branch": "main" },
+      "sha": "70c8224d1957fa40a698c99ec5d4d490c01ce09d",
+      "consulted": "2026-08-23",
+      "paths": ["plugins/guard-pack/", "plugins/config-guard/"],
+      "recheck": "re-check if house ships more than one PreToolUse hook"
+    },
+    {
+      "upstream": "github.com/YawLabs/ctxlint",
+      "relationship": "BORROW",
+      "remote": "https://github.com/YawLabs/ctxlint",
+      "ref": { "tag": "v0.24.1" },
+      "sha": "0b4dfa0e13fbfb06a39065725e80d0dc62a414c0",
+      "consulted": "2026-08-24",
+      "paths": ["README.md", "src/"],
+      "recheck": "re-evaluate on a major if it gains docs-drift-ignore support or comment stripping"
+    },
+    {
+      "upstream": "contributor-covenant.org (Contributor Covenant 2.1)",
+      "relationship": "REUSE",
+      "remote": "https://github.com/EthicalSource/contributor_covenant",
+      "ref": { "tag": "2.1" },
+      "sha": "8a3be1350b07f38b53bbc7073f765a48c4c53ce1",
+      "consulted": "2026-09-01",
+      "paths": ["content/version/2/1/code_of_conduct.md"],
+      "recheck": "re-vendor CODE_OF_CONDUCT.md from the new version, keeping the Enforcement rewrite and the NOTICE statement"
+    },
+    {
+      "upstream": "github.com/microsoft/code-with-engineering-playbook",
+      "relationship": "BORROW",
+      "remote": "https://github.com/microsoft/code-with-engineering-playbook",
+      "ref": { "branch": "main" },
+      "sha": "016770e43d8a75be87b98c000c049f07c4a6e6f8",
+      "consulted": "2026-08-23",
+      "paths": ["docs/"],
+      "recheck": "check the handbook's outbound links still land"
+    },
+    {
+      "upstream": "FlorianBruniaux/claude-code-ultimate-guide",
+      "relationship": "BORROW",
+      "remote": "https://github.com/FlorianBruniaux/claude-code-ultimate-guide",
+      "ref": { "branch": "main" },
+      "sha": "1ddb547ccbeb62ff2d4275f6c8e62792c72f54db",
+      "consulted": "2026-08-23",
+      "paths": ["guide/ultimate-guide.md"],
+      "recheck": "re-read the model-tier section on a Claude Code major"
+    },
+    {
+      "upstream": "github.com/obra/superpowers (testing)",
+      "relationship": "BORROW",
+      "remote": "https://github.com/obra/superpowers",
+      "ref": { "branch": "main" },
+      "sha": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797",
+      "consulted": "2026-08-24",
+      "paths": ["docs/testing.md", "skills/writing-skills/"],
+      "recheck": "re-read the testing doc and writing-skills against the testing chapter"
+    },
+    {
+      "upstream": "anthropics/claude-plugins-official `skill-creator`",
+      "relationship": "BORROW",
+      "remote": "https://github.com/anthropics/claude-plugins-official",
+      "ref": { "branch": "main" },
+      "sha": "e572d204d75338d76cbf9c06a53cf7b6e0c705d4",
+      "consulted": "2026-08-24",
+      "paths": ["plugins/skill-creator/"],
+      "recheck": "re-read the eval, grading, and benchmark schemas against plugins/house/evals/"
+    },
+    {
+      "upstream": "github.com/karanb192/claude-code-hooks (testing)",
+      "relationship": "BORROW",
+      "remote": "https://github.com/karanb192/claude-code-hooks",
+      "ref": { "branch": "main" },
+      "sha": "70c8224d1957fa40a698c99ec5d4d490c01ce09d",
+      "consulted": "2026-08-24",
+      "paths": ["package.json", ".github/workflows/test.yml"],
+      "recheck": "re-check the test layout on a major"
+    },
+    {
+      "upstream": "github.com/VoxCore84/claude-code-hook-tester",
+      "relationship": "BORROW",
+      "remote": "https://github.com/VoxCore84/claude-code-hook-tester",
+      "ref": { "branch": "master" },
+      "sha": "d67b52fc93f15ff47255c1a95eb860dc9299a4c1",
+      "consulted": "2026-08-24",
+      "paths": ["payloads.json", "test-hooks.py"],
+      "recheck": "re-check the payloads and outcome contract on a hook-protocol change"
+    },
+    {
+      "upstream": "github.com/skill-bench/skill-eval-action",
+      "relationship": "BORROW",
+      "remote": "https://github.com/skill-bench/skill-eval-action",
+      "ref": { "branch": "main" },
+      "sha": "32cb44e77cf3147ebbe140a953065e0ac89eddb6",
+      "consulted": "2026-08-24",
+      "paths": ["README.md", "action.yml"],
+      "recheck": "none needed beyond a glance; the ideas were taken whole"
+    },
+    {
+      "upstream": "github.com/SirRuggie/claude-code-orchestration-kit (v2.0, commit 4416994 of 2026-09-13)",
+      "relationship": "BORROW",
+      "remote": "https://github.com/SirRuggie/claude-code-orchestration-kit",
+      "ref": { "branch": "main" },
+      "sha": "4416994bf730c8e9833984383daa58375c1ca6fd",
+      "consulted": "2026-09-20",
+      "paths": ["core/CLAUDE.md", "core/agents/"],
+      "recheck": "npm run check:kit -- --diff, re-port, then move PINNED and this sha together",
+      "watchedBy": "scripts/check-orchestration-kit-upstream.mjs"
+    }
+  ],
+  "unpinned": [
+    {
+      "upstream": "anthropic.com/engineering/demystifying-evals-for-ai-agents",
+      "reason": "a web article with no git remote; re-read on republication"
+    },
+    {
+      "upstream": "anthropics/claude-code bundled `deep-research` workflow (v2.1.276)",
+      "reason": "read from the installed Claude Code binary, not a git remote; scripts/house/check-deep-research-upstream.mjs watches it after each Claude Code upgrade"
+    }
+  ]
+}
