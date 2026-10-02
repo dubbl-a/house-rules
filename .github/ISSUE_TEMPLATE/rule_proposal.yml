@@ -22,6 +22,7 @@ body:
         - deployment
         - docs
         - engineering
+        - evals
         - github
         - llm-output
         - testing

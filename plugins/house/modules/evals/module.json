@@ -1,0 +1,22 @@
+{
+  "name": "evals",
+  "default": "detect",
+  "rules": [
+    "rules/evals.md"
+  ],
+  "files": [],
+  "configSlots": [
+    "evalGlobs",
+    {
+      "name": "evalRoots",
+      "default": [
+        "evals/**",
+        "eval/**"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$evalRoots",
+    "$evalGlobs"
+  ]
+}

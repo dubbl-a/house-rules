@@ -75,18 +75,6 @@
   Read the bytes that ship, because source and render diverge, and an option's name is never the evidence.
 - Validate the body before writing it, because a status code is not a content check
   Validate the payload before anything touches disk, because a failing source often answers success with an error body.
-- Never let a gate mint the answer key it grades against
-  Keep the answer key independent of the thing graded, because labels from the tool under test measure drift, not accuracy.
-- Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
-  Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
-- Show the ratio and the sample, because one number is never the accuracy
-  Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
-- Make a measuring instrument reproducible
-  Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
-- Evaluate the path a session actually takes
-  Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
-- Deny the eval session what the project allows, and fail a run whose results contain the key
-  Pass every project allow the eval does not itself grant as a deny, since project settings reach a session that loads them and a broad allow written for daily work is an open door in a measurement.
 - Assert an invariant where its state is created, with a why and a remedy
   Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, since a violation never announces itself there.
 - Make every waiver print its reason, and give an integrity gate none
@@ -113,6 +101,26 @@
   Read all config from the environment, so the repo could go open source any moment without leaking a credential.
 - Don't
   - Don't call a no-op run evidence a tool works.
+
+## .claude/rules/house/evals.md
+- Split deterministic tests from model-behavior evals, and give each its own budget and cadence
+  Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
+- Prove an eval can fail, then grade it with the cheapest grader that can
+  The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
+- Never let a gate mint the answer key it grades against
+  Keep the answer key independent of the thing graded, because labels from the tool under test measure drift, not accuracy.
+- Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
+  Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
+- Show the ratio and the sample, because one number is never the accuracy
+  Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
+- Make a measuring instrument reproducible
+  Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
+- Evaluate the path a session actually takes
+  Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
+- Deny the eval session what the project allows, and fail a run whose results contain the key
+  Pass every project allow the eval does not itself grant as a deny, since project settings reach a session that loads them and a broad allow written for daily work is an open door in a measurement.
+- Don't
+  - Don't gate a pull request on a tier that costs money and answers differently every run.
 
 ## .claude/rules/house/github.md
 - Gate every PR on checks that need no credential, and name what is not gated
@@ -161,16 +169,12 @@
   The harness's own guidance already says to give the agent a check that produces a pass or fail; treat that as the floor and ship it as one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford
   Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
-- Split deterministic tests from model-behavior evals, and give each its own budget and cadence
-  Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
 - Test the guard itself, as its own CI step
   Test the hook, the gate, and the guard script that protect the workflow, because code that decides whether a change is allowed to land deserves a test more than the code it guards.
 - Feed a real payload through the real wiring, and never re-implement the logic under test
   Drive the test through the real entry point with a real payload, never through a helper that restates the rule, because two copies of one rule pass together whenever both are wrong.
 - Ship every gate with a positive control and a negative control
   Commit the case the gate must fail beside the case it must pass, and run both in the same job, because a suite of passing cases cannot tell a working check from one that always passes.
-- Prove an eval can fail, then grade it with the cheapest grader that can
-  The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
   Read the diff a snapshot gate prints and say what changed before accepting the new snapshot, because accepting it unread turns a drift gate into a rubber stamp.
 - Quarantine a flaky test loudly, and never retry it into silence

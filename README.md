@@ -5,15 +5,15 @@
 
 ## What it is
 
-Claude Code is a program that builds and changes software from what you describe in plain words.
-It is good at building. What it does not bring on its own is the working knowledge an experienced
-team carries, such as taking a proven backup before a change to stored data, or trying a fix on a
+Claude Code is a program that builds and changes software from what you describe in plain words. It
+is good at building. What it does not bring on its own is the working knowledge an experienced team
+carries, such as taking a proven backup before a change to stored data, or trying a fix on a
 separate copy before touching the shared one. You would have to know to ask. house-rules is that
-expertise, researched and written down as rules across nine areas: working with Claude Code itself,
-documentation, engineering, GitHub, testing, databases, deployment, data pipelines, and text a model
-produced. Each rule comes from what went wrong on a real project or from a practice the wider
-engineering community has already settled, with its source named, so you do not have to research
-it yourself.
+expertise, researched and written down as rules across ten areas: working with Claude Code itself,
+documentation, engineering, GitHub, testing, measurement, databases, deployment, data pipelines, and
+text a model produced. Each rule comes from what went wrong on a real project or from a practice the
+wider engineering community has already settled, with its source named, so you do not have to
+research it yourself.
 
 The rules are also how your instructions to Claude Code are managed, and that matters because
 whatever you write for it is advice: nothing checks that a session followed it, that it is still
@@ -25,8 +25,7 @@ the project have stopped matching.
 
 ## What the rules cover
 
-Nine sets of rules, called modules, each the researched practice for one area. Five are on unless
-you switch them off:
+Ten sets of rules, called modules, each researched for one area. Five are on unless switched off:
 
 - **claude-code**: the assistant's own setup: what it reads each time, how long that may be, and
   where a new fact belongs.
@@ -36,7 +35,7 @@ you switch them off:
   copy, and no passwords or keys in the project.
 - **testing**: what "done" may claim, and what a passing test proves.
 
-Four turn on when your project looks like it needs them:
+Five turn on when your project looks like it needs them:
 
 - **database**: stored data, with a backup taken and proven before any change that could lose it.
 - **deployment**: putting something live, deliberately, with a backup restored for real from time
@@ -45,6 +44,7 @@ Four turn on when your project looks like it needs them:
   little without asking.
 - **llm-output**: text a model produced, kept aside until a person has checked it, so nothing a
   model wrote is read as fact by accident.
+- **evals**: measuring what a rule or a model really does, with each score shown beside its sample.
 
 Every rule was earned or borrowed, never invented: `docs/handbook/` records the incident or the
 published practice behind each one, `docs/handbook/inventory.md` traces every harvested practice to
@@ -59,7 +59,7 @@ knowing its name, and each rule says why in the same breath, so you learn the re
 Start with the plain-language guide, which explains every technical word where it first appears:
 https://house-rules-guide.vercel.app
 
-**If you are an engineer**, this is a Claude Code plugin. The nine modules render into
+**If you are an engineer**, this is a Claude Code plugin. The ten modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
 enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs` runs
 in CI; a git-hook floor refuses a commit or push to a protected branch, backed by a PreToolUse hook;

@@ -28,12 +28,6 @@ Full text: `.claude/rules/house/engineering.md`
 - Prove a check can fail before trusting that it passed
 - Verify the served artifact, not the source
 - Validate the body before writing it, because a status code is not a content check
-- Never let a gate mint the answer key it grades against
-- Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
-- Show the ratio and the sample, because one number is never the accuracy
-- Make a measuring instrument reproducible
-- Evaluate the path a session actually takes
-- Deny the eval session what the project allows, and fail a run whose results contain the key
 - Assert an invariant where its state is created, with a why and a remedy
 - Make every waiver print its reason, and give an integrity gate none
 - Read a missing field as missing, because absence is not confidence
@@ -46,6 +40,18 @@ Full text: `.claude/rules/house/engineering.md`
 - Normalize against fixed anchors, never against the live population
 - Make an error message teach the fix
 - Read config from the environment, and keep build, release, and run separate
+
+### evals
+Applies to: `plugins/house/evals/**`
+Full text: `.claude/rules/house/evals.md`
+- Split deterministic tests from model-behavior evals, and give each its own budget and cadence
+- Prove an eval can fail, then grade it with the cheapest grader that can
+- Never let a gate mint the answer key it grades against
+- Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
+- Show the ratio and the sample, because one number is never the accuracy
+- Make a measuring instrument reproducible
+- Evaluate the path a session actually takes
+- Deny the eval session what the project allows, and fail a run whose results contain the key
 
 ### github
 Applies to: `.github/**`, `.githooks/**`, `.env.example`
@@ -75,11 +81,9 @@ Applies to: `tests/**`, `.github/workflows/**`
 Full text: `.claude/rules/house/testing.md`
 - Give the agent a check it can run before you walk away
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford
-- Split deterministic tests from model-behavior evals, and give each its own budget and cadence
 - Test the guard itself, as its own CI step
 - Feed a real payload through the real wiring, and never re-implement the logic under test
 - Ship every gate with a positive control and a negative control
-- Prove an eval can fail, then grade it with the cheapest grader that can
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
 - Quarantine a flaky test loudly, and never retry it into silence
 - Treat coverage as a search-light, never as a target

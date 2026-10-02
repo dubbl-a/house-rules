@@ -426,6 +426,7 @@ function probeRepo(repoRoot, fileDests = []) {
   try { hasAstroConfig = readdirSync(repoRoot).some((f) => f.startsWith('astro.config.')); } catch { /* ignore */ }
   const hasDeploymentMarkers = hasWrangler || hasVercel || hasDockerfile || hasAstroConfig;
   const hasDbMarkers = existsSync(path.join(repoRoot, 'db')) || existsSync(path.join(repoRoot, 'migrations'));
+  const hasEvalMarkers = existsSync(path.join(repoRoot, 'evals')) || existsSync(path.join(repoRoot, 'eval'));
   return {
     defaultBranch: probeDefaultBranch(repoRoot),
     topLevelTrackedDirs: topDirs,
@@ -435,6 +436,7 @@ function probeRepo(repoRoot, fileDests = []) {
     hasSettingsHooksBlock: repoSettingsHasHooksBlock(repoRoot),
     hasDeploymentMarkers,
     hasDbMarkers,
+    hasEvalMarkers,
     ignoredHouseDests: probeIgnoredHouseDests(repoRoot, fileDests),
   };
 }
@@ -502,13 +504,14 @@ function docsConfigFromProbe(repoRoot) {
   return { haystackDirs, roots };
 }
 
-// "detect" probing for the two named modules the content spec actually
-// gives a stack signal for. Any other detect-default module name (there are
-// none in the shipped v0.1 content spec, but module sources are read
-// generically) has no known probe, so it defaults OFF rather than guessing.
+// "detect" probing for the three named modules the content spec actually
+// gives a stack signal for. Any other detect-default module name (module
+// sources are read generically) has no known probe, so it defaults OFF
+// rather than guessing.
 function probeDetectEnabled(name, probe) {
   if (name === 'deployment') return probe.hasDeploymentMarkers;
   if (name === 'database') return probe.hasDbMarkers;
+  if (name === 'evals') return probe.hasEvalMarkers;
   return false;
 }
 

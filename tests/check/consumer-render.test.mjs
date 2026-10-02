@@ -316,6 +316,29 @@ test('#19: every module literal path sits behind a slot defaulting to the histor
   assert.doesNotMatch(t, /^ {2}- test\/\*\*$/m);
 });
 
+// #119: the measurement and eval-tier rules live in an evals module rooted at
+// evals/** and eval/**. Like database it defaults to detect: init turns it on
+// only where an eval directory exists, since an enabled module whose roots
+// match nothing would never load.
+test('#119: evals detects on from an eval directory, renders its root, and stays off without one', () => {
+  const withEvals = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'evals/case.mjs': '// c\n' });
+  house(withEvals, 'init', '--apply');
+  const hj = JSON.parse(readFileSync(join(withEvals, 'house.json'), 'utf8'));
+  assert.equal(hj.modules.evals.enabled, true, 'evals/ exists, so evals detects on');
+  assert.deepEqual(hj.modules.evals.config, {});
+  house(withEvals, 'render', '--apply');
+  const front = readFileSync(join(withEvals, '.claude/rules/house/evals.md'), 'utf8').split('\n---\n')[0];
+  assert.match(front, /^ {2}- evals\/\*\*$/m);
+
+  const withEval = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'eval/case.mjs': '// c\n' });
+  house(withEval, 'init', '--apply');
+  assert.equal(JSON.parse(readFileSync(join(withEval, 'house.json'), 'utf8')).modules.evals.enabled, true, 'eval/ exists, so evals detects on');
+
+  const without = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  house(without, 'init', '--apply');
+  assert.equal(JSON.parse(readFileSync(join(without, 'house.json'), 'utf8')).modules.evals.enabled, false, 'no eval directory, so evals stays off');
+});
+
 // #23: the CLAUDE.md skeleton exists to be merged into CLAUDE.md by hand and
 // then deleted, but every later `render --apply` wrote it back, so each adopter
 // re-sync had to `rm` it again to keep the commit clean. A scaffold is now
