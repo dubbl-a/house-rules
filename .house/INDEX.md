@@ -83,6 +83,10 @@
   Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
 - Make a measuring instrument reproducible
   Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
+- Evaluate the path a session actually takes
+  Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
+- Deny the eval session what the project allows, and fail a run whose results contain the key
+  Pass every project allow the eval does not itself grant as a deny, since project settings reach a session that loads them and a broad allow written for daily work is an open door in a measurement.
 - Assert an invariant where its state is created, with a why and a remedy
   Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, since a violation never announces itself there.
 - Make every waiver print its reason, and give an integrity gate none

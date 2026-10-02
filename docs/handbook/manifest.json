@@ -203,7 +203,9 @@
         "EXT-047",
         "EXT-048",
         "EXT-049",
-        "EXT-050"
+        "EXT-050",
+        "PA-042",
+        "PA-043"
       ],
       "crossRefs": [
         "TW-189",
@@ -221,6 +223,8 @@
         "Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero",
         "Show the ratio and the sample, because one number is never the accuracy",
         "Make a measuring instrument reproducible",
+        "Evaluate the path a session actually takes",
+        "Deny the eval session what the project allows, and fail a run whose results contain the key",
         "Assert an invariant where its state is created, with a why and a remedy",
         "Make every waiver print its reason, and give an integrity gate none",
         "Read a missing field as missing, because absence is not confidence",
@@ -234,7 +238,7 @@
         "Make an error message teach the fix",
         "Read config from the environment, and keep build, release, and run separate"
       ],
-      "notes": "21 headings and 101 owned rows against 200 lines is 9.5 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/engineering.md, and the file ends with ## Don't."
+      "notes": "23 headings and 103 owned rows against 200 lines is 8.7 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/engineering.md, and the file ends with ## Don't."
     },
     {
       "path": "plugins/house/modules/github/rules/github.md",
