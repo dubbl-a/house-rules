@@ -1,9 +1,14 @@
-# Weekly watch on the orchestration-kit upstream this package's roster and
-# session-start text were ported from (docs/handbook/upstreams.md, BORROW).
-# Runs scripts/check-orchestration-kit-upstream.mjs: exit 0 is unchanged, exit 1
-# opens or updates one `upstream-update` issue instead of failing the run (the
-# github rule "Open an issue instead of failing a scheduled run"), exit 3 fails
-# the job because an unreadable remote is not "unchanged".
+# Weekly watch on the upstreams docs/handbook/upstreams.md pins. Two checks:
+# scripts/check-orchestration-kit-upstream.mjs for the orchestration kit this
+# package's roster and session-start text were ported from (BORROW), and
+# scripts/check-upstreams.mjs for every REUSE and BORROW row in
+# scripts/upstream-pins.json. For each: exit 0 is unchanged, exit 1 opens or
+# updates an `upstream-update` issue instead of failing the run (the github rule
+# "Open an issue instead of failing a scheduled run"), exit 3 fails the job
+# because an unreadable remote is not "unchanged". Each step owns one issue,
+# found by its own title prefix: the kit step "Orchestration kit upstream
+# moved", the pins step "Upstreams moved past their pins", a table of every
+# moved row except the kit, which the kit step owns.
 # scripts/house/check-deep-research-upstream.mjs is not run here: it reads the
 # installed Claude Code binary, which a bare CI runner lacks, so it runs after a
 # local Claude Code upgrade instead.
@@ -65,7 +70,9 @@ jobs:
           if ! gh label list --search upstream-update --json name -q '.[].name' | grep -qx upstream-update; then
             gh label create upstream-update --description "An upstream this repo ported from has moved" --color "0E8A16"
           fi
-          EXISTING=$(gh issue list --state open --label upstream-update --json number -q '.[0].number')
+          # Match by this step's own title prefix, so the pins step's issue
+          # (same label) is never picked up and retitled here.
+          EXISTING=$(gh issue list --state open --label upstream-update --limit 200 --json number,title -q '[.[] | select(.title | startswith("Orchestration kit upstream moved"))][0].number // empty')
           if [ -n "$EXISTING" ]; then
             OLD_TITLE=$(gh issue view "$EXISTING" --json title -q .title)
             [ "$OLD_TITLE" = "$TITLE" ] && exit 0
@@ -73,6 +80,56 @@ jobs:
           else
             gh issue create --title "$TITLE" --body-file issue-body.md --label upstream-update
           fi
+      # The pins checker runs whatever the kit steps did, so one red does not
+      # hide the other; !cancelled() keeps a manual cancel a cancel.
+      - name: Run the pinned-upstreams check
+        id: pins
+        if: ${{ !cancelled() }}
+        run: |
+          set +e
+          node scripts/check-upstreams.mjs --json > upstreams.json
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+      # Exit 3 still carries the rows that did read, so a moved row is filed
+      # even when another remote was unreadable; the fail step below then
+      # turns the job red for the unreadable one.
+      # One issue for every moved row, found by its own title prefix and
+      # updated in place, so a busy week is one notification, not ten; only
+      # the maintainer closes it.
+      - name: File or update the one moved-upstreams issue
+        if: ${{ !cancelled() && (steps.pins.outputs.status == '1' || steps.pins.outputs.status == '3') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          if ! gh label list --search upstream-update --json name -q '.[].name' | grep -qx upstream-update; then
+            gh label create upstream-update --description "An upstream this repo ported from has moved" --color "0E8A16"
+          fi
+          node <<'EOF'
+          const { execFileSync } = require('node:child_process');
+          const { readFileSync, writeFileSync } = require('node:fs');
+          const gh = (args) => execFileSync('gh', args, { encoding: 'utf8' }).trim();
+          const report = JSON.parse(readFileSync('upstreams.json', 'utf8'));
+          const moved = (report.rows ?? []).filter((r) => r.status === 'moved' && !r.watchedBy);
+          if (moved.length === 0) process.exit(0);
+          const PREFIX = 'Upstreams moved past their pins: ';
+          const title = `${PREFIX}${moved.length} row(s)`;
+          const cell = (s) => String(s).replace(/\|/g, '\\|');
+          const body = [
+            'These REUSE and BORROW rows moved past their pins in `scripts/upstream-pins.json`. Nothing is merged for you: take what is worth taking in a normal PR, then move the pin\'s sha (and tag) and the ledger row\'s Consulted date together.',
+            '',
+            '| Upstream | Relationship | Pinned | Current | What to do |',
+            '| --- | --- | --- | --- | --- |',
+            ...moved.map((r) => `| ${cell(r.upstream)} | ${r.relationship} | ${cell(r.pinned)} | ${cell(r.current)} | ${cell(r.action)} |`),
+            '',
+            'Run `npm run check:upstreams` locally for the same verdicts, or `--only=<upstream>` for one row.',
+          ].join('\n');
+          writeFileSync('issue-body.md', `${body}\n`);
+          const open = JSON.parse(gh(['issue', 'list', '--state', 'open', '--label', 'upstream-update', '--limit', '200', '--json', 'number,title,body']));
+          const existing = open.find((i) => i.title.startsWith(PREFIX));
+          if (existing && existing.title === title && existing.body.trim() === body.trim()) process.exit(0);
+          if (existing) gh(['issue', 'edit', String(existing.number), '--title', title, '--body-file', 'issue-body.md']);
+          else gh(['issue', 'create', '--title', title, '--body-file', 'issue-body.md', '--label', 'upstream-update']);
+          EOF
       # Exit 3 is an unreadable remote; anything else (a crash, a kill) is not
       # "unchanged" either, so both fail the job, and the checker's own JSON is
       # printed first because --json sends the cause to kit.json, not the log.
@@ -83,4 +140,12 @@ jobs:
         run: |
           echo "check-orchestration-kit-upstream.mjs exited ${CHECK_STATUS}; its report follows"
           cat kit.json 2>/dev/null || echo "(no kit.json was written)"
+          exit 1
+      - name: Fail on an unreadable pinned upstream or an unexpected exit
+        if: ${{ !cancelled() && steps.pins.outputs.status != '0' && steps.pins.outputs.status != '1' }}
+        env:
+          CHECK_STATUS: ${{ steps.pins.outputs.status }}
+        run: |
+          echo "check-upstreams.mjs exited ${CHECK_STATUS}; its report follows"
+          cat upstreams.json 2>/dev/null || echo "(no upstreams.json was written)"
           exit 1
