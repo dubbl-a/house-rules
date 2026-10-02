@@ -27,7 +27,7 @@ Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-
 Scope every domain rule with `paths:` so a session that never touches the domain never pays for it.
 A rule file with no `paths:` is not unscoped, it is always-on at root-file priority, so if it belongs in every session move it into the root file instead.
 Confirm the scoping defers loading before you count on it, and tell the reader to grep the rules directory when no matching file is open.
-Remember a scoped rule is summarized away at compaction and returns only when a matching file is read again, so a rule that must survive compaction belongs in the root file.
+Remember a scoped rule is summarized away at compaction and returns only when a matching file is read, written, or edited again, so a rule that must survive compaction belongs in the root file.
 Anchor: check.mjs `drift` validates every rule file's `paths:` first segment against the tree, and `coload` caps the summed budget of the rules that match any one path.
 Receipts: `docs/handbook/claude-code.md#give-a-domain-rule-a-paths-list-and-never-leave-a-rule-file-unscoped`
 
