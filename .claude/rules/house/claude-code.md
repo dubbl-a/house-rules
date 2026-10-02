@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.15.2 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=55c3647ff540b7693d464924192ed44d009dce351c65c8e9f04ac69ce816853a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.15.2 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=69b2b6d3a31a748abb6e815ccdbb4a98bfc0d107ab7ce6bd122c9e6b522a0c6b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -142,6 +142,7 @@ Shape the list rather than only pruning it: allow a tool broadly and deny its es
 Write each deny in both the leading and the interior form, and run it against the invocation it must block and the innocent one it might catch; a pattern's reach is not what reading it suggests.
 Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, auto mode suspends a broad allow in favor of its classifier, and only the sandbox or a hook enforces independent of command text; never grow the deny list chasing completeness.
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
+Expect a path deny to miss a search that names no path, and a search tool the client treats as read-only to run with no allow naming it; keep a path out of a search with a hook or the sandbox, and read tool results for it as the fallback.
 Anchor: `plugins/house/templates/settings.json` ships the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags, and `/house-rules:sync` refuses a managed file that was edited locally.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 

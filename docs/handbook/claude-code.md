@@ -546,6 +546,19 @@ settings while auto mode is on, because editing a settings file to grant a permi
 deny; removing or restricting rules is permitted. The deny half is therefore an agent's to
 write, and the broad allow half is the operator's.
 
+Two gaps observed in a consuming repo's eval session on 2026-09-30, print mode under the
+deny-by-default permission mode with an allow list. First, ripgrep ran although no allow named
+it, the way the documented read-only commands do; the documented list does not name it.
+Second, a Read deny on a subdirectory did not stop a search pointed at its parent, a deny on
+the parent did, and a search with no path at all was stopped by no deny tried and returned
+lines from the denied directory. One session each, recorded as observed rows in the survey
+(`docs/handbook/sources/harness-survey.md`), not as documented facts. The consequence for
+anyone protecting a file from an agent with a Read deny, an eval answer key or a secrets
+file, is that a repo-wide search is not covered: the position above that a deny list is not a
+boundary already says so in principle, and this is the case that makes it concrete. Keep such
+a path out of a search with a PreToolUse hook or the sandbox, which act independent of the
+command text, and treat inspecting tool results for the path as the fallback detection.
+
 Native floor, as of 2026-09-02: permission lists merging across scopes rather than overriding
 (https://code.claude.com/docs/en/settings#combine-settings-across-scopes), the allow and deny
 wildcard asymmetry on MCP tool names

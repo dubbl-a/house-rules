@@ -24,6 +24,8 @@ the community-profile finding and the backlog item it closes.
 Row PA-041 came in from issue #58, the memo that moved the branch guard off command text after the
 review rounds on PR #57, so its Source cell cites the issue and the PR.
 
+Rows PA-042 and PA-043 came in from issue #111, the rules a consuming repo earned on its first agent-driven eval run, so their Source cells cite the issue; the measurements behind them sit in the survey as observed rows (issues #109 and #110).
+
 Rows EXT-086 to EXT-098 and PA-035 to PA-039 came in on the reconciliation pass that read the two
 testing source catalogs (`sources/testing-sweep.md`, `sources/testing-external.md`) after a
 template bug had kept them out of the spec stage. That pass also repointed EXT-084 to the renamed
@@ -759,3 +761,5 @@ few are mechanics the package adopts directly, and the testing rows land in the 
 | PA-039 | same, adopt-as-practice items and per-case isolation | Pin a cheap model as a canary, scaffold each eval case into a fresh workspace, and blind the comparison until analysis | handbook-only | chapter:testing |
 | PA-040 | issue #2 item 4 (community-profile finding) and item 6 (backlog) | Ship the code of conduct, security policy, and contributing guide the platform's community-profile check looks for, take issue intake through YAML forms with blank issues disabled, and point at the existing PR-template rule instead of restating it, because the check reads an absent file as a gap and a newcomer reads that gap as neglect | port | rule:github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms |
 | PA-041 | issue #58 (Opus memo, 2026-09-20) and the eight review rounds on PR #57 | Enforce the branch policy in git hooks that see the resolved ref, keep a server-side ruleset as the ceiling where the plan allows, and shrink the session-time text scan to the enumerable ways of disabling those, because a scan of command text cannot know the runtime directory, branch, config, or argument source | port | rule:github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it |
+| PA-042 | issue #111 (a consuming repo's first agent-driven eval, 2026-09-30) | Score the path everyday sessions take, and tell the eval session its environment in a system note rather than by editing the skill under test | port | rule:engineering.md#evaluate-the-path-a-session-actually-takes |
+| PA-043 | issue #111 (same run), with the permission gaps in issue #110 | Deny the eval session every project allow it does not grant, fail a run whose tool results contain the key, make a test unable to start a session, and re-score from saved transcripts beside the original report | port | rule:engineering.md#deny-the-eval-session-what-the-project-allows-and-fail-a-run-whose-results-contain-the-key |

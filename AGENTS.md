@@ -32,6 +32,8 @@ Full text: `.claude/rules/house/engineering.md`
 - Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
 - Show the ratio and the sample, because one number is never the accuracy
 - Make a measuring instrument reproducible
+- Evaluate the path a session actually takes
+- Deny the eval session what the project allows, and fail a run whose results contain the key
 - Assert an invariant where its state is created, with a why and a remedy
 - Make every waiver print its reason, and give an integrity gate none
 - Read a missing field as missing, because absence is not confidence
