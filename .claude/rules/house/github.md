@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.15.2 module=github source=modules/github/rules/github.md body-sha256=15aaf6b633ed69dc6600dfa616bf4bb32fe5d05532f0157bc07bfe9eb5d6308b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.15.2 module=github source=modules/github/rules/github.md body-sha256=332562730c3c7b49248da5dbaba9c9cebd4cc83c92238c71e5f2e56911be0afd DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -87,7 +87,8 @@ Receipts: `docs/handbook/github.md#stage-explicit-paths-never-everything-at-once
 Ask the platform whether the branch's PR merged: merge-detection flags lie under squash merging, and refusal to delete isn't evidence deleting is unsafe.
 Cross-check a branch's unique commits by squash-title references on the protected branch.
 Read a closed-but-unmerged PR's closing comment before calling the branch dead or salvageable. When a merge looks failed locally, verify the PR state before retrying, since it may have landed.
-Anchor: `scripts/house/cleanup-worktree.sh` classifies from PR state through the platform CLI before deleting anything. The harness's worktree sweep reads only local state, so it can't confirm or refute a squash merge.
+Expect the harness's auto-mode classifier to refuse an agent-side remote-branch delete, a bulk one above all; hand the user the exact command instead of retrying it another way, and treat automatic head-branch deletion (the settings rule above) as what stops merged branches accumulating in the first place.
+Anchor: `scripts/house/cleanup-worktree.sh` classifies from PR state through the platform CLI before deleting anything, prints the manual command when the remote delete fails, and reports when head-branch deletion is off. The harness's worktree sweep reads only local state, so it can't confirm or refute a squash merge.
 Receipts: `docs/handbook/github.md#classify-a-merged-branch-by-its-pr-state-not-by-merge-detection`
 
 ## Never delete the branch from the worktree being merged

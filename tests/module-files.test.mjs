@@ -431,6 +431,19 @@ test('cleanup-worktree.sh: shellcheck, if available (informational when not inst
   assert.equal(res.status, 0, res.stdout + res.stderr);
 });
 
+// #115: the remote delete can be refused by the harness's classifier, and the
+// setting that makes the step unnecessary is the owner's. Both are reported in
+// words the user can act on; the network calls themselves are not exercised
+// here (no gh, no remote), so this pins the text the script prints.
+test('cleanup-worktree.sh: reports head-branch deletion off and hands a refused remote delete to the user', () => {
+  const src = readFileSync(CLEANUP_SH, 'utf8');
+  assert.match(src, /deleteBranchOnMerge/);
+  assert.match(src, /automatic head-branch deletion OFF/);
+  assert.match(src, /gh repo edit \$REPO --delete-branch-on-merge/);
+  assert.match(src, /run this yourself/);
+  assert.match(src, /gh api -X DELETE repos\/\$REPO\/git\/refs\/heads\/\$BRANCH"$/m);
+});
+
 test('cleanup-worktree.sh: refuses to operate on the current (main) checkout', () => {
   const { work } = makeRepoWithOrigin('main');
   const res = spawnSync('bash', [CLEANUP_SH, work], { encoding: 'utf8', cwd: work });

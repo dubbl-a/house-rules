@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "5a787894b23a2a877a7ca2fdbaac48963866a54358cc9056d78a7ad724afc4fb"
+      "bodySha256": "aaa99707c032a7b7ae24821d37b12ad4c4c9e875b7e857099e0d6ecd2605a4d7"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -46,7 +46,7 @@
       "path": "scripts/house/cleanup-worktree.sh",
       "module": "github",
       "source": "modules/github/files/cleanup-worktree.sh",
-      "bodySha256": "835d6428535917891406876ded35df7ea194c15d39b98b7e49e59204789fff31"
+      "bodySha256": "468e941e812cfe9aba94d904700701d4367e188d019283fe9781c8af7b57eeda"
     },
     {
       "path": ".githooks/pre-commit",

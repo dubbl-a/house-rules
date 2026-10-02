@@ -14,8 +14,12 @@
 #   4. delete the remote branch via `gh api` (a direct-push-block hook can
 #      intercept `git push origin --delete` when it runs from the default
 #      branch, so this uses the GitHub API instead, which such a hook
-#      does not intercept). Skipped if `gh` is missing or the remote ref
-#      is already gone.
+#      does not intercept; the harness's auto-mode classifier can still
+#      refuse the call, so a failed delete prints the exact command for
+#      the user). Skipped if `gh` is missing or the remote ref is already
+#      gone. While it is there, reports when the repository has automatic
+#      head-branch deletion off, the setting that makes this step
+#      unnecessary; turning it on is the owner's call, not this script's.
 #
 # Refuses to operate on the main worktree. Refuses to operate on a path
 # that isn't a registered worktree of this repo.
@@ -194,16 +198,29 @@ git branch -D "$BRANCH"
 # Delete the remote branch via the GitHub API rather than `git push origin
 # --delete`, which a direct-push-block hook can intercept when run from the
 # default branch (`gh api -X DELETE refs/heads/...` is not a `git push`, so
-# such a hook leaves it alone). Treat 422 (ref already gone) and missing
-# `gh` as non-fatal — the local cleanup still succeeded.
+# such a hook leaves it alone). The harness's auto-mode classifier is a
+# different gate and has refused this call when an agent ran it, so a
+# failure prints the exact command for the user instead of being retried
+# another way. Treat 422 (ref already gone) and missing `gh` as non-fatal:
+# the local cleanup still succeeded.
 if command -v gh >/dev/null 2>&1; then
   REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
   if [[ -n "$REPO" ]]; then
+    # Automatic head-branch deletion is what stops merged branches piling
+    # up; this step exists for repos without it. Report, never change: the
+    # setting is the owner's.
+    AUTO_DELETE="$(gh repo view --json deleteBranchOnMerge -q .deleteBranchOnMerge 2>/dev/null || true)"
+    if [[ "$AUTO_DELETE" == "false" ]]; then
+      echo "→ note: $REPO has automatic head-branch deletion OFF, so every merged PR leaves a remote branch behind;"
+      echo "    the owner can turn it on with: gh repo edit $REPO --delete-branch-on-merge"
+    fi
     echo "→ gh api DELETE repos/$REPO/git/refs/heads/$BRANCH"
     if gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" >/dev/null 2>&1; then
       echo "  remote branch deleted"
     else
-      echo "  remote branch already gone (or delete failed); skipping"
+      echo "  remote branch not deleted: already gone, or the call was refused (the harness's classifier may have blocked it)."
+      echo "  If it is still there, run this yourself:"
+      echo "    gh api -X DELETE repos/$REPO/git/refs/heads/$BRANCH"
     fi
   else
     echo "→ skipping remote delete (could not resolve repo via gh)"
