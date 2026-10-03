@@ -490,7 +490,9 @@ test('security: off at init, renders its roots once enabled, narrows by slot, an
 // or the AGENTS.md block, add it to house.json, or have the checker raise
 // anything about it, with or without the plugin source present.
 test('security: a house.json written before the module existed gets nothing about security on a resync', () => {
-  const repo = olderManifest({ 'src/a.mjs': '// a\n', '.claude/settings.json': '{}\n', 'CLAUDE.md': '# X\n' }, ['security']);
+  // SECURITY.md is present so the github module's own security-policy
+  // warning (#134), which is not the security module, stays out of the output.
+  const repo = olderManifest({ 'src/a.mjs': '// a\n', '.claude/settings.json': '{}\n', 'CLAUDE.md': '# X\n', 'SECURITY.md': '# Security\n' }, ['security']);
   const hj = readHouseJson(repo);
   hj.targets = ['claude-code', 'codex'];
   writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');

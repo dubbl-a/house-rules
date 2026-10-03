@@ -185,6 +185,28 @@ The guard family reports what is recorded, not what is enforced. On the plugin-o
 
 Native floor, as of 2026-09-20: git's own `pre-commit`, `pre-push`, and `reference-transaction` hooks, `reference-transaction` only on git 2.28 and later, armed by `core.hooksPath` and reported by `house doctor` (https://git-scm.com/docs/githooks).
 
+## What the workflows and agent-config checks read
+
+Issue #134 added two checker families that read repo files only, with no network and no credential. The `workflows` family runs when the github module is enabled and the repo has workflow files under `.github/workflows/`; with none, it reports nothing. The `agent-config` family runs when the claude-code module is enabled.
+
+1. A `uses:` to an action or reusable workflow not pinned to a 40-character commit SHA. A local `./` path and a `docker://` image pinned by `@sha256:` digest are exempt.
+2. A workflow with no top-level `permissions:` key.
+3. `${{ github.event.* }}` or `${{ github.head_ref }}` inside a `run:` script or a prompt input. The same expression in `env:`, `if:`, or any other input is the safe route and passes.
+4. A `pull_request_target` workflow whose checkout sets `ref:` to the pull request head.
+5. A committed `.claude/settings.json` that overrides `ANTHROPIC_BASE_URL`, sets `enableAllProjectMcpServers: true`, or sets `permissions.defaultMode` to `bypassPermissions` (the `agent-config` family).
+6. A `.github/dependabot.yml` update entry with no `cooldown`.
+7. No CODEOWNERS entry (in `.github/`, the root, or `docs/`) covering the workflow files.
+8. A publish command (`npm publish`, `pnpm publish`, `yarn npm publish`, `twine upload`, `cargo publish`) in a workflow that reads a stored registry token and does not request `id-token: write`.
+9. An install that is not the frozen-lockfile form, checked only where that installer's lockfile is committed.
+10. A committed binary, by extension or a NUL byte in its first 8000 bytes. Images, fonts, and other media are skipped.
+11. No `SECURITY.md` at the root, in `.github/`, or in `docs/`.
+
+Every one is a warning today and none fails a gate. Checks 1 to 5 are due to become failures in a later release, and their messages say so.
+
+A repo that cannot act on a warning records why, as ADR 0009 asks, in `modules.github.config.waivers` (or `modules.claude-code.config.waivers` for check 5): `{"check": "codeowners", "why": "solo repo, nobody to route a review to"}`, with an optional `path` narrowing it to a file or directory. A `binary` waiver's path is the allowlist for committed binaries. An entry with no reason clears nothing and is itself a warning.
+
+The known gaps, each failing toward silence: the reader is line-based, so YAML anchors and a ref set through a variable go unseen; an install with a flag that takes a value can read as a named package; a binary with a media extension, or one encoded as text, passes. Check 3 flags every `github.event` field, including numeric ones such as a pull request number, which are safe; route them through `env:` anyway or record a waiver. For deeper workflow analysis (template injection across composite actions, cache poisoning, excessive permissions per job), run [zizmor](https://github.com/zizmorcore/zizmor).
+
 ## Sources
 
 - GitHub: repository rulesets over classic branch protection, https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets
