@@ -47,20 +47,24 @@ test('pins: every pinned entry names a ledger row with the same relationship', (
   }
 });
 
-test('pins: every REUSE or BORROW row is pinned or listed as unpinned with a reason (planted-missing-member control)', () => {
-  const { pins, unpinned } = pinsFile();
+/** Ledger-to-pins assertion: throws naming the first REUSE or BORROW row with no pin and no unpinned reason, or an unpinned entry that is bare or names no such row. */
+function assertLedgerCovered(rows, { pins, unpinned }) {
   const names = new Set([...pins.map((p) => p.upstream), ...unpinned.map((u) => u.upstream)]);
-  const rows = ledgerRows().filter((r) => pinned(r.relationship));
-  assert.ok(rows.length >= 10, `ledger parse found only ${rows.length} REUSE or BORROW rows`);
-  for (const r of rows) assert.ok(names.has(r.upstream), `ledger row "${r.upstream}" (${r.relationship}) has no pin and no unpinned reason`);
+  const walked = rows.filter((r) => pinned(r.relationship));
+  assert.ok(walked.length >= 10, `ledger parse found only ${walked.length} REUSE or BORROW rows`);
+  for (const r of walked) assert.ok(names.has(r.upstream), `ledger row "${r.upstream}" (${r.relationship}) has no pin and no unpinned reason`);
   for (const u of unpinned) {
     assert.ok(u.reason && u.reason.length > 10, `unpinned "${u.upstream}" needs a reason`);
-    assert.ok(rows.some((r) => r.upstream === u.upstream), `unpinned "${u.upstream}" names no REUSE or BORROW row`);
+    assert.ok(walked.some((r) => r.upstream === u.upstream), `unpinned "${u.upstream}" names no REUSE or BORROW row`);
   }
-  // The control: drop one pin and the same walk must name it.
-  const dropped = pins[0].upstream;
-  const fewer = new Set([...names].filter((n) => n !== dropped));
-  assert.ok(rows.some((r) => !fewer.has(r.upstream)), 'removing a pin is caught');
+}
+
+test('pins: every REUSE or BORROW row is pinned or listed as unpinned with a reason (planted-missing-member control)', () => {
+  const file = pinsFile();
+  assertLedgerCovered(ledgerRows(), file);
+  // The control: the same assertion, run against a pins file with one row removed, must fail naming it.
+  const dropped = file.pins[0].upstream;
+  assert.throws(() => assertLedgerCovered(ledgerRows(), { ...file, pins: file.pins.slice(1) }), (e) => e.message.includes(`ledger row "${dropped}"`));
 });
 
 test('pins: the orchestration-kit entry equals the kit checker\'s PINNED, so the two cannot drift', async () => {
@@ -108,6 +112,16 @@ test('versions: numeric ordering, a v prefix, prereleases, and non-version tags'
   assert.equal(compareVersions('latest', '1.0'), null);
   assert.deepEqual(newerTags(['1.4', '2.0', '2.1', 'latest', '2.1-rc1', '3.0-beta', '10.0'], '2.1'), ['10.0', '3.0-beta']);
   assert.deepEqual(newerTags(['4.0.0', '4.0.0-beta', '3.0.0'], '4.0.0'), []);
+});
+
+// #122 item 2: a bare date is not a version, a release- prefix is.
+test('versions: a date-like number is no version; release-3.0, v2.1, and 2.1.3 are', async () => {
+  const { compareVersions } = await mod();
+  assert.equal(compareVersions('20260901', '1.0'), null);
+  assert.equal(compareVersions('1.0', '20260901'), null);
+  assert.ok(compareVersions('release-3.0', '2.9') > 0);
+  assert.ok(compareVersions('v2.1', '2.0') > 0);
+  assert.ok(compareVersions('2.1.3', '2.1.2') > 0);
 });
 
 test('parseTagRefs: peeled refs win, so an annotated tag maps to its commit', async () => {
@@ -237,4 +251,21 @@ test('check: a tag moved to a new commit exits 1 and names the tag; the same tag
     assert.match(line, /tag 1\.0\.0 moved/, line);
     assert.ok(line.includes(shas[1].slice(0, 7)), line);
   }
+});
+
+test('check: an unchanged lightweight tag exits 0', () => {
+  const env = { ...process.env, GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  const { bare, shas } = bareRepo([{ 'a.md': 'a\n' }]);
+  execFileSync('git', ['-C', bare, 'tag', '1.0.0', shas[0]], { env, stdio: 'pipe' });
+  const res = run([`--pins=${pinFixture([pin({ remote: bare, ref: { tag: '1.0.0' }, sha: shas[0] })])}`, '--json']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+});
+
+// A pin may record an annotated tag's own object sha rather than its commit;
+// that must read as unchanged, not as a move.
+test('check: a pin on an annotated tag\'s object sha is not a false move', () => {
+  const { bare } = bareRepo([{ 'a.md': 'a\n' }], { '1.0.0': 0 });
+  const obj = execFileSync('git', ['-C', bare, 'rev-parse', 'refs/tags/1.0.0'], { encoding: 'utf8' }).trim();
+  const res = run([`--pins=${pinFixture([pin({ remote: bare, ref: { tag: '1.0.0' }, sha: obj })])}`, '--json']);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
 });

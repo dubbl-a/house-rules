@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -405,6 +405,26 @@ test('#126: database and deployment detect through detectPaths, and the checker 
   const checked = noPluginCheck(older);
   assert.match(checked, wantDb, 'the checker warns for database from the rendered payload alone');
   assert.match(checked, wantDeploy, 'the checker warns for deployment from the rendered payload alone');
+});
+
+// #129: the lock's detectPaths map is advisory, but a hand-edited entry that
+// escapes the repo root must be refused, never probed and reported as present.
+test('#129: a lock detectPaths entry that escapes the repo root is refused, and a well-formed entry still works', () => {
+  const older = olderManifest({ 'db/schema.sql': 'create table t();\n', 'wrangler.toml': 'name = "x"\n' }, ['database', 'deployment']);
+  house(older, 'render', '--apply');
+  const marker = `${basename(older)}-outside.marker`;
+  writeFileSync(join(older, '..', marker), 'outside the repo\n');
+  const lockPath = join(older, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.detectPaths.database = [`../${marker}`, resolve(older, '..', marker), ...lock.detectPaths.database];
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+  git(older, 'add', '-A'); git(older, 'commit', '-q', '-m', 'render');
+  const checked = noPluginCheck(older);
+  assert.match(checked, /lock detectPaths entry `database: \.\.\/[^`]*outside\.marker` escapes the repo root; refusing to probe it/, checked);
+  assert.doesNotMatch(checked, /but \.\.\/[^ ]*outside\.marker exists here/, 'the escaping entry is never reported as existing');
+  assert.doesNotMatch(checked, /but \/[^ ]*outside\.marker exists here/, 'nor an absolute one');
+  assert.match(checked, /module `database` is not in house\.json, but db\/ exists here/, 'the well-formed entry still works');
+  assert.match(checked, /module `deployment` is not in house\.json, but wrangler\.toml exists here/);
 });
 
 test('#126: a FILE named like a detect directory matches nothing at init, render, or the checker', () => {
