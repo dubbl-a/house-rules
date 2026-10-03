@@ -51,7 +51,7 @@ repo-a's `scripts/lib/retro.mjs` carries a `NOT_MEASURED` sentinel with its own 
 
 The agent-driven form of the rule came from a consuming repo's first eval run (2026-09-30): many questions passed one run and failed the next, so a single run of a question is an example, not a measurement, and the report now shows passes over runs, per model, from more than one run of each question.
 
-The fit-check sentence came from the same consuming repo's later agent-eval work (issue #111, comment item 1). When a fix is written after reading one failing case's transcripts, that case passing afterwards shows the fix fits the case it was written for; it is not evidence the fix generalises. Receipt: a one-paragraph prompt change written from one task's transcripts took that task from 0 of 5 to 4 of 5 passing, while the 20 held-out questions showed every difference within noise. It was reported as "fixes a confirmed defect, no measured cost", not as a gain.
+The fit-check sentence came from a consuming repo's agent-eval work (issue #111, comment item 1). When a fix is written after reading one failing case's transcripts, that case passing afterwards shows the fix fits the case it was written for; it is not evidence the fix generalises. Receipt: a one-paragraph prompt change written from one task's transcripts took that task from 0 of 5 to 4 of 5 passing, while the 20 held-out questions showed every difference within noise. It was reported as "fixes a confirmed defect, no measured cost", not as a gain.
 
 ## Make a measuring instrument reproducible
 
