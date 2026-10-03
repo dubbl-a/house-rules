@@ -10,8 +10,8 @@
 # moved", the pins step "Upstreams moved past their pins", a table of every
 # moved row except the kit, which the kit step owns.
 # scripts/house/check-deep-research-upstream.mjs is not run here: it reads the
-# installed Claude Code binary, which a bare CI runner lacks, so it runs after a
-# local Claude Code upgrade instead.
+# installed Claude Code binary, which a bare CI runner lacks, so the harness
+# triage routine (adapting-to-harness-updates skill) runs it instead.
 name: upstream-watch
 on:
   schedule:

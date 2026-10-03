@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.16.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=489425c4cbd461d14ebcf207f395f08efef77e5311d729245843287cc5bff2a6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.16.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9cb43409bc3cc1c324fa9419c2116885dcf9e011a0d88a1322ff7afd9465777b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -79,7 +79,7 @@ Name the effort on an off-roster call too: a subagent without one inherits the s
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail, stepping a blocked call down to the newest allowed model in its family: the checker and the fork's model map make that step-down visible.
 State the tier a procedure requires and stop when the session is below it, and give a scripted run its budget ceiling, the print-mode flag, or the SDK budget option, which counts subagent spend and refuses further spawns at the cap, so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.
-When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each upgrade: read its verdict by name, since each outcome is its own exit code, unchanged needs nothing, drifted or missing means rebuild (a missing binary or missing bundled script counts as drift; rebuild the fork), a bad argument means fix the call, and SUNSET means delete the fork.
+When a bundled workflow exposes no model input, as `/deep-research` does, run a fork of its script by path with a model on every call, and run `scripts/house/check-deep-research-upstream.mjs` after each upgrade: read its verdict by name, since each outcome is its own exit code, unchanged needs nothing, drifted means rebuild (run it with `--install`, which rebuilds the fork to the stable path `~/.claude/workflows/deep-research-tiered.js` that a session runs by `scriptPath`), a missing binary or missing bundled script shares drift's exit code but means locate the binary with `--binary=<path>` before anything can be rebuilt, a bad argument means fix the call, and SUNSET means delete the fork.
 Give that fork a depth that fits the question: the bundled workflow runs a fixed, large fan-out regardless of what is asked, while the fork scales it, light for a lookup or a single procedure, standard by default, deep for a contested or multi-domain question a decision rides on, with `args.budget` for a field the presets get wrong.
 Anchor: the eval pair at `plugins/house/evals/explicit-model-tier/`, whose arms differ only in whether each call sets a model.
 Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subagent-and-workflow-agent`

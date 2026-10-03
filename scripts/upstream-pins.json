@@ -179,7 +179,7 @@
       "reason": "a web article with no git remote; re-read on republication"
     },
     {
-      "upstream": "anthropics/claude-code bundled `deep-research` workflow (v2.1.276)",
+      "upstream": "anthropics/claude-code bundled `deep-research` workflow (v2.1.288)",
       "reason": "read from the installed Claude Code binary, not a git remote; scripts/house/check-deep-research-upstream.mjs watches it after each Claude Code upgrade"
     }
   ]

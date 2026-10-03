@@ -37,6 +37,15 @@ every fact in it still holds. This skill finds all four and fixes them.
    - the harness's own prompt audit over this repo (`/doctor prompt-audit` in a session). It
      reports stale paths, dead commands, contradicting instructions, and prompting patterns
      written for older models.
+   - the `/deep-research` fork: run `node scripts/house/check-deep-research-upstream.mjs --json`
+     and read the verdict by exit code. 0: nothing to do. 1 with a drift verdict: run it again with
+     `--install`, set `BASELINE` to the new version and sha in the plugin source
+     (`plugins/house/modules/claude-code/files/`), then `node plugins/house/scripts/house render
+     --apply --repo .` to refresh the rendered copy and `.house/lock.json` (never hand-edit the
+     rendered copy, `check:house` flags it as tampered), and note it in the PR. 1 with "binary not
+     found" or "script not found", or 3: report it in the PR body rather than failing the run.
+     2: SUNSET, say so in the PR and propose deleting the fork and the `/deep-research` directive in
+     `plugins/house/orchestration/ORCHESTRATION.md`.
 5. **Choose the depth.** Use the judgment below. Say which one you picked and why.
 6. **Triage and classify.** Every candidate gets one disposition: DUPLICATE, CONFLICT, COMPLEMENT,
    or UNIQUE (definitions in [references/dispositions.md](references/dispositions.md)). Grep the

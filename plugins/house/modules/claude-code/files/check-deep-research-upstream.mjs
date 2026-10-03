@@ -18,7 +18,11 @@
 // Usage:
 //   node scripts/house/check-deep-research-upstream.mjs [--binary=<path>] [--baseline=<sha256>] [--json]
 //   node scripts/house/check-deep-research-upstream.mjs --rebuild=<out.js> [--force] [--binary=<path>]
+//   node scripts/house/check-deep-research-upstream.mjs --install[=<path>] [--binary=<path>]
 //
+// --install rebuilds the fork to ~/.claude/workflows/deep-research-tiered.js
+// (or <path>), overwriting any existing file and creating parent dirs. It is
+// mutually exclusive with --rebuild, and a SUNSET (exit 2) never installs.
 // Exit codes (the three-way contract a caller must read, never "non-zero = bad"):
 //   0  native script unchanged since the recorded baseline; keep the fork
 //   1  native script drifted, or no binary/no bundled script was found; re-derive the fork with --rebuild
@@ -42,8 +46,8 @@ import { fileURLToPath } from 'node:url';
 // through the closing brace of its final return) as shipped in the version named.
 // Update both fields together when re-deriving the fork after a drift report.
 export const BASELINE = {
-  version: '2.1.276',
-  sha256: '0eb1a5cf377310b9fbd256c5e4982654999cbab4fc964c1e7983414f6e059224',
+  version: '2.1.288',
+  sha256: 'e21230a2db42a0e586a50567ff5d053fb2635883333606d43213a90a237a51e2',
 };
 
 const BODY_START = '// deep-research:';
@@ -236,10 +240,21 @@ function parseArgs(argv) {
     if (a.startsWith('--binary=')) out.binary = a.slice(9);
     else if (a.startsWith('--baseline=')) out.baseline = a.slice(11);
     else if (a.startsWith('--rebuild=')) out.rebuild = a.slice(10);
+    else if (a === '--install') out.install = join(homedir(), '.claude', 'workflows', 'deep-research-tiered.js');
+    else if (a.startsWith('--install=')) out.install = a.slice(10);
     else if (a === '--json') out.json = true;
     else if (a === '--force') out.force = true;
     else { console.error(`unknown argument: ${a}`); process.exit(3); }
   }
+  if (out.install === '' || out.rebuild === '') {
+    console.error('--install= and --rebuild= need a path');
+    process.exit(3);
+  }
+  if (out.install !== undefined && out.rebuild !== undefined) {
+    console.error('--install and --rebuild are mutually exclusive');
+    process.exit(3);
+  }
+  if (out.install !== undefined) { out.rebuild = out.install; out.force = true; }
   return out;
 }
 
