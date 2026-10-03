@@ -2,7 +2,7 @@
 paths:
   - plugins/house/evals/**
 ---
-<!-- house-managed v0.16.0 module=evals source=modules/evals/rules/evals.md body-sha256=bdfef4c83f4b89dda54fb638e57eba1e4d19f7bd0a87aa5cb2cd1bd79a4f9a3a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=evals source=modules/evals/rules/evals.md body-sha256=bdfef4c83f4b89dda54fb638e57eba1e4d19f7bd0a87aa5cb2cd1bd79a4f9a3a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Evals
 
