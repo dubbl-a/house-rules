@@ -2272,6 +2272,9 @@ const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 // a suppression missing its reason buys silence nowhere.
 function readWaivers(cfg, moduleName, known, family, warnings) {
   const out = [];
+  if (cfg.waivers !== undefined && !Array.isArray(cfg.waivers)) {
+    warnings.push(mk(family, 'house.json', null, 'waiver', `modules.${moduleName}.config.waivers must be an array of {"check", "why"} entries with an optional "path"; it clears nothing until it is`));
+  }
   arr(cfg.waivers).forEach((w, i) => {
     if (isPlainObject(w) && known.includes(w.check) && isNonEmptyString(w.why)
         && (w.path === undefined || isNonEmptyString(w.path))
@@ -2397,12 +2400,17 @@ const INSTALLERS = [
   { re: /(?:^|\s)yarn(?:\s+install)?(?=\s|$)((?:\s+-\S+)*)\s*$/, frozen: /--frozen-lockfile\b|--immutable\b/, fix: '`yarn install --immutable` (or `--frozen-lockfile` on Yarn 1)', locks: ['yarn.lock'] },
   { re: /(?:^|\s)bun\s+(?:install|i)(?=\s|$)(.*)$/, frozen: /--frozen-lockfile\b/, fix: '`bun install --frozen-lockfile`', locks: ['bun.lock', 'bun.lockb'] },
 ];
+// `hashFiles('<path>') == ''` in a step's `if:`: that step runs only where
+// the file is absent. The path's basename is compared to the lockfile names.
+const LOCKFILE_ABSENT_RE = /hashFiles\(\s*['"]([^'"]+)['"]\s*\)\s*==\s*''/g;
 
 // Binary by extension; anything else gets a NUL-byte sniff of its first
 // 8000 bytes (git's own test), and stops reading there. Media and fonts are
 // skipped: binary, but not what this is for. It does not catch a binary
 // with a media extension, a payload encoded as text (base64, a minified
 // blob), or one whose first 8000 bytes hold no NUL; a Git LFS pointer is text.
+// A file opening with a UTF-16 byte order mark is text full of NULs, so it
+// is skipped, which also lets a binary that forges that mark through.
 const BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.a', '.o', '.obj', '.lib', '.bin', '.jar', '.war', '.class', '.pyc', '.pyo', '.whl', '.egg', '.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar', '.zst', '.deb', '.rpm', '.msi', '.dmg', '.pkg', '.iso', '.apk', '.wasm', '.node']);
 const MEDIA_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.ico', '.bmp', '.tif', '.tiff', '.svg', '.pdf', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp3', '.mp4', '.wav', '.ogg', '.webm', '.mov']);
 function extOf(p) {
@@ -2416,6 +2424,7 @@ function hasNulByte(abs) {
     fd = openSync(abs, 'r');
     const buf = Buffer.alloc(8000);
     const n = readSync(fd, buf, 0, buf.length, 0);
+    if (n >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))) return false;
     return buf.subarray(0, n).includes(0);
   } catch { return false; } finally { if (fd !== undefined) closeSync(fd); }
 }
@@ -2515,14 +2524,24 @@ function checkWorkflows(ctx) {
     }
 
     // 9. A CI install that can rewrite the lockfile instead of honouring it.
-    for (const { line, cmd } of runCommands(runLines)) {
-      for (const inst of INSTALLERS) {
-        const m = cmd.match(inst.re);
-        if (!m || !inst.locks.some((l) => trackedBasenames.has(l))) continue;
-        const args = m[1].trim().split(/\s+/).filter(Boolean);
-        if (args.some((a) => !a.startsWith('-')) || args.some((a) => a === '-g' || a === '--global')) continue;
-        if (inst.frozen && inst.frozen.test(m[1])) continue;
-        warn('unfrozen-install', f, line, `installs with \`${cmd}\`, which can resolve past the committed lockfile instead of failing when the two disagree. Use ${inst.fix}.`);
+    // A step whose own `if:` runs it only when the lockfile is absent has
+    // nothing to be frozen against, so its plain install passes. A fallback
+    // after a failed frozen install (`npm ci || npm install`) does not.
+    for (const e of entries.filter((x) => x.key === 'run')) {
+      const item = nearestItem(e);
+      const absent = new Set(entries
+        .filter((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length)
+        .flatMap((x) => [...x.value.matchAll(LOCKFILE_ABSENT_RE)].map((m) => m[1].slice(m[1].lastIndexOf('/') + 1))));
+      for (const { line, cmd } of runCommands(entryLines(e))) {
+        for (const inst of INSTALLERS) {
+          const m = cmd.match(inst.re);
+          if (!m || !inst.locks.some((l) => trackedBasenames.has(l))) continue;
+          if (inst.locks.some((l) => absent.has(l))) continue;
+          const args = m[1].trim().split(/\s+/).filter(Boolean);
+          if (args.some((a) => !a.startsWith('-')) || args.some((a) => ['-g', '--global', '-v', '--version', '-h', '--help'].includes(a))) continue;
+          if (inst.frozen && inst.frozen.test(m[1])) continue;
+          warn('unfrozen-install', f, line, `installs with \`${cmd}\`, which can resolve past the committed lockfile instead of failing when the two disagree. Use ${inst.fix}, or run a plain install only in a step gated on \`if: hashFiles('<lockfile>') == ''\`.`);
+        }
       }
     }
   }

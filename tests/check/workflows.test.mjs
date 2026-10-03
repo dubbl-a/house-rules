@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sandbox, run, houseJson } from './helpers.mjs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
 
 // #134: the workflows and agent-config families. Every check is a warning in
 // this release, so every run here exits 0; each test pairs a well-formed
@@ -86,6 +88,20 @@ test('unpinned-uses: a tag-pinned container and a branch-pinned reusable workflo
     .replace(`docker://alpine@sha256:${DIGEST}`, 'docker://alpine:3.20')
     + '  reuse:\n    uses: org/repo/.github/workflows/build.yml@main\n';
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['unpinned-uses', 'unpinned-uses']);
+});
+
+// The package's own templates, copied into an adopter that commits a
+// lockfile, must pass the checks they exist to model. CODEOWNERS and
+// SECURITY.md are the adopter's to write, so those two are not counted.
+test('templates: every workflow and dependabot template the package ships is clean in a repo with a lockfile', () => {
+  const dir = join(dirname(CHECK_SRC), '..', 'templates');
+  const files = { 'package.json': '{"name":"x"}\n', 'package-lock.json': '{}\n' };
+  for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+    files[name.startsWith('dependabot.') ? `.github/${name}` : `.github/workflows/${name}`] = readFileSync(join(dir, name), 'utf8');
+  }
+  assert.ok(Object.keys(files).some((p) => p.startsWith('.github/workflows/')), 'at least one workflow template is copied');
+  const ws = warns(sandbox(files)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));
+  assert.deepEqual(ws.map((w) => `${w.kind} ${w.path}:${w.line}`), []);
 });
 
 // 2
@@ -222,7 +238,38 @@ test('unfrozen-install: no lockfile, a global tool install, and a named package 
   assert.deepEqual(warns(repo({ 'package-lock.json': null, '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('run: npm ci', 'run: npm install') })), []);
 });
 
+test('unfrozen-install: a version or help query is not an install', () => {
+  const dir = repo({ 'yarn.lock': '# yarn\n', '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('run: npm ci', 'run: |\n          yarn -v\n          yarn --version\n          yarn --help\n          npm install --help') });
+  assert.deepEqual(warns(dir), []);
+});
+
+test('unfrozen-install: a step whose if: says the lockfile is absent may install plainly; the same step without that if: warns', () => {
+  const guarded = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') != ''\n        run: npm ci\n      - if: \${{ hashFiles('**/package-lock.json') == '' }}\n        run: npm install\n");
+  assert.deepEqual(warns(withWorkflow(guarded)), []);
+  const unguarded = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') != ''\n        run: npm install\n");
+  assert.deepEqual(kinds(warns(withWorkflow(unguarded))), ['unfrozen-install']);
+});
+
+test('unfrozen-install: an `npm ci || npm install` fallback still warns on the fallback', () => {
+  assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('run: npm ci', 'run: npm ci || npm install')))), ['unfrozen-install']);
+});
+
+// Known gap, pinned: `open-pull-requests-limit: 0` is not read as "version
+// updates off", because nothing in this repo confirms that semantics.
+test('dependabot-cooldown: an entry with open-pull-requests-limit 0 still warns (known gap)', () => {
+  const dir = repo({ '.github/dependabot.yml': 'version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    open-pull-requests-limit: 0\n' });
+  assert.deepEqual(kinds(warns(dir)), ['dependabot-cooldown']);
+});
+
 // 10
+test('binary: a UTF-16 text file with a byte order mark is not a binary', () => {
+  const dir = repo({
+    'docs/le.txt': Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('hello\r\n', 'utf16le')]),
+    'docs/be.txt': Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('hello\r\n', 'utf16le').swap16()]),
+  });
+  assert.deepEqual(warns(dir), []);
+});
+
 test('binary: a NUL-bearing file and a binary extension warn; media and an allowlisted path do not', () => {
   const dir = repo({ 'data/blob.dat': 'abc\u0000def', 'bin/tool.exe': 'MZ', 'site/logo.png': 'x\u0000y' });
   assert.deepEqual(warns(dir).map((w) => `${w.kind}:${w.path}`).sort(), ['binary:bin/tool.exe', 'binary:data/blob.dat']);
@@ -245,6 +292,13 @@ test('waivers: a recorded reason clears its check, a malformed one clears nothin
   assert.deepEqual(warns(waived), []);
   const malformed = repo({ '.github/CODEOWNERS': null, 'house.json': houseJson({ modules: { github: { enabled: true, config: { waivers: [{ check: 'codeowners' }] } } } }) });
   assert.deepEqual(kinds(warns(malformed)), ['codeowners', 'waiver']);
+});
+
+test('waivers: a waivers slot that is not an array clears nothing and warns', () => {
+  for (const waivers of ['codeowners', { check: 'codeowners', why: 'solo repo' }]) {
+    const dir = repo({ '.github/CODEOWNERS': null, 'house.json': houseJson({ modules: { github: { enabled: true, config: { waivers } } } }) });
+    assert.deepEqual(kinds(warns(dir)), ['codeowners', 'waiver']);
+  }
 });
 
 // 5

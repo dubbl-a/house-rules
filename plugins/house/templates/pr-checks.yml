@@ -25,7 +25,13 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22 }
-      - run: npm ci --ignore-scripts || npm install --ignore-scripts
+      # Frozen install where a lockfile is committed; a plain install only
+      # where there is none to hold it to. Never fall back from one to the
+      # other: that fallback is the unfrozen install the lockfile exists to stop.
+      - if: hashFiles('package-lock.json') != ''
+        run: npm ci --ignore-scripts
+      - if: hashFiles('package-lock.json') == ''
+        run: npm install --ignore-scripts
       - run: node .house/check.mjs
       # The branch-guard hook protects this repo; test it here too, not only
       # on the machine that happened to write it.

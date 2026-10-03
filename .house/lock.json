@@ -112,7 +112,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "cc6e6eb391897038f557b7c8247b7d2616d0cf749be739b4f0ce91e1bbe1b464"
+      "bodySha256": "92f278f81f962414dc9ca245b3da6acaa3e2ffa4c005ecd0cd496eb5d9b07752"
     },
     {
       "path": "AGENTS.md",
