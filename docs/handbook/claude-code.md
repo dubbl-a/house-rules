@@ -69,6 +69,9 @@ repo-a's own CLAUDE.md is the reference implementation: "Topic-specific rules li
 the glob, so they don't burn context in sessions that don't touch the domain," with the fallback
 "grep `.claude/rules/`" when no matching file is open. Its own domain-rules table lists 21 rows
 across 20 rule files totalling 4,317 lines behind an 83-line always-loaded root file.
+That quotation is from before Claude Code 2.1.288 (2026-10-02), which made a path-scoped rule
+load on a Write or Edit to a matching file as well as on a Read; the rule's compaction sentence
+names all three triggers since then, and the fact is recorded in the survey's 2.1.288 addendum.
 
 repo-b's `maintaining-docs.md` states the inverse just as plainly: a rule file with no
 `paths:` is not unscoped, it is always-on at root-file priority; if a rule belongs in every
