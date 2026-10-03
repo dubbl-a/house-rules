@@ -36,6 +36,36 @@ sync only ever writes after a human reads the plan `/house-rules:sync` prints an
 branch-and-PR workflow described in `CONTRIBUTING.md`, reviewed before merge. There is no other
 runtime protection because there is no other runtime.
 
+### The plugin-update path
+
+A sync is not the only way new code arrives. The plugin's hooks run unsandboxed with the adopter's
+access, and they change when the plugin updates, with no sync and no diff to approve. Auto-update is
+off by default for third-party marketplaces; where it is turned on, it delivers hook changes. The
+install prompt shows that a hook exists but not what it runs, and Claude Code does not document
+whether an update that changes hooks asks again, so assume it does not. Mitigation: pin the
+marketplace to a release tag (`claude plugin marketplace add dubbl-a/house-rules#v0.17.0`), and
+read the hooks diff between tags (`git diff vA..vB -- plugins/house/hooks`) before moving the pin.
+Whether auto-update follows or respects a pin is also not documented.
+
+Tags `v0.16.0` and `v0.17.0` are annotated and unsigned, and `v0.15.2` and older are lightweight.
+The practice from the next release is a signed annotated tag and an immutable GitHub release,
+pending the repository setting and a signing key; neither is in place today
+(`CONTRIBUTING.md`, "Cutting a release").
+
+### For an organization
+
+A managed-settings allowlist can admit only this marketplace at a tag:
+
+    {"strictKnownMarketplaces":[{"source":"github","repo":"dubbl-a/house-rules","ref":"v0.17.0"}]}
+
+Three caveats from Claude Code's docs (https://code.claude.com/docs/en/plugins/org#how-entries-match):
+the `repo`, the `ref`, and the `path` must all match or be absent on both sides, and the entry
+matches the marketplace, not a plugin inside it; an allowlist also needs `{"source":"skills-dir"}`
+or skills-directory plugins stop loading; and an empty list blocks the official marketplace too.
+Auto-update is off by default for third-party marketplaces and turns on per marketplace in
+`/plugin`, or with `"autoUpdate": true` on a managed `extraKnownMarketplaces` entry
+(https://code.claude.com/docs/en/plugins/loading#when-auto-update-runs).
+
 ## Out of scope
 
 A report about a consuming repo's own `house.json` (a permissive `branchPolicy`, a disabled
