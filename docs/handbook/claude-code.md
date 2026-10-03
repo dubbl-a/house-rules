@@ -244,6 +244,15 @@ definition's own, for subagents, teammates, and workflow agents alike
 usual case: Sonnet under an Opus session) an omitted model no longer lands on the session model,
 and a pinned call is unaffected.
 
+The fork was not being run, 2026-10-03 (#132): `/deep-research` resolved to the bundled workflow,
+whose agents name no model, because nothing told a session to run the fork by path and the
+checker's baseline had fallen behind (2.1.276 against an installed 2.1.288, so it exited 1). The
+checker now has `--install[=<path>]`, which rebuilds the fork to
+`~/.claude/workflows/deep-research-tiered.js` (the harness loads user-level workflow files and
+lists it as `deep-research-pinned`), the session-start text says to run it by `scriptPath` and
+state the depth, and the harness-triage routine runs the checker and reinstalls on drift. The
+baseline is 2.1.288.
+
 The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,
 and the way of working was being retyped into prompts ("subagents on lower models, and here is
 how to use them"). The plugin now ships it. Five agents under `plugins/house/agents/` (scout on

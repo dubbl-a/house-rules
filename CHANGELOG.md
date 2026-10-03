@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+- **A session runs the pinned `/deep-research` fork (#132).** The checker gains `--install[=<path>]`, which rebuilds the fork to `~/.claude/workflows/deep-research-tiered.js` (overwriting, exclusive with `--rebuild`, never on SUNSET); its baseline moves to 2.1.288 so it exits 0 again; the session-start text says to run the fork by `scriptPath` and state the depth; the harness-triage skill runs the checker and reinstalls on drift.
+
 ## [0.16.0] - 2026-10-02
 
 An evals module gathers the measurement and eval-tier rules under a path scope that loads on `evals/**`, the engineering chapter gains the rules a consuming repo earned on its first agent-driven eval, every REUSE and BORROW upstream is watched from one pins file, and the branch guard allows a branch create aimed at a linked worktree by two exact shapes. Minor under ADR 0012: a new rule file reaches every adopter whose repo has an eval directory (rule-content, ADR 0011), and the guard's deny set only loosens.

@@ -897,3 +897,81 @@ test('deep-research check: --rebuild creates missing parent directories', async 
   assert.equal(res.status, 0, res.stdout + res.stderr);
   assert.ok(existsSync(out), 'rebuild must create the missing parent directory');
 });
+
+function runDrCheckHome(args, home) {
+  return spawnSync(process.execPath, [DR_CHECK, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_BINARY: '', HOME: home, USERPROFILE: home } });
+}
+
+test('deep-research check: --install writes the fork to ~/.claude/workflows/deep-research-tiered.js', async () => {
+  const dir = mktemp('house-dr-');
+  const home = mktemp('house-dr-home-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheckHome([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, '--install'], home);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const target = join(home, '.claude', 'workflows', 'deep-research-tiered.js');
+  assert.match(readFileSync(target, 'utf8'), /name: 'deep-research-pinned'/);
+});
+
+test('deep-research check: --install=<path> writes to the given path', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'a', 'b', 'fork.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--install=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(readFileSync(out, 'utf8'), /name: 'deep-research-pinned'/);
+});
+
+test('deep-research check: --install overwrites an existing file without --force', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'fork.js');
+  writeFileSync(out, 'PRIOR CONTENT');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--install=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(readFileSync(out, 'utf8'), /name: 'deep-research-pinned'/);
+});
+
+test('deep-research check: --install together with --rebuild exits 3 and writes nothing', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const a = join(dir, 'a.js');
+  const b = join(dir, 'b.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--install=${a}`, `--rebuild=${b}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.ok(!existsSync(a) && !existsSync(b), 'neither file may be written');
+});
+
+test('deep-research check: an empty --install= or --rebuild= path exits 3 instead of silently skipping the write', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const sha = await unescapedShaOf(body);
+  for (const flag of ['--install=', '--rebuild=']) {
+    const res = runDrCheck([`--binary=${bin}`, `--baseline=${sha}`, flag]);
+    assert.equal(res.status, 3, `${flag}: ${res.stdout}${res.stderr}`);
+    assert.match(res.stderr, /need a path/);
+  }
+});
+
+test('deep-research check: --install on a drifted body installs, then exits 1 naming the installed path', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody());
+  const out = join(dir, 'fork.js');
+  const res = runDrCheck([`--binary=${bin}`, '--baseline=0000000000000000000000000000000000000000000000000000000000000000', `--install=${out}`]);
+  assert.equal(res.status, 1, res.stdout + res.stderr);
+  assert.ok(existsSync(out));
+  assert.ok(res.stdout.includes(out), res.stdout);
+});
+
+test('deep-research check: --install does not install on SUNSET (exit 2)', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ scope: '{ label: "scope", schema: SCOPE_SCHEMA, model: "opus" }' }));
+  const out = join(dir, 'fork.js');
+  const res = runDrCheck([`--binary=${bin}`, `--install=${out}`]);
+  assert.equal(res.status, 2, res.stdout + res.stderr);
+  assert.ok(!existsSync(out), 'a sunset must not install the fork');
+});
