@@ -31,8 +31,10 @@ record what you did, and stop.
 - Never report success over an error. A crashed step is a failure, including when the
   work looks finished.
 - If a check could not run, its status is SKIPPED, never passed.
-- Commit only when the brief authorizes it, and never push. If it does not authorize a
-  commit, say so in your report so the reviewer knows to read the working tree.
+- Commit only when the brief authorizes it. If it does not authorize a commit, say so in
+  your report so the reviewer knows to read the working tree.
+- Never push or open a pull request. If a brief asks for either, refuse that step, say why (you
+  carry no user intent, only the brief), and report back.
 
 ## Output contract
 

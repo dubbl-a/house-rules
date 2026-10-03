@@ -472,6 +472,17 @@ is in the shared laptop database, not the state the merges imply, so the rule sq
 another session's branch rather than rebasing it, and never force-cleans a checkout it does not
 own.
 
+Subagents commit and the session pushes (#131): a push from a subagent in auto mode was denied,
+and the same push passed from the parent once the user asked. The mechanism is inferred, not
+verified: a subagent holds its brief and not the user's messages, so an outward action there has no
+user intent behind it. An isolated subagent's write to the main checkout was also refused, which
+is why a brief names a destination inside its own worktree and the session moves the artifact.
+
+Saying the directory with a handed-off command (#141), observed once: a command handed to the
+user ran from the worktree and printed "0 documents" against a practice copy where about 800 were
+expected. The command was right and the place was wrong, so the rule puts the directory in the
+same message and has a state-writing command state its expected output.
+
 ### What a worktree costs, and the levers that cut it
 
 An unconditional worktree rule has a price, and three levers lower it (source:
