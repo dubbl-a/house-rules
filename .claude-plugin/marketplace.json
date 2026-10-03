@@ -1,6 +1,6 @@
 {
   "name": "house-rules",
-  "description": "Opinionated repository conventions for Claude Code, vendored into each repo and kept honest by a checker: docs, engineering, GitHub, Claude Code hygiene, testing, deployment, database, data pipelines, LLM output, evals.",
+  "description": "Opinionated repository conventions for Claude Code, vendored into each repo and kept honest by a checker: docs, engineering, GitHub, Claude Code hygiene, testing, deployment, database, data pipelines, LLM output, evals, security.",
   "owner": {
     "name": "Aaron Altamura"
   },
