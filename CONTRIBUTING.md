@@ -91,6 +91,21 @@ Add a line under `[Unreleased]` in `CHANGELOG.md` only when an adopting repo wou
 module, a new check, a changed default, a policy change. Skip it for a refactor, an infra change,
 or a silent fix; those live in git history instead.
 
+## Cutting a release
+
+1. On a branch, bump `version` in `plugins/house/.claude-plugin/plugin.json` and the pin in
+   `house.json`, cut the `[Unreleased]` section of `CHANGELOG.md` into the new version, and move the
+   pinned tag in the install commands of `README.md` and `SECURITY.md` to it. Open a PR.
+2. Merge it.
+3. Tag the merge commit with an annotated signed tag: `git tag -s vX.Y.Z -m "Release X.Y.Z"`, then
+   `git push origin vX.Y.Z`.
+4. `gh release create vX.Y.Z` with the changelog section as the notes.
+
+Turn on immutable releases in the repository settings so a published release's tag and assets
+cannot be changed. That is the practice from the next release: it needs the owner's setting and a
+signing key, and neither is in place yet. Tags up to `v0.17.0` are unsigned, `v0.16.0` and `v0.17.0`
+are annotated, and `v0.15.2` and older are lightweight.
+
 ## Licensing your contribution
 
 This repository is licensed by path; see `NOTICE` for the exact scopes: MIT for the checker

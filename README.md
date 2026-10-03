@@ -63,7 +63,8 @@ https://house-rules-guide.vercel.app
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
 enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs` runs
 in CI; a git-hook floor refuses a commit or push to a protected branch, backed by a PreToolUse hook;
-the next version arrives as a diff you approve. It installs from this repository with the `claude` CLI.
+the vendored rules and the checker arrive as a diff you approve through `/house-rules:sync`, while
+the plugin's hooks and skills change when the plugin updates, with no sync. It installs from this repository with the `claude` CLI.
 Nothing is on npm or GitHub Packages; an adopting repo carries its own copy of the checker and rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
@@ -87,10 +88,19 @@ without one they are skipped, not failed; `bareScriptAllowlist` and `packageRoot
 
 ## Adopting house-rules in a repo
 
-Install the plugin once per machine:
+Install the plugin once per machine, pinned to a release tag:
 
-    claude plugin marketplace add dubbl-a/house-rules
+    claude plugin marketplace add dubbl-a/house-rules#v0.17.0
     claude plugin install house-rules@house-rules --scope user
+
+The `#v0.17.0` pins the marketplace to that tag, and the plugin resolves from the marketplace's
+checkout, so the tag is the pin. Without it (`claude plugin marketplace add dubbl-a/house-rules`)
+you follow the default branch, and whatever it holds is what an update brings. To move to a newer
+tag, read the hooks diff first (`git diff v0.17.0..vX.Y.Z -- plugins/house/hooks`), then remove and
+re-add: `claude plugin marketplace remove house-rules` (this uninstalls its plugins), add with the
+new tag, install again. Claude Code documents no dedicated command for moving a pin, and whether
+auto-update respects a `#` pin is not documented, so leave auto-update off for this marketplace (its
+default for third-party marketplaces).
 
 Inside the target repo, run `/house-rules:bootstrap`: it probes the repo, proposes a `house.json`,
 and on approval writes the vendored rules, templates, `.house/check.mjs`, `.house/lock.json`, and
@@ -100,6 +110,21 @@ Wire the checker in by hand: add `"check:house": "node .house/check.mjs"` and
 `node .house/check.mjs` as a CI step. `house.json` records which modules are on, a dated ledger of
 what the repo declined and why, per-file line ceilings that tighten as files shrink, and the guard
 record; `plugins/house/schema/house.schema.json` describes every key. Its `targets` key adds Codex or Gemini CLI, which read the rules through a block in `AGENTS.md`.
+
+## What the hooks run
+
+The plugin's install prompt shows that a hook exists but not what it runs, so read
+`plugins/house/hooks/hooks.json` before enabling. It registers four commands, each a script inside
+the plugin that uses only shell or Node builtins and local `git`, with no network call:
+
+- `no-direct-master.sh`, before Bash, edit, write, and MCP tool calls: the branch guard, which denies
+  a commit to a protected branch and the ways to disable the git-hook floor.
+- `arm-git-hooks.sh`, at session start: sets `core.hooksPath` to the repo's vendored `.githooks` floor.
+- `session-start.mjs`, at session start: prints the orchestration defaults.
+- `instructions-loaded.mjs`, when instructions load: appends to a local log that `house doctor` reads.
+
+These run with your own access, outside any sandbox, and change when the plugin updates (see
+`SECURITY.md`, which also has an org allowlist snippet).
 
 ## The checker
 
