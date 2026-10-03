@@ -33,6 +33,7 @@ Receipts: `docs/handbook/evals.md#never-let-a-gate-mint-the-answer-key-it-grades
 
 Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
 Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
+Record a ruling apart from a measurement: a change adopted on other grounds after a null result is recorded as adopted by ruling with its reason, never as improved, and a change rejected after measuring well is recorded the same way, since a ruling written as a result reads as evidence it never was.
 Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early and omits a delta when its arms are not comparable, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
 Receipts: `docs/handbook/evals.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
 
@@ -41,6 +42,7 @@ Receipts: `docs/handbook/evals.md#report-not-evaluable-and-not-measured-rather-t
 Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
 Never average disagreeing estimands or quote one conditional against another, filter before publishing a count, print the true total under any capped list, label a dataset a floor when amendments will move it, keep the caveat attached, prefer a measured floor and ceiling to a modelled point, and measure recall rather than assume it.
 Report an agent-driven eval as passes over runs, per model, from more than one run of each question, since a question that passes once and fails the next is an example, not a measurement.
+Score a case read to write a fix as a fit check, reported apart from the held-out cases, since its pass shows the fix fits the case it was written from, not that it generalises; judge the change on the cases nobody read.
 Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); the harness's eval runner repeats each case and reports a mean score, but a mean alone lets one set of runs read as near certain or near impossible, so attaching the sample and estimand to every rate is this repo's requirement
 Receipts: `docs/handbook/evals.md#show-the-ratio-and-the-sample-because-one-number-is-never-the-accuracy`
 
@@ -68,11 +70,34 @@ Keep every transcript and re-score from the saved ones when scoring changes, wri
 Anchor: the instrument's own tests replace the session spawn with a throwing stub, and its scorer fails a run on the key in any tool result; the harness denies by path and tool input only and keeps run output without a re-score path, so the result check and the re-score are this repo's addition
 Receipts: `docs/handbook/evals.md#deny-the-eval-session-what-the-project-allows-and-fail-a-run-whose-results-contain-the-key`
 
+## Count what the agent did, not only whether it passed
+
+Print the tool-call mix per arm, such as searches, document opens, shell reads, and verification calls, beside the outcome measures, and read it before adopting a change, because a prompt change can alter behaviour nobody asked about while every outcome measure stays flat.
+Anchor: the comparison report prints per-arm tool-call counts from the saved transcripts beside the outcome measures, and a test asserts the counts appear for both arms.
+Receipts: `docs/handbook/evals.md#count-what-the-agent-did-not-only-whether-it-passed`
+
+## Split a score gap into its causes from the transcripts before building to close it
+
+Read the failing transcripts and estimate how much of a gap each cause explains: the agent missed material a good answer needed, the label asks for more than a good answer needs, or the measure miscounted; only the first is the agent's to fix, and a tool no failure points at is not built.
+Treat a failure label in a log as a summary: read the transcripts behind it before designing the fix, and correct the label in the record when it understated what happened, since a few words can hide which kind of failure it was.
+Anchor: the record proposing a build names the transcripts read and the share of the gap each cause explains, and a corrected label carries a note of what it said before.
+Receipts: `docs/handbook/evals.md#split-a-score-gap-into-its-causes-from-the-transcripts-before-building-to-close-it`
+
+## Fingerprint what two arms compare, and print every field that differs
+
+Tell two corpora apart by a fingerprint of their content, never by a count, since an edit that keeps the count passes a count guard; where a side has no fingerprint, fall back and say a same-count change cannot be ruled out.
+Record the harness version and a fingerprint of the labels in force with each report, compare both between arms, and print one line naming every compared field that differs, since one changed value among many on a long line is easy to miss.
+When a label declares files interchangeable, count the group once in every measure that reads it.
+Anchor: the comparison tool's tests feed it a same-count content edit, a changed label set, and a citation of two members of one group, and assert the first two are flagged and the group scores at most one.
+Receipts: `docs/handbook/evals.md#fingerprint-what-two-arms-compare-and-print-every-field-that-differs`
+
 ## Don't
 
 - Don't gate a pull request on a tier that costs money and answers differently every run.
 - Don't trust an eval that scores the same with the rule as without it.
 - Don't reach for a model judge where a deterministic grader would settle it.
 - Don't score a path nobody takes, and don't let a test of the instrument start a real session.
+- Don't report a fix's pass on the case it was written from as a gain, or a ruling as a measurement.
+- Don't build to close a gap whose causes nobody has read from the transcripts.
 
 Anchor: each prohibition is the negative of a rule above and inherits that rule's enforcement.

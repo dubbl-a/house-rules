@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/evals.md",
       "module": "evals",
       "source": "modules/evals/rules/evals.md",
-      "bodySha256": "9bc4948812584e167fb7a4dc3fdd3bc1a12c05446aad9d37cfea9116e6898599"
+      "bodySha256": "a8af32091845ad414af7bcb063502f734734ee0318ce2931488f728ddccfa53b"
     },
     {
       "path": ".claude/rules/house/github.md",
@@ -120,7 +120,7 @@
       "source": "targets",
       "kind": "block",
       "sep": "",
-      "bodySha256": "0ef7d083295727b7705814a7d99b5d2d80eb3cc9c45307b16afed3e5c2bfac92"
+      "bodySha256": "2da3aec3107d1644d3a85a9646c231dac52ab4a691cfaa3b0dbb412adef0fac0"
     }
   ],
   "scaffolds": [

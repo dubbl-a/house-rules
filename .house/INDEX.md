@@ -119,6 +119,12 @@
   Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
 - Deny the eval session what the project allows, and fail a run whose results contain the key
   Pass every project allow the eval does not itself grant as a deny, since project settings reach a session that loads them and a broad allow written for daily work is an open door in a measurement.
+- Count what the agent did, not only whether it passed
+  Print the tool-call mix per arm, such as searches, document opens, shell reads, and verification calls, beside the outcome measures, and read it before adopting a change, because a prompt change can alter behaviour nobody asked about while every outcome measure stays flat.
+- Split a score gap into its causes from the transcripts before building to close it
+  Read the failing transcripts and estimate how much of a gap each cause explains: the agent missed material a good answer needed, the label asks for more than a good answer needs, or the measure miscounted; only the first is the agent's to fix, and a tool no failure points at is not built.
+- Fingerprint what two arms compare, and print every field that differs
+  Tell two corpora apart by a fingerprint of their content, never by a count, since an edit that keeps the count passes a count guard; where a side has no fingerprint, fall back and say a same-count change cannot be ruled out.
 - Don't
   - Don't gate a pull request on a tier that costs money and answers differently every run.
 

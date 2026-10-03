@@ -66,6 +66,8 @@ The clearest verification incident is dated 2026-08-02 (`feedback_verify_endorse
 
 `reference_deterministic_first_citations.md` (2026-08-04) is a citation about citing: the Fellegi and Sunter (1969) reference behind the matcher's certain/likely/queue decision bands was confirmed by search that day, not recalled from memory. The same pass found the opposite result for two named GTM-engineering practitioners, a search did not confirm either one states "deterministic-first" as an articulated principle, so the brief cites the verifiable waterfall-enrichment pattern instead and uses their names only as landscape, without attributing the principle to either of them.
 
+The stitched-quote clause came from a consuming repo's retrieval QA rules (issue #111, Part 2, 2026-09-30): quotes are verified mechanically, word for word, against the cited document, and a quote stitched from two places counts as a failure even when each piece matches somewhere in the source. A substring check run on each fragment passes such a quote; matching the whole quotation against one passage does not.
+
 ## Gate output on status tags
 
 `repo-d`'s `lib/intel-validate.mjs` requires a mechanical validation, including a sensitive-data pattern scan, to exit clean before anything syncs.
