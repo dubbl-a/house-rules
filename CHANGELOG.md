@@ -21,6 +21,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - **A lock `detectPaths` entry that escapes the repo root is refused (#129, PR #143).** The checker drops an absolute or `../` entry and reports it as a `tamper` finding on `.house/lock.json` instead of probing the path. A comment beside the reader says the map is advisory.
 - **A pin on an annotated tag's object sha no longer reads as a moved tag (#122, PR #143).** `scripts/check-upstreams.mjs` accepts a match on either the tag object or its peeled commit, `versionOf` needs a dotted version and accepts a short prefix such as `release-`, and the ledger-to-pins control runs the real assertion against a pins file with one row removed.
 - **The guide site's rule count is 131, not 126 (#136).** The new registration gate caught the stale figure in `site/index.html`.
+- **A separator or redirect glued to a message value no longer hides a second git command from the guard (#125, PR #149).** The branch guard's message strip ended a bare value only at whitespace, so `cd <linked worktree> && git status -mx&git switch -c f` created a branch in the main checkout unseen. A bare value now ends at `&`, `;`, `|`, `<` and `>`, and a glued `&>` stays a redirect. The deny set tightens for those shapes; the hook's crash on `|&` is tracked in #147.
 
 ## [0.17.0] - 2026-10-03
 
