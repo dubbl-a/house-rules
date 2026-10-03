@@ -277,6 +277,24 @@ test('unfrozen-install: a condition that is not only lockfile-absent clauses, or
   }
 });
 
+test('unfrozen-install: an if: that continues onto a second line never skips, and neither does the same condition on one line', () => {
+  const multi = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n          || true\n        run: npm install\n");
+  assert.deepEqual(kinds(warns(withWorkflow(multi))), ['unfrozen-install']);
+  assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == '' || true"))), ['unfrozen-install']);
+});
+
+test('unfrozen-install: only repo-root lockfiles are examined', () => {
+  assert.deepEqual(warns(repo({ 'package-lock.json': null, 'site/package-lock.json': '{}\n', '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('run: npm ci', 'run: npm install') })), []);
+  assert.deepEqual(kinds(warns(repo({ 'site/package-lock.json': '{}\n', '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('run: npm ci', 'run: npm install') }))), ['unfrozen-install']);
+});
+
+test('templates: clean with only a nested lockfile, and with a root and a nested one', () => {
+  for (const locks of [['site/package-lock.json'], ['package-lock.json', 'site/package-lock.json']]) {
+    const ws = warns(templateRepo(locks)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));
+    assert.deepEqual(ws.map((w) => `${w.kind} ${w.path}:${w.line}`), [], locks.join(', '));
+  }
+});
+
 test('unfrozen-install: a tracked npm-shrinkwrap.json the condition does not name warns', () => {
   assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == ''", { 'package-lock.json': null, 'npm-shrinkwrap.json': '{}\n' }))), ['unfrozen-install']);
   assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == ''", { 'npm-shrinkwrap.json': '{}\n' }))), ['unfrozen-install']);

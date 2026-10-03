@@ -2472,7 +2472,6 @@ function checkWorkflows(ctx) {
     if (isWaived(waivers, check, path)) return;
     warnings.push(mk('workflows', path, line, check, `${message}${FAIL_LATER_CHECKS.has(check) ? FAIL_LATER_NOTE : ''} Or record why with a {"check": "${check}", "path": "${path}", "why": "..."} entry in modules.github.config.waivers.`));
   };
-  const trackedBasenames = new Set(ctx.allTracked.map((f) => f.slice(f.lastIndexOf('/') + 1)));
 
   for (const f of workflowFiles) {
     const raw = safeRead(join(ctx.repoRoot, f));
@@ -2544,12 +2543,15 @@ function checkWorkflows(ctx) {
     for (const e of entries.filter((x) => x.key === 'run')) {
       const item = nearestItem(e);
       const cond = entries.find((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length);
-      const absent = cond ? lockfileAbsentPaths(cond.value) : null;
+      // A condition that runs onto a second line is not parsed, so it never skips.
+      const absent = cond && entryLines(cond).length === 1 ? lockfileAbsentPaths(cond.value) : null;
       for (const { line, cmd } of runCommands(entryLines(e))) {
         for (const inst of INSTALLERS) {
           const m = cmd.match(inst.re);
-          if (!m || !inst.locks.some((l) => trackedBasenames.has(l))) continue;
-          const tracked = ctx.allTracked.filter((p) => inst.locks.includes(p.slice(p.lastIndexOf('/') + 1)));
+          // Root lockfiles only: a nested lockfile, and a step run through
+          // `working-directory`, are not examined.
+          const tracked = inst.locks.filter((l) => ctx.allTracked.includes(l));
+          if (!m || !tracked.length) continue;
           if (absent && tracked.every((p) => absent.has(p))) continue;
           const args = m[1].trim().split(/\s+/).filter(Boolean);
           if (args.some((a) => !a.startsWith('-')) || args.some((a) => ['-g', '--global', '-v', '--version', '-h', '--help'].includes(a))) continue;
