@@ -253,7 +253,10 @@
         "EXT-066",
         "EXT-068",
         "PA-040",
-        "PA-041"
+        "PA-041",
+        "EXT-115",
+        "EXT-116",
+        "EXT-117"
       ],
       "crossRefs": [
         "AS-035",
@@ -267,6 +270,7 @@
         "Budget Actions minutes as account-wide money",
         "Open an issue instead of failing a scheduled run, and comment out a cron with its reason",
         "Turn on push protection, head-branch deletion, and grouped dependency updates",
+        "Protect the default branch at the remote, and name an owner for what runs with privilege",
         "Make the PR template force a docs-check answer",
         "Never put a closing keyword beside an issue number you do not mean to close",
         "Ship phased work as commits on one PR",
@@ -282,7 +286,7 @@
         "Ship the community files the platform looks for, and keep issue intake as forms",
         "Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it"
       ],
-      "notes": "19 headings and 47 owned rows against 200 lines is 11.9 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
+      "notes": "20 headings and 50 owned rows against 200 lines is 11.3 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
     },
     {
       "path": "plugins/house/modules/claude-code/rules/claude-code.md",
@@ -726,6 +730,45 @@
       "notes": "8 headings and 39 owned rows against 120 lines is 15 lines per rule including blanks. Moved verbatim from engineering.md and testing.md by issue #119; only each Receipts path changed, plus the ratio pointer in the eval-grading rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/evals.md, and the file ends with ## Don't. Ships with plugins/house/modules/evals/module.json: name evals, default detect (init turns it on when evals/ or eval/ exists, like database on db/), rules [\"rules/evals.md\"], no managed files, configSlots [\"evalGlobs\", {name evalRoots, default [\"evals/**\", \"eval/**\"]}], defaultPaths [\"$evalRoots\", \"$evalGlobs\"]. Cross-ref, never restate: a cost constraint as an invariant stays engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy; account-wide minutes stay github.md#budget-actions-minutes-as-account-wide-money; building a few evaluations before the prose stays claude-code.md#make-a-procedure-a-skill-not-a-rule (EXT-038, pointed at by EXT-093); the deterministic-backbone principle behind the grader ladder stays llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots (left as a cross-reference by issue #119)."
     },
     {
+      "path": "plugins/house/modules/security/rules/security.md",
+      "kind": "rule",
+      "module": "security",
+      "budgetLines": 140,
+      "owns": [
+        "EXT-100",
+        "EXT-101",
+        "EXT-102",
+        "EXT-103",
+        "EXT-104",
+        "EXT-105",
+        "EXT-106",
+        "EXT-107",
+        "EXT-109",
+        "EXT-110",
+        "EXT-111",
+        "EXT-112",
+        "EXT-113",
+        "EXT-114"
+      ],
+      "crossRefs": [],
+      "headings": [
+        "Treat every input to the model as data, never as instructions",
+        "Give an agent, a key, and a token only what one task needs",
+        "Review a change to agent config as code, and keep a second party on every consequential action",
+        "Bound an agent's loops, spend, and reach from outside it, and keep a record it cannot rewrite",
+        "Install only what was reviewed, and let a new release age first",
+        "Release with a short-lived identity, and attest what you ship",
+        "Scan code and dependencies for known flaws, and give every finding an end",
+        "Supply untrusted input as a parameter, never by building a string",
+        "Never let a request choose what the server fetches, opens, loads, or runs",
+        "Authenticate every non-public function, and authorize every object on the server",
+        "Use vetted mechanisms for crypto, sessions, and transport",
+        "Fail closed, and tell an outside caller little",
+        "Ship secure defaults, and bound what one caller can consume"
+      ],
+      "notes": "13 headings and 14 owned rows against 140 lines is 10.8 lines per rule including blanks; raised from 120 when the rule file went from 8 principles to 13 at 129 lines. Built from one deep-research run on incidents and the published standards read the same day (2026-10-03), not a source catalog; each rule states a principle, and the chapter carries the dated evidence, votes, caveats, refuted claims, and the coverage map. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/security.md, and the file ends with ## Don't. Ships with plugins/house/modules/security/module.json: name security, default off (opt-in: init leaves it off and a resync of an older house.json never adds it), rules [\"rules/security.md\"], no managed files, configSlots [\"securityGlobs\", {name securityRoots, default [\"src/**\", \"lib/**\", \"scripts/**\", \".claude/settings.json\", \".claude/hooks/**\", \".mcp.json\", \"package.json\"]}], defaultPaths [\"$securityRoots\", \"$securityGlobs\"]. Cross-ref, never restate: workflow permissions, action pins, event interpolation in run: blocks, and where credentials live stay github.md's; the committed allowlist stays claude-code.md's; the preview-URL request the authorization anchor reuses stays github.md#treat-a-preview-url-as-production-for-exposure."
+    },
+    {
       "path": "docs/handbook/docs.md",
       "kind": "chapter",
       "module": "docs",
@@ -903,6 +946,18 @@
       ],
       "crossRefs": [],
       "notes": "Chapter for plugins/house/modules/evals/rules/evals.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Incidents, Worked examples, and Rejected alternatives appear only when those rows supply them, otherwise the header plus \"None recorded\". Its sections moved from docs/handbook/engineering.md and docs/handbook/testing.md by issue #119; the eval vendor verdict and the deferred doctrine stay in the testing chapter as its Rejected alternatives."
+    },
+    {
+      "path": "docs/handbook/security.md",
+      "kind": "chapter",
+      "module": "security",
+      "budgetLines": 500,
+      "owns": [
+        "EXT-108",
+        "EXT-118"
+      ],
+      "crossRefs": [],
+      "notes": "Chapter for plugins/house/modules/security/rules/security.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Every factual claim comes from the 2026-10-03 research run with its URL and, where split, its vote, or from a standard in the coverage map with its control number and URL; a section resting on a standard rather than a verified incident says so; the coverage map sits after the per-rule sections, and the three refuted claims are recorded so nobody re-adds them. Budget raised from 400 to 500 lines, decided 2026-10-03, because the coverage map alone is about 320 lines once the verification standard is mapped requirement by requirement."
     },
     {
       "path": "plugins/house/skills/bootstrap/SKILL.md",

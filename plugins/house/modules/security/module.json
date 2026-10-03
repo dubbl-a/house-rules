@@ -1,0 +1,27 @@
+{
+  "name": "security",
+  "default": "off",
+  "rules": [
+    "rules/security.md"
+  ],
+  "files": [],
+  "configSlots": [
+    "securityGlobs",
+    {
+      "name": "securityRoots",
+      "default": [
+        "src/**",
+        "lib/**",
+        "scripts/**",
+        ".claude/settings.json",
+        ".claude/hooks/**",
+        ".mcp.json",
+        "package.json"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$securityRoots",
+    "$securityGlobs"
+  ]
+}

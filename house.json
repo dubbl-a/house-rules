@@ -138,6 +138,10 @@
         "llmGlobs": []
       }
     },
+    "security": {
+      "enabled": true,
+      "config": {}
+    },
     "testing": {
       "enabled": true,
       "config": {

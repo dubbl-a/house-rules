@@ -425,6 +425,75 @@ test('#126: a FILE named like a detect directory matches nothing at init, render
   assert.doesNotMatch(r.stdout + r.stderr, /module `(evals|database)` is not in house\.json/, 'nor with the plugin source present');
 });
 
+// The security module is opt-in (default off), rooted where code, agent
+// config, and the dependency manifest live, with a securityGlobs slot; its
+// lockfile rule anchors on the cooldown the dependabot template carries in
+// every entry. Its agent-config roots name the settings file and hooks rather
+// than all of .claude/**, since claude-code.md and docs.md already load on
+// .claude/rules/** and the three together pass the co-load ceiling.
+test('security: off at init, renders its roots once enabled, narrows by slot, and the dependabot template carries a cooldown', () => {
+  const repo = fixtureRepo({
+    'package.json': '{"name":"x"}', 'README.md': '# X\n', 'CLAUDE.md': '# X\n',
+    'src/a.mjs': '// a\n', '.claude/settings.json': '{}\n', '.claude/hooks/h.sh': '#!/bin/sh\n', '.mcp.json': '{}\n',
+  });
+  house(repo, 'init', '--apply');
+  const hj = readHouseJson(repo);
+  assert.equal(hj.modules.security.enabled, false, 'security is opt-in, so init leaves it off');
+  assert.deepEqual(hj.modules.security.config, {});
+  house(repo, 'render', '--apply');
+  assert.ok(!existsSync(join(repo, '.claude/rules/house/security.md')), 'an off module vendors nothing');
+
+  hj.modules.security.enabled = true;
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'enable security');
+  house(repo, 'render', '--apply');
+  const front = () => readFileSync(join(repo, '.claude/rules/house/security.md'), 'utf8').split('\n---\n')[0];
+  for (const p of [/^ {2}- src\/\*\*$/m, /^ {2}- \.claude\/settings\.json$/m, /^ {2}- \.claude\/hooks\/\*\*$/m, /^ {2}- \.mcp\.json$/m, /^ {2}- package\.json$/m]) assert.match(front(), p);
+  assert.doesNotMatch(front(), /^ {2}- \.claude\/\*\*$/m, 'not all of .claude/**, which would co-load with claude-code and docs');
+  assert.doesNotMatch(front(), /^ {2}- lib\/\*\*$/m, 'a default root matching nothing is dropped');
+
+  hj.modules.security.config = { securityRoots: [], securityGlobs: ['src/**'] };
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'narrow security');
+  house(repo, 'render', '--apply');
+  assert.match(front(), /^ {2}- src\/\*\*$/m);
+  assert.doesNotMatch(front(), /\.claude|\.mcp\.json|package\.json/);
+
+  const dependabot = templateBody('dependabot.yml');
+  const entries = dependabot.split(/^ {2}- package-ecosystem:/m).slice(1);
+  assert.ok(entries.length > 0);
+  for (const e of entries) assert.match(e, /^ {4}cooldown:\n {6}default-days: 7$/m, `every updates entry carries a 7-day cooldown:\n${e}`);
+});
+
+// An adopter whose house.json predates the security module has no key for it.
+// The module is opt-in, so a resync must not vendor it, name it in the index
+// or the AGENTS.md block, add it to house.json, or have the checker raise
+// anything about it, with or without the plugin source present.
+test('security: a house.json written before the module existed gets nothing about security on a resync', () => {
+  const repo = olderManifest({ 'src/a.mjs': '// a\n', '.claude/settings.json': '{}\n', 'CLAUDE.md': '# X\n' }, ['security']);
+  const hj = readHouseJson(repo);
+  hj.targets = ['claude-code', 'codex'];
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'an older manifest that also targets codex');
+
+  const out = house(repo, 'render', '--apply').toString();
+  assert.doesNotMatch(out, /security/i, `render says nothing about security:\n${out}`);
+  assert.ok(!existsSync(join(repo, '.claude/rules/house/security.md')), 'no security rule is vendored');
+  assert.doesNotMatch(readFileSync(join(repo, '.house/INDEX.md'), 'utf8'), /security\.md/, 'the index names no security rule');
+  assert.ok(existsSync(join(repo, 'AGENTS.md')), 'the codex target renders an AGENTS.md block');
+  assert.doesNotMatch(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), /security\.md/, 'the AGENTS.md block names no security rule');
+  const after = readHouseJson(repo);
+  assert.ok(!(after.modules.security && after.modules.security.enabled), 'house.json gains no enabled security entry');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'render');
+
+  assert.doesNotMatch(noPluginCheck(repo), /security/i, 'the checker is silent about security with no plugin source');
+  const cfg = mkdtempSync(join(tmpdir(), 'house-cfg-'));
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: join(ROOT, 'plugins/house') }] } }));
+  const r = spawnSync('node', ['.house/check.mjs'], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+  assert.doesNotMatch(r.stdout + r.stderr, /security/i, `nor with the plugin source present:\n${r.stdout}`);
+});
+
 // #23: the CLAUDE.md skeleton exists to be merged into CLAUDE.md by hand and
 // then deleted, but every later `render --apply` wrote it back, so each adopter
 // re-sync had to `rm` it again to keep the commit clean. A scaffold is now
