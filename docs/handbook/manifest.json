@@ -173,7 +173,8 @@
         "EXT-047",
         "EXT-048",
         "EXT-049",
-        "EXT-050"
+        "EXT-050",
+        "PA-052"
       ],
       "crossRefs": [
         "MEM-001",
@@ -199,7 +200,7 @@
         "Make an error message teach the fix",
         "Read config from the environment, and keep build, release, and run separate"
       ],
-      "notes": "17 headings and 70 owned rows against 200 lines is 11.8 lines per rule including blanks. Hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter. The six measurement headings moved to evals.md (issue #119); the intro points there in one sentence. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/engineering.md, and the file ends with ## Don't."
+      "notes": "17 headings and 71 owned rows against 200 lines is 11.8 lines per rule including blanks. Hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter. The six measurement headings moved to evals.md (issue #119); the intro points there in one sentence. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/engineering.md, and the file ends with ## Don't."
     },
     {
       "path": "plugins/house/modules/github/rules/github.md",
@@ -715,7 +716,6 @@
         "EXT-092",
         "PA-050",
         "PA-051",
-        "PA-052",
         "PA-053",
         "PA-054",
         "PA-055"
@@ -737,7 +737,7 @@
         "Split a score gap into its causes from the transcripts before building to close it",
         "Fingerprint what two arms compare, and print every field that differs"
       ],
-      "notes": "11 headings and 45 owned rows against 120 lines is 10.9 lines per rule including blanks; the last three headings and three sentences in existing rules came from the comment on issue #111. Moved verbatim from engineering.md and testing.md by issue #119; only each Receipts path changed, plus the ratio pointer in the eval-grading rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/evals.md, and the file ends with ## Don't. Ships with plugins/house/modules/evals/module.json: name evals, default detect (init turns it on when evals/ or eval/ exists, like database on db/), rules [\"rules/evals.md\"], no managed files, configSlots [\"evalGlobs\", {name evalRoots, default [\"evals/**\", \"eval/**\"]}], defaultPaths [\"$evalRoots\", \"$evalGlobs\"]. Cross-ref, never restate: a cost constraint as an invariant stays engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy; account-wide minutes stay github.md#budget-actions-minutes-as-account-wide-money; building a few evaluations before the prose stays claude-code.md#make-a-procedure-a-skill-not-a-rule (EXT-038, pointed at by EXT-093); the deterministic-backbone principle behind the grader ladder stays llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots (left as a cross-reference by issue #119)."
+      "notes": "11 headings and 44 owned rows against 120 lines is 10.9 lines per rule including blanks; the last three headings and two sentences in existing rules came from the comment on issue #111, whose ruling-versus-measurement item went to engineering.md#record-a-significant-decision-as-a-numbered-immutable-record (PA-052). Moved verbatim from engineering.md and testing.md by issue #119; only each Receipts path changed, plus the ratio pointer in the eval-grading rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/evals.md, and the file ends with ## Don't. Ships with plugins/house/modules/evals/module.json: name evals, default detect (init turns it on when evals/ or eval/ exists, like database on db/), rules [\"rules/evals.md\"], no managed files, configSlots [\"evalGlobs\", {name evalRoots, default [\"evals/**\", \"eval/**\"]}], defaultPaths [\"$evalRoots\", \"$evalGlobs\"]. Cross-ref, never restate: a cost constraint as an invariant stays engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy; account-wide minutes stay github.md#budget-actions-minutes-as-account-wide-money; building a few evaluations before the prose stays claude-code.md#make-a-procedure-a-skill-not-a-rule (EXT-038, pointed at by EXT-093); the deterministic-backbone principle behind the grader ladder stays llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots (left as a cross-reference by issue #119)."
     },
     {
       "path": "plugins/house/modules/security/rules/security.md",
@@ -787,16 +787,18 @@
         "PA-044",
         "PA-045",
         "PA-046",
-        "PA-047"
+        "PA-047",
+        "PA-056"
       ],
       "crossRefs": [],
       "headings": [
         "Diagnose a failed answer by stage before fixing anything",
         "Label every failed run with its stage from the transcript, and keep an undetermined outcome",
+        "Verify each quote word for word against the cited document",
         "Keep a map of the classes of quality problem, and say how each is detected",
         "Cite a primary source for every lesson, with the quote and where it was read"
       ],
-      "notes": "4 headings and 4 owned rows against 80 lines is 20 lines per rule including blanks. From issue #111's Part 2, the retrieval QA rules one consuming repo earned on its first agent-driven eval; the issue's own reservation (one repo, one day, one model) is why the module ships off. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/retrieval.md, and the file ends with ## Don't. Ships with plugins/house/modules/retrieval/module.json: name retrieval, default off (opt-in: init leaves it off and a resync of an older house.json never adds it), rules [\"rules/retrieval.md\"], no managed files, configSlots [\"retrievalGlobs\", {name retrievalRoots, default [\"retrieval/**\", \"rag/**\", \"corpus/**\", \"evals/**\", \"eval/**\"]}], defaultPaths [\"$retrievalRoots\", \"$retrievalGlobs\"]; render drops a root whose first segment does not resolve. Cross-ref, never restate: measuring the agent stays evals.md's; the word-for-word quote check, a stitched quote included, stays llm-output.md#cite-or-stay-silent (PA-048)."
+      "notes": "5 headings and 5 owned rows against 80 lines is 16 lines per rule including blanks. From issue #111's Part 2, the retrieval QA rules one consuming repo earned on its first agent-driven eval; the issue's own reservation (one repo, one day, one model) is why the module ships off. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/retrieval.md, and the file ends with ## Don't. Ships with plugins/house/modules/retrieval/module.json: name retrieval, default off (opt-in: init leaves it off and a resync of an older house.json never adds it), rules [\"rules/retrieval.md\"], no managed files, configSlots [\"retrievalGlobs\", {name retrievalRoots, default [\"retrieval/**\", \"rag/**\", \"corpus/**\", \"evals/**\", \"eval/**\"]}], defaultPaths [\"$retrievalRoots\", \"$retrievalGlobs\"]; render drops a root whose first segment does not resolve. Cross-ref, never restate: measuring the agent stays evals.md's. The quote heading (PA-056) deliberately repeats the clause PA-048 folds into llm-output.md#cite-or-stay-silent, because llm-output is default detect and enabling retrieval does not turn it on."
     },
     {
       "path": "docs/handbook/docs.md",

@@ -22,7 +22,7 @@
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "4c49ff711a7260e9850c5f33e0dbdfb7819291376df561cb307bdeaa43423fa1"
+      "bodySha256": "a738312b439eaa5e55427c9a6ffad7a8a84ff51506b156191c22d5da0a8afa19"
     },
     {
       "path": "scripts/house/is-main.mjs",
@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/evals.md",
       "module": "evals",
       "source": "modules/evals/rules/evals.md",
-      "bodySha256": "a8af32091845ad414af7bcb063502f734734ee0318ce2931488f728ddccfa53b"
+      "bodySha256": "4bd5a7dc415e0aee79648f37ba335e3632c0204241f36003fc47e225af85f81c"
     },
     {
       "path": ".claude/rules/house/github.md",

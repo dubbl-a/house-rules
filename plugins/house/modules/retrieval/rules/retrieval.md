@@ -2,21 +2,27 @@
 # Retrieval
 
 How a repo that answers questions from a corpus finds out why an answer failed, and what its own lessons rest on.
-Measuring the agent that answers, from the answer key to the eval session, is evals.md's; checking a quote word for word against its cited document, a stitched quote included, is llm-output.md's. Neither is restated here.
+Measuring the agent that answers, from the answer key to the eval session, is evals.md's and is not restated here. The quote check below is also part of llm-output.md's citation rule, stated here too because enabling this module does not turn that one on.
 
 ## Diagnose a failed answer by stage before fixing anything
 
-Check the stages in order: was the answer in the corpus, was it surfaced, was it read, and only then did the model misuse it, because a fix aimed at the wrong stage changes nothing and the planned order of work is often the reverse of where failures sit.
+Check the stages in order: was the answer in the corpus, was it surfaced, was it read, and only then did the model misuse it, because a fix aimed at the wrong stage changes nothing and the order of work planned before measuring can be the reverse of where failures sit.
 Count failures per stage before choosing what to build, and build for the stage the count points at.
-Anchor: the failure report groups failed runs by stage, in that order, before any fix is proposed; the harness keeps transcripts but assigns no stage, so the ordered diagnosis is this repo's addition.
+Anchor: a failure report that groups failed runs by stage, in that order, before any fix is proposed; this package ships no failure report, so the ordered diagnosis is this repo's addition.
 Receipts: `docs/handbook/retrieval.md#diagnose-a-failed-answer-by-stage-before-fixing-anything`
 
 ## Label every failed run with its stage from the transcript, and keep an undetermined outcome
 
 Assign the stage from what the transcript shows was surfaced, what was opened, and what was cited, never from the final answer alone, since an answer that names no source looks the same whether the source was never found or found and ignored.
 Keep undetermined as an explicit label, so a run the transcript cannot place is counted as such rather than forced into the nearest stage.
-Anchor: the scorer writes one stage label per failed run from the transcript's tool calls, with undetermined in the label set, and refuses a failed run with no label.
+Anchor: a scorer that writes one stage label per failed run from the transcript's tool calls, with undetermined in the label set, and refuses a failed run with no label; this package ships no scorer, so the labelling is this repo's addition.
 Receipts: `docs/handbook/retrieval.md#label-every-failed-run-with-its-stage-from-the-transcript-and-keep-an-undetermined-outcome`
+
+## Verify each quote word for word against the cited document
+
+Match every quote mechanically, word for word, against the document it cites, and fail a quote stitched from two places, since a stitched quote reads as one source saying what it never said.
+Anchor: a quote checker in this repo's scorer that matches each whole quotation against one passage of the cited document; this package ships no quote checker, so it is this repo's addition.
+Receipts: `docs/handbook/retrieval.md#verify-each-quote-word-for-word-against-the-cited-document`
 
 ## Keep a map of the classes of quality problem, and say how each is detected
 
@@ -36,6 +42,7 @@ Receipts: `docs/handbook/retrieval.md#cite-a-primary-source-for-every-lesson-wit
 
 - Don't fix a failure before you know which stage it sits in.
 - Don't label a failed run from its final answer alone, or force an unplaceable run into a stage.
+- Don't pass a quote that matches only in pieces.
 - Don't treat retrieval and generation as the only classes, or leave a mapped class with no way to see it.
 - Don't cite a lesson to a summary when the source it summarizes can be read.
 

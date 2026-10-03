@@ -122,7 +122,7 @@
 - Count what the agent did, not only whether it passed
   Print the tool-call mix per arm, such as searches, document opens, shell reads, and verification calls, beside the outcome measures, and read it before adopting a change, because a prompt change can alter behaviour nobody asked about while every outcome measure stays flat.
 - Split a score gap into its causes from the transcripts before building to close it
-  Read the failing transcripts and estimate how much of a gap each cause explains: the agent missed material a good answer needed, the label asks for more than a good answer needs, or the measure miscounted; only the first is the agent's to fix, and a tool no failure points at is not built.
+  Read the failing transcripts and estimate how much of a gap each cause explains: the agent missed material a good answer needed, the label asks for more than a good answer needs, or the measure miscounted; only the first is the agent's to fix.
 - Fingerprint what two arms compare, and print every field that differs
   Tell two corpora apart by a fingerprint of their content, never by a count, since an edit that keeps the count passes a count guard; where a side has no fingerprint, fall back and say a same-count change cannot be ruled out.
 - Don't

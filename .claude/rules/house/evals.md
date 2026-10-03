@@ -2,7 +2,7 @@
 paths:
   - plugins/house/evals/**
 ---
-<!-- house-managed v0.17.0 module=evals source=modules/evals/rules/evals.md body-sha256=0f5696ae3efec940d239b636694b0520c6d86fc976c49aca741b9097dae94972 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=evals source=modules/evals/rules/evals.md body-sha256=46d280af880be3620173693f12ecb433a765cd3c34d27c79e5619e1d24c4646b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Evals
 
@@ -38,7 +38,6 @@ Receipts: `docs/handbook/evals.md#never-let-a-gate-mint-the-answer-key-it-grades
 
 Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
 Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
-Record a ruling apart from a measurement: a change adopted on other grounds after a null result is recorded as adopted by ruling with its reason, never as improved, and a change rejected after measuring well is recorded the same way, since a ruling written as a result reads as evidence it never was.
 Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early and omits a delta when its arms are not comparable, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
 Receipts: `docs/handbook/evals.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
 
@@ -78,14 +77,14 @@ Receipts: `docs/handbook/evals.md#deny-the-eval-session-what-the-project-allows-
 ## Count what the agent did, not only whether it passed
 
 Print the tool-call mix per arm, such as searches, document opens, shell reads, and verification calls, beside the outcome measures, and read it before adopting a change, because a prompt change can alter behaviour nobody asked about while every outcome measure stays flat.
-Anchor: the comparison report prints per-arm tool-call counts from the saved transcripts beside the outcome measures, and a test asserts the counts appear for both arms.
+Anchor: a per-arm tool-call count printed from the saved transcripts beside the outcome measures, with a test asserting both arms carry it; this package ships no comparison report, so the count is this repo's addition, built into its own instrument.
 Receipts: `docs/handbook/evals.md#count-what-the-agent-did-not-only-whether-it-passed`
 
 ## Split a score gap into its causes from the transcripts before building to close it
 
-Read the failing transcripts and estimate how much of a gap each cause explains: the agent missed material a good answer needed, the label asks for more than a good answer needs, or the measure miscounted; only the first is the agent's to fix, and a tool no failure points at is not built.
+Read the failing transcripts and estimate how much of a gap each cause explains: the agent missed material a good answer needed, the label asks for more than a good answer needs, or the measure miscounted; only the first is the agent's to fix.
 Treat a failure label in a log as a summary: read the transcripts behind it before designing the fix, and correct the label in the record when it understated what happened, since a few words can hide which kind of failure it was.
-Anchor: the record proposing a build names the transcripts read and the share of the gap each cause explains, and a corrected label carries a note of what it said before.
+Anchor: none (because estimating causes from transcripts is reading, which no checker does); the record proposing a build names the transcripts read and the share of the gap each cause explains, and this repo writes that record.
 Receipts: `docs/handbook/evals.md#split-a-score-gap-into-its-causes-from-the-transcripts-before-building-to-close-it`
 
 ## Fingerprint what two arms compare, and print every field that differs
@@ -93,7 +92,7 @@ Receipts: `docs/handbook/evals.md#split-a-score-gap-into-its-causes-from-the-tra
 Tell two corpora apart by a fingerprint of their content, never by a count, since an edit that keeps the count passes a count guard; where a side has no fingerprint, fall back and say a same-count change cannot be ruled out.
 Record the harness version and a fingerprint of the labels in force with each report, compare both between arms, and print one line naming every compared field that differs, since one changed value among many on a long line is easy to miss.
 When a label declares files interchangeable, count the group once in every measure that reads it.
-Anchor: the comparison tool's tests feed it a same-count content edit, a changed label set, and a citation of two members of one group, and assert the first two are flagged and the group scores at most one.
+Anchor: tests of this repo's own comparison code that feed it a same-count content edit, a changed label set, and a citation of two members of one group, and assert the first two are flagged and the group scores at most one; this package ships no comparison tool, so the guard and its tests are this repo's addition.
 Receipts: `docs/handbook/evals.md#fingerprint-what-two-arms-compare-and-print-every-field-that-differs`
 
 ## Don't
@@ -102,7 +101,7 @@ Receipts: `docs/handbook/evals.md#fingerprint-what-two-arms-compare-and-print-ev
 - Don't trust an eval that scores the same with the rule as without it.
 - Don't reach for a model judge where a deterministic grader would settle it.
 - Don't score a path nobody takes, and don't let a test of the instrument start a real session.
-- Don't report a fix's pass on the case it was written from as a gain, or a ruling as a measurement.
+- Don't report a fix's pass on the case it was written from as a gain.
 - Don't build to close a gap whose causes nobody has read from the transcripts.
 
 Anchor: each prohibition is the negative of a rule above and inherits that rule's enforcement.
