@@ -1011,6 +1011,26 @@ expect_deny "a bare -m value glued to && on a protected branch is still a commit
   "$(mk_payload "git $_cm -mfix&&echo ok" "$r")" "feature branch"
 expect_allow "a quoted -m value holding a separator is still stripped whole" \
   "$(mk_payload "git $_cm -m \"a & git switch -c f\"" "$d-wt")"
+# A redirect glued to a bare value is one command, not a separator: the value
+# ends at it, and the flags behind it stay in the commit's clause.
+expect_deny "-n behind a >&2 glued to a bare -m value is still a commit's" \
+  "$(mk_payload "git $_cm -mx>&2 -n" "$d")" "disables or moves"
+expect_deny "-n behind a &>/dev/null glued to a bare -m value is still a commit's" \
+  "$(mk_payload "git $_cm -mx&>/dev/null -n" "$d")" "disables or moves"
+expect_deny "-an behind a >&2 glued to a bare -m value is still a commit's" \
+  "$(mk_payload "git $_cm -mx>&2 -an" "$d")" "disables or moves"
+expect_deny "-n behind a glued >&2, from a linked worktree" \
+  "$(mk_payload "git $_cm -mx>&2 -n" "$d-wt")" "disables or moves"
+expect_deny "update-ref behind a >&2 glued to a bare -m value" \
+  "$(mk_payload "git update-ref -mx>&2 refs/heads/master HEAD" "$d")" "disables or moves"
+expect_deny "update-ref behind a &>/dev/null glued to a bare -m value" \
+  "$(mk_payload "git update-ref -mx&>/dev/null refs/heads/master HEAD" "$d")" "disables or moves"
+expect_allow "a 2>&1 after a bare -m value on a feature branch" \
+  "$(mk_payload "git $_cm -mfix 2>&1" "$d")"
+expect_allow "a >out.log glued to a bare -m value on a feature branch" \
+  "$(mk_payload "git $_cm -mfix>out.log" "$d")"
+expect_deny "a & after a glued >&2 still ends the command" \
+  "$(mk_payload "cd $d-wt && git status -mx>&2&git switch -c f" "$d")" "worktree add"
 git -C "$d" worktree remove --force "$d-wt" >/dev/null 2>&1
 git -C "$d" branch -D wt-base >/dev/null 2>&1
 
