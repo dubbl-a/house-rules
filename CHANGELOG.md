@@ -11,6 +11,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - **A handed-off command comes with its directory (#141).** Before giving the user a command, the session leaves the worktree for the place the command must run and names the directory in the same message; a command that writes shared state says what its output looks like when it worked.
 - **Append-style entries are sequenced across open pull requests (#142).** A sentence in the docs rule "Ship the docs and changelog edit in the same PR as the change": the second pull request's entries land after the first merges and its description says they are still owed.
 - **A pinned install, what the hooks run, and the plugin-update path (#133).** `README.md` installs from a release tag (`dubbl-a/house-rules#vX.Y.Z`), says how to move the pin, and lists the four hook commands, since the install prompt shows that a hook exists and not what it runs. `SECURITY.md` extends the threat model to a plugin update, which changes hooks with no sync and no diff, and carries a managed-settings allowlist entry for an organization. `CONTRIBUTING.md` gains the release steps: immutable releases are on for the repository, and a release tag is signed without a stored key through Sigstore's gitsign, both from the release after `v0.17.0`. `SECURITY.md` says how to verify a tag and a release.
+- **A gate fails when a module is missing from a registration point (#136).** `tests/module-registration.test.mjs` reads the module directories as the source and names the module and the file when one is missing from its handbook chapter, the manifest, the inventory, `house.json`, the rendered outputs, the README, the guide site, the rule-proposal template, the marketplace description, or the harness-audit list, and when a stated module or rule count disagrees.
 
 ### Changed
 - **The README no longer says the next version arrives as a diff you approve (#133).** That holds for the vendored rules and the checker, through `/house-rules:sync`; the plugin's hooks and skills change when the plugin updates. The README's length ceiling moves from 160 to 190 with a recorded reason in `house.json`.
@@ -19,6 +20,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Fixed
 - **A lock `detectPaths` entry that escapes the repo root is refused (#129, PR #143).** The checker drops an absolute or `../` entry and reports it as a `tamper` finding on `.house/lock.json` instead of probing the path. A comment beside the reader says the map is advisory.
 - **A pin on an annotated tag's object sha no longer reads as a moved tag (#122, PR #143).** `scripts/check-upstreams.mjs` accepts a match on either the tag object or its peeled commit, `versionOf` needs a dotted version and accepts a short prefix such as `release-`, and the ledger-to-pins control runs the real assertion against a pins file with one row removed.
+- **The guide site's rule count is 131, not 126 (#136).** The new registration gate caught the stale figure in `site/index.html`.
 
 ## [0.17.0] - 2026-10-03
 
