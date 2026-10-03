@@ -59,7 +59,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house confirm <module> <step-id> --repo <path
 ```
 
 It writes the step id and today's date beside the module's entry in `house.json`, and keeps the
-first date if the step was already confirmed. Do not confirm a step on the person's behalf. A
+first date if the step was already confirmed. It refuses while `.house/check.mjs` is not this
+plugin's copy, since an older checker fails CI on the record: run `/house-rules:sync` first. Do not confirm a step on the person's behalf. A
 step left open is fine: `house doctor` lists every step of an enabled module not yet confirmed.
 
 ## Probe the repo

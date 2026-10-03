@@ -1753,6 +1753,20 @@ function unconfirmedAtAdoption(houseData, modules) {
   return out;
 }
 
+// A checker vendored before #135 refuses the `confirmed` key as unknown, so a
+// record written under it fails the adopter's CI until the next sync. The test
+// is the bytes: the vendored .house/check.mjs against this plugin's payload,
+// which knows the key. A version pin can say current while the checker is
+// not (a hand-bumped pin, a half-finished sync), and the file itself cannot.
+// A copy newer than this plugin also reads as not current, so it fails toward
+// refusing.
+function vendoredCheckerIsCurrent(repoRoot) {
+  try {
+    return readFileSync(path.join(repoRoot, '.house', 'check.mjs'), 'utf8') === readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8');
+  } catch { return false; }
+}
+const SYNC_FIRST = 'run /house-rules:sync (or `house render --apply`) so .house/check.mjs is this plugin\'s, since an older vendored checker reports `confirmed` as an unknown key and fails CI';
+
 // Today in the local calendar, the date a person confirming a step would write.
 function todayIso() {
   const d = new Date();
@@ -1795,15 +1809,33 @@ function cmdConfirm(args) {
     console.error(`house confirm: \`${id}\` is not an at-adoption step of \`${name}\`, so nothing was written. Its steps: ${declared.length ? declared.join(', ') : '(none declared)'}.`);
     process.exit(2);
   }
+  const entry = houseData.modules[name];
+  // A record this command cannot read is somebody's hand edit: refuse rather
+  // than replace it. A malformed date on another step is left as it is.
+  if ('confirmed' in entry && !isPlainObject(entry.confirmed)) {
+    console.error(`house confirm: modules.${name}.confirmed is not an object (it is ${JSON.stringify(entry.confirmed)}), so nothing was written. Make it {"<step-id>": "YYYY-MM-DD"} by hand, or delete it, then re-run.`);
+    process.exit(2);
+  }
+  const existing = isPlainObject(entry.confirmed) ? entry.confirmed : {};
   const prior = confirmedSteps(houseData, name)[id];
   if (prior) {
     console.log(`${name} step \`${id}\` was already confirmed on ${prior}; the date is kept and nothing was written.`);
     process.exit(0);
   }
-  const entry = houseData.modules[name];
-  entry.confirmed = { ...(isPlainObject(entry.confirmed) ? entry.confirmed : {}), [id]: todayIso() };
+  if (id in existing) {
+    console.error(`house confirm: modules.${name}.confirmed["${id}"] holds ${JSON.stringify(existing[id])}, which is not a date (YYYY-MM-DD), so nothing was written. Fix or delete it by hand, then re-run.`);
+    process.exit(2);
+  }
+  if (!vendoredCheckerIsCurrent(repoRoot)) {
+    console.error(`house confirm: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
+    process.exit(2);
+  }
+  entry.confirmed = { ...existing, [id]: todayIso() };
   writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
   console.log(`Wrote modules.${name}.confirmed[${JSON.stringify(id)}] = "${entry.confirmed[id]}" to ${housePath}`);
+  for (const [other, v] of Object.entries(existing)) {
+    if (typeof v !== 'string' || !DATE_RE.test(v)) console.log(`  left \`${other}\` as it was (${JSON.stringify(v)}); the checker reports it until it is a date or removed`);
+  }
   process.exit(0);
 }
 
@@ -1973,6 +2005,10 @@ function cmdEnable(args) {
     const kept = [...new Set(after.plan.filter((p) => p.target.kind === 'rule' && p.target.module === n).flatMap((p) => p.target.globs))];
     const dropped = raw.filter((g) => !kept.includes(g));
     console.log(`  ${n}: ${kept.length ? kept.join(', ') : '(none)'}${dropped.length ? `; dropped, matching nothing here: ${dropped.join(', ')}` : ''}`);
+    if (!kept.length && arr(m.json.rules).length) {
+      const slots = arr(m.json.defaultPaths).filter((p) => typeof p === 'string' && p.startsWith('$')).map((p) => `modules.${n}.config.${p.slice(1)}`);
+      console.log(`  warning: ${n} would vendor zero rules here, so after --apply the checker reports \`module ${n} is enabled but vendored zero rules\`. ${slots.length ? `Set ${slots.join(' or ')} in house.json to a path this repo has` : 'Its paths are fixed and none exists here, so leave it off'}.`);
+    }
   }
   const priorWarnings = new Set(before.moduleWarnings);
   for (const w of after.moduleWarnings.filter((x) => !priorWarnings.has(x))) console.log(`warning: ${w}`);
@@ -2219,8 +2255,9 @@ function cmdDoctor(args) {
     }
     for (const t of targets) console.log(`target ${t.target}: ${t.line}`);
     console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
+    const checkerCurrent = vendoredCheckerIsCurrent(repoRoot);
     for (const a of atAdoption) {
-      if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (record each with \`house confirm ${a.module} <step-id>\`)`);
+      if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (${checkerCurrent ? `record each with \`house confirm ${a.module} <step-id>\`` : `sync first: ${SYNC_FIRST}; then record each with house confirm`})`);
       if (a.undeclared.length) console.log(`at-adoption confirmations ${a.module} no longer declares: ${a.undeclared.join(', ')} (remove them from modules.${a.module}.confirmed)`);
     }
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);

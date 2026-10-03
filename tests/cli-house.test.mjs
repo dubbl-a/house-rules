@@ -1992,3 +1992,128 @@ test('#135 render tolerates a confirmed record: it renders and keeps the key', (
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma.confirmed.owners, /^\d{4}-\d{2}-\d{2}$/);
 });
+
+// A vendored checker from before #135: its manifest family refuses any module
+// key but enabled and config, as payload/check.mjs did at f5a9a9e. A stand-in
+// rather than that file, since CI's shallow checkout has no history to show
+// it from; what confirm must notice is that the vendored copy is not the
+// plugin's payload.
+const OLD_CHECK_MJS = `#!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+const i = process.argv.indexOf('--repo');
+const root = i === -1 ? process.cwd() : process.argv[i + 1];
+const d = JSON.parse(readFileSync(root + '/house.json', 'utf8'));
+for (const [n, e] of Object.entries(d.modules || {})) {
+  for (const k of Object.keys(e)) if (k !== 'enabled' && k !== 'config') { console.log('module ' + n + ' has unknown key ' + k); process.exit(1); }
+}
+console.log('old house check: ok');
+`;
+
+function runVendoredCheck(repo) {
+  return spawnSync(process.execPath, [join(repo, '.house', 'check.mjs'), '--repo', repo], { encoding: 'utf8' });
+}
+
+test('#135 confirm: refuses, writing nothing, while the vendored checker is not the plugin\'s; doctor says to sync first', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  // What an older render leaves: the old checker on disk, its hash in the lock.
+  writeFileSync(join(repo, '.house', 'check.mjs'), OLD_CHECK_MJS);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files.find((f) => f.path === '.house/check.mjs').bodySha256 = sha256Hex(OLD_CHECK_MJS);
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'an adopter still on the old checker');
+
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.match(doc.out, /^at-adoption steps not confirmed for gamma: scan-on, owners \(sync first/m);
+  assert.doesNotMatch(doc.out, /record each with `house confirm/);
+
+  const r = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /\/house-rules:sync/);
+  assert.match(r.err, /house render --apply/);
+  assert.equal(gitStatusShort(repo), '', 'house.json untouched');
+  assert.equal(runVendoredCheck(repo).status, 0, 'the old checker still passes the untouched house.json');
+
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const ok = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(ok.code, 0, ok.out + ok.err);
+  assert.equal(runVendoredCheck(repo).status, 0, 'the synced checker accepts the record');
+});
+
+test('#135 confirm: refuses a confirmed value that is not an object, and never overwrites a malformed date', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const set = (confirmed) => {
+    const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+    house.modules.gamma.confirmed = confirmed;
+    writeHouseJson(repo, house);
+  };
+  for (const bad of [['scan-on'], 'scan-on', null]) {
+    set(bad);
+    const r = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+    assert.equal(r.code, 2, `${JSON.stringify(bad)}: ${r.out}${r.err}`);
+    assert.match(r.err, /modules\.gamma\.confirmed is not an object/);
+    assert.equal(gitStatusShort(repo), '');
+  }
+  set({ 'scan-on': 'soon' });
+  const own = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(own.code, 2, own.out + own.err);
+  assert.match(own.err, /"soon", which is not a date/);
+  assert.equal(gitStatusShort(repo), '');
+
+  set({ owners: 'soon' });
+  const other = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(other.code, 0, other.out + other.err);
+  assert.match(other.out, /left `owners` as it was \("soon"\)/);
+  const c = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma.confirmed;
+  assert.equal(c.owners, 'soon', 'the other entry is untouched');
+  assert.match(c['scan-on'], /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('#135 enable: a module whose paths all drop out is named, with the checker finding it will meet and the slot to set', () => {
+  const { dir, cliPath } = buildEnableFixture();
+  writeTree(dir, {
+    'modules/epsilon/module.json': `${JSON.stringify({
+      name: 'epsilon', default: 'off', rules: ['rules/epsilon.md'], files: [],
+      configSlots: [{ name: 'epsilonRoots', default: ['evals/**'] }], defaultPaths: ['$epsilonRoots'],
+    }, null, 2)}\n`,
+    'modules/epsilon/rules/epsilon.md': ALPHA_BODY,
+  });
+  const repo = adoptedRepo(cliPath);
+  const r = runCli(cliPath, ['enable', 'epsilon', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /epsilon would vendor zero rules here/);
+  assert.match(r.out, /enabled but vendored zero rules/);
+  assert.match(r.out, /epsilonRoots/);
+  const fine = runCli(cliPath, ['enable', 'gamma', '--repo', repo]);
+  assert.doesNotMatch(fine.out, /vendor zero rules/, 'negative control: a module that lands says nothing');
+});
+
+test('#135 enable --apply: a render that would refuse leaves house.json unwritten', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath);
+  const alpha = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  writeFileSync(alpha, `${readFileSync(alpha, 'utf8')}hand edit\n`);
+  commitAll(repo, 'hand edit a managed rule');
+  const before = readFileSync(join(repo, 'house.json'), 'utf8');
+  const r = runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md/m);
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), before);
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#135 enable --apply: an off module keeps the config written for it by hand', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: false, config: { gammaRoots: ['scripts/**'] } },
+  });
+  const r = runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma, { enabled: true, config: { gammaRoots: ['scripts/**'] } });
+  const gamma = readFileSync(join(repo, '.claude', 'rules', 'house', 'gamma.md'), 'utf8');
+  assert.match(gamma, /^ {2}- scripts\/\*\*$/m);
+  assert.doesNotMatch(gamma, /src\/\*\*/);
+});
