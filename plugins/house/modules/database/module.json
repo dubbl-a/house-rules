@@ -1,6 +1,10 @@
 {
   "name": "database",
   "default": "detect",
+  "detectPaths": [
+    "db/",
+    "migrations/"
+  ],
   "rules": [
     "rules/database.md"
   ],

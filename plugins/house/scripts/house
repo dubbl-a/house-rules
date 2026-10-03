@@ -419,13 +419,6 @@ function repoSettingsHasHooksBlock(repoRoot) {
 function probeRepo(repoRoot, fileDests = []) {
   const tracked = gitLsFiles(repoRoot);
   const topDirs = [...new Set(tracked.filter((f) => f.includes('/')).map((f) => f.slice(0, f.indexOf('/'))))].sort();
-  const hasWrangler = existsSync(path.join(repoRoot, 'wrangler.toml'));
-  const hasVercel = existsSync(path.join(repoRoot, 'vercel.json'));
-  const hasDockerfile = existsSync(path.join(repoRoot, 'Dockerfile'));
-  let hasAstroConfig = false;
-  try { hasAstroConfig = readdirSync(repoRoot).some((f) => f.startsWith('astro.config.')); } catch { /* ignore */ }
-  const hasDeploymentMarkers = hasWrangler || hasVercel || hasDockerfile || hasAstroConfig;
-  const hasDbMarkers = existsSync(path.join(repoRoot, 'db')) || existsSync(path.join(repoRoot, 'migrations'));
   return {
     defaultBranch: probeDefaultBranch(repoRoot),
     topLevelTrackedDirs: topDirs,
@@ -433,8 +426,6 @@ function probeRepo(repoRoot, fileDests = []) {
     hasClaudeRules: existsSync(path.join(repoRoot, '.claude', 'rules')),
     hasRepoHook: existsSync(path.join(repoRoot, '.claude', 'hooks', 'no-direct-master.sh')),
     hasSettingsHooksBlock: repoSettingsHasHooksBlock(repoRoot),
-    hasDeploymentMarkers,
-    hasDbMarkers,
     ignoredHouseDests: probeIgnoredHouseDests(repoRoot, fileDests),
   };
 }
@@ -502,23 +493,45 @@ function docsConfigFromProbe(repoRoot) {
   return { haystackDirs, roots };
 }
 
-// A detect module may name its own signal in module.json as detectPaths,
-// repo-relative paths any one of which turns it on; the first that exists
-// here, or null. The checker reads the same field for the same warning.
+// The detectPaths of every detect module that declares them, by module name,
+// so render can carry them into .house/lock.json for a checker that has no
+// plugin source to read module.json from (#126).
+function moduleDetectPaths(modules) {
+  const out = {};
+  for (const m of modules) {
+    if (m.error || !m.json || m.json.default !== 'detect') continue;
+    const paths = arr(m.json.detectPaths).filter((p) => typeof p === 'string' && p);
+    if (paths.length) out[moduleName(m)] = paths;
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+// One detectPaths entry against the repo: a trailing slash means a
+// directory, anything else a regular file, so a file named `evals` is not an
+// eval directory and a directory named `Dockerfile` is not a Dockerfile.
+function detectPathHit(repoRoot, p) {
+  const dir = p.endsWith('/');
+  try {
+    const st = statSync(path.join(repoRoot, dir ? p.slice(0, -1) : p));
+    return dir ? st.isDirectory() : st.isFile();
+  } catch { return false; }
+}
+
+// A detect module names its own signal in module.json as detectPaths,
+// repo-relative paths any one of which turns it on; the first that matches
+// here, or null. The checker reads the same field, from the lock render
+// writes, for the same warning.
 function detectPathMatch(repoRoot, json) {
   for (const p of arr(json && json.detectPaths)) {
-    if (typeof p === 'string' && p && existsSync(path.join(repoRoot, p))) return p;
+    if (typeof p === 'string' && p && detectPathHit(repoRoot, p)) return p;
   }
   return null;
 }
 
-// "detect" probing for the two named modules the content spec gives a stack
-// signal for, then a module's own detectPaths. Any other detect-default
-// module (module sources are read generically) has no known probe, so it
-// defaults OFF rather than guessing.
-function probeDetectEnabled(name, probe, json, repoRoot) {
-  if (name === 'deployment') return probe.hasDeploymentMarkers;
-  if (name === 'database') return probe.hasDbMarkers;
+// "detect" probing reads only a module's own detectPaths. A detect-default
+// module that declares none has no known probe, so it defaults OFF rather
+// than guessing.
+function probeDetectEnabled(json, repoRoot) {
   return detectPathMatch(repoRoot, json) !== null;
 }
 
@@ -531,7 +544,7 @@ function missingDetectModuleWarning(repoRoot, houseData, name, json) {
   if (isPlainObject(houseData.modules) && Object.prototype.hasOwnProperty.call(houseData.modules, name)) return null;
   const hit = detectPathMatch(repoRoot, json);
   if (!hit) return null;
-  return `module \`${name}\` is not in house.json, but ${hit}/ exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`;
+  return `module \`${name}\` is not in house.json, but ${hit} exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`;
 }
 
 function buildProposedManifest(repoRoot, pluginVersion, modules, probe) {
@@ -554,7 +567,7 @@ function buildProposedManifest(repoRoot, pluginVersion, modules, probe) {
     if (defaultKind === 'on') {
       enabled = true;
     } else if (defaultKind === 'detect') {
-      enabled = probeDetectEnabled(name, probe, m.json, repoRoot);
+      enabled = probeDetectEnabled(m.json, repoRoot);
     } else {
       enabled = false;
     }
@@ -1674,6 +1687,10 @@ function cmdRender(args) {
     // of what was offered once, so the tamper family ignores it by construction
     // (it reads files[] only) and a repo may delete a scaffold freely.
     scaffolds: [...scaffoldRecord.entries()].map(([template, dest]) => ({ template, path: dest })).sort((a, b) => (a.template < b.template ? -1 : a.template > b.template ? 1 : 0)),
+    // #126: every detect module's detectPaths, enabled or not, so the
+    // checker's missing-module warning fires in an adopter's CI, where no
+    // plugin source exists to read module.json from. Not hash-checked.
+    detectPaths: moduleDetectPaths(modules),
   };
   writeIfChanged(path.join(repoRoot, '.house', 'lock.json'), `${JSON.stringify(lockData, null, 2)}\n`);
   writeIfChanged(path.join(repoRoot, '.house', 'INDEX.md'), buildIndex(plan));

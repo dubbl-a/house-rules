@@ -2,8 +2,8 @@
   "name": "evals",
   "default": "detect",
   "detectPaths": [
-    "evals",
-    "eval"
+    "evals/",
+    "eval/"
   ],
   "rules": [
     "rules/evals.md"

@@ -367,6 +367,64 @@ test('#123: a detect module missing from house.json whose detect path matches is
   assert.match(r.stdout + r.stderr, want, 'the checker warns');
 });
 
+// #126: an adopter's CI has no installed plugin and no plugins/house/modules,
+// so the checker reads the detect list render wrote into the lock. Run the
+// vendored checker under an empty CLAUDE_CONFIG_DIR to prove it needs neither.
+const noPluginCheck = (repo) => {
+  const cfg = mkdtempSync(join(tmpdir(), 'house-cfg-empty-'));
+  const r = spawnSync('node', ['.house/check.mjs'], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+  return r.stdout + r.stderr;
+};
+
+function olderManifest(files, dropped) {
+  const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n', ...files });
+  house(repo, 'init', '--apply');
+  const hj = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  for (const name of dropped) delete hj.modules[name];
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'an older manifest');
+  return repo;
+}
+
+test('#126: database and deployment detect through detectPaths, and the checker warns with no plugin source present', () => {
+  const repo = olderManifest({ 'db/schema.sql': 'create table t();\n', 'wrangler.toml': 'name = "x"\n' }, []);
+  const hj = readHouseJson(repo);
+  assert.equal(hj.modules.database.enabled, true, 'db/ exists, so database detects on');
+  assert.equal(hj.modules.deployment.enabled, true, 'wrangler.toml exists, so deployment detects on');
+  const bare = olderManifest({ 'notes.txt': 'x\n' }, []);
+  assert.equal(readHouseJson(bare).modules.database.enabled, false, 'no db signal, so database stays off');
+  assert.equal(readHouseJson(bare).modules.deployment.enabled, false, 'no deploy signal, so deployment stays off');
+
+  const older = olderManifest({ 'db/schema.sql': 'create table t();\n', 'wrangler.toml': 'name = "x"\n' }, ['database', 'deployment']);
+  const wantDb = /module `database` is not in house\.json, but db\/ exists here/;
+  const wantDeploy = /module `deployment` is not in house\.json, but wrangler\.toml exists here/;
+  const out = house(older, 'render', '--apply').toString();
+  assert.match(out, wantDb, 'render warns for database');
+  assert.match(out, wantDeploy, 'render warns for deployment');
+  git(older, 'add', '-A'); git(older, 'commit', '-q', '-m', 'render');
+  const checked = noPluginCheck(older);
+  assert.match(checked, wantDb, 'the checker warns for database from the rendered payload alone');
+  assert.match(checked, wantDeploy, 'the checker warns for deployment from the rendered payload alone');
+});
+
+test('#126: a FILE named like a detect directory matches nothing at init, render, or the checker', () => {
+  const repo = olderManifest({ evals: 'not a directory\n', db: 'not a directory\n' }, []);
+  const hj = readHouseJson(repo);
+  assert.equal(hj.modules.evals.enabled, false, 'a file named evals is not an eval directory');
+  assert.equal(hj.modules.database.enabled, false, 'a file named db is not a db directory');
+
+  const older = olderManifest({ evals: 'not a directory\n', db: 'not a directory\n' }, ['evals', 'database']);
+  const out = house(older, 'render', '--apply').toString();
+  assert.doesNotMatch(out, /module `(evals|database)` is not in house\.json/, out);
+  git(older, 'add', '-A'); git(older, 'commit', '-q', '-m', 'render');
+  assert.doesNotMatch(noPluginCheck(older), /module `(evals|database)` is not in house\.json/);
+  const cfg = mkdtempSync(join(tmpdir(), 'house-cfg-'));
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: join(ROOT, 'plugins/house') }] } }));
+  const r = spawnSync('node', ['.house/check.mjs'], { cwd: older, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+  assert.doesNotMatch(r.stdout + r.stderr, /module `(evals|database)` is not in house\.json/, 'nor with the plugin source present');
+});
+
 // #23: the CLAUDE.md skeleton exists to be merged into CLAUDE.md by hand and
 // then deleted, but every later `render --apply` wrote it back, so each adopter
 // re-sync had to `rm` it again to keep the commit clean. A scaffold is now

@@ -216,3 +216,25 @@ test('wiring: package.json runs the checker outside verify, and the weekly workf
   assert.match(wf, /node scripts\/check-orchestration-kit-upstream\.mjs --json --diff/);
   assert.match(wf, /node scripts\/check-upstreams\.mjs --json/);
 });
+
+// #122 item 1: a tag force-moved onto a new commit has no newer version to
+// find, so only comparing the tag's own peeled target with the pin catches it,
+// for an annotated tag (the peeled ^{} line) and a lightweight one alike.
+test('check: a tag moved to a new commit exits 1 and names the tag; the same tag in place exits 0', () => {
+  const env = { ...process.env, GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  for (const annotated of [true, false]) {
+    const { bare, shas } = bareRepo([{ 'a.md': 'a\n' }, { 'a.md': 'b\n' }], { '1.0.0': 0 });
+    const pins = pinFixture([pin({ upstream: 'tagged', remote: bare, ref: { tag: '1.0.0' }, sha: shas[0] })]);
+    const still = run([`--pins=${pins}`]);
+    assert.equal(still.status, 0, still.stdout + still.stderr);
+    execFileSync('git', ['-C', bare, 'tag', '-f', ...(annotated ? ['-a', '-m', 'moved'] : []), '1.0.0', shas[1]], { env, stdio: 'pipe' });
+    const res = run([`--pins=${pins}`, '--json']);
+    assert.equal(res.status, 1, `${annotated ? 'annotated' : 'lightweight'}: ${res.stdout}${res.stderr}`);
+    const row = JSON.parse(res.stdout).rows[0];
+    assert.equal(row.status, 'moved');
+    assert.equal(row.head, shas[1]);
+    const line = run([`--pins=${pins}`]).stdout.split('\n').find((l) => l.includes('tagged'));
+    assert.match(line, /tag 1\.0\.0 moved/, line);
+    assert.ok(line.includes(shas[1].slice(0, 7)), line);
+  }
+});
