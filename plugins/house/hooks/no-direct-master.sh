@@ -549,13 +549,16 @@ fi
 # A value that would EXPAND is never stripped: a double-quoted or bare value
 # holding `$`, a backtick or `(` is code the shell will run, not prose, and
 # this used to remove `-m "$(git push origin master)"` whole while the push
-# inside ran (#1). Under-stripping costs a false deny, over-stripping costs a
-# bypass; both directions are pinned in tests/hooks/run.sh.
+# inside ran (#1). A bare value also ends at a shell separator (`&`, `;`,
+# `|`), not just at whitespace: `-mx&git switch -c f` used to lose the `&git`
+# with the value, and the command behind it with the separator (#125).
+# Under-stripping costs a false deny, over-stripping costs a bypass; both
+# directions are pinned in tests/hooks/run.sh.
 _strip_flag_args() {
   printf '%s' "$2" | sed -E "
     s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"\`\$]*\"/\1/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(]+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(&;|]+/\1/g"
 }
 # The BLIND strip: the value is one shell WORD (bare characters, quoted spans,
 # substitutions and parameter expansions in any mix, ending at unquoted

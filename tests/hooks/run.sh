@@ -991,6 +991,26 @@ expect_deny "shape exclusion: --ignore-other-worktrees can move the main checkou
   "$(mk_payload "git -C $d-wt checkout --ignore-other-worktrees -B master" "$d")" "worktree add"
 expect_deny "shape exclusion: an abbreviated --git-dir global option" \
   "$(mk_payload "git -C $d-wt --git-di=$d/.git switch -c feat/x" "$d")" "worktree add"
+# #125: a bare message value ends at a shell separator as well as at
+# whitespace, so a separator glued to it cannot vanish with it and take the
+# command behind it out of the scan.
+expect_deny "a bare -m value glued to & does not hide the next command" \
+  "$(mk_payload "cd $d-wt && git status -mx&git switch -c f" "$d")" "worktree add"
+expect_deny "a bare -m value glued to ; does not hide the next command" \
+  "$(mk_payload "cd $d-wt && git status -mx;git switch -c f" "$d")" "worktree add"
+expect_deny "a bare -m value glued to | does not hide the next command" \
+  "$(mk_payload "cd $d-wt && git status -mx|git switch -c f" "$d")" "worktree add"
+expect_deny "a bare --message= value glued to & does not hide the next command" \
+  "$(mk_payload "cd $d-wt && git status --message=x&git switch -c f" "$d")" "worktree add"
+expect_deny "a bare -F value glued to & does not hide the next command" \
+  "$(mk_payload "cd $d-wt && git status -Fx&git switch -c f" "$d")" "worktree add"
+expect_allow "a bare -m value glued to && on a feature branch is a commit, then echo" \
+  "$(mk_payload "git $_cm -mfix&&echo ok" "$d-wt")"
+r="$TMP_ROOT/case125"; new_repo "$r"; adopt "$r"
+expect_deny "a bare -m value glued to && on a protected branch is still a commit" \
+  "$(mk_payload "git $_cm -mfix&&echo ok" "$r")" "feature branch"
+expect_allow "a quoted -m value holding a separator is still stripped whole" \
+  "$(mk_payload "git $_cm -m \"a & git switch -c f\"" "$d-wt")"
 git -C "$d" worktree remove --force "$d-wt" >/dev/null 2>&1
 git -C "$d" branch -D wt-base >/dev/null 2>&1
 
