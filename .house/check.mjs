@@ -136,7 +136,7 @@
 // to a glob that matches nothing in THIS repo loads nowhere, which is a
 // defect of this repo's house.json and is fixed by re-rendering.
 
-import { readFileSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join, resolve, relative, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -1859,14 +1859,42 @@ function readModuleDetectPathsFrom(modulesDir) {
   }
   return out;
 }
-function resolveModuleDetectPaths(ctx) {
-  const record = resolveHousePluginRecord(readInstalledPlugins());
-  if (record && record.installPath && existsSync(join(record.installPath, 'modules'))) {
-    return readModuleDetectPathsFrom(join(record.installPath, 'modules'));
+// #126: render also writes the list into .house/lock.json as detectPaths, the
+// one source an adopter's CI has (no installed plugin, no modules tree). A
+// reachable plugin source wins per module, since it may know a module newer
+// than the last render; the lock fills in the rest.
+function readLockDetectPaths(repoRoot) {
+  const p = join(repoRoot, '.house', 'lock.json');
+  if (!existsSync(p)) return null;
+  let j;
+  try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+  if (!isPlainObject(j) || !isPlainObject(j.detectPaths)) return null;
+  const out = {};
+  for (const [name, paths] of Object.entries(j.detectPaths)) {
+    const list = Array.isArray(paths) ? paths.filter((x) => typeof x === 'string' && x) : [];
+    if (list.length) out[name] = list;
   }
+  return out;
+}
+function resolveModuleDetectPaths(ctx) {
+  const locked = readLockDetectPaths(ctx.repoRoot);
+  let source = null;
+  const record = resolveHousePluginRecord(readInstalledPlugins());
   const local = join(ctx.repoRoot, 'plugins', 'house', 'modules');
-  if (existsSync(local)) return readModuleDetectPathsFrom(local);
-  return null;
+  if (record && record.installPath && existsSync(join(record.installPath, 'modules'))) {
+    source = readModuleDetectPathsFrom(join(record.installPath, 'modules'));
+  } else if (existsSync(local)) source = readModuleDetectPathsFrom(local);
+  if (!locked && !source) return null;
+  return { ...(locked || {}), ...(source || {}) };
+}
+// Same contract as the CLI's detectPathHit: a trailing slash means a
+// directory, anything else a regular file.
+function detectPathHit(repoRoot, p) {
+  const dir = p.endsWith('/');
+  try {
+    const st = statSync(join(repoRoot, dir ? p.slice(0, -1) : p));
+    return dir ? st.isDirectory() : st.isFile();
+  } catch { return false; }
 }
 
 function checkManifest(ctx) {
@@ -2089,13 +2117,14 @@ function checkManifest(ctx) {
   // #123: a manifest written before a detect module shipped has no key for
   // it, which render reads as off, so a sync drops that module's rules with
   // nothing said. The missing key stays off; warn when the module's own
-  // detectPaths (module.json, the field init probes) match this repo.
+  // detectPaths (module.json, the field init probes, also carried in the
+  // lock) match this repo.
   const detectPaths = resolveModuleDetectPaths(ctx);
   if (detectPaths && isPlainObject(d.modules)) {
     for (const [name, paths] of Object.entries(detectPaths)) {
       if (Object.prototype.hasOwnProperty.call(d.modules, name)) continue;
-      const hit = paths.find((p) => existsSync(join(ctx.repoRoot, p)));
-      if (hit) warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is not in house.json, but ${hit}/ exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`));
+      const hit = paths.find((p) => detectPathHit(ctx.repoRoot, p));
+      if (hit) warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is not in house.json, but ${hit} exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`));
     }
   }
 

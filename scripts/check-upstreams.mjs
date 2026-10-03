@@ -5,7 +5,9 @@
 // diffable act rather than a glance at the ledger at the quarterly trim.
 //
 // A branch pin compares the remote's branch head to the recorded sha. A tag
-// pin lists the remote's tags and reports any that sorts newer by version
+// pin lists the remote's tags, reports the pinned tag itself as moved when its
+// peeled target (refs/tags/<tag>^{}, or the bare ref for a lightweight tag) is
+// no longer the recorded sha, and reports any tag that sorts newer by version
 // than the pinned one (a prerelease counts only when its numbers are higher).
 // The checker reports and never merges: a moved BORROW row is a review of the
 // named paths, a moved REUSE row is a re-vendor at the new version.
@@ -122,6 +124,8 @@ export function checkPin(pin) {
     const tags = remoteTags(pin.remote);
     if (!tags.has(pin.ref.tag)) return { ...row, status: 'unreadable', pinned: label, detail: `pinned tag ${pin.ref.tag} is not on the remote` };
     const newer = newerTags([...tags.keys()], pin.ref.tag);
+    const target = tags.get(pin.ref.tag);
+    if (target !== pin.sha) return { ...row, status: 'moved', pinned: label, current: `tag ${pin.ref.tag} moved to ${target.slice(0, 7)}`, head: target, newer, action: actionFor(pin) };
     if (newer.length === 0) return { ...row, status: 'unchanged', pinned: label, current: pin.ref.tag };
     return { ...row, status: 'moved', pinned: label, current: newer[0], head: tags.get(newer[0]), newer, action: actionFor(pin) };
   } catch (e) {

@@ -1,6 +1,7 @@
 {
   "name": "deployment",
   "default": "detect",
+  "detectPaths": ["wrangler.toml", "vercel.json", "Dockerfile", "astro.config.mjs", "astro.config.js", "astro.config.ts", "astro.config.mts", "astro.config.cjs", "astro.config.cts"],
   "rules": ["rules/deployment.md"],
   "files": [{"src": "files/deploy-guards.mjs", "dest": "scripts/house/deploy-guards.mjs"}, {"src": "files/assert-main-at-origin.mjs", "dest": "scripts/house/assert-main-at-origin.mjs"}],
   "configSlots": ["deployGlobs"],

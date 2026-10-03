@@ -106,7 +106,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "eaa9262681c8cc5f254504f231112eb22385b2ef0a0cb678cf8b2317775e1844"
+      "bodySha256": "b3c1976478355ecbc94fd46077f72cd0964bab727aeb38bcb8aabd889d194bab"
     },
     {
       "path": "AGENTS.md",
@@ -142,5 +142,26 @@
       "template": "pre-commit.d/20-secrets",
       "path": ".githooks/pre-commit.d/20-secrets"
     }
-  ]
+  ],
+  "detectPaths": {
+    "database": [
+      "db/",
+      "migrations/"
+    ],
+    "deployment": [
+      "wrangler.toml",
+      "vercel.json",
+      "Dockerfile",
+      "astro.config.mjs",
+      "astro.config.js",
+      "astro.config.ts",
+      "astro.config.mts",
+      "astro.config.cjs",
+      "astro.config.cts"
+    ],
+    "evals": [
+      "evals/",
+      "eval/"
+    ]
+  }
 }
