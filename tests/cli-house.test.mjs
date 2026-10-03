@@ -1773,3 +1773,156 @@ test('targets: the dry-run plan lists the GEMINI.md scaffold --apply would write
   const j = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
   assert.ok(j.scaffolds.includes('GEMINI.md'));
 });
+
+// ── #135: house enable, in an already-adopted repo ──────────────────────
+//
+// gamma and delta stand in for an opt-in module like security: default off,
+// each with atAdoption steps. gamma's default roots list lib/** beside src/**,
+// and the target repo has no lib/, so that path is dropped.
+
+function buildEnableFixture() {
+  const fx = buildFixturePlugin();
+  writeTree(fx.dir, {
+    'modules/gamma/module.json': `${JSON.stringify({
+      name: 'gamma', default: 'off', rules: ['rules/gamma.md'], files: [],
+      configSlots: [{ name: 'gammaRoots', default: ['src/**', 'lib/**'] }],
+      defaultPaths: ['$gammaRoots'],
+      atAdoption: [
+        { id: 'scan-on', step: 'Turn on scanning.' },
+        { id: 'owners', step: 'Add an owners entry.' },
+      ],
+    }, null, 2)}\n`,
+    'modules/gamma/rules/gamma.md': ALPHA_BODY,
+    'modules/delta/module.json': `${JSON.stringify({
+      name: 'delta', default: 'off', rules: ['rules/delta.md'], files: [], configSlots: [],
+      defaultPaths: ['scripts/**'],
+      atAdoption: [{ id: 'deny-list', step: 'Add the deny list to user settings.' }],
+    }, null, 2)}\n`,
+    'modules/delta/rules/delta.md': BETA_BODY,
+  });
+  return fx;
+}
+
+// An adopted repo: house.json written, rendered once, everything committed.
+function adoptedRepo(cliPath, modules = { alpha: { enabled: true, config: {} }, beta: { enabled: false, config: {} } }) {
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  commitAll(repo, 'adopt');
+  return repo;
+}
+
+function gitStatusShort(repo) {
+  return execFileSync('git', ['status', '--short'], { cwd: repo, encoding: 'utf8' });
+}
+
+test('#135 enable: refuses a repo with no house.json and points at bootstrap', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = buildTargetRepo();
+  const r = runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /bootstrap/);
+  assert.equal(gitStatusShort(repo), '', 'nothing written');
+});
+
+test('#135 enable: an unknown module is refused by name and nothing is written', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath);
+  const r = runCli(cliPath, ['enable', 'gamma', 'nosuch', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /`nosuch` is not a module/);
+  assert.match(r.err, /gamma/, 'lists the modules that do exist');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#135 enable: plan only prints the house.json diff, the files, the checklist, and the load cost, and writes nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath);
+  const r = runCli(cliPath, ['enable', 'gamma', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^\+ +"gamma": \{"enabled":true,"config":\{\}\}$/m, 'house.json diff');
+  assert.match(r.out, /^create\s+\.claude\/rules\/house\/gamma\.md/m, 'the file render would write');
+  assert.match(r.out, /\[ \] scan-on: Turn on scanning\./);
+  assert.match(r.out, /\[ \] owners: Add an owners entry\./);
+  assert.match(r.out, /Load cost/);
+  assert.match(r.out, /gamma: \+\d+ lines on \d+ tracked path/);
+  assert.match(r.out, /dropped.*lib\/\*\*/, 'a default path whose first segment does not resolve is dropped');
+  assert.match(r.out, /--apply/);
+  assert.equal(gitStatusShort(repo), '', 'plan only leaves the tree untouched');
+});
+
+test('#135 enable --apply: two modules in one run, one render, then the vendored checker', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath);
+  const r = runCli(cliPath, ['enable', 'gamma', 'delta', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.equal(house.modules.gamma.enabled, true);
+  assert.equal(house.modules.delta.enabled, true);
+  assert.equal(house.modules.alpha.enabled, true, 'other modules untouched');
+  const gamma = readFileSync(join(repo, '.claude', 'rules', 'house', 'gamma.md'), 'utf8');
+  assert.match(gamma, /^ {2}- src\/\*\*$/m);
+  assert.doesNotMatch(gamma, /lib\/\*\*/, 'unresolved path dropped in the rendered rule');
+  assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'delta.md')));
+  assert.equal((r.out.match(/^Rendering /gm) || []).length, 1, `one render for both modules:\n${r.out}`);
+  assert.match(r.out, /fake house check: ok/, 'the vendored checker ran and its output is printed');
+});
+
+test('#135 enable: a module already on is reported, not an error, and the rest still plan', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath);
+  const solo = runCli(cliPath, ['enable', 'alpha', '--repo', repo, '--apply']);
+  assert.equal(solo.code, 0, solo.out + solo.err);
+  assert.match(solo.out, /`alpha` is already on/);
+  assert.equal(gitStatusShort(repo), '', 'nothing to change, nothing written');
+  const both = runCli(cliPath, ['enable', 'alpha', 'gamma', '--repo', repo]);
+  assert.equal(both.code, 0, both.out + both.err);
+  assert.match(both.out, /`alpha` is already on/);
+  assert.match(both.out, /"gamma": \{"enabled":true/);
+});
+
+test('#135 enable: the load cost names a path the new modules push over the co-load ceiling', () => {
+  const { cliPath } = buildEnableFixture();
+  const roomy = adoptedRepo(cliPath);
+  const under = runCli(cliPath, ['enable', 'gamma', 'delta', '--repo', roomy]);
+  assert.equal(under.code, 0, under.out + under.err);
+  assert.match(under.out, /no path exceeds the co-load ceiling of 400/, 'the default ceiling when docs sets none');
+  // alpha already loads on src/a.js and scripts/b.mjs; a ceiling of 15 leaves
+  // room for one fixture rule on a path and not for two.
+  const tight = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    docs: { enabled: false, config: { maxCoLoadLines: 15 } },
+  });
+  const over = runCli(cliPath, ['enable', 'gamma', 'delta', '--repo', tight]);
+  assert.equal(over.code, 0, over.out + over.err);
+  assert.match(over.out, /2 path\(s\) would exceed the co-load ceiling of 15/);
+  assert.match(over.out, /^ {2}src\/a\.js: \d+ -> \d+ lines \(gamma \+\d+\)$/m, 'lines the module adds on that path');
+  assert.equal(gitStatusShort(tight), '', 'a plan over the ceiling still writes nothing');
+});
+
+test('#135 doctor: lists an enabled module\'s unconfirmed at-adoption steps, and stops once each is confirmed', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: true, config: {} },
+    delta: { enabled: false, config: {} },
+  });
+  const before = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(before.code, 0);
+  assert.match(before.out, /^at-adoption steps not confirmed for gamma: scan-on, owners$/m);
+  assert.doesNotMatch(before.out, /deny-list/, 'a disabled module is not listed');
+  assert.doesNotMatch(before.out, /not confirmed for alpha/, 'a module with no steps is not listed');
+
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.modules.gamma.confirmed = { 'scan-on': '2026-10-03' };
+  writeHouseJson(repo, house);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /^at-adoption steps not confirmed for gamma: owners$/m);
+
+  house.modules.gamma.confirmed.owners = '2026-10-03';
+  writeHouseJson(repo, house);
+  const after = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.doesNotMatch(after.out, /at-adoption/);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.atAdoption, []);
+});
