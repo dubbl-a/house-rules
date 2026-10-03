@@ -34,7 +34,7 @@
       "path": ".claude/rules/house/evals.md",
       "module": "evals",
       "source": "modules/evals/rules/evals.md",
-      "bodySha256": "8edd27690ddd4dcaf1dbdb67051ecde097f8b28e78c6924c9bf4c03e49a10ab5"
+      "bodySha256": "160d6c1fdc1d1a9dc004d5a1437ee9ad733864fb2421712aa381bbc6d6ced609"
     },
     {
       "path": ".claude/rules/house/github.md",
@@ -106,7 +106,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "64f31fa56c362f2d0ece85eb4e9dee9980aeb87ff9ca01a0f26643778b4cee37"
+      "bodySha256": "eaa9262681c8cc5f254504f231112eb22385b2ef0a0cb678cf8b2317775e1844"
     },
     {
       "path": "AGENTS.md",

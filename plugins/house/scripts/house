@@ -22,7 +22,7 @@
 // Module SOURCES always resolve relative to *this script's own location*,
 // never to the target --repo: <scriptdir>/../modules/*/module.json, each
 // shaped { name, default: "on"|"detect"|"off", rules: [...], files: [...],
-// configSlots: [...], defaultPaths: [...] }. The plugin version comes from
+// configSlots: [...], defaultPaths: [...], detectPaths?: [...] }. The plugin version comes from
 // <scriptdir>/../.claude-plugin/plugin.json.
 //
 // Exit codes: init -- 1 when house.json already exists, 2 on a fatal
@@ -426,7 +426,6 @@ function probeRepo(repoRoot, fileDests = []) {
   try { hasAstroConfig = readdirSync(repoRoot).some((f) => f.startsWith('astro.config.')); } catch { /* ignore */ }
   const hasDeploymentMarkers = hasWrangler || hasVercel || hasDockerfile || hasAstroConfig;
   const hasDbMarkers = existsSync(path.join(repoRoot, 'db')) || existsSync(path.join(repoRoot, 'migrations'));
-  const hasEvalMarkers = existsSync(path.join(repoRoot, 'evals')) || existsSync(path.join(repoRoot, 'eval'));
   return {
     defaultBranch: probeDefaultBranch(repoRoot),
     topLevelTrackedDirs: topDirs,
@@ -436,7 +435,6 @@ function probeRepo(repoRoot, fileDests = []) {
     hasSettingsHooksBlock: repoSettingsHasHooksBlock(repoRoot),
     hasDeploymentMarkers,
     hasDbMarkers,
-    hasEvalMarkers,
     ignoredHouseDests: probeIgnoredHouseDests(repoRoot, fileDests),
   };
 }
@@ -504,15 +502,36 @@ function docsConfigFromProbe(repoRoot) {
   return { haystackDirs, roots };
 }
 
-// "detect" probing for the three named modules the content spec actually
-// gives a stack signal for. Any other detect-default module name (module
-// sources are read generically) has no known probe, so it defaults OFF
-// rather than guessing.
-function probeDetectEnabled(name, probe) {
+// A detect module may name its own signal in module.json as detectPaths,
+// repo-relative paths any one of which turns it on; the first that exists
+// here, or null. The checker reads the same field for the same warning.
+function detectPathMatch(repoRoot, json) {
+  for (const p of arr(json && json.detectPaths)) {
+    if (typeof p === 'string' && p && existsSync(path.join(repoRoot, p))) return p;
+  }
+  return null;
+}
+
+// "detect" probing for the two named modules the content spec gives a stack
+// signal for, then a module's own detectPaths. Any other detect-default
+// module (module sources are read generically) has no known probe, so it
+// defaults OFF rather than guessing.
+function probeDetectEnabled(name, probe, json, repoRoot) {
   if (name === 'deployment') return probe.hasDeploymentMarkers;
   if (name === 'database') return probe.hasDbMarkers;
-  if (name === 'evals') return probe.hasEvalMarkers;
-  return false;
+  return detectPathMatch(repoRoot, json) !== null;
+}
+
+// A key missing from house.json renders as off (moduleEnabled), which is
+// right for a module the adopter never chose, but a manifest written before
+// a module shipped never got the chance: say so when its detectPaths match,
+// and leave the choice to the adopter.
+function missingDetectModuleWarning(repoRoot, houseData, name, json) {
+  if (!json || json.default !== 'detect') return null;
+  if (isPlainObject(houseData.modules) && Object.prototype.hasOwnProperty.call(houseData.modules, name)) return null;
+  const hit = detectPathMatch(repoRoot, json);
+  if (!hit) return null;
+  return `module \`${name}\` is not in house.json, but ${hit}/ exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`;
 }
 
 function buildProposedManifest(repoRoot, pluginVersion, modules, probe) {
@@ -535,7 +554,7 @@ function buildProposedManifest(repoRoot, pluginVersion, modules, probe) {
     if (defaultKind === 'on') {
       enabled = true;
     } else if (defaultKind === 'detect') {
-      enabled = probeDetectEnabled(name, probe);
+      enabled = probeDetectEnabled(name, probe, m.json, repoRoot);
     } else {
       enabled = false;
     }
@@ -1284,6 +1303,8 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     if (m.error) { moduleWarnings.push(`modules/${m.dirName}/module.json: invalid JSON (${m.error})`); continue; }
     const name = moduleName(m);
     const cfg = houseData.modules[name];
+    const missing = missingDetectModuleWarning(repoRoot, houseData, name, m.json);
+    if (missing) moduleWarnings.push(missing);
     if (!moduleEnabled(houseData, name)) continue;
     // #13: a $slot referenced by defaultPaths falls back to its DECLARED
     // default when house.json does not set it, so a load-bearing default path

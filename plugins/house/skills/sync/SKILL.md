@@ -64,6 +64,8 @@ This writes clean and missing files. It never writes a still-refused locally mod
 
 If render printed a `warning: ... is git-ignored` line, stop and fix the ignore rule before going on: a destination git cannot see never reaches the checker or CI. Ignore only `.claude/settings.local.json`, never `.claude/` or `.house/`.
 
+If render or the checker printed `warning: module `<name>` is not in house.json, but <dir>/ exists here`, a module shipped after this repo's `house.json` was written, and its rules are not vendored until the repo adds `"<name>": {"enabled": true}` under `modules`. Do not add the key yourself: copy the warning line verbatim into the sync PR body, under a line saying a new module applies to this repo and needs the adopter's choice.
+
 ### 4b. Stage what render wrote, by path
 
 ```

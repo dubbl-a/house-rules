@@ -16,7 +16,7 @@ Receipts: `docs/handbook/evals.md#split-deterministic-tests-from-model-behavior-
 The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
 Write the cases from failures you actually watched happen, before the prose, then write only enough rule text to pass them; building a few evaluations before documenting a procedure is claude-code.md's rule.
 Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded, and llm-output.md's deterministic backbone is the same rule one level up.
-Report the spread with the ratio and its sample the way evals.md requires.
+Report the spread with the ratio and its sample, as the ratio rule below requires.
 Grade the grader too: have it flag an assertion too easy to satisfy, and read the transcripts before you trust the number, because an assertion nobody has read is not evidence that the eval can discriminate at all.
 Anchor: `plugins/house/evals/`, whose cases carry their own graders and thresholds, with the ablation pair at `plugins/house/evals/explicit-model-tier/` whose arms differ in one thing only.
 Receipts: `docs/handbook/evals.md#prove-an-eval-can-fail-then-grade-it-with-the-cheapest-grader-that-can`

@@ -1841,6 +1841,34 @@ function resolveModuleDefaults(ctx) {
   return null;
 }
 
+// {moduleName -> detectPaths} for each detect-default module that names its
+// own signal in module.json, from the same source dir as the defaults.
+function readModuleDetectPathsFrom(modulesDir) {
+  const out = {};
+  let entries;
+  try { entries = readdirSync(modulesDir, { withFileTypes: true }); } catch { return out; }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const mp = join(modulesDir, ent.name, 'module.json');
+    if (!existsSync(mp)) continue;
+    try {
+      const j = JSON.parse(readFileSync(mp, 'utf8'));
+      const paths = Array.isArray(j.detectPaths) ? j.detectPaths.filter((p) => typeof p === 'string' && p) : [];
+      if (j.default === 'detect' && paths.length) out[(typeof j.name === 'string' && j.name) || ent.name] = paths;
+    } catch { /* malformed module.json: skip this one module */ }
+  }
+  return out;
+}
+function resolveModuleDetectPaths(ctx) {
+  const record = resolveHousePluginRecord(readInstalledPlugins());
+  if (record && record.installPath && existsSync(join(record.installPath, 'modules'))) {
+    return readModuleDetectPathsFrom(join(record.installPath, 'modules'));
+  }
+  const local = join(ctx.repoRoot, 'plugins', 'house', 'modules');
+  if (existsSync(local)) return readModuleDetectPathsFrom(local);
+  return null;
+}
+
 function checkManifest(ctx) {
   const findings = [];
   const warnings = [];
@@ -2055,6 +2083,19 @@ function checkManifest(ctx) {
     const disabled = Object.entries(d.modules).filter(([, e]) => isPlainObject(e) && e.enabled === false).map(([n]) => n);
     if (disabled.length) {
       warnings.push(mk('manifest', 'house.json', null, 'manifest', `disabled-module check could not resolve module defaults (no installed house plugin and no local plugins/house/modules tree is reachable this run), so ${disabled.length === 1 ? `disabled module \`${disabled[0]}\`` : `disabled modules ${disabled.map((n) => `\`${n}\``).join(', ')}`} cannot be verified against its default. Install the house plugin (or run from the package tree) to restore this check.`));
+    }
+  }
+
+  // #123: a manifest written before a detect module shipped has no key for
+  // it, which render reads as off, so a sync drops that module's rules with
+  // nothing said. The missing key stays off; warn when the module's own
+  // detectPaths (module.json, the field init probes) match this repo.
+  const detectPaths = resolveModuleDetectPaths(ctx);
+  if (detectPaths && isPlainObject(d.modules)) {
+    for (const [name, paths] of Object.entries(detectPaths)) {
+      if (Object.prototype.hasOwnProperty.call(d.modules, name)) continue;
+      const hit = paths.find((p) => existsSync(join(ctx.repoRoot, p)));
+      if (hit) warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is not in house.json, but ${hit}/ exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`));
     }
   }
 
