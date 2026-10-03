@@ -94,7 +94,8 @@ or a silent fix; those live in git history instead.
 ## Cutting a release
 
 1. On a branch, bump `version` in `plugins/house/.claude-plugin/plugin.json` and the pin in
-   `house.json`, and cut the `[Unreleased]` section of `CHANGELOG.md` into the new version. Open a PR.
+   `house.json`, cut the `[Unreleased]` section of `CHANGELOG.md` into the new version, and move the
+   pinned tag in the install commands of `README.md` and `SECURITY.md` to it. Open a PR.
 2. Merge it.
 3. Tag the merge commit with an annotated signed tag: `git tag -s vX.Y.Z -m "Release X.Y.Z"`, then
    `git push origin vX.Y.Z`.
