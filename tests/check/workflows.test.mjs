@@ -334,6 +334,28 @@ test('unfrozen-install: a bare carriage return does not hide the step after it',
   assert.equal(ws[0].line, 24);
 });
 
+// YAML parsers also break lines on NEL, LS, and PS; a reader that does not
+// would fold the next step into the gated one above it.
+for (const [label, gated, line] of [
+  ['LS in a name: value', "        name: gated\u2028      - name: ungated\n        run: npm install\n", 27],
+  ['NEL in a name: value', "        name: gated\u0085      - name: ungated\n        run: npm install\n", 27],
+  ['PS at the end of a comment', "        # gated\u2029      - run: npm install\n", 26],
+]) {
+  test(`unfrozen-install: ${label} does not hide the next step from the reader`, () => {
+    const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      - if: hashFiles('package-lock.json') == ''\n        run: echo gated\n${gated}`);
+    const ws = warns(withWorkflow(body));
+    assert.deepEqual(kinds(ws), ['unfrozen-install']);
+    assert.equal(ws[0].line, line);
+  });
+}
+
+test('event-in-run: an LS line break does not hide a run: from the reader', () => {
+  const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', '      - name: a\u2028        run: echo "${{ github.event.issue.title }}"\n');
+  const ws = warns(withWorkflow(body));
+  assert.deepEqual(kinds(ws), ['event-in-run']);
+  assert.equal(ws[0].line, 24);
+});
+
 test('unfrozen-install: an alias to an install anchored in a gated step warns at the ungated alias', () => {
   const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n        run: &install npm install\n      - run: *install\n");
   const ws = warns(withWorkflow(body));

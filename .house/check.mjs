@@ -2309,9 +2309,12 @@ function unquoteYaml(v) {
 // `run:` script that prints `uses: x` is not a step. Anchors, aliases,
 // multi-line flow collections, and multi-document files are not modelled;
 // such a value is read as text, which fails toward under-reporting.
-// YAML breaks a line on CRLF, LF, or a bare CR; splitting on less hides
-// whatever follows a bare CR inside the line before it.
-const YAML_LINE_BREAK_RE = /\r\n|\n|\r/;
+// The line breaks YAML parsers honour: CRLF, LF, a bare CR, and (as libyaml
+// and go-yaml do) NEL, LS, and PS. Splitting on less hides whatever follows
+// one of them inside the line before it. Every split in the workflows family
+// uses this, so line numbers agree across checks; in a file using the last
+// four they differ from what an editor shows.
+const YAML_LINE_BREAK_RE = /\r\n|\n|\r|\u0085|\u2028|\u2029/;
 function yamlEntries(raw) {
   const lines = raw.split(YAML_LINE_BREAK_RE);
   const entries = [];
@@ -2602,7 +2605,7 @@ function checkWorkflows(ctx) {
   // these it finds, and the last matching line wins; a line with no owners
   // un-owns what it matches.
   const ownersFile = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'].find((p) => ctx.allTracked.includes(p));
-  const ownerRules = ownersFile ? safeRead(join(ctx.repoRoot, ownersFile)).split(/\r?\n/)
+  const ownerRules = ownersFile ? safeRead(join(ctx.repoRoot, ownersFile)).split(YAML_LINE_BREAK_RE)
     .map((l) => l.replace(/(^|\s)#.*$/, '').trim()).filter(Boolean).map((l) => l.split(/\s+/)) : [];
   const uncovered = workflowFiles.filter((wf) => {
     const last = ownerRules.filter(([pat]) => codeownersPatternRe(pat).test(wf)).pop();
