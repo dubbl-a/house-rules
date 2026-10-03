@@ -2400,9 +2400,23 @@ const INSTALLERS = [
   { re: /(?:^|\s)yarn(?:\s+install)?(?=\s|$)((?:\s+-\S+)*)\s*$/, frozen: /--frozen-lockfile\b|--immutable\b/, fix: '`yarn install --immutable` (or `--frozen-lockfile` on Yarn 1)', locks: ['yarn.lock'] },
   { re: /(?:^|\s)bun\s+(?:install|i)(?=\s|$)(.*)$/, frozen: /--frozen-lockfile\b/, fix: '`bun install --frozen-lockfile`', locks: ['bun.lock', 'bun.lockb'] },
 ];
-// `hashFiles('<path>') == ''` in a step's `if:`: that step runs only where
-// the file is absent. The path's basename is compared to the lockfile names.
-const LOCKFILE_ABSENT_RE = /hashFiles\(\s*['"]([^'"]+)['"]\s*\)\s*==\s*''/g;
+// The paths a step's `if:` requires to be absent, when the whole condition
+// (inside an optional `${{ }}`) is nothing but `hashFiles('<path>') == ''`
+// clauses joined by `&&`; null for anything else, so an `||`, a negation, or
+// any other operand is read as "may run with the lockfile present". The
+// caller skips only when these paths are exactly every tracked lockfile.
+function lockfileAbsentPaths(cond) {
+  let c = unquoteYaml(cond.trim()).trim();
+  const wrapped = c.match(/^\$\{\{([\s\S]*)\}\}$/);
+  if (wrapped) c = wrapped[1].trim();
+  const paths = new Set();
+  for (const clause of c.split('&&')) {
+    const m = clause.trim().match(/^hashFiles\(\s*'([^'\\]+)'\s*\)\s*==\s*''$/);
+    if (!m) return null;
+    paths.add(m[1]);
+  }
+  return paths;
+}
 
 // Binary by extension; anything else gets a NUL-byte sniff of its first
 // 8000 bytes (git's own test), and stops reading there. Media and fonts are
@@ -2529,14 +2543,14 @@ function checkWorkflows(ctx) {
     // after a failed frozen install (`npm ci || npm install`) does not.
     for (const e of entries.filter((x) => x.key === 'run')) {
       const item = nearestItem(e);
-      const absent = new Set(entries
-        .filter((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length)
-        .flatMap((x) => [...x.value.matchAll(LOCKFILE_ABSENT_RE)].map((m) => m[1].slice(m[1].lastIndexOf('/') + 1))));
+      const cond = entries.find((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length);
+      const absent = cond ? lockfileAbsentPaths(cond.value) : null;
       for (const { line, cmd } of runCommands(entryLines(e))) {
         for (const inst of INSTALLERS) {
           const m = cmd.match(inst.re);
           if (!m || !inst.locks.some((l) => trackedBasenames.has(l))) continue;
-          if (inst.locks.some((l) => absent.has(l))) continue;
+          const tracked = ctx.allTracked.filter((p) => inst.locks.includes(p.slice(p.lastIndexOf('/') + 1)));
+          if (absent && tracked.every((p) => absent.has(p))) continue;
           const args = m[1].trim().split(/\s+/).filter(Boolean);
           if (args.some((a) => !a.startsWith('-')) || args.some((a) => ['-g', '--global', '-v', '--version', '-h', '--help'].includes(a))) continue;
           if (inst.frozen && inst.frozen.test(m[1])) continue;

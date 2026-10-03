@@ -90,19 +90,26 @@ test('unpinned-uses: a tag-pinned container and a branch-pinned reusable workflo
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['unpinned-uses', 'unpinned-uses']);
 });
 
-// The package's own templates, copied into an adopter that commits a
-// lockfile, must pass the checks they exist to model. CODEOWNERS and
-// SECURITY.md are the adopter's to write, so those two are not counted.
-test('templates: every workflow and dependabot template the package ships is clean in a repo with a lockfile', () => {
+// The package's own templates, copied into an adopter, must pass the checks
+// they exist to model, whichever npm lockfile the adopter commits, or none.
+// CODEOWNERS and SECURITY.md are the adopter's to write, so those two are
+// not counted.
+function templateRepo(lockfiles) {
   const dir = join(dirname(CHECK_SRC), '..', 'templates');
-  const files = { 'package.json': '{"name":"x"}\n', 'package-lock.json': '{}\n' };
+  const files = { 'package.json': '{"name":"x"}\n' };
+  for (const l of lockfiles) files[l] = '{}\n';
   for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
     files[name.startsWith('dependabot.') ? `.github/${name}` : `.github/workflows/${name}`] = readFileSync(join(dir, name), 'utf8');
   }
   assert.ok(Object.keys(files).some((p) => p.startsWith('.github/workflows/')), 'at least one workflow template is copied');
-  const ws = warns(sandbox(files)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));
-  assert.deepEqual(ws.map((w) => `${w.kind} ${w.path}:${w.line}`), []);
-});
+  return sandbox(files);
+}
+for (const locks of [['package-lock.json'], [], ['npm-shrinkwrap.json'], ['package-lock.json', 'npm-shrinkwrap.json']]) {
+  test(`templates: every workflow and dependabot template the package ships is clean with ${locks.length ? locks.join(' and ') : 'no lockfile'}`, () => {
+    const ws = warns(templateRepo(locks)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));
+    assert.deepEqual(ws.map((w) => `${w.kind} ${w.path}:${w.line}`), []);
+  });
+}
 
 // 2
 test('no-permissions: a workflow with no top-level permissions key warns', () => {
@@ -244,10 +251,35 @@ test('unfrozen-install: a version or help query is not an install', () => {
 });
 
 test('unfrozen-install: a step whose if: says the lockfile is absent may install plainly; the same step without that if: warns', () => {
-  const guarded = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') != ''\n        run: npm ci\n      - if: \${{ hashFiles('**/package-lock.json') == '' }}\n        run: npm install\n");
+  const guarded = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') != ''\n        run: npm ci\n      - if: \${{ hashFiles('package-lock.json') == '' }}\n        run: npm install\n");
   assert.deepEqual(warns(withWorkflow(guarded)), []);
   const unguarded = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') != ''\n        run: npm install\n");
   assert.deepEqual(kinds(warns(withWorkflow(unguarded))), ['unfrozen-install']);
+});
+
+function gatedInstall(cond, extra = {}) {
+  return repo({ ...extra, '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      - if: ${cond}\n        run: npm install\n`) });
+}
+
+test('unfrozen-install: two && clauses naming every tracked npm lockfile are silent', () => {
+  assert.deepEqual(warns(gatedInstall("hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''", { 'npm-shrinkwrap.json': '{}\n' })), []);
+});
+
+test('unfrozen-install: a condition that is not only lockfile-absent clauses, or names another path, warns', () => {
+  for (const cond of [
+    "hashFiles('package-lock.json') == '' || github.event_name == 'push'",
+    "\"!(hashFiles('package-lock.json') == '')\"",
+    "hashFiles('sub/package-lock.json') == ''",
+    "\${{ hashFiles('**/package-lock.json') == '' }}",
+    "hashFiles('package-lock.json') == '' && always()",
+  ]) {
+    assert.deepEqual(kinds(warns(gatedInstall(cond))), ['unfrozen-install'], cond);
+  }
+});
+
+test('unfrozen-install: a tracked npm-shrinkwrap.json the condition does not name warns', () => {
+  assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == ''", { 'package-lock.json': null, 'npm-shrinkwrap.json': '{}\n' }))), ['unfrozen-install']);
+  assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == ''", { 'npm-shrinkwrap.json': '{}\n' }))), ['unfrozen-install']);
 });
 
 test('unfrozen-install: an `npm ci || npm install` fallback still warns on the fallback', () => {

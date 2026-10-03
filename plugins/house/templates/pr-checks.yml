@@ -28,9 +28,10 @@ jobs:
       # Frozen install where a lockfile is committed; a plain install only
       # where there is none to hold it to. Never fall back from one to the
       # other: that fallback is the unfrozen install the lockfile exists to stop.
-      - if: hashFiles('package-lock.json') != ''
+      # `npm ci` honours either lockfile npm writes, so both are named.
+      - if: hashFiles('package-lock.json') != '' || hashFiles('npm-shrinkwrap.json') != ''
         run: npm ci --ignore-scripts
-      - if: hashFiles('package-lock.json') == ''
+      - if: hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''
         run: npm install --ignore-scripts
       - run: node .house/check.mjs
       # The branch-guard hook protects this repo; test it here too, not only
