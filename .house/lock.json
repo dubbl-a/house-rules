@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "c3be9201a126e6685d5a88926b8e3ffa685c264eaeeed9f2770b737d38616f2b"
+      "bodySha256": "d451b585081bc14195ecd5b9ce0ee7852cb7314e58b3a6389760666acf5dcfe9"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -16,13 +16,13 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "a2b7d6cc293644d7c6a7235a41f4a1de9823517ca9b27a19f7d03cff806215d8"
+      "bodySha256": "ef9a0340a83ab0989987f289ce6ce15c5ed71c664dec48c84cd0d1c942e851fa"
     },
     {
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "10ae763ccf96ebf34ce84e9b1c13f6d7ee9119eba461336d333053eaf8ca2951"
+      "bodySha256": "30724c02469da1e345abc21ff841341ca99ac0adc5a60cc24d80cc9de9175f8c"
     },
     {
       "path": "scripts/house/is-main.mjs",
@@ -34,13 +34,13 @@
       "path": ".claude/rules/house/evals.md",
       "module": "evals",
       "source": "modules/evals/rules/evals.md",
-      "bodySha256": "160d6c1fdc1d1a9dc004d5a1437ee9ad733864fb2421712aa381bbc6d6ced609"
+      "bodySha256": "fe5544f1ca44acceb6a338afa39fc1865229f8410fc766df1235b2f2447feca4"
     },
     {
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "aaa99707c032a7b7ae24821d37b12ad4c4c9e875b7e857099e0d6ecd2605a4d7"
+      "bodySha256": "b87bab81cf76cad1b0aa61a38a59369a6ff37ccdb17fb859421384745277be3e"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -100,7 +100,7 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "4f7e7c1df1d8f2df48bf6c67fb4e34d4fec1c11d589a17652e2a273837ced1cf"
+      "bodySha256": "559e46208de5c54d661c2319f15642501be68009359ebadfcfc4bc08f4823614"
     },
     {
       "path": ".house/check.mjs",

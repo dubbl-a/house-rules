@@ -6,6 +6,25 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-02
+
+An evals module gathers the measurement and eval-tier rules under a path scope that loads on `evals/**`, the engineering chapter gains the rules a consuming repo earned on its first agent-driven eval, every REUSE and BORROW upstream is watched from one pins file, and the branch guard allows a branch create aimed at a linked worktree by two exact shapes. Minor under ADR 0012: a new rule file reaches every adopter whose repo has an eval directory (rule-content, ADR 0011), and the guard's deny set only loosens.
+
+### Added
+- **An `evals` module (#119, PR #123).** Eight rules move verbatim out of engineering and testing into `plugins/house/modules/evals/rules/evals.md` with a new handbook chapter: the answer-key, NOT EVALUABLE, ratio-and-sample, and reproducible-instrument rules, the two eval-tier rules, and the two below. The module is `default: "detect"` with `detectPaths` of `evals` and `eval`, so `house init` turns it on only where such a directory exists. An adopter whose `house.json` predates the module and whose repo matches gets a warning from `house render` and the checker naming the one-line fix; the module stays off until the adopter adds the key. Module lists and counts say ten.
+- **Rules for an eval that drives an agent (Part 1 of #111, PR #117).** "Evaluate the path a session actually takes" and "Deny the eval session what the project allows, and fail a run whose results contain the key", with their receipts, plus a sentence each on the answer-key, ratio-and-sample, and reproducible-instrument rules (real questions scored with no hand-written key, passes over runs per model, the lean invocation to pin where bare mode cannot authenticate). The survey records the measured print-mode start-up context and two permission gaps as observed rows (#109, #110), and the claude-code settings rule says how to keep a path out of a search that names none.
+- **Every REUSE and BORROW upstream watched from one pins file (#63, PR #118).** `scripts/upstream-pins.json` pins each ledger row by branch head or tag; `npm run check:upstreams` reports which rows moved (exit 0, 1, 3 like the kit checker); the weekly `upstream-watch` workflow keeps one `upstream-update` issue for the pins and one for the kit, each found by its own title prefix. A tag pin also catches a tag moved to a new commit (#122 item 1, PR #128).
+- **Detect modules share one mechanism (#126, PR #128).** `database` and `deployment` declare `detectPaths` like `evals`; the list is carried into the rendered payload so the checker's missing-module warning fires in an adopter's CI; a file named like the directory no longer matches.
+
+### Changed
+- **The branch guard judges a branch create by the directory it acts in (#112, PR #127).** From the main checkout, `git -C <worktree> switch -c` and `cd <worktree> && git switch -c` are allowed when the command is exactly one of those two shapes, read from the raw command with every separator, quote, substitution, extra `cd` or `-C`, global `-c`, git-dir or work-tree token, and `--ignore-other-worktrees` excluded; anything else falls back to the whole-command scan, which refuses. Four review rounds, each probe run through the real hook and real git. A pre-existing strip gap the rounds surfaced is #125.
+- **Merged branches: head-branch deletion named as the fix (#115, PR #116).** The merged-branch rule says the harness's classifier can refuse an agent-side remote delete and the fallback is to hand the user the exact command; `cleanup-worktree.sh` reports when automatic head-branch deletion is off and prints the manual command when the API delete fails.
+- **The paths-list rule names all three load triggers (PR #124).** Claude Code 2.1.288 loads a path-scoped rule on Write and Edit as well as Read; the compaction sentence says so.
+
+### Notes
+- **The harness survey gains addenda for Claude Code 2.1.287 and 2.1.288** (PRs #114 and #121, opened by the triage routine): no duplicates, one conflict (the reword above), `claude plugin validate --strict` passes under both.
+- **Issue #102 reworded:** rule volume is measured from free evidence first (load logs, the native-floor audit, anchor type, incident notes); eval pairs are a tiebreaker.
+
 ## [0.15.2] - 2026-09-30
 
 Codex and Gemini CLI become render targets, worktrees get a cost-lever scaffold and guide, the kit upstream is watched weekly, and one llm-output sentence follows Claude Code 2.1.285. Patch under ADR 0012: `targets` and the scaffold are additive and nothing tightens the guard's deny set.
