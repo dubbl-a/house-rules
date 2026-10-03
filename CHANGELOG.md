@@ -6,8 +6,24 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-03
+
+An opt-in security module states thirteen principle-level rules with a coverage map across the standards they answer, the github rules gain remote branch protection with a solo-repo path, and a session is routed to the pinned `/deep-research` fork. Minor under ADR 0012: a new rule and three widened sentences in `github.md` reach every adopter (rule-content, ADR 0011), and nothing tightens the guard's deny set.
+
+### Added
+- **A `security` module, off by default (PR #138).** Thirteen rules in `plugins/house/modules/security/rules/security.md`: treat every input to the model as data, give an agent, a key, and a token only what one task needs, review agent config as code and keep a second party on every consequential action, bound an agent from outside it, install only what was reviewed, release with a short-lived identity, scan and give every finding an end, supply untrusted input as a parameter, never let a request choose what the server fetches, opens, loads, or runs, authenticate and authorize on the server, use vetted mechanisms for crypto, sessions, and transport, fail closed, and ship secure defaults. The module is `default: "off"`: `house init` leaves it off and a resync never adds it; a repo turns it on in `house.json`.
+- **A coverage map in the security chapter.** `docs/handbook/security.md` gives one verdict per class across OWASP Top 10:2025, ASVS 5.0.0 level 1 (requirement by requirement), Proactive Controls, CWE Top 25, STRIDE, the OWASP LLM and Agentic Top 10s, Saltzer and Schroeder, NIST SSDF, OpenSSF Scorecard and OSPS Baseline, SLSA, CIS Controls v8.1 IG1, and NIST AI 600-1, with what is deliberately left out. A new incident is checked against the map before a rule is written.
+- **A remote branch-protection rule in `github.md` (PR #138).** "Protect the default branch at the remote, and name an owner for what runs with privilege": a pull request and required checks for every repo, a non-author review and code owners once there is a second maintainer, and multi-factor sign-in for accounts with write access.
+
+### Changed
+- **Three `github.md` sentences widen (PR #138).** The interpolation sentence names an agent's prompt input beside a `run:` block, the privileged-trigger sentence bars exposing a secret to untrusted code, and the security policy line asks for a private reporting route and a response time.
+- **The Dependabot scaffold carries a seven-day cooldown (PR #138).** `plugins/house/templates/dependabot.yml` sets `cooldown` with `default-days: 7` on each entry. The file is a scaffold, written only where `.github/dependabot.yml` is absent, so an existing adopter adds the block by hand.
+
 ### Fixed
-- **A session runs the pinned `/deep-research` fork (#132).** The checker gains `--install[=<path>]`, which rebuilds the fork to `~/.claude/workflows/deep-research-tiered.js` (overwriting, exclusive with `--rebuild`, never on SUNSET); its baseline moves to 2.1.288 so it exits 0 again; the session-start text says to run the fork by `scriptPath` and state the depth; the harness-triage skill runs the checker and reinstalls on drift.
+- **A session runs the pinned `/deep-research` fork (#132, PR #137).** The checker gains `--install[=<path>]`, which rebuilds the fork to `~/.claude/workflows/deep-research-tiered.js` (overwriting, exclusive with `--rebuild`, never on SUNSET); its baseline moves to 2.1.288 so it exits 0 again; the session-start text says to run the fork by `scriptPath` and state the depth; the harness-triage skill runs the checker and reinstalls on drift.
+
+### Notes
+- **Follow-ups filed:** #133 (pinned install and hook audit surface for the plugin's own distribution), #134 (a workflows checker family), #135 (a module bootstrap for an already-adopted repo), #136 (a module scaffold for package authors).
 
 ## [0.16.0] - 2026-10-02
 
