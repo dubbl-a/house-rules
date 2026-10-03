@@ -1407,6 +1407,30 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
   return { plan, skips, moduleWarnings, droppedDefaults, blockRemoval, targets };
 }
 
+// #12: the managed files a render with these plan dests removes: every file
+// physically under .claude/rules/house/ (render owns that whole directory)
+// plus every dest the prior lock recorded, that the plan no longer produces.
+// One computation for render's sweep and disable's plan (#151), so the files
+// disable promises to remove are the ones render removes.
+function orphanedManagedPaths(repoRoot, planDests) {
+  const orphans = new Set();
+  const rulesHouseDir = path.join(repoRoot, '.claude', 'rules', 'house');
+  if (existsSync(rulesHouseDir)) {
+    for (const ent of readdirSync(rulesHouseDir, { withFileTypes: true })) {
+      if (!ent.isFile()) continue;
+      const rel = posixJoin('.claude/rules/house', ent.name);
+      if (!planDests.has(rel)) orphans.add(rel);
+    }
+  }
+  for (const [rel, e] of loadPriorLock(repoRoot)) {
+    // A block entry names a file render never owned whole (ADR 0015): the
+    // block removal takes out the markers and leaves the rest.
+    if (e.kind === 'block') continue;
+    if (!planDests.has(rel)) orphans.add(rel);
+  }
+  return orphans;
+}
+
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
 
 // The one wording for the #58 migration, in both tenses, so the dry run
@@ -1567,21 +1591,7 @@ function cmdRender(args) {
   // INDEX are rewritten from the plan below, so removing these keeps the tree,
   // the lock, and the plan in exact agreement.
   const planDests = new Set(plan.map((p) => p.target.path));
-  const orphans = new Set();
-  const rulesHouseDir = path.join(repoRoot, '.claude', 'rules', 'house');
-  if (existsSync(rulesHouseDir)) {
-    for (const ent of readdirSync(rulesHouseDir, { withFileTypes: true })) {
-      if (!ent.isFile()) continue;
-      const rel = posixJoin('.claude/rules/house', ent.name);
-      if (!planDests.has(rel)) orphans.add(rel);
-    }
-  }
-  for (const [rel, e] of loadPriorLock(repoRoot)) {
-    // A block entry names a file render never owned whole (ADR 0015): the
-    // block removal below takes out the markers and leaves the rest.
-    if (e.kind === 'block') continue;
-    if (!planDests.has(rel)) orphans.add(rel);
-  }
+  const orphans = orphanedManagedPaths(repoRoot, planDests);
   const removed = [];
   for (const rel of orphans) {
     if (!isInsideRoot(repoRoot, rel)) continue; // never delete outside the repo
@@ -1890,40 +1900,66 @@ function coloadCeiling(houseData) {
   return Number.isFinite(docs.maxCoLoadLines) ? docs.maxCoLoadLines : SCALAR_SLOT_DEFAULTS.maxCoLoadLines;
 }
 
-function loadCostLines(repoRoot, beforePlan, afterPlan, names, ceiling) {
+// `removing` (#151, disable) reads the modules from the BEFORE plan and
+// reports what each path sheds; enable reads them from the after plan.
+function loadCostLines(repoRoot, beforePlan, afterPlan, names, ceiling, removing = false) {
   const tracked = gitLsFiles(repoRoot);
   const sum = (rules) => rules.reduce((s, r) => s + r.lines, 0);
   const before = coloadByPath(tracked, coloadRules(repoRoot, tracked, beforePlan));
   const after = coloadByPath(tracked, coloadRules(repoRoot, tracked, afterPlan));
+  const withNames = removing ? before : after;
+  const sign = removing ? '-' : '+';
   const lines = [`Load cost (lines of rule text that load together on a path; co-load ceiling ${ceiling}):`];
   for (const name of names) {
-    const own = [...after.values()].flat().filter((r) => r.module === name);
-    const reached = [...after.values()].filter((rules) => rules.some((r) => r.module === name)).length;
+    const own = [...withNames.values()].flat().filter((r) => r.module === name);
+    const reached = [...withNames.values()].filter((rules) => rules.some((r) => r.module === name)).length;
     const ruleLines = [...new Map(own.map((r) => [r.file, r.lines])).values()].reduce((s, n) => s + n, 0);
-    lines.push(`  ${name}: +${ruleLines} lines on ${reached} tracked path(s)`);
+    lines.push(`  ${name}: ${sign}${ruleLines} lines on ${reached} tracked path(s)`);
   }
-  // One line per distinct set of rules a new module joins, like the checker's
-  // grouping, so one collision reads once rather than once per file.
+  // One line per distinct set of rules a module joins (or leaves), like the
+  // checker's grouping, so one collision reads once rather than once per file.
   const groups = new Map();
-  for (const [p, rules] of after) {
-    const added = rules.filter((r) => names.includes(r.module));
-    if (!added.length) continue;
+  for (const [p, rules] of withNames) {
+    const moved = rules.filter((r) => names.includes(r.module));
+    if (!moved.length) continue;
     const key = rules.map((r) => r.file).sort().join('\n');
-    if (!groups.has(key)) groups.set(key, { paths: [], from: sum(before.get(p) || []), to: sum(rules), added });
+    if (!groups.has(key)) groups.set(key, { paths: [], from: sum(before.get(p) || []), to: sum(after.get(p) || []), moved });
     groups.get(key).paths.push(p);
   }
-  for (const g of [...groups.values()].sort((a, b) => b.to - a.to)) {
+  for (const g of [...groups.values()].sort((a, b) => Math.max(b.from, b.to) - Math.max(a.from, a.to))) {
     const more = g.paths.length > 1 ? ` and ${g.paths.length - 1} more path(s)` : '';
-    lines.push(`  ${g.paths[0]}${more}: ${g.from} -> ${g.to} lines (${g.added.map((r) => `${r.module} +${r.lines}`).join(', ')})`);
+    lines.push(`  ${g.paths[0]}${more}: ${g.from} -> ${g.to} lines (${g.moved.map((r) => `${r.module} ${sign}${r.lines}`).join(', ')})`);
   }
   const over = [...after].filter(([, rules]) => sum(rules) > ceiling);
   if (!over.length) {
     lines.push(`  no path exceeds the co-load ceiling of ${ceiling}`);
   } else {
     const worst = over.sort(([, a], [, b]) => sum(b) - sum(a))[0];
-    lines.push(`  ${over.length} path(s) would exceed the co-load ceiling of ${ceiling}, worst ${worst[0]} at ${sum(worst[1])} lines from ${worst[1].map((r) => `${r.file} (${r.lines})`).join(', ')}; the checker's coload family fails this. Narrow the module's path slot in house.json, or leave it off.`);
+    const where = `worst ${worst[0]} at ${sum(worst[1])} lines from ${worst[1].map((r) => `${r.file} (${r.lines})`).join(', ')}`;
+    lines.push(removing
+      ? `  ${over.length} path(s) still exceed the co-load ceiling of ${ceiling} afterwards, ${where}; the checker's coload family keeps failing this.`
+      : `  ${over.length} path(s) would exceed the co-load ceiling of ${ceiling}, ${where}; the checker's coload family fails this. Narrow the module's path slot in house.json, or leave it off.`);
   }
   return lines;
+}
+
+// The plan render would build for this manifest, read before anything writes;
+// enable and disable each build one for house.json as it is and as proposed.
+function renderPlanFor(repoRoot, data, modules) {
+  const scaffoldRecord = priorScaffoldRecord(loadPriorLockJson(repoRoot), SCAFFOLDS, data, repoRoot);
+  const migration = planOldPreCommitMigration(repoRoot, data, modules, loadPriorLock(repoRoot));
+  const migrations = migration ? [migration] : [];
+  const built = buildRenderPlan(repoRoot, data, modules, readPluginVersion(), null, scaffoldRecord, false, new Set(migrations.map((m) => m.from)));
+  return { ...built, scaffoldRecord, migrations };
+}
+
+// A plan entry whose bytes on disk would change, which is every status but a
+// `clean` file already holding exactly what render would write.
+function planChanges(repoRoot, plan) {
+  return plan.filter((p) => {
+    if (p.status !== 'clean') return true;
+    try { return readFileSync(path.join(repoRoot, p.target.path), 'utf8') !== p.target.content; } catch { return true; }
+  });
 }
 
 function cmdEnable(args) {
@@ -1977,17 +2013,8 @@ function cmdEnable(args) {
   }
 
   // The same plan render builds, for the manifest as it is and as proposed.
-  const pluginVersion = readPluginVersion();
-  const priorLockJson = loadPriorLockJson(repoRoot);
-  const planFor = (data) => {
-    const scaffoldRecord = priorScaffoldRecord(priorLockJson, SCAFFOLDS, data, repoRoot);
-    const migration = planOldPreCommitMigration(repoRoot, data, modules, loadPriorLock(repoRoot));
-    const migrations = migration ? [migration] : [];
-    const built = buildRenderPlan(repoRoot, data, modules, pluginVersion, null, scaffoldRecord, false, new Set(migrations.map((m) => m.from)));
-    return { ...built, scaffoldRecord, migrations };
-  };
-  const before = planFor(houseData);
-  const after = planFor(proposed);
+  const before = renderPlanFor(repoRoot, houseData, modules);
+  const after = renderPlanFor(repoRoot, proposed, modules);
 
   console.log(`house enable: plan for ${toEnable.join(', ')}${args.apply ? '' : ' (nothing is written without --apply)'}`);
   console.log('\nhouse.json:');
@@ -2015,11 +2042,7 @@ function cmdEnable(args) {
 
   console.log('\nFiles render would write:');
   for (const m of after.migrations) console.log(migrationLine(m, false));
-  const changed = after.plan.filter((p) => {
-    if (p.status !== 'clean') return true;
-    try { return readFileSync(path.join(repoRoot, p.target.path), 'utf8') !== p.target.content; } catch { return true; }
-  });
-  for (const p of changed) console.log(`${(STATUS_LABEL[p.status] || p.status).padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
+  for (const p of planChanges(repoRoot, after.plan)) console.log(`${(STATUS_LABEL[p.status] || p.status).padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
   for (const s of SCAFFOLDS) {
     if (!toEnable.includes(s.module) || !scaffoldApplies(s, repoRoot) || existsSync(path.join(repoRoot, s.dest))) continue;
     if (after.scaffoldRecord.has(s.tmpl) || !existsSync(path.join(__dirname, '..', 'templates', s.tmpl))) continue;
@@ -2064,6 +2087,183 @@ function cmdEnable(args) {
   const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
   relay(check);
   console.log('\nNext: walk the at-adoption checklist above, recording each step done with `house confirm <module> <step-id>`; `house doctor` lists the steps not yet confirmed.');
+  process.exit(check.status === null ? 1 : check.status);
+}
+
+// ── disable (#151) ───────────────────────────────────────────────────────
+//
+// The reverse of enable. Only `enabled` changes: a module's config and its
+// at-adoption confirmations stay in house.json, so turning it back on lands
+// where it was. Render already removes a disabled module's managed files (see
+// orphanedManagedPaths), rebuilds the lock, the index and the AGENTS.md block
+// from the plan, and leaves its one-time scaffolds alone; disable adds the
+// plan before that, and the refusal render does not make: render removes an
+// orphan whatever its bytes, so a hand-edited one is refused here, before
+// house.json is written.
+
+// Checker families that read a module's config whether or not it is on
+// (payload/check.mjs moduleConfig and emDashConfig never look at `enabled`).
+const CONFIG_READ_WHILE_OFF = {
+  docs: 'the drift, lengths, coload, shape and manifest families still read modules.docs.config, which is kept, so they verify what they verified before',
+  github: 'the minutes family still reads modules.github.config, which is kept',
+};
+
+// What turning these modules off stops, one line per case, derived from what
+// each one ships (the files this disable removes) and from how the checker
+// and doctor gate on it.
+function disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed) {
+  const lines = [];
+  const deviations = arr(houseData.deviations);
+  for (const n of toDisable) {
+    const json = byName.get(n).json;
+    const own = removed.filter((r) => r.module === n);
+    const rules = own.filter((r) => r.path.startsWith(VENDORED_RULE_PREFIX));
+    if (rules.length) lines.push(`  ${n}: ${rules.length} rule file(s) stop loading in a session${wantsAgentsBlock(houseTargets(houseData)) ? ', and leave the AGENTS.md block' : ''}`);
+    if (own.some((r) => isGitHookDest(r.path))) {
+      lines.push(`  ${n}: the vendored git-hook floor files are removed, so the branch policy is no longer enforced by git hooks in this repo; only a session-time hook or a server-side ruleset still refuses a commit or push to a protected branch`);
+    }
+    if (n === 'github' && houseData.branchPolicy === 'pr') {
+      lines.push(`  ${n}: the checker's guard family warns that branchPolicy is "pr" with the github module off, and doctor reports the git-hook floor as not rendered here`);
+    }
+    // The checker reads a missing `default` as on (readModuleDefaultsFrom).
+    if ((json.default ?? 'on') === 'on' && !deviations.some((d) => isPlainObject(d) && d.kind === 'disabled-module' && d.module === n)) {
+      lines.push(`  ${n}: default-on, so the checker's manifest family reports it (a finding where it can read module defaults) until house.json carries a deviations entry {"kind": "disabled-module", "module": "${n}", "what", "why", "decided"}; disable records no reason, so add one by hand if it stays off`);
+    }
+    if (CONFIG_READ_WHILE_OFF[n]) lines.push(`  ${n}: ${CONFIG_READ_WHILE_OFF[n]}`);
+    else lines.push(`  ${n}: no checker family is gated on this module, so the checker verifies the same things afterwards`);
+    const steps = atAdoptionSteps(json);
+    if (steps.length) lines.push(`  ${n}: doctor stops listing its ${steps.length} at-adoption step(s); ${Object.keys(confirmedSteps(houseData, n)).length} confirmation(s) stay in house.json`);
+  }
+  return lines;
+}
+
+// #58's floor is armed by core.hooksPath, machine state disable never writes.
+// The arming script only ever sets it, so the plan says what is left to undo.
+function hooksPathLines(repoRoot) {
+  const probe = gitHookFloorProbe(repoRoot);
+  const here = probe && probe.hooksPath
+    ? `is ${probe.hooksPath}${probe.armed ? ', this repo\'s .githooks/' : ''}`
+    : 'is unset in this clone';
+  return [
+    `  core.hooksPath ${here}. Disable writes no git config, so a clone armed for the floor keeps pointing git at .githooks/, where no house hook remains and anything left there no longer runs through a house dispatcher.`,
+    '  To undo it, in each clone that was armed: `git config --unset core.hooksPath` (or point it at your own hooks). The SessionStart arming script never unsets it; while branchPolicy is "pr" it prints that the floor is not rendered here at each session start.',
+  ];
+}
+
+function cmdDisable(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (!existsSync(housePath)) {
+    console.error(`house disable: ${housePath} not found, so this repo has not adopted house. Run /house-rules:bootstrap first; disable turns modules off in a repo that already has a house.json.`);
+    process.exit(2);
+  }
+  let houseData;
+  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+  catch (e) {
+    console.error(`house disable: ${housePath} is not valid JSON (${e.message})`);
+    process.exit(2);
+  }
+  if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) {
+    console.error(`house disable: ${housePath} has no usable "modules" object`);
+    process.exit(2);
+  }
+  if (!args.names.length) {
+    console.error('usage: house disable <module...> [--repo <path>] [--apply]');
+    process.exit(2);
+  }
+  const modules = findModules();
+  const byName = new Map(modules.filter((m) => !m.error).map((m) => [moduleName(m), m]));
+  const unknown = args.names.filter((n) => !byName.has(n));
+  if (unknown.length) {
+    console.error(`house disable: ${unknown.map((n) => `\`${n}\``).join(', ')} ${unknown.length === 1 ? 'is not a module' : 'are not modules'}, so nothing was planned or written. Modules: ${[...byName.keys()].join(', ')}.`);
+    process.exit(2);
+  }
+  const badTargets = targetsProblem(houseData);
+  if (badTargets) {
+    console.error(`house disable: ${housePath}: ${badTargets}. Fix it first; render refuses this value.`);
+    process.exit(2);
+  }
+
+  const names = [...new Set(args.names)];
+  for (const n of names.filter((x) => !moduleEnabled(houseData, x))) console.log(`module \`${n}\` is already off in house.json; nothing to change for it.`);
+  const toDisable = names.filter((n) => moduleEnabled(houseData, n));
+  if (!toDisable.length) process.exit(0);
+
+  const proposed = JSON.parse(JSON.stringify(houseData));
+  for (const n of toDisable) proposed.modules[n] = { ...proposed.modules[n], enabled: false };
+
+  const before = renderPlanFor(repoRoot, houseData, modules);
+  const after = renderPlanFor(repoRoot, proposed, modules);
+  const priorLock = loadPriorLock(repoRoot);
+  const beforeModule = new Map(before.plan.map((p) => [p.target.path, p.target.module]));
+  const removed = [...orphanedManagedPaths(repoRoot, new Set(after.plan.map((p) => p.target.path)))]
+    .filter((rel) => isInsideRoot(repoRoot, rel) && existsSync(path.join(repoRoot, rel)))
+    .sort()
+    .map((rel) => {
+      const e = priorLock.get(rel);
+      const onDisk = sha256Hex(managedBody(readFileSync(path.join(repoRoot, rel), 'utf8')));
+      return { path: rel, module: (e && e.module) || beforeModule.get(rel) || '(unrecorded)', edited: Boolean(e) && onDisk !== e.bodySha256 };
+    });
+
+  console.log(`house disable: plan for ${toDisable.join(', ')}${args.apply ? '' : ' (nothing is written without --apply)'}`);
+  console.log('\nhouse.json (only `enabled` changes; config and at-adoption confirmations are kept):');
+  for (const n of toDisable) {
+    console.log(`-   "${n}": ${JSON.stringify(houseData.modules[n])}`);
+    console.log(`+   "${n}": ${JSON.stringify(proposed.modules[n])}`);
+  }
+
+  console.log('\nFiles render would remove or change:');
+  for (const r of removed) {
+    console.log(`${(r.edited ? 'REFUSE' : 'remove').padEnd(15)} ${r.path}  (module: ${r.module})`);
+    if (r.edited) console.log('  on-disk body no longer matches what render last wrote, so disable will not delete it. Exits: keep your edit somewhere that is yours and restore or delete this file by hand, or propose the change upstream in house; then re-run disable.');
+  }
+  for (const p of planChanges(repoRoot, after.plan)) console.log(`${(STATUS_LABEL[p.status] || p.status).padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
+  if (after.blockRemoval) console.log(`${(after.blockRemoval.status === 'refuse' ? 'REFUSE' : 'remove-block').padEnd(15)} ${after.blockRemoval.path}`);
+  const left = new Set();
+  for (const s of SCAFFOLDS) {
+    if (!toDisable.includes(s.module)) continue;
+    const dest = before.scaffoldRecord.get(s.tmpl) || s.dest;
+    if (!left.has(dest) && existsSync(path.join(repoRoot, dest))) {
+      left.add(dest);
+      console.log(`${'left'.padEnd(15)} ${dest}  (one-time scaffold from ${s.module}; yours, not managed, so it stays; delete it by hand if unwanted)`);
+    }
+  }
+  console.log('  and .house/lock.json and .house/INDEX.md, rewritten from the plan');
+
+  console.log('\nWhat stops:');
+  for (const line of disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed)) console.log(line);
+  if (removed.some((r) => isGitHookDest(r.path) && toDisable.includes(r.module))) {
+    for (const line of hooksPathLines(repoRoot)) console.log(line);
+  }
+
+  console.log('');
+  for (const line of loadCostLines(repoRoot, before.plan, after.plan, toDisable, coloadCeiling(proposed), true)) console.log(line);
+
+  const refused = removed.some((r) => r.edited) || after.plan.some((p) => p.status === 'refuse') || (after.blockRemoval && after.blockRemoval.status === 'refuse');
+  if (refused) {
+    console.error('\nhouse disable: a managed file above was edited by hand (REFUSE), so nothing was written. Resolve it as that line says, then re-run disable.');
+    process.exit(1);
+  }
+  if (!args.apply) {
+    console.log('\nNothing written. Re-run with --apply to write house.json, render once, and run the vendored checker.');
+    process.exit(0);
+  }
+
+  writeFileSync(housePath, `${JSON.stringify(proposed, null, 2)}\n`, 'utf8');
+  console.log(`\nWrote ${housePath}`);
+  const relay = (res) => { process.stdout.write(res.stdout || ''); process.stderr.write(res.stderr || ''); };
+  console.log(`Rendering once for ${toDisable.join(', ')}:`);
+  const render = spawnSync(process.execPath, [__filename, 'render', '--repo', repoRoot, '--apply'], { encoding: 'utf8' });
+  relay(render);
+  if (render.status !== 0) {
+    console.error(`house disable: render exited ${render.status}, after house.json was written. Fix what it printed, then \`house render --apply\`.`);
+    process.exit(render.status === null ? 1 : render.status);
+  }
+  console.log('\nChecker (.house/check.mjs, as CI runs it):');
+  const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
+  relay(check);
+  const floorGone = removed.some((r) => isGitHookDest(r.path) && toDisable.includes(r.module));
+  console.log(`\nNext: commit the change, the removed files included. The checker lists files from the git index, so it reads a removed file the index still holds as empty until the removal is staged.${floorGone ? ' Then unset core.hooksPath in each clone that was armed, as the plan above says.' : ''}`);
   process.exit(check.status === null ? 1 : check.status);
 }
 
@@ -2322,7 +2522,7 @@ function parseArgs(argv) {
     else if (a.startsWith('--force-managed=')) out.forceManaged = a.slice('--force-managed='.length);
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
-    // A bare word is a module name; only enable reads them.
+    // A bare word is a module name; enable, disable and confirm read them.
     else if (!a.startsWith('-')) out.names.push(a);
     // Unrecognized flags are ignored for init/render/enable/doctor (check has
     // its own passthrough path and never reaches this parser).
@@ -2337,8 +2537,8 @@ function main() {
 
   if (cmd === 'check') { cmdCheck(rest); return; }
 
-  if (!['init', 'render', 'enable', 'confirm', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house confirm <module> <step-id> [--repo <path>]');
+  if (!['init', 'render', 'enable', 'disable', 'confirm', 'doctor'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply]\n       house confirm <module> <step-id> [--repo <path>]');
     process.exit(2);
   }
 
@@ -2346,6 +2546,7 @@ function main() {
   if (cmd === 'init') return cmdInit(args);
   if (cmd === 'render') return cmdRender(args);
   if (cmd === 'enable') return cmdEnable(args);
+  if (cmd === 'disable') return cmdDisable(args);
   if (cmd === 'confirm') return cmdConfirm(args);
   if (cmd === 'doctor') return cmdDoctor(args);
 }

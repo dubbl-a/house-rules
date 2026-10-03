@@ -2117,3 +2117,189 @@ test('#135 enable --apply: an off module keeps the config written for it by hand
   assert.match(gamma, /^ {2}- scripts\/\*\*$/m);
   assert.doesNotMatch(gamma, /src\/\*\*/);
 });
+
+// ── disable (#151) ───────────────────────────────────────────────────────
+//
+// The reverse of enable: one plan, nothing written without --apply, then one
+// render, which already sweeps a disabled module's managed files, and the
+// vendored checker. These reuse the enable fixture (gamma and delta).
+
+function deltaOnRepo(cliPath) {
+  return adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: true, config: {} },
+    delta: { enabled: true, config: {} },
+  });
+}
+
+function lockPaths(repo) {
+  return JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8')).files.map((f) => f.path);
+}
+
+test('#151 disable: refuses a repo with no house.json, and an unknown module, writing nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const bare = buildTargetRepo();
+  const none = runCli(cliPath, ['disable', 'gamma', '--repo', bare, '--apply']);
+  assert.equal(none.code, 2, none.out + none.err);
+  assert.match(none.err, /bootstrap/);
+  assert.equal(gitStatusShort(bare), '');
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', 'nosuch', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /`nosuch` is not a module/);
+  assert.match(r.err, /gamma/, 'lists the modules that do exist');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 disable: plan only prints the house.json diff, the files it removes, and the load change, and writes nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const houseBefore = readFileSync(join(repo, 'house.json'));
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^- +"gamma": \{"enabled":true,"config":\{\}\}$/m, 'house.json diff, before');
+  assert.match(r.out, /^\+ +"gamma": \{"enabled":false,"config":\{\}\}$/m, 'house.json diff, after');
+  assert.match(r.out, /^remove\s+\.claude\/rules\/house\/gamma\.md\s+\(module: gamma\)/m, 'the managed file render removes');
+  assert.doesNotMatch(r.out, /^remove\s+\.claude\/rules\/house\/alpha\.md/m, 'a module staying on loses nothing');
+  assert.match(r.out, /Load cost/);
+  assert.match(r.out, /gamma: -\d+ lines on \d+ tracked path/);
+  assert.match(r.out, /^ {2}src\/a\.js: \d+ -> \d+ lines \(gamma -\d+\)$/m, 'lines the module stops loading on that path');
+  assert.match(r.out, /--apply/);
+  assert.ok(readFileSync(join(repo, 'house.json')).equals(houseBefore), 'house.json bytes untouched');
+  assert.equal(gitStatusShort(repo), '', 'plan only leaves the tree untouched');
+});
+
+test('#151 disable --apply: one module, one render, no orphan left in the tree, the lock, or the index', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.equal(house.modules.gamma.enabled, false);
+  assert.equal(house.modules.alpha.enabled, true, 'other modules untouched');
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma.md')), 'rule file removed');
+  assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'alpha.md')));
+  assert.ok(!lockPaths(repo).includes('.claude/rules/house/gamma.md'), 'no orphaned lock entry');
+  assert.doesNotMatch(readFileSync(join(repo, '.house', 'INDEX.md'), 'utf8'), /gamma\.md/, 'no orphaned index section');
+  assert.equal((r.out.match(/^Rendering /gm) || []).length, 1, `one render:\n${r.out}`);
+  assert.match(r.out, /fake house check: ok/, 'the vendored checker ran and its output is printed');
+});
+
+test('#151 disable --apply: two modules share one plan and one render', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = deltaOnRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', 'delta', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal((r.out.match(/^house disable: plan for /gm) || []).length, 1, 'one plan');
+  assert.equal((r.out.match(/^Rendering /gm) || []).length, 1, 'one render');
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.equal(house.modules.gamma.enabled, false);
+  assert.equal(house.modules.delta.enabled, false);
+  for (const f of ['gamma.md', 'delta.md']) assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', f)), `${f} removed`);
+  assert.deepEqual(lockPaths(repo).filter((p) => /gamma|delta/.test(p)), []);
+});
+
+test('#151 disable: a module already off is reported, not an error, and the rest still plan', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const solo = runCli(cliPath, ['disable', 'delta', '--repo', repo, '--apply']);
+  assert.equal(solo.code, 0, solo.out + solo.err);
+  assert.match(solo.out, /`delta` is already off/);
+  assert.equal(gitStatusShort(repo), '', 'nothing to change, nothing written');
+  const both = runCli(cliPath, ['disable', 'delta', 'gamma', '--repo', repo]);
+  assert.equal(both.code, 0, both.out + both.err);
+  assert.match(both.out, /`delta` is already off/);
+  assert.match(both.out, /"gamma": \{"enabled":false/);
+});
+
+test('#151 disable --apply: a hand-edited managed file of the module is refused by name and nothing is written', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const gamma = join(repo, '.claude', 'rules', 'house', 'gamma.md');
+  writeFileSync(gamma, `${readFileSync(gamma, 'utf8')}hand edit\n`);
+  commitAll(repo, 'hand edit a managed rule');
+  const before = readFileSync(join(repo, 'house.json'), 'utf8');
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/gamma\.md/m);
+  assert.match(r.err, /nothing was written/);
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), before);
+  assert.ok(existsSync(gamma), 'the edited file stays');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 disable --apply: config and at-adoption confirmations survive; only enabled changes', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: true, config: { gammaRoots: ['scripts/**'] }, confirmed: { owners: '2026-01-02' } },
+  });
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma,
+    { enabled: false, config: { gammaRoots: ['scripts/**'] }, confirmed: { owners: '2026-01-02' } });
+  assert.match(r.out, /confirm/i, 'the plan says the confirmations are kept');
+});
+
+test('#151 round trip: enable, disable, enable returns house.json and the rendered files to the same bytes', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: false, config: { gammaRoots: ['scripts/**'] }, confirmed: { owners: '2026-01-02' } },
+  });
+  const tracked = ['house.json', '.house/lock.json', '.house/INDEX.md', '.claude/rules/house/alpha.md'];
+  const snap = () => Object.fromEntries([...tracked, '.claude/rules/house/gamma.md'].map((p) => [p, existsSync(join(repo, p)) ? readFileSync(join(repo, p), 'utf8') : null]));
+  const beforeEnable = snap();
+  assert.equal(runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']).code, 0);
+  const enabledOnce = snap();
+  commitAll(repo, 'enable gamma');
+  const off = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(off.code, 0, off.out + off.err);
+  assert.deepEqual(snap(), beforeEnable, 'disable after enable returns every file to its bytes before the enable');
+  assert.equal(runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']).code, 0);
+  assert.deepEqual(snap(), enabledOnce, 'enabling again lands on the same bytes as the first enable');
+});
+
+test('#151 disable github: the plan names the removed floor, the scaffold left in place, what stops enforcing, and core.hooksPath', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  const rendered = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(rendered.code, 0, rendered.out + rendered.err);
+  commitAll(repo, 'adopt with the floor');
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'precondition: the scaffold was written');
+
+  const plan = runCli(cliPath, ['disable', 'github', '--repo', repo]);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  for (const rel of FLOOR_FILES) assert.match(plan.out, new RegExp(`^remove\\s+\\.githooks/${rel.replace(/\./g, '\\.')}\\s`, 'm'), `lists ${rel}`);
+  assert.match(plan.out, /^left\s+\.githooks\/pre-commit\.d\/20-secrets\s/m, 'the scaffold is listed as left in place');
+  assert.match(plan.out, /branch policy is no longer enforced by git hooks in this repo/);
+  assert.match(plan.out, /core\.hooksPath/);
+  assert.match(plan.out, /git config --unset core\.hooksPath/, 'says what the user does');
+  assert.equal(gitStatusShort(repo), '', 'plan only');
+  const hooksPathBefore = gitConfigGet(repo, 'core.hooksPath');
+
+  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const rel of FLOOR_FILES) assert.ok(!existsSync(join(repo, '.githooks', rel)), `${rel} removed`);
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold stays');
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), hooksPathBefore, 'disable writes no git config');
+  assert.deepEqual(lockPaths(repo).filter((p) => p.startsWith('.githooks/')), []);
+
+  const quiet = runCli(cliPath, ['disable', 'gamma', '--repo', enabledGammaRepo(buildEnableFixture().cliPath)]);
+  assert.doesNotMatch(quiet.out, /git hooks|core\.hooksPath/, 'negative control: a module with no hook files says nothing about the floor');
+});
+
+test('#151 disable --apply: the real vendored checker exits 0 afterwards', () => {
+  const { dir, cliPath } = buildEnableFixture();
+  copyFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), join(dir, 'payload', 'check.mjs'));
+  const repo = enabledGammaRepo(cliPath);
+  assert.equal(runVendoredCheck(repo).status, 0, `precondition: the adopted repo passes\n${runVendoredCheck(repo).stdout}`);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.match(r.out, /^Checker \(/m, 'disable ran the checker');
+  // The checker lists files from the git index, and reads a removed file the
+  // index still holds as empty, so it is read here as CI reads the commit.
+  execFileSync('git', ['add', '-A'], { cwd: repo });
+  const after = runVendoredCheck(repo);
+  assert.equal(after.status, 0, after.stdout + after.stderr);
+  assert.doesNotMatch(after.stdout, /gamma/, 'no orphan, lock entry, or index section left for the checker to name');
+});
