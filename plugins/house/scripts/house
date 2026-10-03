@@ -40,7 +40,7 @@
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync,
-  chmodSync, statSync, renameSync,
+  chmodSync, statSync, renameSync, rmdirSync,
 } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -1431,6 +1431,14 @@ function orphanedManagedPaths(repoRoot, planDests) {
   return orphans;
 }
 
+// An orphan whose body no longer matches what the lock recorded was edited by
+// hand since the last render, so removing it would lose that edit unseen.
+function orphanIsHandEdited(repoRoot, rel, priorLock) {
+  const e = priorLock.get(rel);
+  if (!e) return false;
+  try { return sha256Hex(managedBody(readFileSync(path.join(repoRoot, rel), 'utf8'))) !== e.bodySha256; } catch { return false; }
+}
+
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
 
 // The one wording for the #58 migration, in both tenses, so the dry run
@@ -1445,7 +1453,7 @@ function migrationLine(m, applied) {
     : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
-function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, json, apply }) {
+function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({
@@ -1457,6 +1465,7 @@ function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignored
       migrations: arr(migrations),
       blockRemoval: blockRemoval ? { status: blockRemoval.status, path: blockRemoval.path, deleteFile: Boolean(blockRemoval.deleteFile) } : null,
       scaffolds: geminiScaffold ? [GEMINI_MD] : [],
+      editedOrphans: arr(editedOrphans),
     }, null, 2));
     return;
   }
@@ -1477,6 +1486,10 @@ function printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignored
     } else if (p.status === 'refuse') {
       console.log(`  on-disk body no longer matches its managed source. Exits: propose the change upstream in house, record a deviation and unmanage this file, or \`house render --force-managed ${p.target.path}\`.`);
     }
+  }
+  for (const rel of arr(editedOrphans)) {
+    console.log(`${'REFUSE'.padEnd(15)} ${rel}  (no longer in the plan, so render would remove it)`);
+    console.log(`  on-disk body no longer matches what render last wrote, so it is not removed silently. Exits: keep your edit somewhere that is yours, or \`house render --force-managed ${rel}\` to remove it anyway.`);
   }
   if (blockRemoval) {
     const label = blockRemoval.status === 'refuse' ? 'REFUSE' : 'remove-block';
@@ -1543,14 +1556,20 @@ function cmdRender(args) {
   // ADR 0015: decided once, before anything writes, so the dry run lists the
   // same GEMINI.md scaffold the apply phase below writes.
   const geminiScaffold = targets.includes('gemini') && !existsSync(path.join(repoRoot, GEMINI_MD)) && !geminiSettingsReadsAgents(repoRoot);
-  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, json: args.json, apply: args.apply });
+  // #151: an orphan the sweep below would remove gets the hand-edit check a
+  // file render writes gets, so a module turned off by hand cannot take an
+  // edited file with it unseen. --force-managed naming it removes it anyway.
+  const editedOrphans = [...orphanedManagedPaths(repoRoot, new Set(plan.map((p) => p.target.path)))]
+    .filter((rel) => rel !== forceManagedPath && isInsideRoot(repoRoot, rel) && existsSync(path.join(repoRoot, rel)) && orphanIsHandEdited(repoRoot, rel, loadPriorLock(repoRoot)))
+    .sort();
+  printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, json: args.json, apply: args.apply });
 
   const refusals = plan.filter((p) => p.status === 'refuse');
   // Marker lines render cannot attribute to one block are unreadable input,
   // not drift, so they exit 2 like an unusable house.json.
   const unreadable = (x) => x && (x.reason === 'reserved' || x.reason === 'unattributed' || Boolean(x.problems));
   if (refusals.some(unreadable) || unreadable(blockRemoval)) process.exit(2);
-  if (refusals.length > 0 || (blockRemoval && blockRemoval.status === 'refuse')) process.exit(1);
+  if (refusals.length > 0 || editedOrphans.length > 0 || (blockRemoval && blockRemoval.status === 'refuse')) process.exit(1);
 
   if (!args.apply) process.exit(0);
 
@@ -1598,6 +1617,12 @@ function cmdRender(args) {
     const abs = path.join(repoRoot, rel);
     if (!existsSync(abs)) continue;
     try { unlinkSync(abs); removed.push(rel); } catch { /* best effort: an un-removable orphan stays and is re-reported next render */ }
+    // #151: a directory this removal left empty held only render's files
+    // (a `.githooks/*.d/` after the floor goes), so it goes too; one still
+    // holding anything, a scaffold or the repo's own file, stays.
+    for (let dir = path.dirname(abs); dir !== repoRoot && isInsideRoot(repoRoot, path.relative(repoRoot, dir)); dir = path.dirname(dir)) {
+      try { if (readdirSync(dir).length) break; rmdirSync(dir); } catch { break; }
+    }
   }
   if (blockRemoval) {
     const abs = path.join(repoRoot, blockRemoval.path);
@@ -2011,6 +2036,15 @@ function cmdEnable(args) {
     const config = prev && isPlainObject(prev.config) ? prev.config : (n === 'docs' ? docsConfigFromProbe(repoRoot) : {});
     proposed.modules[n] = { ...(prev || {}), enabled: true, config };
   }
+  // #151: a disabled-module deviation says why a module is off; once it is on
+  // again the entry describes nothing, so the enable that supersedes it drops
+  // it, and the key with it when it was the last entry.
+  const superseded = arr(proposed.deviations).filter((d) => isPlainObject(d) && d.kind === 'disabled-module' && toEnable.includes(d.module));
+  if (superseded.length) {
+    const rest = proposed.deviations.filter((d) => !superseded.includes(d));
+    if (rest.length) proposed.deviations = rest;
+    else delete proposed.deviations;
+  }
 
   // The same plan render builds, for the manifest as it is and as proposed.
   const before = renderPlanFor(repoRoot, houseData, modules);
@@ -2023,6 +2057,7 @@ function cmdEnable(args) {
     console.log(prev === undefined ? `-   "${n}": (no entry, which render reads as off)` : `-   "${n}": ${JSON.stringify(prev)}`);
     console.log(`+   "${n}": ${JSON.stringify(proposed.modules[n])}`);
   }
+  for (const d of superseded) console.log(`-   deviations: ${JSON.stringify(d)}  (removed: this enable supersedes it)`);
 
   console.log('\nPaths (each module\'s slots as render resolves them in this repo):');
   for (const n of toEnable) {
@@ -2108,12 +2143,18 @@ const CONFIG_READ_WHILE_OFF = {
   github: 'the minutes family still reads modules.github.config, which is kept',
 };
 
+// The checker reads a missing `default` as on (readModuleDefaultsFrom), and
+// fails such a module turned off unless a disabled-module deviation names it.
+function moduleIsDefaultOn(json) { return (json.default ?? 'on') === 'on'; }
+function disabledModuleDeviation(houseData, name) {
+  return arr(houseData.deviations).some((d) => isPlainObject(d) && d.kind === 'disabled-module' && d.module === name);
+}
+
 // What turning these modules off stops, one line per case, derived from what
 // each one ships (the files this disable removes) and from how the checker
 // and doctor gate on it.
-function disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed) {
+function disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed, why) {
   const lines = [];
-  const deviations = arr(houseData.deviations);
   for (const n of toDisable) {
     const json = byName.get(n).json;
     const own = removed.filter((r) => r.module === n);
@@ -2125,9 +2166,12 @@ function disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed
     if (n === 'github' && houseData.branchPolicy === 'pr') {
       lines.push(`  ${n}: the checker's guard family warns that branchPolicy is "pr" with the github module off, and doctor reports the git-hook floor as not rendered here`);
     }
-    // The checker reads a missing `default` as on (readModuleDefaultsFrom).
-    if ((json.default ?? 'on') === 'on' && !deviations.some((d) => isPlainObject(d) && d.kind === 'disabled-module' && d.module === n)) {
-      lines.push(`  ${n}: default-on, so the checker's manifest family reports it (a finding where it can read module defaults) until house.json carries a deviations entry {"kind": "disabled-module", "module": "${n}", "what", "why", "decided"}; disable records no reason, so add one by hand if it stays off`);
+    if (!moduleIsDefaultOn(json)) {
+      if (why !== null) lines.push(`  ${n} is off by default, so turning it off declines nothing and --why is not recorded (the deviations ledger records declined defaults only)`);
+    } else if (!disabledModuleDeviation(houseData, n)) {
+      lines.push(why
+        ? `  ${n}: on by default, so a disabled-module deviation with your reason and today's date goes into house.json, which the checker's manifest family requires`
+        : `  ${n}: on by default, so --apply needs --why "<reason>": the checker's manifest family fails a default-on module turned off with no disabled-module deviation, and disable writes that entry only in your words`);
     }
     if (CONFIG_READ_WHILE_OFF[n]) lines.push(`  ${n}: ${CONFIG_READ_WHILE_OFF[n]}`);
     else lines.push(`  ${n}: no checker family is gated on this module, so the checker verifies the same things afterwards`);
@@ -2168,7 +2212,11 @@ function cmdDisable(args) {
     process.exit(2);
   }
   if (!args.names.length) {
-    console.error('usage: house disable <module...> [--repo <path>] [--apply]');
+    console.error('usage: house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]');
+    process.exit(2);
+  }
+  if (args.why !== null && !isNonEmptyString(args.why)) {
+    console.error('house disable: --why needs a reason in your own words, so nothing was planned or written.');
     process.exit(2);
   }
   const modules = findModules();
@@ -2191,6 +2239,13 @@ function cmdDisable(args) {
 
   const proposed = JSON.parse(JSON.stringify(houseData));
   for (const n of toDisable) proposed.modules[n] = { ...proposed.modules[n], enabled: false };
+  // A default-on module turned off is a declined default, which the checker
+  // fails without a dated disabled-module deviation. Disable writes one only
+  // in the user's words, never a reason of its own.
+  const why = args.why === null ? null : args.why.trim();
+  const needsWhy = toDisable.filter((n) => moduleIsDefaultOn(byName.get(n).json) && !disabledModuleDeviation(houseData, n));
+  const added = why ? needsWhy.map((n) => ({ kind: 'disabled-module', module: n, what: `the ${n} module is off in this repo`, why, decided: todayIso() })) : [];
+  if (added.length) proposed.deviations = [...arr(proposed.deviations), ...added];
 
   const before = renderPlanFor(repoRoot, houseData, modules);
   const after = renderPlanFor(repoRoot, proposed, modules);
@@ -2201,16 +2256,16 @@ function cmdDisable(args) {
     .sort()
     .map((rel) => {
       const e = priorLock.get(rel);
-      const onDisk = sha256Hex(managedBody(readFileSync(path.join(repoRoot, rel), 'utf8')));
-      return { path: rel, module: (e && e.module) || beforeModule.get(rel) || '(unrecorded)', edited: Boolean(e) && onDisk !== e.bodySha256 };
+      return { path: rel, module: (e && e.module) || beforeModule.get(rel) || '(unrecorded)', edited: orphanIsHandEdited(repoRoot, rel, priorLock) };
     });
 
   console.log(`house disable: plan for ${toDisable.join(', ')}${args.apply ? '' : ' (nothing is written without --apply)'}`);
-  console.log('\nhouse.json (only `enabled` changes; config and at-adoption confirmations are kept):');
+  console.log('\nhouse.json (only `enabled` changes, plus a deviation for a default-on module; config and at-adoption confirmations are kept):');
   for (const n of toDisable) {
     console.log(`-   "${n}": ${JSON.stringify(houseData.modules[n])}`);
     console.log(`+   "${n}": ${JSON.stringify(proposed.modules[n])}`);
   }
+  for (const d of added) console.log(`+   deviations: ${JSON.stringify(d)}`);
 
   console.log('\nFiles render would remove or change:');
   for (const r of removed) {
@@ -2231,7 +2286,7 @@ function cmdDisable(args) {
   console.log('  and .house/lock.json and .house/INDEX.md, rewritten from the plan');
 
   console.log('\nWhat stops:');
-  for (const line of disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed)) console.log(line);
+  for (const line of disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed, why)) console.log(line);
   if (removed.some((r) => isGitHookDest(r.path) && toDisable.includes(r.module))) {
     for (const line of hooksPathLines(repoRoot)) console.log(line);
   }
@@ -2243,6 +2298,10 @@ function cmdDisable(args) {
   if (refused) {
     console.error('\nhouse disable: a managed file above was edited by hand (REFUSE), so nothing was written. Resolve it as that line says, then re-run disable.');
     process.exit(1);
+  }
+  if (args.apply && needsWhy.length && !why) {
+    console.error(`\nhouse disable: ${needsWhy.join(', ')} ${needsWhy.length === 1 ? 'is' : 'are'} on by default, so nothing was written. Re-run with --why "<reason>"; disable records it as a dated disabled-module deviation, which the checker requires.`);
+    process.exit(2);
   }
   if (!args.apply) {
     console.log('\nNothing written. Re-run with --apply to write house.json, render once, and run the vendored checker.');
@@ -2512,7 +2571,7 @@ function cmdCheck(rawArgs) {
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, names: [] };
+  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, why: null, names: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
@@ -2522,6 +2581,8 @@ function parseArgs(argv) {
     else if (a.startsWith('--force-managed=')) out.forceManaged = a.slice('--force-managed='.length);
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
+    else if (a === '--why') out.why = argv[++i] ?? '';
+    else if (a.startsWith('--why=')) out.why = a.slice('--why='.length);
     // A bare word is a module name; enable, disable and confirm read them.
     else if (!a.startsWith('-')) out.names.push(a);
     // Unrecognized flags are ignored for init/render/enable/doctor (check has
@@ -2538,7 +2599,7 @@ function main() {
   if (cmd === 'check') { cmdCheck(rest); return; }
 
   if (!['init', 'render', 'enable', 'disable', 'confirm', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply]\n       house confirm <module> <step-id> [--repo <path>]');
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house confirm <module> <step-id> [--repo <path>]');
     process.exit(2);
   }
 

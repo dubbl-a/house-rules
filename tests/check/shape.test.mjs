@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { sandbox, run, houseJson } from './helpers.mjs';
 
 // See manifest.test.mjs: the module-defaults sub-checks read the INSTALLED
@@ -301,4 +303,25 @@ test('shape: modules/**/rules/*.md is scanned when run inside the package repo l
   });
   const { code, out } = run(dir, ['--only=shape', '--json']);
   assert.equal(code, 0, out);
+});
+
+// #151: `house disable` removes a module's committed rule files, and until the
+// removal is staged the index still lists them. A file gone from disk is not a
+// document to check; read as empty, it used to fail every required section.
+test('shape: a tracked rule file deleted from disk is not checked; one on disk still is', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.claude/rules/house/gone.md': rule('# Gone\n\nNo sections here.\n'),
+  });
+  rmSync(join(dir, '.claude/rules/house/gone.md'));
+  const { code, out } = run(dir, ['--only=shape']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /gone\.md/);
+  const kept = sandbox({
+    'house.json': houseJson(),
+    '.claude/rules/house/kept.md': rule('# Kept\n\nNo sections here.\n'),
+  });
+  const control = run(kept, ['--only=shape']);
+  assert.equal(control.code, 1, `positive control: the same file on disk is a finding\n${control.out}`);
+  assert.match(control.out, /kept\.md \[shape\] missing required `## Don't` section/);
 });

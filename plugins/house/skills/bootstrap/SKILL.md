@@ -74,8 +74,10 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house disable <module...> --repo <path>
 It writes nothing. It prints the `house.json` change (only `enabled`; config and confirmations
 stay), the managed files render would remove, the scaffolds left in place, what stops for each
 module, and the load each path sheds. Show all of it and wait for the person to say apply it; on
-approval, re-run with `--apply` and report the checker's summary as printed. A hand-edited managed
-file is refused by name: leave resolving it to the person. Never set `core.hooksPath` yourself.
+approval, re-run with `--apply` and report the checker's summary as printed. A module that is on
+by default needs `--why "<reason>"`, recorded as a dated deviation: ask the person for the reason
+and pass their words, never one of your own. A hand-edited managed file is refused by name: leave
+resolving it to the person. Never set `core.hooksPath` yourself.
 
 ## Probe the repo
 

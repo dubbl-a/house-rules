@@ -2278,7 +2278,7 @@ test('#151 disable github: the plan names the removed floor, the scaffold left i
   assert.equal(gitStatusShort(repo), '', 'plan only');
   const hooksPathBefore = gitConfigGet(repo, 'core.hooksPath');
 
-  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply']);
+  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
   assert.equal(r.code, 0, r.out + r.err);
   for (const rel of FLOOR_FILES) assert.ok(!existsSync(join(repo, '.githooks', rel)), `${rel} removed`);
   assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold stays');
@@ -2295,11 +2295,122 @@ test('#151 disable --apply: the real vendored checker exits 0 afterwards', () =>
   const repo = enabledGammaRepo(cliPath);
   assert.equal(runVendoredCheck(repo).status, 0, `precondition: the adopted repo passes\n${runVendoredCheck(repo).stdout}`);
   const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.out, /^Checker \(/m, 'disable ran the checker');
-  // The checker lists files from the git index, and reads a removed file the
-  // index still holds as empty, so it is read here as CI reads the commit.
-  execFileSync('git', ['add', '-A'], { cwd: repo });
+  // Nothing staged: the removed rule file is still in the index, which the
+  // checker must not read as an empty document.
+  assert.match(gitStatusShort(repo), /^ D \.claude\/rules\/house\/gamma\.md$/m);
   const after = runVendoredCheck(repo);
   assert.equal(after.status, 0, after.stdout + after.stderr);
   assert.doesNotMatch(after.stdout, /gamma/, 'no orphan, lock entry, or index section left for the checker to name');
+});
+
+// The checker's disabled-module check reads module defaults from an installed
+// plugin; point it at the fixture plugin, so a default-on module turned off
+// with no deviation is the finding it is in a real adopter.
+function runCheckWithPlugin(repo, pluginDir) {
+  const cfg = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(cfg);
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({
+    plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: pluginDir, version: '9.9.9' }] },
+  }));
+  return spawnSync(process.execPath, [join(repo, '.house', 'check.mjs'), '--repo', repo], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+}
+
+function todayLocal() {
+  const now = new Date();
+  return [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+}
+
+function realCheckerFixture() {
+  const fx = buildEnableFixture();
+  copyFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), join(fx.dir, 'payload', 'check.mjs'));
+  return fx;
+}
+
+test('#151 disable: a default-on module needs --why; without it --apply refuses and writes nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const plan = runCli(cliPath, ['disable', 'alpha', '--repo', repo]);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  assert.match(plan.out, /alpha.*on by default.*--why/);
+  const r = runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--why/);
+  assert.equal(gitStatusShort(repo), '', 'nothing written');
+  const empty = runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', '  ']);
+  assert.equal(empty.code, 2, 'a blank reason is no reason');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 disable --why: a default-on module gets a dated disabled-module deviation in the user\'s words, and the checker passes', () => {
+  const { dir, cliPath } = realCheckerFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', 'no source tree here']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.deepEqual(house.deviations, [{ kind: 'disabled-module', module: 'alpha', what: 'the alpha module is off in this repo', why: 'no source tree here', decided: todayLocal() }]);
+  const ok = runCheckWithPlugin(repo, dir);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  delete house.deviations;
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+  const control = runCheckWithPlugin(repo, dir);
+  assert.equal(control.status, 1, 'positive control: the same repo without the deviation is a finding');
+  assert.match(control.stdout, /module `alpha` is default-on but disabled with no deviations entry/);
+});
+
+test('#151 disable --why on a module off by default records nothing and says so', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply', '--why', 'not needed']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /gamma is off by default.*not recorded/);
+  assert.equal(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).deviations, undefined);
+});
+
+test('#151 round trip with a reason: enable drops the deviation it supersedes, and the checker stays at 0', () => {
+  const { dir, cliPath } = realCheckerFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const before = readFileSync(join(repo, 'house.json'), 'utf8');
+  assert.equal(runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', 'trial']).code, 0);
+  commitAll(repo, 'alpha off');
+  const plan = runCli(cliPath, ['enable', 'alpha', '--repo', repo]);
+  assert.match(plan.out, /deviations.*disabled-module.*alpha.*removed/);
+  const on = runCli(cliPath, ['enable', 'alpha', '--repo', repo, '--apply']);
+  assert.equal(on.code, 0, on.out + on.err);
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), before, 'house.json back to its bytes, no stale deviation');
+  const check = runCheckWithPlugin(repo, dir);
+  assert.equal(check.status, 0, check.stdout + check.stderr);
+});
+
+test('#151 render refuses to delete a hand-edited managed file whose module was turned off by hand', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const gamma = join(repo, '.claude', 'rules', 'house', 'gamma.md');
+  writeFileSync(gamma, `${readFileSync(gamma, 'utf8')}hand edit\n`);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.modules.gamma.enabled = false;
+  writeHouseJson(repo, house);
+  const lockBefore = readFileSync(join(repo, '.house', 'lock.json'), 'utf8');
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/gamma\.md/m);
+  assert.ok(existsSync(gamma), 'the edited file stays');
+  assert.equal(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'), lockBefore, 'nothing rewritten');
+  const forced = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', '.claude/rules/house/gamma.md']);
+  assert.equal(forced.code, 0, forced.out + forced.err);
+  assert.ok(!existsSync(gamma), '--force-managed names the file, and render removes it');
+});
+
+test('#151 disable github: a directory render emptied is removed; one still holding a file stays', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-push.d')), 'emptied by render, removed');
+  assert.ok(!existsSync(join(repo, '.githooks', 'reference-transaction.d')));
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold keeps its directory');
 });
