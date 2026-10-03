@@ -48,9 +48,12 @@ read the hooks diff between tags (`git diff vA..vB -- plugins/house/hooks`) befo
 Whether auto-update follows or respects a pin is also not documented.
 
 Tags `v0.16.0` and `v0.17.0` are annotated and unsigned, and `v0.15.2` and older are lightweight.
-The practice from the next release is a signed annotated tag and an immutable GitHub release,
-pending the repository setting and a signing key; neither is in place today
-(`CONTRIBUTING.md`, "Cutting a release").
+From the release after `v0.17.0`, a release is immutable on GitHub (its tag and assets cannot be
+changed once published) and its tag is signed with Sigstore's gitsign under the maintainer's GitHub
+identity (`CONTRIBUTING.md`, "Cutting a release"). GitHub shows such a tag as unverified because it
+does not check Sigstore signatures. Verify one in a clone with
+`gitsign verify-tag --certificate-identity-regexp '\+dubbl-a@users\.noreply\.github\.com$' --certificate-oidc-issuer https://github.com/login/oauth vX.Y.Z`,
+or check the release itself with `gh release verify vX.Y.Z`.
 
 ### For an organization
 

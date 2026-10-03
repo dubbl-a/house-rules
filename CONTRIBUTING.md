@@ -98,13 +98,20 @@ or a silent fix; those live in git history instead.
    pinned tag in the install commands of `README.md` and `SECURITY.md` to it. Open a PR.
 2. Merge it.
 3. Tag the merge commit with an annotated signed tag: `git tag -s vX.Y.Z -m "Release X.Y.Z"`, then
-   `git push origin vX.Y.Z`.
+   `git push origin vX.Y.Z`. Signing is keyless, through Sigstore's gitsign, so the tag command
+   opens a browser for a GitHub sign-in and is run by the maintainer, not by an agent.
 4. `gh release create vX.Y.Z` with the changelog section as the notes.
 
-Turn on immutable releases in the repository settings so a published release's tag and assets
-cannot be changed. That is the practice from the next release: it needs the owner's setting and a
-signing key, and neither is in place yet. Tags up to `v0.17.0` are unsigned, `v0.16.0` and `v0.17.0`
-are annotated, and `v0.15.2` and older are lightweight.
+Signing setup, once per clone: install gitsign (`brew install gitsign`), then in this repo's local
+git config set `gpg.format x509`, `gpg.x509.program gitsign`, `tag.gpgsign true`, and
+`gitsign.connectorID https://github.com/login/oauth`. There is no key to keep or lose: each
+signature carries a short-lived certificate for the signer's GitHub identity and an entry in the
+public Rekor log. GitHub does not check Sigstore signatures, so a signed tag still shows as
+unverified there; `SECURITY.md` says how to verify one.
+
+Immutable releases are on for this repository (since 2026-10-03), so a published release's tag and
+assets cannot be changed. Both apply from the release after `v0.17.0`: tags up to `v0.17.0` are
+unsigned, `v0.16.0` and `v0.17.0` are annotated, and `v0.15.2` and older are lightweight.
 
 ## Licensing your contribution
 
