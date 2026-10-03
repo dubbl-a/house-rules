@@ -335,8 +335,8 @@ including the ones the script's own documentation left out.
 Sequencing append-style entries (#142): three conflicts at the same position landed in a single day
 across a build log and a learning record, each from two open pull requests adding an entry at the
 same place; after the second pull request's entries were held until the first merged, there were
-none. The entries still ship
-in that pull request, so the rule moves their timing and not their owner.
+none. The entries still ship in that pull request, so the rule moves their timing and not their
+owner.
 
 Native floor, as of 2026-09-02: hosted Code Review, whose findings arrive as severity-graded
 comments on a check run that never blocks a merge, and only where that Team and Enterprise

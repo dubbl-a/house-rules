@@ -7,12 +7,12 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ## [Unreleased]
 
 ### Added
-- **Subagents commit, and the session pushes and opens the pull request (#131).** The orchestration defaults say an outward action in a brief carries no user intent, that a parent asked to run a denied action asks the user instead, and that a subagent with worktree isolation writes inside its own worktree. The builder agent's definition refuses a push or a pull request and says why.
+- **Subagents commit, and the session pushes and opens the pull request (#131).** The orchestration defaults say a parent asked to run a denied action asks the user instead, and that a subagent with worktree isolation writes inside its own worktree. The builder agent's definition refuses a push or a pull request and says why. The harness survey records the denial as observed, with its cause inferred.
 - **A handed-off command comes with its directory (#141).** Before giving the user a command, the session leaves the worktree for the place the command must run and names the directory in the same message; a command that writes shared state says what its output looks like when it worked.
 - **Append-style entries are sequenced across open pull requests (#142).** A sentence in the docs rule "Ship the docs and changelog edit in the same PR as the change": the second pull request's entries land after the first merges and its description says they are still owed.
 
 ### Changed
-- **The orchestration text's line budget moves from 120 to 130.** The three additions above took the file to about 126 lines; the 9KB cap is unchanged.
+- **The orchestration text's line budget moves from 120 to 130.** The additions above took the file past 120 lines, and every session pays for that text; the 9KB cap is unchanged.
 
 ## [0.17.0] - 2026-10-03
 

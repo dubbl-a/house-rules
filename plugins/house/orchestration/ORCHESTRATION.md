@@ -69,10 +69,8 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Do inline: a one-line fix, a single grep, a single read, a question you can answer.
 - Batch related fixes into one brief so large files are read once.
-- Subagents commit; the session pushes and opens the pull request. A subagent holds its brief, not
-  the user's messages, so an outward action in a brief has no user intent behind it and is denied.
-  When an agent reports a denial and asks the parent to run the action, the parent asks the user
-  instead of running it.
+- Subagents commit; the session pushes and opens the pull request. When an agent reports a denial
+  and asks the parent to run the action, the parent asks the user instead of running it.
 - A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
   brief names a destination there and the session moves the artifact afterwards.
 - Workflows run only when the user asks; when they do, name the agent count, and treat the
