@@ -54,8 +54,11 @@
 #      --work-tree, where the git directory, the work tree, house.json and
 #      core.hooksPath can each come from somewhere else
 #   E. `git checkout -b/-B`, `git switch -c/-C/--create/--force-create`, and an
-#      `--orphan` checkout or switch, refused when the resolved target is the
-#      MAIN checkout of an adopted repo: a workspace rule (git state is shared
+#      `--orphan` checkout or switch, anywhere in the command, refused when
+#      the resolved target is the MAIN checkout of an adopted repo, unless the
+#      whole command is one of two exact shapes aimed at a linked worktree of
+#      that repo (`git -C <wt> ...`, or `cd <wt> && git ...`; see
+#      e_worktree_shape): a workspace rule (git state is shared
 #      across every peer session and the user), not a floor protection, so it
 #      is allowed in a linked worktree, where it does not touch the checkout
 #      anyone else is holding
@@ -1253,7 +1256,9 @@ push_decision() {
 # E. Branching in the main checkout: a workspace rule, not a floor protection
 # (git state is shared across every peer session and the user holding this
 # checkout), so it sits behind the same policy and deference gates as C and
-# only fires on the MAIN checkout, never in a linked worktree.
+# only fires on the MAIN checkout, never in a linked worktree. A command that
+# branches in a linked worktree from the main checkout is let through only in
+# the exact shapes e_worktree_shape reads (#112).
 worktree_create_deny() {
   deny "Refusing '$1': the main checkout is the one every peer session and the user hold. Branch in a worktree: git worktree add -b <branch> <path> origin/<default>, or the harness's worktree tool. (house rule: treat git state as shared across sessions)"
 }
@@ -1283,8 +1288,98 @@ worktree_branch_create_scan() {
     fi
   done <<<"$GV_ARGS"
   [[ -n "$flag" ]] || return 0
+  if [[ "${2:-}" == count ]]; then E_CREATES=$((E_CREATES + 1)); return 0; fi
   [[ "$MAIN_ROOT" == "$toplevel" ]] || return 0
   worktree_create_deny "git $verb $flag"
+}
+
+# True when the WHOLE command, read raw (not cmd_safe, whose -m strip can
+# swallow a separator), is one of the two shapes that branch
+# in a linked worktree, and nothing else: E then skips its refusal for this
+# candidate. Anything else scans every clause, whichever directory it names,
+# because a key read out of shell text can be steered (#112: a `cd` hidden in
+# a -m or -c value, a subshell, `cd -` or `popd` after a literal `cd`, a git
+# directory named by the environment).
+#   A. one clause: `git -C <literal path> [global options] checkout|switch ...`
+#   B. `cd [--] <literal path> && <clauses>`, every one of them a git command
+# In both, the command is plain text: no `$`, backtick, parenthesis, brace or
+# quote, no `;`, `|` or newline, and no `&` but the `&&` joins and a `>&` or
+# `&>` redirect (a bare `&` backgrounds what precedes it, so what follows runs
+# in the payload cwd). It has no other cd, pushd or popd, no other -C
+# (switch's -C included), no global option but the few that cannot move the
+# repository (-p, -P, --paginate, --no-pager, --no-replace-objects, the
+# pathspec switches, --no-optional-locks, --no-advice), no GIT_DIR=,
+# GIT_WORK_TREE=, GIT_COMMON_DIR=, --git-dir or --work-tree after the verb,
+# and at most one branch-creating checkout or
+# switch; and the path resolves to a linked worktree of THIS candidate's repo,
+# never its main checkout.
+E_CREATES=0
+e_worktree_shape() {
+  local re='^[[:space:]]*cd[[:space:]]+(--[[:space:]]+)?([^[:space:];&|<>]+)[[:space:]]*&&(.*)$'
+  local raw="$cmd" amp path='' rest shape clause toks=() n i k tok clauses=0 probe top common
+  case "$raw" in
+    *'$'*|*'`'*|*'('*|*')'*|*'{'*|*'}'*|*'"'*|*"'"*|*';'*|*'|'*|*$'\n'*|*$'\r'*) return 1 ;;
+  esac
+  amp="${raw//>&/}"; amp="${amp//&>/}"; amp="${amp//&&/}"
+  case "$amp" in *'&'*) return 1 ;; esac
+  if [[ "$raw" =~ $re ]]; then
+    shape=B; path="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
+  else
+    shape=A; rest="$raw"
+  fi
+  split_clauses "$rest"
+  while IFS= read -r clause; do
+    IFS=$' \t\n' read -r -a toks <<<"$clause"
+    n="${#toks[@]}"
+    [[ "$n" -gt 0 ]] || continue
+    clauses=$((clauses + 1))
+    [[ "${toks[0]}" == git ]] || return 1
+    i=1
+    if [[ "$shape" == A ]]; then
+      [[ "$clauses" -eq 1 && "$n" -gt 3 && "${toks[1]}" == -C ]] || return 1
+      path="${toks[2]}"; i=3
+    fi
+    while [[ "$i" -lt "$n" ]]; do
+      case "${toks[$i]}" in
+        -p|-P|--paginate|--no-pager|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-advice)
+          i=$((i + 1)) ;;
+        -*) return 1 ;;
+        *) break ;;
+      esac
+    done
+    if [[ "$shape" == A ]]; then
+      case "${toks[$i]:-}" in checkout|switch) ;; *) return 1 ;; esac
+    fi
+    for ((k = i; k < n; k++)); do
+      case "${toks[$k]}" in
+        # --ignore-other-worktrees (or any prefix git accepts for it) can
+        # reset the branch the main checkout has out from under it.
+        cd|pushd|popd|-C|GIT_DIR=*|GIT_WORK_TREE=*|GIT_COMMON_DIR=*|--git-dir*|--work-tree*|--ig*) return 1 ;;
+      esac
+    done
+  done <<<"$CLAUSES"
+  [[ "$clauses" -ge 1 ]] || return 1
+  path_is_literal "$path" || return 1
+  case "$path" in -*) return 1 ;; esac
+  E_CREATES=0
+  split_clauses "$raw"
+  while IFS= read -r clause; do
+    git_split "$clause" || continue
+    while :; do
+      case "$GV_VERB" in
+        checkout|switch) worktree_branch_create_scan "$GV_VERB" count ;;
+      esac
+      git_next || break
+    done
+  done <<<"$CLAUSES"
+  [[ "$E_CREATES" -le 1 ]] || return 1
+  path="${path/#\~/$HOME}"
+  probe=$(trap - ERR; git -C "${payload_cwd:-.}" -C "$path" rev-parse --show-toplevel --git-common-dir 2>/dev/null || true)
+  case "$probe" in *$'\n'*) ;; *) return 1 ;; esac
+  top="${probe%%$'\n'*}"; common="${probe#*$'\n'}"
+  case "$common" in /*/.git) ;; *) return 1 ;; esac
+  [[ "${common%/.git}" -ef "$MAIN_ROOT" ]] || return 1
+  [[ ! "$top" -ef "$MAIN_ROOT" ]]
 }
 
 # A, over the whole command, whichever directory each clause runs in. Runs in
@@ -1317,18 +1412,20 @@ run_branch_scans() {
   # E, over the WHOLE command (cmd_safe, not the blind-stripped CAND_TEXT: the
   # blind strip removes a bare `-c` for target resolution, which is also
   # switch's short create flag). Runs whatever this candidate's own clauses
-  # say, because branching in the main checkout is a workspace rule, not a
-  # target-directory question.
-  split_clauses "$cmd_safe"
-  while IFS= read -r clause; do
-    git_split "$clause" || continue
-    while :; do
-      case "$GV_VERB" in
-        checkout|switch) worktree_branch_create_scan "$GV_VERB" ;;
-      esac
-      git_next || break
-    done
-  done <<<"$CLAUSES"
+  # say, unless the whole command is one of the two exact shapes that branch
+  # in a linked worktree of this candidate's repo (e_worktree_shape).
+  if ! e_worktree_shape; then
+    split_clauses "$cmd_safe"
+    while IFS= read -r clause; do
+      git_split "$clause" || continue
+      while :; do
+        case "$GV_VERB" in
+          checkout|switch) worktree_branch_create_scan "$GV_VERB" ;;
+        esac
+        git_next || break
+      done
+    done <<<"$CLAUSES"
+  fi
 
   # B and C, over this candidate's clauses only. First pass: the clause that
   # creates a branch, if any.
