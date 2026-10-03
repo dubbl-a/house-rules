@@ -98,7 +98,7 @@ Send a refuter when a wrong change would cost something the gates cannot catch: 
 For a small text or mechanical change a gate covers, reading the diff and rerunning the tests yourself is usually enough.
 Keep reviewing while a round returns a must-fix and stop at the first round that returns none, scoping each later round to the last round's fixes and what they touched, since a verdict, not a count, says whether another round is worth it.
 Before a third round, tell the user what each round found, what the next will check, and why the rounds are converging; hand it to the user when a round's must-fixes sit inside the last round's fixes or one defect class keeps returning, because that points at the design, and let the user stop or extend review at any point.
-Delegate file-heavy investigation the same way, so only the summary reaches the main context; the full rule on a verify phase's UNVERIFIED lives in engineering.md.
+Delegate file-heavy investigation the same way, so only the summary reaches the main context; the full rule on a verify phase's UNVERIFIED lives in evals.md.
 Let the reviewer apply mechanical fixes in its own commit, and land judgment-level changes as proposals.
 Remember that a background review's applied fixes land outside the session's checkpoints, so git is the only way back.
 After an interrupt, work inline, and recover a killed fan-out's finished results from its transcripts rather than re-running it.

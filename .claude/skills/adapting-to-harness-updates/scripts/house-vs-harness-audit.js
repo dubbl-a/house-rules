@@ -94,7 +94,7 @@ Read these sources with WebFetch (try each URL; the docs site serves markdown wh
 For every distinct feature in this area return one fact: the feature name, what the harness does (behavior), what it does not do (limits), how it is enforced (advisory guidance in docs, warns, blocks, automatic, or none), and a citation (the exact URL or the CLI command). Be precise about scope: for example, if a feature applies only to files under .claude/worktrees/ or only to the auto-memory index, say so. Prefer the documentation's own words in the behavior field. Do not speculate and do not fill gaps from memory; if a page is unreachable, list it under unreachable. Aim for completeness within the area: a downstream judge will classify roughly a hundred house rules against these facts and can only use what you return.`
 }
 
-const MODULES = ['claude-code', 'docs', 'engineering', 'github', 'testing', 'database', 'deployment', 'data-pipelines', 'llm-output']
+const MODULES = ['claude-code', 'docs', 'engineering', 'github', 'testing', 'database', 'deployment', 'data-pipelines', 'llm-output', 'evals']
 const ITEMS = MODULES.map(m => ({ key: m, kind: 'module', path: `${REPO}/plugins/house/modules/${m}/rules/${m}.md` }))
 ITEMS.push({ key: 'mechanisms', kind: 'mechanisms', path: `${REPO}/README.md` })
 

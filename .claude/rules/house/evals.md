@@ -1,0 +1,83 @@
+---
+paths:
+  - plugins/house/evals/**
+---
+<!-- house-managed v0.15.2 module=evals source=modules/evals/rules/evals.md body-sha256=bdfef4c83f4b89dda54fb638e57eba1e4d19f7bd0a87aa5cb2cd1bd79a4f9a3a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
+# Evals
+
+How this repo measures: the eval tier and its graders, the answer key, the verdicts and numbers a measurement reports, and the session an instrument drives.
+
+## Split deterministic tests from model-behavior evals, and give each its own budget and cadence
+
+Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
+Keep the deterministic tier in the gate and run the eval tier nightly or on demand, because a paid, nondeterministic tier that can block a merge gets switched off the first week it is wrong for a reason nobody can reproduce.
+Give the eval tier its own budget using the runner's own controls rather than a promise: set the cost ceiling, which stops new runs once spent and exits with partial results while in-flight runs finish, and the threshold that exits non-zero when a case scores below it, then keep that tier out of the merge gate and on a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
+Anchor: `plugins/house/evals/`, whose cases run on demand under their own ceiling, beside `npm test` and `tests/hooks/run.sh`, which are the tiers the gate runs on every pull request.
+Receipts: `docs/handbook/evals.md#split-deterministic-tests-from-model-behavior-evals-and-give-each-its-own-budget-and-cadence`
+
+## Prove an eval can fail, then grade it with the cheapest grader that can
+
+The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
+Write the cases from failures you actually watched happen, before the prose, then write only enough rule text to pass them; building a few evaluations before documenting a procedure is claude-code.md's rule.
+Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded, and llm-output.md's deterministic backbone is the same rule one level up.
+Report the spread with the ratio and its sample, as the ratio rule below requires.
+Grade the grader too: have it flag an assertion too easy to satisfy, and read the transcripts before you trust the number, because an assertion nobody has read is not evidence that the eval can discriminate at all.
+Anchor: `plugins/house/evals/`, whose cases carry their own graders and thresholds, with the ablation pair at `plugins/house/evals/explicit-model-tier/` whose arms differ in one thing only.
+Receipts: `docs/handbook/evals.md#prove-an-eval-can-fail-then-grade-it-with-the-cheapest-grader-that-can`
+
+## Never let a gate mint the answer key it grades against
+
+Keep the answer key independent of the thing graded, because labels from the tool under test measure drift, not accuracy.
+Never hand-edit generated data to make its gate pass, pre-register a tuning sweep in the tool's own header first, audit the corpus assembly since a corpus missing its positives scores every candidate perfectly, treat a clean validation as the moment to check the key, and give no label source deference.
+Score a task taken from real use mechanically, by grounding and attribution checks with no hand-written key, and record whose words the question is, since a key minted for a real question is the gate grading its own guess.
+Anchor: every fixture row carries its label source, and the gate refuses a key written by the tool it grades (`node --test tests/`); the harness hides case definitions but never checks label provenance, so an independently sourced key is this repo's addition
+Receipts: `docs/handbook/evals.md#never-let-a-gate-mint-the-answer-key-it-grades-against`
+
+## Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
+
+Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
+Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
+Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early and omits a delta when its arms are not comparable, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
+Receipts: `docs/handbook/evals.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
+
+## Show the ratio and the sample, because one number is never the accuracy
+
+Publish a rate as a ratio with its sample size and its estimand attached, because the same share over a different denominator is a different claim.
+Never average disagreeing estimands or quote one conditional against another, filter before publishing a count, print the true total under any capped list, label a dataset a floor when amendments will move it, keep the caveat attached, prefer a measured floor and ceiling to a modelled point, and measure recall rather than assume it.
+Report an agent-driven eval as passes over runs, per model, from more than one run of each question, since a question that passes once and fails the next is an example, not a measurement.
+Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); the harness's eval runner repeats each case and reports a mean score, but a mean alone lets one set of runs read as near certain or near impossible, so attaching the sample and estimand to every rate is this repo's requirement
+Receipts: `docs/handbook/evals.md#show-the-ratio-and-the-sample-because-one-number-is-never-the-accuracy`
+
+## Make a measuring instrument reproducible
+
+Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
+Regenerate a fixture from its source under a seed instead of curating it, treat a holdout as spent once validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with its re-pull command, move the baseline in the change that moves the numbers with the why in the PR, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
+When the instrument drives an agent, pin the bare non-interactive invocation that skips ambient discovery, or where bare mode cannot authenticate the leanest invocation the login allows (the strict server-config flag, project-only setting sources, an explicit tool list, and the deny-by-default permission mode with an allowlist), and record the pricing basis beside any reported cost, since a rate or residency multiplier can move that figure without moving the bill.
+Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness advises pinning the model, can replay mock answers copied into its replay directory, and reports cost at list price, but leaves fixture sampling and the pricing basis free to move, so seeding the fixture and recording the pricing basis are this repo's addition
+Receipts: `docs/handbook/evals.md#make-a-measuring-instrument-reproducible`
+
+## Evaluate the path a session actually takes
+
+Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
+Tell the eval session about its environment in a system note rather than by editing the skill under test, since an instruction that is right for a normal session can send the eval elsewhere, and an edited skill is no longer the one being measured.
+Anchor: none (because which path is in use is read from session logs and habit, which no checker can look up); the harness's eval runner scores the case it is handed and never asks whether that case is the path in use.
+Receipts: `docs/handbook/evals.md#evaluate-the-path-a-session-actually-takes`
+
+## Deny the eval session what the project allows, and fail a run whose results contain the key
+
+Pass every project allow the eval does not itself grant as a deny, since project settings reach a session that loads them and a broad allow written for daily work is an open door in a measurement.
+Detect answer-key contamination from tool results, not only tool inputs: a search that names no path gets past every path deny, so a run whose tool output contains the key fails, closed.
+Make it impossible for a test of the instrument to start a real session, by replacing the spawn with one that throws, since a test that takes the normal path by mistake spends money and leaves transcripts that read as measurements.
+Keep every transcript and re-score from the saved ones when scoring changes, writing beside the original report and never over it, so a scoring fix costs no sessions and the earlier number stays comparable.
+Anchor: the instrument's own tests replace the session spawn with a throwing stub, and its scorer fails a run on the key in any tool result; the harness denies by path and tool input only and keeps run output without a re-score path, so the result check and the re-score are this repo's addition
+Receipts: `docs/handbook/evals.md#deny-the-eval-session-what-the-project-allows-and-fail-a-run-whose-results-contain-the-key`
+
+## Don't
+
+- Don't gate a pull request on a tier that costs money and answers differently every run.
+- Don't trust an eval that scores the same with the rule as without it.
+- Don't reach for a model judge where a deterministic grader would settle it.
+- Don't score a path nobody takes, and don't let a test of the instrument start a real session.
+
+Anchor: each prohibition is the negative of a rule above and inherits that rule's enforcement.

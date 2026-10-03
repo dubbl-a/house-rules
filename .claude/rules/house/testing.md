@@ -3,11 +3,11 @@ paths:
   - tests/**
   - .github/workflows/**
 ---
-<!-- house-managed v0.15.2 module=testing source=modules/testing/rules/testing.md body-sha256=b11eeda71ef1d45e33c3161f4ac348c8dc8da41d8f7f98b2e4c58aea1d9c543f DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.15.2 module=testing source=modules/testing/rules/testing.md body-sha256=5fc4b71f603a1a6bebbc219caa6a57662493393848083871bbfea1359db3ed24 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
-These rules cover the checks a repo runs on itself: the suite, the gates that guard the workflow, the snapshots that catch drift, the evals that measure a rule's effect, and the controls that prove any of it still works. Each rule names what enforces it, or says plainly that nothing does.
+These rules cover the checks a repo runs on itself: the suite, the gates that guard the workflow, the snapshots that catch drift, and the controls that prove any of it still works. Each rule names what enforces it, or says plainly that nothing does. The evals that measure a rule's effect, and the measurement rules they share, live in evals.md.
 
 ## Give the agent a check it can run before you walk away
 
@@ -24,14 +24,6 @@ Route what the gate cannot afford, the tests wanting a database, a network, or a
 Keep the pre-commit hook faster still and push everything else to CI, because a slow hook gets bypassed and then disabled.
 Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated.
 Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-route-what-the-pr-gate-cannot-afford`
-
-## Split deterministic tests from model-behavior evals, and give each its own budget and cadence
-
-Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
-Keep the deterministic tier in the gate and run the eval tier nightly or on demand, because a paid, nondeterministic tier that can block a merge gets switched off the first week it is wrong for a reason nobody can reproduce.
-Give the eval tier its own budget using the runner's own controls rather than a promise: set the cost ceiling, which stops new runs once spent and exits with partial results while in-flight runs finish, and the threshold that exits non-zero when a case scores below it, then keep that tier out of the merge gate and on a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
-Anchor: `plugins/house/evals/`, whose cases run on demand under their own ceiling, beside `npm test` and `tests/hooks/run.sh`, which are the tiers the gate runs on every pull request.
-Receipts: `docs/handbook/testing.md#split-deterministic-tests-from-model-behavior-evals-and-give-each-its-own-budget-and-cadence`
 
 ## Test the guard itself, as its own CI step
 
@@ -57,16 +49,6 @@ Plant the violation the gate is meant to catch instead of describing it, and hav
 Proving a check can fail before trusting that it passed is the general form, and it lives in engineering.md; this rule is the suite-level obligation to carry both controls as committed cases.
 Anchor: `node --test tests/`, where each checker family pairs a well-formed fixture with a planted-violation fixture, plus the canary self-test github.md names for the secret scanner, with the eval case `positive-and-negative-control`.
 Receipts: `docs/handbook/testing.md#ship-every-gate-with-a-positive-control-and-a-negative-control`
-
-## Prove an eval can fail, then grade it with the cheapest grader that can
-
-The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
-Write the cases from failures you actually watched happen, before the prose, then write only enough rule text to pass them; building a few evaluations before documenting a procedure is claude-code.md's rule.
-Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded, and llm-output.md's deterministic backbone is the same rule one level up.
-Report the spread with the ratio and its sample the way engineering.md requires.
-Grade the grader too: have it flag an assertion too easy to satisfy, and read the transcripts before you trust the number, because an assertion nobody has read is not evidence that the eval can discriminate at all.
-Anchor: `plugins/house/evals/`, whose cases carry their own graders and thresholds, with the ablation pair at `plugins/house/evals/explicit-model-tier/` whose arms differ in one thing only.
-Receipts: `docs/handbook/testing.md#prove-an-eval-can-fail-then-grade-it-with-the-cheapest-grader-that-can`
 
 ## Read the snapshot diff before accepting it, because a snapshot is a drift gate
 
@@ -95,7 +77,7 @@ Receipts: `docs/handbook/testing.md#treat-coverage-as-a-search-light-never-as-a-
 
 Name each test file after the module it mirrors and keep the tree flat enough to scan, because a reader who cannot find the test for a file assumes there is none and writes a second one.
 Keep each fixture beside the test that consumes it, and let a test build its own throwaway workspace instead of sharing one, so a case cannot inherit state from the case before it.
-Regenerate a fixture from its source under a seed rather than curating it by hand; the rule for making a measuring instrument reproducible lives in engineering.md.
+Regenerate a fixture from its source under a seed rather than curating it by hand; the rule for making a measuring instrument reproducible lives in evals.md.
 Anchor: `tests/` mirroring the checker one file per family, with the shared sandbox helper beside them and every case building its own throwaway repo.
 Receipts: `docs/handbook/testing.md#mirror-the-module-layout-in-the-test-tree-and-keep-each-fixture-beside-its-test`
 
@@ -118,13 +100,10 @@ Receipts: `docs/handbook/testing.md#keep-a-demoted-check-running-reported-and-co
 
 - Don't hand a change back for review with no command the reviewer can run.
 - Don't put a test needing a credential, a database, or a network in the pull-request gate.
-- Don't gate a pull request on a tier that costs money and answers differently every run.
 - Don't leave the guard that protects the workflow as the one thing with no test.
 - Don't assert against a value the test computed the way the code computes it.
 - Don't reach past the entry point and call the result an integration test.
 - Don't call a suite of passing cases proof that a check can still fail.
-- Don't trust an eval that scores the same with the rule as without it.
-- Don't reach for a model judge where a deterministic grader would settle it.
 - Don't accept a snapshot whose diff you have not read.
 - Don't wrap a flaky test in a retry, and don't delete it quietly.
 - Don't set a coverage number as a target, and don't read the summary figure instead of the branches.

@@ -117,6 +117,14 @@
         "gateGlobs": []
       }
     },
+    "evals": {
+      "enabled": true,
+      "config": {
+        "evalGlobs": [
+          "plugins/house/evals/**"
+        ]
+      }
+    },
     "github": {
       "enabled": true,
       "config": {
