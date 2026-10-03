@@ -1,6 +1,6 @@
 ---
 name: bootstrap
-description: Sets up house in a repo for the first time, proposing a house.json manifest, vendored rules, and a CLAUDE.md skeleton, dry run by default. Use for "bootstrap house" or "adopt house here".
+description: Sets up house in a repo for the first time, proposing a house.json manifest, vendored rules, and a CLAUDE.md skeleton, dry run by default; in an adopted repo, turns modules on and walks their at-adoption checklist. Use for "bootstrap house", "adopt house here", or "enable the security module".
 disable-model-invocation: true
 ---
 
@@ -31,7 +31,37 @@ Before probing anything, check whether `house.json` already exists at the repo r
 
 If it exists, refuse. Print that the repo already has a manifest and point to `/house-rules:sync`
 instead. This holds in dry run too: bootstrap never drafts a second proposal over a first one,
-even one nobody applied yet. A repo gets exactly one bootstrap.
+even one nobody applied yet. A repo gets exactly one bootstrap. The one exception is a request to
+turn on modules, which takes the mode below and never re-proposes the manifest.
+
+## Enable modules in an adopted repo
+
+When the person asks to turn on one or more modules in a repo that already has `house.json`, run
+the plan first, for every module named, in one run:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house enable <module...> --repo <path>
+```
+
+It writes nothing. It prints the `house.json` change, the files render would write, the paths
+each module's slots resolve to here (a default path matching nothing is dropped), the
+at-adoption checklist, and the load cost, including any path pushed over the co-load ceiling.
+Show all of it and wait for the person to say apply it. On approval, run the same command with
+`--apply`: it writes `house.json`, renders once, and runs `.house/check.mjs`. Report the
+checker's summary as printed, findings included.
+
+Then walk the checklist one step at a time. Each step is a repository or account setting no
+checker can read, so ask the person whether it is done, and help with the step when it is not.
+When the person says a step is done, record it:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house confirm <module> <step-id> --repo <path>
+```
+
+It writes the step id and today's date beside the module's entry in `house.json`, and keeps the
+first date if the step was already confirmed. It refuses while `.house/check.mjs` is not this
+plugin's copy, since an older checker fails CI on the record: run `/house-rules:sync` first. Do not confirm a step on the person's behalf. A
+step left open is fine: `house doctor` lists every step of an enabled module not yet confirmed.
 
 ## Probe the repo
 
@@ -139,6 +169,7 @@ checks. None of that is this skill's job to do for them; bootstrap stops at rend
 
 - Don't write `house.json` or any rendered file during the dry run. Dry run only prints.
 - Don't overwrite or append to an existing CLAUDE.md, ever, under any flag.
-- Don't re-propose over a repo that already has `house.json`. Send it to `/house-rules:sync`.
+- Don't re-propose over a repo that already has `house.json`. Send it to `/house-rules:sync`,
+  or to `house enable` when the ask is to turn modules on.
 - Don't guess a module on or off when the probe is ambiguous. Propose `"detect"` and let the
   repo decide.

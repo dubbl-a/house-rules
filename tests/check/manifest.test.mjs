@@ -424,3 +424,24 @@ test('manifest: `targets` is validated against the schema enum; claude-code must
     assert.match(out, re);
   }
 });
+
+// #135: dated at-adoption confirmations ride beside the module's entry.
+test('manifest: a well-formed modules.<name>.confirmed passes', () => {
+  const modules = { github: { enabled: true, config: {}, confirmed: { 'push-protection': '2026-10-03' } } };
+  const { code, out } = run(sandbox({ 'house.json': houseJson({ modules }) }), ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /confirmed/);
+});
+
+test('manifest: a malformed confirmed record is a finding', () => {
+  for (const [confirmed, re] of [
+    [{ 'push-protection': '3 Oct 2026' }, /modules\.github\.confirmed\["push-protection"\] must be a date \(YYYY-MM-DD\)/],
+    [{ 'push-protection': true }, /must be a date/],
+    [['push-protection'], /modules\.github\.confirmed must be an object/],
+  ]) {
+    const modules = { github: { enabled: true, config: {}, confirmed } };
+    const { code, out } = run(sandbox({ 'house.json': houseJson({ modules }) }), ['--only=manifest']);
+    assert.equal(code, 1, `${JSON.stringify(confirmed)}: ${out}`);
+    assert.match(out, re);
+  }
+});

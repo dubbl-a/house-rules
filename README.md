@@ -105,6 +105,9 @@ default for third-party marketplaces).
 Inside the target repo, run `/house-rules:bootstrap`: it probes the repo, proposes a `house.json`,
 and on approval writes the vendored rules, templates, `.house/check.mjs`, `.house/lock.json`, and
 `.house/INDEX.md`. Run `/house-rules:sync` after this package or the repo's `house.json` changes.
+To turn modules on later, `house enable <module...>` prints one plan (paths, files, load cost, and
+the module's at-adoption checklist) and writes, renders, and checks only with `--apply`;
+`house confirm <module> <step-id>` records each checklist step as done, with the date.
 Wire the checker in by hand: add `"check:house": "node .house/check.mjs"` and
 `"check:docs": "node .house/check.mjs --only=drift,todo"` to `package.json`'s scripts, and run
 `node .house/check.mjs` as a CI step. `house.json` records which modules are on, a dated ledger of

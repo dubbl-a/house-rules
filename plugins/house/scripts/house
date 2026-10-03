@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// house CLI: init | render | check | doctor
+// house CLI: init | render | enable | check | doctor
 //
 // Single file, node builtins + `git` only (no npm dependencies). Runs as an
 // ES module: the real install location (plugins/house/scripts/house) sits
@@ -14,6 +14,8 @@
 //
 // house <init|render|check|doctor> [--repo <path>] [--apply]
 //       [--force-managed <path>] [--json]
+// house enable <module...> [--repo <path>] [--apply]
+// house confirm <module> <step-id> [--repo <path>]
 //
 // Repo root: `git rev-parse --show-toplevel` from cwd, or the literal path
 // given to --repo (resolved against cwd, not re-resolved through git --
@@ -22,14 +24,19 @@
 // Module SOURCES always resolve relative to *this script's own location*,
 // never to the target --repo: <scriptdir>/../modules/*/module.json, each
 // shaped { name, default: "on"|"detect"|"off", rules: [...], files: [...],
-// configSlots: [...], defaultPaths: [...], detectPaths?: [...] }. The plugin version comes from
+// configSlots: [...], defaultPaths: [...], detectPaths?: [...],
+// atAdoption?: [{ id, step }] }. The plugin version comes from
 // <scriptdir>/../.claude-plugin/plugin.json.
 //
 // Exit codes: init -- 1 when house.json already exists, 2 on a fatal
 // packaging error (unreadable plugin.json), 0 otherwise. render -- 2 when
 // house.json is absent/unparseable, 1 when any managed target would be
-// (or was) refused, 0 otherwise. check -- whatever the underlying check.mjs
-// exits. doctor -- always 0 (diagnostic only).
+// (or was) refused, 0 otherwise. enable -- 2 when house.json is absent or
+// unusable or a name is not a module, 1 when render would refuse, otherwise
+// render's exit when it fails and then the vendored checker's. confirm -- 2
+// when it refuses (no house.json, unknown or disabled module, undeclared
+// step), 0 otherwise. check --
+// whatever the underlying check.mjs exits. doctor -- always 0 (diagnostic only).
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync,
@@ -1703,6 +1710,363 @@ function cmdRender(args) {
   process.exit(0);
 }
 
+// ── enable (#135) ────────────────────────────────────────────────────────
+//
+// Turns modules on in a repo that already has a house.json. One run takes
+// several modules and prints one plan, since enabling them one at a time hides
+// how their rules stack on the same paths. Nothing is written without --apply;
+// with it, house.json is written, render runs once, and the vendored checker
+// runs after it.
+
+// A module's at-adoption steps: repository or account state its rules defer
+// to adoption, which no checker can read. module.json's atAdoption array of
+// { id, step }; a malformed entry is skipped rather than guessed at.
+function atAdoptionSteps(json) {
+  return arr(json && json.atAdoption).filter((s) => isPlainObject(s) && isNonEmptyString(s.id) && isNonEmptyString(s.step));
+}
+
+// The steps a repo has confirmed, read from beside the module's entry as
+// modules.<name>.confirmed: { "<step-id>": "YYYY-MM-DD" }, which `house
+// confirm` writes. An entry without a date reads as unconfirmed. The checker
+// validates only the shape, since an adopter's CI has no module.json to read
+// the declared ids from; confirm refuses an undeclared id, and doctor names
+// one left behind after a module dropped a step.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function confirmedSteps(houseData, name) {
+  const entry = isPlainObject(houseData) && isPlainObject(houseData.modules) ? houseData.modules[name] : null;
+  const c = isPlainObject(entry) && isPlainObject(entry.confirmed) ? entry.confirmed : {};
+  return Object.fromEntries(Object.entries(c).filter(([, d]) => typeof d === 'string' && DATE_RE.test(d)));
+}
+
+function unconfirmedAtAdoption(houseData, modules) {
+  const out = [];
+  for (const m of modules) {
+    if (m.error) continue;
+    const name = moduleName(m);
+    if (!moduleEnabled(houseData, name)) continue;
+    const done = confirmedSteps(houseData, name);
+    const declared = atAdoptionSteps(m.json).map((s) => s.id);
+    const open = declared.filter((id) => !(id in done));
+    const undeclared = Object.keys(done).filter((id) => !declared.includes(id));
+    if (open.length || undeclared.length) out.push({ module: name, unconfirmed: open, undeclared });
+  }
+  return out;
+}
+
+// A checker vendored before #135 refuses the `confirmed` key as unknown, so a
+// record written under it fails the adopter's CI until the next sync. The test
+// is the bytes: the vendored .house/check.mjs against this plugin's payload,
+// which knows the key. A version pin can say current while the checker is
+// not (a hand-bumped pin, a half-finished sync), and the file itself cannot.
+// A copy newer than this plugin also reads as not current, so it fails toward
+// refusing.
+function vendoredCheckerIsCurrent(repoRoot) {
+  try {
+    return readFileSync(path.join(repoRoot, '.house', 'check.mjs'), 'utf8') === readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8');
+  } catch { return false; }
+}
+const SYNC_FIRST = 'run /house-rules:sync (or `house render --apply`) so .house/check.mjs is this plugin\'s, since an older vendored checker reports `confirmed` as an unknown key and fails CI';
+
+// Today in the local calendar, the date a person confirming a step would write.
+function todayIso() {
+  const d = new Date();
+  return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+}
+
+function cmdConfirm(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (!existsSync(housePath)) {
+    console.error(`house confirm: ${housePath} not found, so this repo has not adopted house. Run /house-rules:bootstrap first.`);
+    process.exit(2);
+  }
+  let houseData;
+  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+  catch (e) {
+    console.error(`house confirm: ${housePath} is not valid JSON (${e.message})`);
+    process.exit(2);
+  }
+  if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) {
+    console.error(`house confirm: ${housePath} has no usable "modules" object`);
+    process.exit(2);
+  }
+  const [name, id] = args.names;
+  if (!name || !id || args.names.length !== 2) {
+    console.error('usage: house confirm <module> <step-id> [--repo <path>]');
+    process.exit(2);
+  }
+  const mod = findModules().find((m) => !m.error && moduleName(m) === name);
+  if (!mod) {
+    console.error(`house confirm: \`${name}\` is not a module, so nothing was written.`);
+    process.exit(2);
+  }
+  if (!moduleEnabled(houseData, name)) {
+    console.error(`house confirm: \`${name}\` is not enabled in house.json, so it has no steps to confirm. Turn it on with \`house enable ${name}\` first.`);
+    process.exit(2);
+  }
+  const declared = atAdoptionSteps(mod.json).map((s) => s.id);
+  if (!declared.includes(id)) {
+    console.error(`house confirm: \`${id}\` is not an at-adoption step of \`${name}\`, so nothing was written. Its steps: ${declared.length ? declared.join(', ') : '(none declared)'}.`);
+    process.exit(2);
+  }
+  const entry = houseData.modules[name];
+  // A record this command cannot read is somebody's hand edit: refuse rather
+  // than replace it. A malformed date on another step is left as it is.
+  if ('confirmed' in entry && !isPlainObject(entry.confirmed)) {
+    console.error(`house confirm: modules.${name}.confirmed is not an object (it is ${JSON.stringify(entry.confirmed)}), so nothing was written. Make it {"<step-id>": "YYYY-MM-DD"} by hand, or delete it, then re-run.`);
+    process.exit(2);
+  }
+  const existing = isPlainObject(entry.confirmed) ? entry.confirmed : {};
+  const prior = confirmedSteps(houseData, name)[id];
+  if (prior) {
+    console.log(`${name} step \`${id}\` was already confirmed on ${prior}; the date is kept and nothing was written.`);
+    process.exit(0);
+  }
+  if (id in existing) {
+    console.error(`house confirm: modules.${name}.confirmed["${id}"] holds ${JSON.stringify(existing[id])}, which is not a date (YYYY-MM-DD), so nothing was written. Fix or delete it by hand, then re-run.`);
+    process.exit(2);
+  }
+  if (!vendoredCheckerIsCurrent(repoRoot)) {
+    console.error(`house confirm: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
+    process.exit(2);
+  }
+  entry.confirmed = { ...existing, [id]: todayIso() };
+  writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
+  console.log(`Wrote modules.${name}.confirmed[${JSON.stringify(id)}] = "${entry.confirmed[id]}" to ${housePath}`);
+  for (const [other, v] of Object.entries(existing)) {
+    if (typeof v !== 'string' || !DATE_RE.test(v)) console.log(`  left \`${other}\` as it was (${JSON.stringify(v)}); the checker reports it until it is a date or removed`);
+  }
+  process.exit(0);
+}
+
+// Co-load, counted the way the checker's coload family counts it
+// (payload/check.mjs checkCoload): every tracked .claude/rules/**.md loads on
+// the paths its `paths:` globs match, a rule with no `paths:` loads on every
+// path, and lines exclude frontmatter. The vendored half comes from a render
+// plan instead of disk, so a plan can be costed before anything is written.
+// The frontmatter reader is check.mjs's parseRuleFrontmatterPaths.
+function ruleFrontmatterGlobs(raw) {
+  const lines = raw.split('\n');
+  const closeIdx = frontmatterCloseIndex(lines);
+  if (closeIdx <= 0) return [];
+  const globs = [];
+  let inPathsList = false;
+  for (let i = 1; i < closeIdx; i++) {
+    const l = lines[i];
+    if (/^paths\s*:\s*$/.test(l)) { inPathsList = true; continue; }
+    if (inPathsList && /^[a-zA-Z]/.test(l)) inPathsList = false;
+    if (!inPathsList) continue;
+    const m = l.match(/^\s*-\s*['"]?([^'"]+?)['"]?\s*$/);
+    if (m) globs.push(m[1]);
+  }
+  return globs;
+}
+
+function coloadRules(repoRoot, tracked, plan) {
+  const own = tracked.filter((f) => /^\.claude\/rules\/.*\.md$/.test(f) && !f.startsWith(VENDORED_RULE_PREFIX)).map((f) => {
+    let raw = '';
+    try { raw = readFileSync(path.join(repoRoot, f), 'utf8'); } catch { /* tracked but gone: counts as empty */ }
+    const globs = ruleFrontmatterGlobs(raw);
+    return { file: f, module: null, globs, lines: countLinesExcludingFrontmatter(raw) };
+  });
+  const vendored = plan.filter((p) => p.target.kind === 'rule').map((p) => ({
+    file: p.target.path, module: p.target.module, globs: p.target.globs, lines: countLinesExcludingFrontmatter(p.target.content),
+  }));
+  return [...own, ...vendored].map((r) => ({ ...r, res: r.globs.map(globToRegExp) }));
+}
+
+// path -> the rules that load on it, for every tracked path at least one rule reaches.
+function coloadByPath(tracked, rules) {
+  const out = new Map();
+  for (const p of tracked) {
+    const matched = rules.filter((r) => r.globs.length === 0 || r.res.some((re) => re.test(p)));
+    if (matched.length) out.set(p, matched);
+  }
+  return out;
+}
+
+function coloadCeiling(houseData) {
+  const docs = isPlainObject(houseData.modules) && isPlainObject(houseData.modules.docs) && isPlainObject(houseData.modules.docs.config) ? houseData.modules.docs.config : {};
+  return Number.isFinite(docs.maxCoLoadLines) ? docs.maxCoLoadLines : SCALAR_SLOT_DEFAULTS.maxCoLoadLines;
+}
+
+function loadCostLines(repoRoot, beforePlan, afterPlan, names, ceiling) {
+  const tracked = gitLsFiles(repoRoot);
+  const sum = (rules) => rules.reduce((s, r) => s + r.lines, 0);
+  const before = coloadByPath(tracked, coloadRules(repoRoot, tracked, beforePlan));
+  const after = coloadByPath(tracked, coloadRules(repoRoot, tracked, afterPlan));
+  const lines = [`Load cost (lines of rule text that load together on a path; co-load ceiling ${ceiling}):`];
+  for (const name of names) {
+    const own = [...after.values()].flat().filter((r) => r.module === name);
+    const reached = [...after.values()].filter((rules) => rules.some((r) => r.module === name)).length;
+    const ruleLines = [...new Map(own.map((r) => [r.file, r.lines])).values()].reduce((s, n) => s + n, 0);
+    lines.push(`  ${name}: +${ruleLines} lines on ${reached} tracked path(s)`);
+  }
+  // One line per distinct set of rules a new module joins, like the checker's
+  // grouping, so one collision reads once rather than once per file.
+  const groups = new Map();
+  for (const [p, rules] of after) {
+    const added = rules.filter((r) => names.includes(r.module));
+    if (!added.length) continue;
+    const key = rules.map((r) => r.file).sort().join('\n');
+    if (!groups.has(key)) groups.set(key, { paths: [], from: sum(before.get(p) || []), to: sum(rules), added });
+    groups.get(key).paths.push(p);
+  }
+  for (const g of [...groups.values()].sort((a, b) => b.to - a.to)) {
+    const more = g.paths.length > 1 ? ` and ${g.paths.length - 1} more path(s)` : '';
+    lines.push(`  ${g.paths[0]}${more}: ${g.from} -> ${g.to} lines (${g.added.map((r) => `${r.module} +${r.lines}`).join(', ')})`);
+  }
+  const over = [...after].filter(([, rules]) => sum(rules) > ceiling);
+  if (!over.length) {
+    lines.push(`  no path exceeds the co-load ceiling of ${ceiling}`);
+  } else {
+    const worst = over.sort(([, a], [, b]) => sum(b) - sum(a))[0];
+    lines.push(`  ${over.length} path(s) would exceed the co-load ceiling of ${ceiling}, worst ${worst[0]} at ${sum(worst[1])} lines from ${worst[1].map((r) => `${r.file} (${r.lines})`).join(', ')}; the checker's coload family fails this. Narrow the module's path slot in house.json, or leave it off.`);
+  }
+  return lines;
+}
+
+function cmdEnable(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (!existsSync(housePath)) {
+    console.error(`house enable: ${housePath} not found, so this repo has not adopted house. Run /house-rules:bootstrap first (or \`house init --apply\` then \`house render --apply\`); enable turns modules on in a repo that already has a house.json.`);
+    process.exit(2);
+  }
+  let houseData;
+  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+  catch (e) {
+    console.error(`house enable: ${housePath} is not valid JSON (${e.message})`);
+    process.exit(2);
+  }
+  if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) {
+    console.error(`house enable: ${housePath} has no usable "modules" object`);
+    process.exit(2);
+  }
+  if (!args.names.length) {
+    console.error('usage: house enable <module...> [--repo <path>] [--apply]');
+    process.exit(2);
+  }
+  const modules = findModules();
+  const byName = new Map(modules.filter((m) => !m.error).map((m) => [moduleName(m), m]));
+  const unknown = args.names.filter((n) => !byName.has(n));
+  if (unknown.length) {
+    console.error(`house enable: ${unknown.map((n) => `\`${n}\``).join(', ')} ${unknown.length === 1 ? 'is not a module' : 'are not modules'}, so nothing was planned or written. Modules: ${[...byName.keys()].join(', ')}.`);
+    process.exit(2);
+  }
+  const badTargets = targetsProblem(houseData);
+  if (badTargets) {
+    console.error(`house enable: ${housePath}: ${badTargets}. Fix it first; render refuses this value.`);
+    process.exit(2);
+  }
+
+  const names = [...new Set(args.names)];
+  for (const n of names.filter((x) => moduleEnabled(houseData, x))) console.log(`module \`${n}\` is already on in house.json; nothing to change for it.`);
+  const toEnable = names.filter((n) => !moduleEnabled(houseData, n));
+  if (!toEnable.length) process.exit(0);
+
+  // Config is proposed the way init proposes it: an existing entry keeps its
+  // config, docs gets its probe of this repo, and every other module gets {},
+  // so its declared slot defaults govern and render drops any default path
+  // that matches nothing here.
+  const proposed = JSON.parse(JSON.stringify(houseData));
+  for (const n of toEnable) {
+    const prev = isPlainObject(proposed.modules[n]) ? proposed.modules[n] : null;
+    const config = prev && isPlainObject(prev.config) ? prev.config : (n === 'docs' ? docsConfigFromProbe(repoRoot) : {});
+    proposed.modules[n] = { ...(prev || {}), enabled: true, config };
+  }
+
+  // The same plan render builds, for the manifest as it is and as proposed.
+  const pluginVersion = readPluginVersion();
+  const priorLockJson = loadPriorLockJson(repoRoot);
+  const planFor = (data) => {
+    const scaffoldRecord = priorScaffoldRecord(priorLockJson, SCAFFOLDS, data, repoRoot);
+    const migration = planOldPreCommitMigration(repoRoot, data, modules, loadPriorLock(repoRoot));
+    const migrations = migration ? [migration] : [];
+    const built = buildRenderPlan(repoRoot, data, modules, pluginVersion, null, scaffoldRecord, false, new Set(migrations.map((m) => m.from)));
+    return { ...built, scaffoldRecord, migrations };
+  };
+  const before = planFor(houseData);
+  const after = planFor(proposed);
+
+  console.log(`house enable: plan for ${toEnable.join(', ')}${args.apply ? '' : ' (nothing is written without --apply)'}`);
+  console.log('\nhouse.json:');
+  for (const n of toEnable) {
+    const prev = houseData.modules[n];
+    console.log(prev === undefined ? `-   "${n}": (no entry, which render reads as off)` : `-   "${n}": ${JSON.stringify(prev)}`);
+    console.log(`+   "${n}": ${JSON.stringify(proposed.modules[n])}`);
+  }
+
+  console.log('\nPaths (each module\'s slots as render resolves them in this repo):');
+  for (const n of toEnable) {
+    const m = byName.get(n);
+    const cfg = { ...slotDefaults(m.json), ...proposed.modules[n].config };
+    const raw = expandPaths(m.json.defaultPaths, cfg);
+    const kept = [...new Set(after.plan.filter((p) => p.target.kind === 'rule' && p.target.module === n).flatMap((p) => p.target.globs))];
+    const dropped = raw.filter((g) => !kept.includes(g));
+    console.log(`  ${n}: ${kept.length ? kept.join(', ') : '(none)'}${dropped.length ? `; dropped, matching nothing here: ${dropped.join(', ')}` : ''}`);
+    if (!kept.length && arr(m.json.rules).length) {
+      const slots = arr(m.json.defaultPaths).filter((p) => typeof p === 'string' && p.startsWith('$')).map((p) => `modules.${n}.config.${p.slice(1)}`);
+      console.log(`  warning: ${n} would vendor zero rules here, so after --apply the checker reports \`module ${n} is enabled but vendored zero rules\`. ${slots.length ? `Set ${slots.join(' or ')} in house.json to a path this repo has` : 'Its paths are fixed and none exists here, so leave it off'}.`);
+    }
+  }
+  const priorWarnings = new Set(before.moduleWarnings);
+  for (const w of after.moduleWarnings.filter((x) => !priorWarnings.has(x))) console.log(`warning: ${w}`);
+
+  console.log('\nFiles render would write:');
+  for (const m of after.migrations) console.log(migrationLine(m, false));
+  const changed = after.plan.filter((p) => {
+    if (p.status !== 'clean') return true;
+    try { return readFileSync(path.join(repoRoot, p.target.path), 'utf8') !== p.target.content; } catch { return true; }
+  });
+  for (const p of changed) console.log(`${(STATUS_LABEL[p.status] || p.status).padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
+  for (const s of SCAFFOLDS) {
+    if (!toEnable.includes(s.module) || !scaffoldApplies(s, repoRoot) || existsSync(path.join(repoRoot, s.dest))) continue;
+    if (after.scaffoldRecord.has(s.tmpl) || !existsSync(path.join(__dirname, '..', 'templates', s.tmpl))) continue;
+    console.log(`${'scaffold'.padEnd(15)} ${s.dest}  (one-time, yours to edit)`);
+  }
+  for (const s of after.skips.filter((x) => toEnable.includes(x.module))) console.log(`${'skip'.padEnd(15)} ${s.path}  (module: ${s.module}) -- ${s.reason}`);
+  console.log('  and .house/lock.json and .house/INDEX.md, rewritten from the plan');
+
+  console.log('\nAt-adoption checklist (repository or account settings no checker can read; confirm each by hand):');
+  for (const n of toEnable) {
+    const steps = atAdoptionSteps(byName.get(n).json);
+    console.log(`  ${n}:${steps.length ? '' : ' none declared'}`);
+    for (const s of steps) console.log(`    [ ] ${s.id}: ${s.step}`);
+  }
+
+  console.log('');
+  for (const line of loadCostLines(repoRoot, before.plan, after.plan, toEnable, coloadCeiling(proposed))) console.log(line);
+
+  const refused = after.plan.some((p) => p.status === 'refuse') || (after.blockRemoval && after.blockRemoval.status === 'refuse');
+  if (refused) {
+    console.error('\nhouse enable: render would refuse a managed file above (REFUSE), so nothing was written. Run `house render` to read why, resolve it, then re-run enable.');
+    process.exit(1);
+  }
+  if (!args.apply) {
+    console.log('\nNothing written. Re-run with --apply to write house.json, render once, and run the vendored checker.');
+    process.exit(0);
+  }
+
+  writeFileSync(housePath, `${JSON.stringify(proposed, null, 2)}\n`, 'utf8');
+  console.log(`\nWrote ${housePath}`);
+  // Captured and re-printed rather than inherited, so the child's output
+  // lands in order with this process's own lines on a pipe.
+  const relay = (res) => { process.stdout.write(res.stdout || ''); process.stderr.write(res.stderr || ''); };
+  console.log(`Rendering once for ${toEnable.join(', ')}:`);
+  const render = spawnSync(process.execPath, [__filename, 'render', '--repo', repoRoot, '--apply'], { encoding: 'utf8' });
+  relay(render);
+  if (render.status !== 0) {
+    console.error(`house enable: render exited ${render.status}, after house.json was written. Fix what it printed, then \`house render --apply\`.`);
+    process.exit(render.status === null ? 1 : render.status);
+  }
+  console.log('\nChecker (.house/check.mjs, as CI runs it):');
+  const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
+  relay(check);
+  console.log('\nNext: walk the at-adoption checklist above, recording each step done with `house confirm <module> <step-id>`; `house doctor` lists the steps not yet confirmed.');
+  process.exit(check.status === null ? 1 : check.status);
+}
+
 // ── doctor ───────────────────────────────────────────────────────────────
 
 function probeJqOnPath() {
@@ -1838,7 +2202,10 @@ function cmdDoctor(args) {
   // #18: the fixed render destinations, every module's managed-file dest, and
   // whatever the lock says was written, in one git call, so a repo that added
   // the ignore after render is caught too.
-  const ignoredDests = probeIgnoredHouseDests(repoRoot, [...moduleFileDests(findModules()), ...loadPriorLock(repoRoot).keys()]);
+  const modules = findModules();
+  const ignoredDests = probeIgnoredHouseDests(repoRoot, [...moduleFileDests(modules), ...loadPriorLock(repoRoot).keys()]);
+  // #135: information, not a failure; the steps are settings no repo file shows.
+  const atAdoption = isPlainObject(houseData) ? unconfirmedAtAdoption(houseData, modules) : [];
 
   let npmWiring = [];
   const pkgPath = path.join(repoRoot, 'package.json');
@@ -1862,7 +2229,7 @@ function cmdDoctor(args) {
     effectiveBranchGuard: guard, guardRecorded, caveat, jqOnPath, pluginVersion,
     housePin: houseData && houseData.version ? houseData.version : null,
     pinStatus, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests, gitHookFloor, targets,
-    houseJsonPresent: houseExists, houseJsonParseError: houseParseError,
+    atAdoption, houseJsonPresent: houseExists, houseJsonParseError: houseParseError,
   };
 
   if (args.json) {
@@ -1888,6 +2255,11 @@ function cmdDoctor(args) {
     }
     for (const t of targets) console.log(`target ${t.target}: ${t.line}`);
     console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
+    const checkerCurrent = vendoredCheckerIsCurrent(repoRoot);
+    for (const a of atAdoption) {
+      if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (${checkerCurrent ? `record each with \`house confirm ${a.module} <step-id>\`` : `sync first: ${SYNC_FIRST}; then record each with house confirm`})`);
+      if (a.undeclared.length) console.log(`at-adoption confirmations ${a.module} no longer declares: ${a.undeclared.join(', ')} (remove them from modules.${a.module}.confirmed)`);
+    }
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);
   }
   process.exit(0);
@@ -1940,7 +2312,7 @@ function cmdCheck(rawArgs) {
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false };
+  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, names: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
@@ -1950,8 +2322,10 @@ function parseArgs(argv) {
     else if (a.startsWith('--force-managed=')) out.forceManaged = a.slice('--force-managed='.length);
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
-    // Unrecognized flags are ignored for init/render/doctor (check has its
-    // own passthrough path and never reaches this parser).
+    // A bare word is a module name; only enable reads them.
+    else if (!a.startsWith('-')) out.names.push(a);
+    // Unrecognized flags are ignored for init/render/enable/doctor (check has
+    // its own passthrough path and never reaches this parser).
   }
   return out;
 }
@@ -1963,14 +2337,16 @@ function main() {
 
   if (cmd === 'check') { cmdCheck(rest); return; }
 
-  if (!['init', 'render', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]');
+  if (!['init', 'render', 'enable', 'confirm', 'doctor'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house confirm <module> <step-id> [--repo <path>]');
     process.exit(2);
   }
 
   const args = parseArgs(rest);
   if (cmd === 'init') return cmdInit(args);
   if (cmd === 'render') return cmdRender(args);
+  if (cmd === 'enable') return cmdEnable(args);
+  if (cmd === 'confirm') return cmdConfirm(args);
   if (cmd === 'doctor') return cmdDoctor(args);
 }
 
