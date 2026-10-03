@@ -6,6 +6,20 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+- **Subagents commit, and the session pushes and opens the pull request (#131).** The orchestration defaults say a parent asked to run a denied action asks the user instead, and that a subagent with worktree isolation writes inside its own worktree. The builder agent's definition refuses a push or a pull request and says why. The harness survey records the denial as observed, with its cause inferred.
+- **A handed-off command comes with its directory (#141).** Before giving the user a command, the session leaves the worktree for the place the command must run and names the directory in the same message; a command that writes shared state says what its output looks like when it worked.
+- **Append-style entries are sequenced across open pull requests (#142).** A sentence in the docs rule "Ship the docs and changelog edit in the same PR as the change": the second pull request's entries land after the first merges and its description says they are still owed.
+- **A pinned install, what the hooks run, and the plugin-update path (#133).** `README.md` installs from a release tag (`dubbl-a/house-rules#vX.Y.Z`), says how to move the pin, and lists the four hook commands, since the install prompt shows that a hook exists and not what it runs. `SECURITY.md` extends the threat model to a plugin update, which changes hooks with no sync and no diff, and carries a managed-settings allowlist entry for an organization. `CONTRIBUTING.md` gains the release steps: immutable releases are on for the repository, and a release tag is signed without a stored key through Sigstore's gitsign, both from the release after `v0.17.0`. `SECURITY.md` says how to verify a tag and a release.
+
+### Changed
+- **The README no longer says the next version arrives as a diff you approve (#133).** That holds for the vendored rules and the checker, through `/house-rules:sync`; the plugin's hooks and skills change when the plugin updates. The README's length ceiling moves from 160 to 190 with a recorded reason in `house.json`.
+- **The orchestration text's line budget moves from 120 to 130.** The additions above took the file past 120 lines, and every session pays for that text; the 9KB cap is unchanged.
+
+### Fixed
+- **A lock `detectPaths` entry that escapes the repo root is refused (#129, PR #143).** The checker drops an absolute or `../` entry and reports it as a `tamper` finding on `.house/lock.json` instead of probing the path. A comment beside the reader says the map is advisory.
+- **A pin on an annotated tag's object sha no longer reads as a moved tag (#122, PR #143).** `scripts/check-upstreams.mjs` accepts a match on either the tag object or its peeled commit, `versionOf` needs a dotted version and accepts a short prefix such as `release-`, and the ledger-to-pins control runs the real assertion against a pins file with one row removed.
+
 ## [0.17.0] - 2026-10-03
 
 An opt-in security module states thirteen principle-level rules with a coverage map across the standards they answer, the github rules gain remote branch protection with a solo-repo path, and a session is routed to the pinned `/deep-research` fork. Minor under ADR 0012: a new rule and three widened sentences in `github.md` reach every adopter (rule-content, ADR 0011), and nothing tightens the guard's deny set.

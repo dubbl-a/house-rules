@@ -154,7 +154,9 @@
       }
     }
   },
-  "ratchet": {},
+  "ratchet": {
+    "README.md": 185
+  },
   "ratchetRaises": [
     {
       "path": "README.md",
@@ -169,6 +171,13 @@
       "to": 160,
       "why": "a public README carries positioning, prerequisites, licensing, contributing pointers, and acknowledgements that the private one did not, and 160 leaves headroom so each honest addition does not renegotiate the budget",
       "decided": "2026-09-02"
+    },
+    {
+      "path": "README.md",
+      "from": 160,
+      "to": 190,
+      "why": "the README now carries the pinned install, how to move a pin, and what the hooks run (#133), none of which an adopter can get from the install prompt",
+      "decided": "2026-10-03"
     }
   ]
 }

@@ -67,7 +67,7 @@ export function loadPins(text) {
 
 /** Numeric version parts and a prerelease flag, or null for a non-version tag. */
 function versionOf(tag) {
-  const m = /^v?(\d+(?:\.\d+)*)(?:[-+.]?([0-9A-Za-z.-]+))?$/.exec(tag);
+  const m = /^(?:[A-Za-z]{1,10}-)?v?(\d+(?:\.\d+)+)(?:[-+.]?([0-9A-Za-z.-]+))?$/.exec(tag);
   if (!m) return null;
   return { nums: m[1].split('.').map(Number), pre: Boolean(m[2]) };
 }
@@ -101,9 +101,22 @@ export function parseTagRefs(out) {
   return tags;
 }
 
+/** `git ls-remote --tags` output as tag name to the tag's own ref sha (the tag object when annotated). */
+export function parseTagObjects(out) {
+  const objs = new Map();
+  for (const line of out.split('\n')) {
+    const m = /^([0-9a-f]{40})\s+refs\/tags\/(.+)$/.exec(line.trim());
+    if (m && !m[2].endsWith('^{}')) objs.set(m[2], m[1]);
+  }
+  return objs;
+}
+
+function lsRemoteTags(remote) {
+  return execFileSync('git', ['ls-remote', '--tags', remote], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
+}
+
 export function remoteTags(remote) {
-  const out = execFileSync('git', ['ls-remote', '--tags', remote], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
-  return parseTagRefs(out);
+  return parseTagRefs(lsRemoteTags(remote));
 }
 
 /** What a reader does about a moved row: a BORROW is a review, a REUSE is a re-vendor. */
@@ -121,11 +134,13 @@ export function checkPin(pin) {
       if (head === pin.sha) return { ...row, status: 'unchanged', pinned: label, current: head.slice(0, 7) };
       return { ...row, status: 'moved', pinned: label, current: head.slice(0, 7), head, action: actionFor(pin) };
     }
-    const tags = remoteTags(pin.remote);
+    const out = lsRemoteTags(pin.remote);
+    const tags = parseTagRefs(out);
     if (!tags.has(pin.ref.tag)) return { ...row, status: 'unreadable', pinned: label, detail: `pinned tag ${pin.ref.tag} is not on the remote` };
     const newer = newerTags([...tags.keys()], pin.ref.tag);
     const target = tags.get(pin.ref.tag);
-    if (target !== pin.sha) return { ...row, status: 'moved', pinned: label, current: `tag ${pin.ref.tag} moved to ${target.slice(0, 7)}`, head: target, newer, action: actionFor(pin) };
+    // A pin may record an annotated tag's own object sha rather than its commit.
+    if (target !== pin.sha && parseTagObjects(out).get(pin.ref.tag) !== pin.sha) return { ...row, status: 'moved', pinned: label, current: `tag ${pin.ref.tag} moved to ${target.slice(0, 7)}`, head: target, newer, action: actionFor(pin) };
     if (newer.length === 0) return { ...row, status: 'unchanged', pinned: label, current: pin.ref.tag };
     return { ...row, status: 'moved', pinned: label, current: newer[0], head: tags.get(newer[0]), newer, action: actionFor(pin) };
   } catch (e) {

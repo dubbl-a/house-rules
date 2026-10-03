@@ -103,6 +103,7 @@ When a change adds or renames a script, an env variable, an endpoint behavior, o
 A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit where it runs, so the template's binary is what holds it.
 A standalone docs pull request is fine with no code change at all; skills follow the docs workflow, not a code deploy.
 Log in the changelog only what the audience would notice, by hand, under an unreleased heading in reverse-chronological dated sections; refactors, infra, and silent fixes live in git history.
+When two open pull requests would add entries at the same position of an append-style document, land the second one's entries after the first merges, and say in its description that they are still owed. The entries still ship in that pull request; only their timing moves.
 Open a change entry by saying plainly whether the substance moved, then what changed and what is open. When a no-op refactor turns up a real bug, split it out as a correction, not buried in the cleanup.
 Anchor: the pull-request template's docs-check binary, plus `npm run check:docs` as a step in the pull-request workflow.
 Receipts: `docs/handbook/docs.md#ship-the-docs-and-changelog-edit-in-the-same-pr-as-the-change`
