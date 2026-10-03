@@ -15,6 +15,7 @@
 // house <init|render|check|doctor> [--repo <path>] [--apply]
 //       [--force-managed <path>] [--json]
 // house enable <module...> [--repo <path>] [--apply]
+// house confirm <module> <step-id> [--repo <path>]
 //
 // Repo root: `git rev-parse --show-toplevel` from cwd, or the literal path
 // given to --repo (resolved against cwd, not re-resolved through git --
@@ -32,7 +33,9 @@
 // house.json is absent/unparseable, 1 when any managed target would be
 // (or was) refused, 0 otherwise. enable -- 2 when house.json is absent or
 // unusable or a name is not a module, 1 when render would refuse, otherwise
-// render's exit when it fails and then the vendored checker's. check --
+// render's exit when it fails and then the vendored checker's. confirm -- 2
+// when it refuses (no house.json, unknown or disabled module, undeclared
+// step), 0 otherwise. check --
 // whatever the underlying check.mjs exits. doctor -- always 0 (diagnostic only).
 
 import {
@@ -1723,13 +1726,16 @@ function atAdoptionSteps(json) {
 }
 
 // The steps a repo has confirmed, read from beside the module's entry as
-// modules.<name>.confirmed: { "<step-id>": "YYYY-MM-DD" }. An entry without a
-// date reads as unconfirmed. Nothing in this CLI writes the key yet: the
-// checker's manifest family refuses any module key but enabled and config.
-function confirmedStepIds(houseData, name) {
+// modules.<name>.confirmed: { "<step-id>": "YYYY-MM-DD" }, which `house
+// confirm` writes. An entry without a date reads as unconfirmed. The checker
+// validates only the shape, since an adopter's CI has no module.json to read
+// the declared ids from; confirm refuses an undeclared id, and doctor names
+// one left behind after a module dropped a step.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function confirmedSteps(houseData, name) {
   const entry = isPlainObject(houseData) && isPlainObject(houseData.modules) ? houseData.modules[name] : null;
   const c = isPlainObject(entry) && isPlainObject(entry.confirmed) ? entry.confirmed : {};
-  return new Set(Object.keys(c).filter((id) => typeof c[id] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c[id])));
+  return Object.fromEntries(Object.entries(c).filter(([, d]) => typeof d === 'string' && DATE_RE.test(d)));
 }
 
 function unconfirmedAtAdoption(houseData, modules) {
@@ -1738,11 +1744,67 @@ function unconfirmedAtAdoption(houseData, modules) {
     if (m.error) continue;
     const name = moduleName(m);
     if (!moduleEnabled(houseData, name)) continue;
-    const done = confirmedStepIds(houseData, name);
-    const open = atAdoptionSteps(m.json).map((s) => s.id).filter((id) => !done.has(id));
-    if (open.length) out.push({ module: name, unconfirmed: open });
+    const done = confirmedSteps(houseData, name);
+    const declared = atAdoptionSteps(m.json).map((s) => s.id);
+    const open = declared.filter((id) => !(id in done));
+    const undeclared = Object.keys(done).filter((id) => !declared.includes(id));
+    if (open.length || undeclared.length) out.push({ module: name, unconfirmed: open, undeclared });
   }
   return out;
+}
+
+// Today in the local calendar, the date a person confirming a step would write.
+function todayIso() {
+  const d = new Date();
+  return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+}
+
+function cmdConfirm(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (!existsSync(housePath)) {
+    console.error(`house confirm: ${housePath} not found, so this repo has not adopted house. Run /house-rules:bootstrap first.`);
+    process.exit(2);
+  }
+  let houseData;
+  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+  catch (e) {
+    console.error(`house confirm: ${housePath} is not valid JSON (${e.message})`);
+    process.exit(2);
+  }
+  if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) {
+    console.error(`house confirm: ${housePath} has no usable "modules" object`);
+    process.exit(2);
+  }
+  const [name, id] = args.names;
+  if (!name || !id || args.names.length !== 2) {
+    console.error('usage: house confirm <module> <step-id> [--repo <path>]');
+    process.exit(2);
+  }
+  const mod = findModules().find((m) => !m.error && moduleName(m) === name);
+  if (!mod) {
+    console.error(`house confirm: \`${name}\` is not a module, so nothing was written.`);
+    process.exit(2);
+  }
+  if (!moduleEnabled(houseData, name)) {
+    console.error(`house confirm: \`${name}\` is not enabled in house.json, so it has no steps to confirm. Turn it on with \`house enable ${name}\` first.`);
+    process.exit(2);
+  }
+  const declared = atAdoptionSteps(mod.json).map((s) => s.id);
+  if (!declared.includes(id)) {
+    console.error(`house confirm: \`${id}\` is not an at-adoption step of \`${name}\`, so nothing was written. Its steps: ${declared.length ? declared.join(', ') : '(none declared)'}.`);
+    process.exit(2);
+  }
+  const prior = confirmedSteps(houseData, name)[id];
+  if (prior) {
+    console.log(`${name} step \`${id}\` was already confirmed on ${prior}; the date is kept and nothing was written.`);
+    process.exit(0);
+  }
+  const entry = houseData.modules[name];
+  entry.confirmed = { ...(isPlainObject(entry.confirmed) ? entry.confirmed : {}), [id]: todayIso() };
+  writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
+  console.log(`Wrote modules.${name}.confirmed[${JSON.stringify(id)}] = "${entry.confirmed[id]}" to ${housePath}`);
+  process.exit(0);
 }
 
 // Co-load, counted the way the checker's coload family counts it
@@ -1965,7 +2027,7 @@ function cmdEnable(args) {
   console.log('\nChecker (.house/check.mjs, as CI runs it):');
   const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
   relay(check);
-  console.log('\nNext: walk the at-adoption checklist above; `house doctor` lists each enabled module\'s steps not yet confirmed.');
+  console.log('\nNext: walk the at-adoption checklist above, recording each step done with `house confirm <module> <step-id>`; `house doctor` lists the steps not yet confirmed.');
   process.exit(check.status === null ? 1 : check.status);
 }
 
@@ -2157,7 +2219,10 @@ function cmdDoctor(args) {
     }
     for (const t of targets) console.log(`target ${t.target}: ${t.line}`);
     console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
-    for (const a of atAdoption) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')}`);
+    for (const a of atAdoption) {
+      if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (record each with \`house confirm ${a.module} <step-id>\`)`);
+      if (a.undeclared.length) console.log(`at-adoption confirmations ${a.module} no longer declares: ${a.undeclared.join(', ')} (remove them from modules.${a.module}.confirmed)`);
+    }
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);
   }
   process.exit(0);
@@ -2235,8 +2300,8 @@ function main() {
 
   if (cmd === 'check') { cmdCheck(rest); return; }
 
-  if (!['init', 'render', 'enable', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]');
+  if (!['init', 'render', 'enable', 'confirm', 'doctor'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house confirm <module> <step-id> [--repo <path>]');
     process.exit(2);
   }
 
@@ -2244,6 +2309,7 @@ function main() {
   if (cmd === 'init') return cmdInit(args);
   if (cmd === 'render') return cmdRender(args);
   if (cmd === 'enable') return cmdEnable(args);
+  if (cmd === 'confirm') return cmdConfirm(args);
   if (cmd === 'doctor') return cmdDoctor(args);
 }
 

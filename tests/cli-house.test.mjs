@@ -1910,19 +1910,85 @@ test('#135 doctor: lists an enabled module\'s unconfirmed at-adoption steps, and
   });
   const before = runCli(cliPath, ['doctor', '--repo', repo]);
   assert.equal(before.code, 0);
-  assert.match(before.out, /^at-adoption steps not confirmed for gamma: scan-on, owners$/m);
+  assert.match(before.out, /^at-adoption steps not confirmed for gamma: scan-on, owners \(record each with `house confirm gamma <step-id>`\)$/m);
   assert.doesNotMatch(before.out, /deny-list/, 'a disabled module is not listed');
   assert.doesNotMatch(before.out, /not confirmed for alpha/, 'a module with no steps is not listed');
 
-  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
-  house.modules.gamma.confirmed = { 'scan-on': '2026-10-03' };
-  writeHouseJson(repo, house);
-  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /^at-adoption steps not confirmed for gamma: owners$/m);
+  assert.equal(runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]).code, 0);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /^at-adoption steps not confirmed for gamma: owners \(/m);
 
-  house.modules.gamma.confirmed.owners = '2026-10-03';
-  writeHouseJson(repo, house);
+  assert.equal(runCli(cliPath, ['confirm', 'gamma', 'owners', '--repo', repo]).code, 0);
   const after = runCli(cliPath, ['doctor', '--repo', repo]);
   assert.doesNotMatch(after.out, /at-adoption/);
   const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
   assert.deepEqual(j.atAdoption, []);
+});
+
+function enabledGammaRepo(cliPath) {
+  return adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: true, config: {} },
+    delta: { enabled: false, config: {} },
+  });
+}
+
+test('#135 confirm: writes the step id and today\'s date beside the module\'s entry, and says what it wrote', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  const date = house.modules.gamma.confirmed['scan-on'];
+  assert.match(date, /^\d{4}-\d{2}-\d{2}$/);
+  // Today in the local calendar, read independently of the CLI.
+  const now = new Date();
+  const today = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+  assert.equal(date, today);
+  assert.match(r.out, new RegExp(`modules\\.gamma\\.confirmed\\["scan-on"\\] = "${today}"`));
+  assert.equal(house.modules.gamma.enabled, true, 'the rest of the entry is untouched');
+  assert.ok(readFileSync(join(repo, 'house.json'), 'utf8').endsWith('}\n'), 'written the way render writes it');
+});
+
+test('#135 confirm: a repeat keeps the first date and says so', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.modules.gamma.confirmed = { owners: '2026-01-02' };
+  writeHouseJson(repo, house);
+  const r = runCli(cliPath, ['confirm', 'gamma', 'owners', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /already confirmed on 2026-01-02/);
+  assert.equal(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma.confirmed.owners, '2026-01-02');
+  assert.equal(gitStatusShort(repo), '', 'nothing rewritten');
+});
+
+test('#135 confirm: refuses an undeclared step id, a disabled module, an unknown module, and a repo with no house.json', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const undeclared = runCli(cliPath, ['confirm', 'gamma', 'nope', '--repo', repo]);
+  assert.equal(undeclared.code, 2);
+  assert.match(undeclared.err, /`nope` is not an at-adoption step of `gamma`.*scan-on, owners/);
+  const disabled = runCli(cliPath, ['confirm', 'delta', 'deny-list', '--repo', repo]);
+  assert.equal(disabled.code, 2);
+  assert.match(disabled.err, /`delta` is not enabled/);
+  const unknown = runCli(cliPath, ['confirm', 'nosuch', 'x', '--repo', repo]);
+  assert.equal(unknown.code, 2);
+  assert.match(unknown.err, /`nosuch` is not a module/);
+  assert.equal(gitStatusShort(repo), '', 'no refusal writes');
+  const bare = buildTargetRepo();
+  const none = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', bare]);
+  assert.equal(none.code, 2);
+  assert.match(none.err, /bootstrap/);
+});
+
+test('#135 render tolerates a confirmed record: it renders and keeps the key', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  assert.equal(runCli(cliPath, ['confirm', 'gamma', 'owners', '--repo', repo]).code, 0);
+  commitAll(repo, 'confirm');
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma.confirmed.owners, /^\d{4}-\d{2}-\d{2}$/);
 });

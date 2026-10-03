@@ -52,8 +52,15 @@ checker's summary as printed, findings included.
 
 Then walk the checklist one step at a time. Each step is a repository or account setting no
 checker can read, so ask the person whether it is done, and help with the step when it is not.
-Do not mark a step done on the person's behalf. Note which steps they confirmed in the hand-off;
-`house doctor` lists every step of an enabled module that is not yet confirmed.
+When the person says a step is done, record it:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house confirm <module> <step-id> --repo <path>
+```
+
+It writes the step id and today's date beside the module's entry in `house.json`, and keeps the
+first date if the step was already confirmed. Do not confirm a step on the person's behalf. A
+step left open is fine: `house doctor` lists every step of an enabled module not yet confirmed.
 
 ## Probe the repo
 

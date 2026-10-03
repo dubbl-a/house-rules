@@ -38,7 +38,12 @@
         "additionalProperties": false,
         "properties": {
           "enabled": { "type": "boolean" },
-          "config": { "type": "object" }
+          "config": { "type": "object" },
+          "confirmed": {
+            "type": "object",
+            "additionalProperties": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+            "description": "At-adoption steps confirmed by hand, step id (from the module's atAdoption) to the date confirmed. Written by `house confirm <module> <step-id>`; `house doctor` lists the steps still open."
+          }
         }
       }
     },
