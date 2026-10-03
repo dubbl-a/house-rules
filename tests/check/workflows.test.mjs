@@ -288,6 +288,59 @@ test('unfrozen-install: only repo-root lockfiles are examined', () => {
   assert.deepEqual(kinds(warns(repo({ 'site/package-lock.json': '{}\n', '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('run: npm ci', 'run: npm install') }))), ['unfrozen-install']);
 });
 
+function gatedRun(cond, cmd, extra = {}) {
+  return repo({ ...extra, '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      - if: ${cond}\n        run: ${cmd}\n`) });
+}
+
+// Round 4: the skip compares the raw if: text against forms generated from
+// the tracked lockfiles, so anything but those exact forms warns.
+for (const cond of [
+    "hashFiles('package-lock.json') == '' && hashFiles('${{ github.sha }}') == ''",
+    "${{ hashFiles('package-lock.json') == '' && hashFiles('}} x ${{') == '' }}",
+    "\"${{ hashFiles('package-lock.json') == '' }} \"",
+    "\" ${{ hashFiles('package-lock.json') == '' }}\"",
+    "hashFiles('package-lock.json')  ==  ''",
+    "hashFiles(\"package-lock.json\") == ''",
+    "hashFiles('package-lock.json') == \"\"",
+    "hashFiles('package-lock.json') == '' # only without a lockfile",
+  "'hashFiles(''package-lock.json'') == '''''",
+]) {
+  test(`unfrozen-install: if: ${cond} is not a generated form and warns`, () => {
+    assert.deepEqual(kinds(warns(gatedInstall(cond))), ['unfrozen-install']);
+  });
+}
+
+test('unfrozen-install: the exact single-clause form is silent for npm, yarn, and pnpm with their own lockfile', () => {
+  assert.deepEqual(warns(gatedRun("hashFiles('package-lock.json') == ''", 'npm install')), []);
+  assert.deepEqual(warns(gatedRun("${{ hashFiles('package-lock.json') == '' }}", 'npm install')), []);
+  assert.deepEqual(warns(gatedRun("hashFiles('yarn.lock') == ''", 'yarn install', { 'yarn.lock': '# yarn\n' })), []);
+  assert.deepEqual(warns(gatedRun("hashFiles('pnpm-lock.yaml') == ''", 'pnpm install', { 'pnpm-lock.yaml': 'lockfileVersion: 9\n' })), []);
+});
+
+test('unfrozen-install: the two-clause npm form is silent in either order', () => {
+  for (const cond of [
+    "hashFiles('npm-shrinkwrap.json') == '' && hashFiles('package-lock.json') == ''",
+    "${{ hashFiles('npm-shrinkwrap.json') == '' && hashFiles('package-lock.json') == '' }}",
+  ]) {
+    assert.deepEqual(warns(gatedInstall(cond, { 'npm-shrinkwrap.json': '{}\n' })), [], cond);
+    assert.deepEqual(warns(gatedInstall(cond)), [], cond);
+  }
+});
+
+test('unfrozen-install: a bare carriage return does not hide the step after it', () => {
+  const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', '      - run: echo hi\r      - run: npm install\n');
+  const ws = warns(withWorkflow(body));
+  assert.deepEqual(kinds(ws), ['unfrozen-install']);
+  assert.equal(ws[0].line, 24);
+});
+
+test('unfrozen-install: an alias to an install anchored in a gated step warns at the ungated alias', () => {
+  const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n        run: &install npm install\n      - run: *install\n");
+  const ws = warns(withWorkflow(body));
+  assert.deepEqual(kinds(ws), ['unfrozen-install']);
+  assert.equal(ws[0].line, 25);
+});
+
 test('templates: clean with only a nested lockfile, and with a root and a nested one', () => {
   for (const locks of [['site/package-lock.json'], ['package-lock.json', 'site/package-lock.json']]) {
     const ws = warns(templateRepo(locks)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));

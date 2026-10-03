@@ -2309,8 +2309,11 @@ function unquoteYaml(v) {
 // `run:` script that prints `uses: x` is not a step. Anchors, aliases,
 // multi-line flow collections, and multi-document files are not modelled;
 // such a value is read as text, which fails toward under-reporting.
+// YAML breaks a line on CRLF, LF, or a bare CR; splitting on less hides
+// whatever follows a bare CR inside the line before it.
+const YAML_LINE_BREAK_RE = /\r\n|\n|\r/;
 function yamlEntries(raw) {
-  const lines = raw.split(/\r?\n/);
+  const lines = raw.split(YAML_LINE_BREAK_RE);
   const entries = [];
   const stack = [];
   let items = 0;
@@ -2332,8 +2335,12 @@ function yamlEntries(raw) {
     while (stack.length && stack[stack.length - 1].col >= col) stack.pop();
     const km = rest.match(/^("[^"]*"|'[^']*'|[\w$][\w.$/-]*)\s*:(?:\s+(.*))?$/);
     const key = km ? unquoteYaml(km[1]) : null;
-    const value = stripYamlComment(km ? (km[2] || '') : rest).trim();
-    const e = { line: i + 1, col, key, value, parents: stack.slice(), block: /^[|>][-+0-9]*$/.test(value), body: [] };
+    const rawValue = km ? (km[2] || '') : rest;
+    const value = stripYamlComment(rawValue).trim();
+    // `raw` is the text after the separator as written, less only the
+    // trailing whitespace YAML drops from an unquoted value.
+    const raw = /^["']/.test(rawValue) ? rawValue : rawValue.trimEnd();
+    const e = { line: i + 1, col, key, value, raw, parents: stack.slice(), block: /^[|>][-+0-9]*$/.test(value), body: [] };
     entries.push(e);
     i++;
     if (value) {
@@ -2400,22 +2407,34 @@ const INSTALLERS = [
   { re: /(?:^|\s)yarn(?:\s+install)?(?=\s|$)((?:\s+-\S+)*)\s*$/, frozen: /--frozen-lockfile\b|--immutable\b/, fix: '`yarn install --immutable` (or `--frozen-lockfile` on Yarn 1)', locks: ['yarn.lock'] },
   { re: /(?:^|\s)bun\s+(?:install|i)(?=\s|$)(.*)$/, frozen: /--frozen-lockfile\b/, fix: '`bun install --frozen-lockfile`', locks: ['bun.lock', 'bun.lockb'] },
 ];
-// The paths a step's `if:` requires to be absent, when the whole condition
-// (inside an optional `${{ }}`) is nothing but `hashFiles('<path>') == ''`
-// clauses joined by `&&`; null for anything else, so an `||`, a negation, or
-// any other operand is read as "may run with the lockfile present". The
-// caller skips only when these paths are exactly every tracked lockfile.
-function lockfileAbsentPaths(cond) {
-  let c = unquoteYaml(cond.trim()).trim();
-  const wrapped = c.match(/^\$\{\{([\s\S]*)\}\}$/);
-  if (wrapped) c = wrapped[1].trim();
-  const paths = new Set();
-  for (const clause of c.split('&&')) {
-    const m = clause.trim().match(/^hashFiles\(\s*'([^'\\]+)'\s*\)\s*==\s*''$/);
-    if (!m) return null;
-    paths.add(m[1]);
+// The `if:` texts that gate a step to "every tracked root lockfile is
+// absent". Generated, never parsed: every ordering of `hashFiles('<name>') == ''`
+// over a set holding all of `tracked` and any of the installer's other
+// names, joined by ` && `, bare or wrapped as `${{ <that> }}`. The names come
+// from INSTALLERS, not the workflow, so a raw `if:` that differs by a space,
+// a quote, a comment, or a stray `${{` matches none of them and warns.
+function lockfileAbsentForms(locks, tracked) {
+  const optional = locks.filter((l) => !tracked.includes(l));
+  const perms = (xs) => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p])));
+  const forms = new Set();
+  for (let mask = 0; mask < 1 << optional.length; mask++) {
+    for (const p of perms([...tracked, ...optional.filter((_, i) => mask & (1 << i))])) {
+      const c = p.map((l) => `hashFiles('${l}') == ''`).join(' && ');
+      forms.add(c);
+      forms.add(`\${{ ${c} }}`);
+    }
   }
-  return paths;
+  return forms;
+}
+
+// `run: *name` reads the text of the `run: &name ...` anchors in this file,
+// reported at the alias's line; with several, every one is read, so an
+// install in any of them counts. An alias with no anchor reads as nothing.
+function runLinesOf(e, entries) {
+  const alias = e.value.match(/^\*([^\s,[\]{}]+)$/);
+  if (!alias) return entryLines(e);
+  const anchors = entries.filter((x) => x.key === 'run' && x.value.split(/\s/)[0] === `&${alias[1]}`);
+  return anchors.flatMap(entryLines).map(({ text }) => ({ line: e.line, text }));
 }
 
 // Binary by extension; anything else gets a NUL-byte sniff of its first
@@ -2510,7 +2529,7 @@ function checkWorkflows(ctx) {
     const on = entries.find((e) => isTopLevel(e) && ['on', 'true'].includes(e.key));
     if (on) {
       const next = entries.find((e) => e.line > on.line && isTopLevel(e));
-      const onText = raw.split(/\r?\n/).slice(on.line - 1, next ? next.line - 1 : undefined).map(stripYamlComment).join('\n');
+      const onText = raw.split(YAML_LINE_BREAK_RE).slice(on.line - 1, next ? next.line - 1 : undefined).map(stripYamlComment).join('\n');
       if (/\bpull_request_target\b/.test(onText)) {
         const checkouts = new Set(entries.filter((e) => e.key === 'uses' && /^actions\/checkout@/i.test(unquoteYaml(e.value))).map(nearestItem).filter(Boolean));
         for (const e of entries) {
@@ -2525,7 +2544,7 @@ function checkWorkflows(ctx) {
     const runLines = entries.filter((e) => e.key === 'run').flatMap(entryLines);
 
     // 8. A publish that reads a stored token where it could use OIDC.
-    const lines = raw.split(/\r?\n/).map(stripYamlComment);
+    const lines = raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment);
     const readsToken = lines.some((l) => REGISTRY_TOKEN_VAR_RE.test(l)
       || [...l.matchAll(/\$\{\{\s*secrets\.([A-Za-z0-9_]+)/g)].some((m) => m[1] !== 'GITHUB_TOKEN' && REGISTRY_SECRET_NAME_RE.test(m[1])));
     const oidc = lines.some((l) => /\bid-token\s*:\s*write\b|\bpermissions\s*:\s*write-all\b/.test(l));
@@ -2543,16 +2562,16 @@ function checkWorkflows(ctx) {
     for (const e of entries.filter((x) => x.key === 'run')) {
       const item = nearestItem(e);
       const cond = entries.find((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length);
-      // A condition that runs onto a second line is not parsed, so it never skips.
-      const absent = cond && entryLines(cond).length === 1 ? lockfileAbsentPaths(cond.value) : null;
-      for (const { line, cmd } of runCommands(entryLines(e))) {
+      // A condition that runs onto a second line never skips.
+      const gate = cond && entryLines(cond).length === 1 ? cond.raw : null;
+      for (const { line, cmd } of runCommands(runLinesOf(e, entries))) {
         for (const inst of INSTALLERS) {
           const m = cmd.match(inst.re);
           // Root lockfiles only: a nested lockfile, and a step run through
           // `working-directory`, are not examined.
           const tracked = inst.locks.filter((l) => ctx.allTracked.includes(l));
           if (!m || !tracked.length) continue;
-          if (absent && tracked.every((p) => absent.has(p))) continue;
+          if (gate !== null && lockfileAbsentForms(inst.locks, tracked).has(gate)) continue;
           const args = m[1].trim().split(/\s+/).filter(Boolean);
           if (args.some((a) => !a.startsWith('-')) || args.some((a) => ['-g', '--global', '-v', '--version', '-h', '--help'].includes(a))) continue;
           if (inst.frozen && inst.frozen.test(m[1])) continue;
