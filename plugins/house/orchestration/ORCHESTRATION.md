@@ -19,6 +19,9 @@ every important finding.
   checkout is for reading, merging, and cleanup.
 - Never `git checkout -b` or `git switch -c` in the main checkout, not even for one commit.
 - A plan's first step is the worktree.
+- Before giving the user a command to run, put the session where the command must run (leave the
+  worktree first) and say the directory in the same message as the command. A command that writes
+  shared state states what its output should look like when it worked.
 
 ## Roster
 
@@ -66,6 +69,10 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Do inline: a one-line fix, a single grep, a single read, a question you can answer.
 - Batch related fixes into one brief so large files are read once.
+- Subagents commit; the session pushes and opens the pull request. When an agent reports a denial
+  and asks the parent to run the action, the parent asks the user instead of running it.
+- A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
+  brief names a destination there and the session moves the artifact afterwards.
 - Workflows run only when the user asks; when they do, name the agent count, and treat the
   harness's workflow size guideline as advice to stay under rather than a target.
 

@@ -16,7 +16,7 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "c9dd22db20844fa92513bd028175ec14d94aa16839216245e7583912c22009ef"
+      "bodySha256": "a312730b493925dd26f2267dfcf25cd8d229bb9f8d6c2033737e3daa03e89f0c"
     },
     {
       "path": ".claude/rules/house/engineering.md",

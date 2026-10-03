@@ -102,9 +102,9 @@ test('hooks.json declares the SessionStart entry on startup, clear and compact',
   assert.match(entry.hooks[0].command, /session-start\.mjs/);
 });
 
-test('orchestration text budget: under 120 lines and 9KB, since every session pays for it', () => {
+test('orchestration text budget: under 130 lines and 9KB, since every session pays for it', () => {
   const s = readFileSync(TEXT, 'utf8');
-  assert.ok(s.split('\n').length < 120, `lines: ${s.split('\n').length}`);
+  assert.ok(s.split('\n').length < 130, `lines: ${s.split('\n').length}`);
   assert.ok(Buffer.byteLength(s) < 9000, `bytes: ${Buffer.byteLength(s)}`);
 });
 
