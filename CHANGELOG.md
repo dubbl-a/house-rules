@@ -14,6 +14,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Changed
 - **The orchestration text's line budget moves from 120 to 130.** The additions above took the file past 120 lines, and every session pays for that text; the 9KB cap is unchanged.
 
+### Fixed
+- **A lock `detectPaths` entry that escapes the repo root is refused (#129, PR #143).** The checker drops an absolute or `../` entry and reports it as a `tamper` finding on `.house/lock.json` instead of probing the path. A comment beside the reader says the map is advisory.
+- **A pin on an annotated tag's object sha no longer reads as a moved tag (#122, PR #143).** `scripts/check-upstreams.mjs` accepts a match on either the tag object or its peeled commit, `versionOf` needs a dotted version and accepts a short prefix such as `release-`, and the ledger-to-pins control runs the real assertion against a pins file with one row removed.
+
 ## [0.17.0] - 2026-10-03
 
 An opt-in security module states thirteen principle-level rules with a coverage map across the standards they answer, the github rules gain remote branch protection with a solo-repo path, and a session is routed to the pinned `/deep-research` fork. Minor under ADR 0012: a new rule and three widened sentences in `github.md` reach every adopter (rule-content, ADR 0011), and nothing tightens the guard's deny set.

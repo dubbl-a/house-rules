@@ -1863,7 +1863,10 @@ function readModuleDetectPathsFrom(modulesDir) {
 // one source an adopter's CI has (no installed plugin, no modules tree). A
 // reachable plugin source wins per module, since it may know a module newer
 // than the last render; the lock fills in the rest.
-function readLockDetectPaths(repoRoot) {
+// The lock's detectPaths map is advisory: a hand edit is trusted and tamper
+// checking does not see it. An entry that is absolute or resolves outside the
+// repo root is dropped here and named in `refused`, never probed.
+function readLockDetectPaths(repoRoot, refused = []) {
   const p = join(repoRoot, '.house', 'lock.json');
   if (!existsSync(p)) return null;
   let j;
@@ -1872,12 +1875,13 @@ function readLockDetectPaths(repoRoot) {
   const out = {};
   for (const [name, paths] of Object.entries(j.detectPaths)) {
     const list = Array.isArray(paths) ? paths.filter((x) => typeof x === 'string' && x) : [];
-    if (list.length) out[name] = list;
+    const kept = list.filter((x) => isInsideRoot(repoRoot, x) || (refused.push(`${name}: ${x}`), false));
+    if (kept.length) out[name] = kept;
   }
   return out;
 }
-function resolveModuleDetectPaths(ctx) {
-  const locked = readLockDetectPaths(ctx.repoRoot);
+function resolveModuleDetectPaths(ctx, refused = []) {
+  const locked = readLockDetectPaths(ctx.repoRoot, refused);
   let source = null;
   const record = resolveHousePluginRecord(readInstalledPlugins());
   const local = join(ctx.repoRoot, 'plugins', 'house', 'modules');
@@ -2119,7 +2123,9 @@ function checkManifest(ctx) {
   // nothing said. The missing key stays off; warn when the module's own
   // detectPaths (module.json, the field init probes, also carried in the
   // lock) match this repo.
-  const detectPaths = resolveModuleDetectPaths(ctx);
+  const refusedDetect = [];
+  const detectPaths = resolveModuleDetectPaths(ctx, refusedDetect);
+  for (const r of refusedDetect) findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock detectPaths entry \`${r}\` escapes the repo root; refusing to probe it`));
   if (detectPaths && isPlainObject(d.modules)) {
     for (const [name, paths] of Object.entries(detectPaths)) {
       if (Object.prototype.hasOwnProperty.call(d.modules, name)) continue;
