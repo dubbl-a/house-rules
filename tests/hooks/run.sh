@@ -893,6 +893,106 @@ expect_allow "git checkout -q master (no create letter) is untouched" \
   "$(mk_payload "git checkout -q master" "$d")"
 expect_allow "git checkout -- -b (a pathspec after --, not a flag)" \
   "$(mk_payload "git checkout -- -b" "$d")"
+# #112: the clause is judged by the directory it acts in, not the payload cwd.
+# From the main checkout, a branch created in a linked worktree (by `-C` or a
+# leading `cd`) is allowed; from the worktree, one aimed at the main checkout
+# is refused; a computed `-C` keys to the payload cwd and is refused there.
+git -C "$d" worktree add "$d-wt" -b wt-base master >/dev/null 2>&1
+expect_allow "main checkout cwd: git -C <worktree> switch -c is allowed" \
+  "$(mk_payload "git -C $d-wt switch -c feat/x" "$d")"
+expect_allow "main checkout cwd: cd <worktree> && git switch -c is allowed" \
+  "$(mk_payload "cd $d-wt && git switch -c feat/x" "$d")"
+expect_deny "main checkout cwd: a bare git switch -c is still refused" \
+  "$(mk_payload "git switch -c feat/x" "$d")" "worktree add"
+expect_deny "worktree cwd: git -C <main> switch -c is refused" \
+  "$(mk_payload "git -C $d switch -c feat/x" "$d-wt")" "worktree add"
+expect_deny "worktree cwd: cd <main> && git checkout -b is refused" \
+  "$(mk_payload "cd $d && git checkout -b feat/x" "$d-wt")" "worktree add"
+expect_deny "main checkout cwd: a computed -C keys to the payload cwd and is refused" \
+  "$(mk_payload 'git -C "$WT" switch -c feat/x' "$d")" "worktree add"
+# Refuter round: a `cd` the target keying never sees (inside a stripped -m or
+# -c value, a subshell, or mid-clause) and a git directory named by the
+# environment cannot move the clause out of the main checkout.
+expect_deny "a cd inside a computed -m value does not re-key the next clause" \
+  "$(mk_payload "true -m \"\$X; cd $d-wt\"; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "a cd inside a -c value does not re-key the next clause" \
+  "$(mk_payload "git -c \"a=\$(cd $d-wt)\" status; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "GIT_DIR= on a branch create aimed at a worktree is refused" \
+  "$(mk_payload "GIT_DIR=$d/.git git -C $d-wt switch -c feat/x" "$d")" "worktree add"
+expect_deny "--git-dir= on a branch create aimed at a worktree is refused" \
+  "$(mk_payload "git -C $d-wt --git-dir=$d/.git switch -c feat/x" "$d")" "worktree add"
+expect_deny "a cd in a subshell does not carry into the next clause" \
+  "$(mk_payload "(cd $d-wt); git switch -c feat/x" "$d")" "worktree add"
+expect_deny "a cd that is not the clause's first word is not a directory change" \
+  "$(mk_payload "echo cd $d-wt && git switch -c feat/x" "$d")" "worktree add"
+# Round 2: only two exact shapes skip the refusal, `git -C <wt> ...` alone and
+# `cd [--] <wt> && git ...`; anything else is scanned whole, as before #112.
+expect_allow "cd -- <worktree> && git switch -c is allowed" \
+  "$(mk_payload "cd -- $d-wt && git switch -c feat/x" "$d")"
+expect_allow "git -C <worktree> with a global option before the verb is allowed" \
+  "$(mk_payload "git -C $d-wt --no-pager switch -c feat/x" "$d")"
+expect_deny "a hidden cd in a -m value next to a real -C is refused" \
+  "$(mk_payload "git -C $d-wt status; true -m \"\$X; cd $d-wt\"; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "a hidden cd in a -m value before a real cd is refused" \
+  "$(mk_payload "true -m \"\$X; cd $d-wt\"; git switch -c feat/x; cd $d-wt && git status" "$d")" "worktree add"
+expect_deny "a hidden cd in a -c value next to a real -C is refused" \
+  "$(mk_payload "git -c \"a=\$X; cd $d-wt\" status; git switch -c feat/x; git -C $d-wt status" "$d")" "worktree add"
+expect_deny "cd - after a literal cd is refused" \
+  "$(mk_payload "cd $d-wt; cd -; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "popd after pushd is refused" \
+  "$(mk_payload "pushd $d-wt; popd; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "cd \$OLDPWD after a literal cd is refused" \
+  "$(mk_payload "cd $d-wt; cd \"\$OLDPWD\"; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "a computed cd after a literal cd is refused" \
+  "$(mk_payload "cd $d-wt && cd \$(pwd)/../disable && git switch -c feat/x" "$d")" "worktree add"
+expect_deny "a cd in a brace group, then cd -, is refused" \
+  "$(mk_payload "{ cd $d-wt; }; cd -; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: a second cd" \
+  "$(mk_payload "cd $d-wt && cd $d && git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: pushd" \
+  "$(mk_payload "pushd $d-wt && git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: popd" \
+  "$(mk_payload "cd $d-wt && popd && git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: a -C after a cd" \
+  "$(mk_payload "cd $d-wt && git -C $d switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: GIT_WORK_TREE=" \
+  "$(mk_payload "GIT_WORK_TREE=$d git -C $d-wt switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: GIT_COMMON_DIR=" \
+  "$(mk_payload "GIT_COMMON_DIR=$d/.git git -C $d-wt switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: --work-tree" \
+  "$(mk_payload "git -C $d-wt --work-tree=$d switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: a command substitution" \
+  "$(mk_payload "git -C $d-wt switch -c feat/\$(date +%s)" "$d")" "worktree add"
+expect_deny "shape exclusion: a backtick" \
+  "$(mk_payload "git -C $d-wt switch -c feat/\`date +%s\`" "$d")" "worktree add"
+expect_deny "shape exclusion: a \$ in a message value" \
+  "$(mk_payload "cd $d-wt && git commit -m \"\$X\" && git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: a second branch-creating verb" \
+  "$(mk_payload "cd $d-wt && git switch -c feat/x && git checkout -b feat/y" "$d")" "worktree add"
+expect_deny "shape exclusion: a global -c before -C" \
+  "$(mk_payload "git -c k=v -C $d-wt switch -c feat/x" "$d")" "worktree add"
+# Round 3: the shapes are read from the raw command, so a bare `&` (which
+# backgrounds what precedes it and runs the rest in the payload cwd), a
+# separator a -m strip swallowed, a quote, `||` or `;` all fall back to the
+# whole-command scan; a redirect is not a background.
+expect_allow "shape A with a 2>&1 redirect is allowed" \
+  "$(mk_payload "git -C $d-wt switch -c feat/x 2>&1" "$d")"
+expect_deny "shape exclusion: a bare & after cd <wt> && ..." \
+  "$(mk_payload "cd $d-wt && git status & git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: a bare & glued to a stripped -m value" \
+  "$(mk_payload "git -C $d-wt switch -mx&git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: a quote in the -C path" \
+  "$(mk_payload "git -C \"$d switch\" switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: || after cd <wt> && ..." \
+  "$(mk_payload "cd $d-wt && git status || git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: ; after cd <wt> && ..." \
+  "$(mk_payload "cd $d-wt && git status; git switch -c feat/x" "$d")" "worktree add"
+expect_deny "shape exclusion: --ignore-other-worktrees can move the main checkout's branch" \
+  "$(mk_payload "git -C $d-wt checkout --ignore-other-worktrees -B master" "$d")" "worktree add"
+expect_deny "shape exclusion: an abbreviated --git-dir global option" \
+  "$(mk_payload "git -C $d-wt --git-di=$d/.git switch -c feat/x" "$d")" "worktree add"
+git -C "$d" worktree remove --force "$d-wt" >/dev/null 2>&1
+git -C "$d" branch -D wt-base >/dev/null 2>&1
 
 # The disable list only applies in an ADOPTED repo (ADR 0002).
 n="$TMP_ROOT/unadopted"; new_repo "$n"
@@ -1139,6 +1239,13 @@ else
     "$(mk_payload "git checkout -b feat/x" "$w/main")" "worktree add"
   expect_deny "main checkout: git switch -c is refused" \
     "$(mk_payload "git switch -c feat/x" "$w/main")" "worktree add"
+  # #112, armed: the clause's own directory decides, not the payload cwd.
+  expect_allow "armed, main checkout cwd: git -C <worktree> switch -c is allowed" \
+    "$(mk_payload "git -C $w/wt switch -c feat/x" "$w/main")"
+  expect_allow "armed, main checkout cwd: cd <worktree> && git switch -c is allowed" \
+    "$(mk_payload "cd $w/wt && git switch -c feat/x" "$w/main")"
+  expect_deny "armed, worktree cwd: git -C <main> switch -c is refused" \
+    "$(mk_payload "git -C $w/main switch -c feat/x" "$w/wt")" "worktree add"
 
   b="$TMP_ROOT/broken-edit"; mk_broken_floor "$b"
   printf '\n# tampered\n' >>"$b/.githooks/pre-push"
