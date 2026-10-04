@@ -711,12 +711,24 @@ test('ADR 0010: package-surface tokens in a lock-vouched managed file are silent
 
 const SIBLING_RULE = MANAGED_RULE(['Anchor: `scripts/house/deploy-guards.mjs` gates it.']);
 
-test('ADR 0010: the sibling-destination downgrade is unchanged (negative control)', () => {
-  const dir = sandbox({
+test('#181: a sibling destination the lock does not record is silent; one it records but is missing still warns', () => {
+  const unrecorded = sandbox({
     'README.md': '# r\n',
     'scripts/x.mjs': 'export {};\n',
     '.claude/rules/house/r.md': SIBLING_RULE,
     '.house/lock.json': lockFor(SIBLING_RULE),
+    'house.json': houseJson(),
+  });
+  const quiet = run(unrecorded, ['--only=drift', '--json']);
+  assert.equal(quiet.code, 0, quiet.out);
+  assert.ok(!(quiet.json.warnings || []).some((w) => /deploy-guards/.test(w.message)), quiet.out);
+  const lock = JSON.parse(lockFor(SIBLING_RULE));
+  lock.files.push({ path: 'scripts/house/deploy-guards.mjs', module: 'deployment', source: 'x', bodySha256: 'a'.repeat(64) });
+  const dir = sandbox({
+    'README.md': '# r\n',
+    'scripts/x.mjs': 'export {};\n',
+    '.claude/rules/house/r.md': SIBLING_RULE,
+    '.house/lock.json': JSON.stringify(lock),
     'house.json': houseJson(),
   });
   const res = run(dir, ['--only=drift', '--json']);

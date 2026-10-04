@@ -129,12 +129,12 @@ test('lengths: auto-tighten never writes when the run has any findings', () => {
   assert.equal(before, after);
 });
 
-test('lengths: --accept-lengths accepts growth only with a matching non-empty-why ratchetRaises entry', () => {
+test('lengths: a matching non-empty-why ratchetRaises entry takes effect on its own; without one growth fails', () => {
   const dirNoRaise = sandbox({
     'README.md': linesOf(200),
     'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } } }),
   });
-  assert.equal(run(dirNoRaise, ['--only=lengths', '--accept-lengths']).code, 1);
+  assert.equal(run(dirNoRaise, ['--only=lengths']).code, 1);
 
   const dirRaised = sandbox({
     'README.md': linesOf(200),
@@ -143,13 +143,13 @@ test('lengths: --accept-lengths accepts growth only with a matching non-empty-wh
       ratchetRaises: [{ path: 'README.md', from: 100, to: 210, why: 'legitimately grew', decided: '2026-08-24' }],
     }),
   });
-  const { code, out } = run(dirRaised, ['--only=lengths', '--accept-lengths']);
+  const { code, out } = run(dirRaised, ['--only=lengths']);
   assert.equal(code, 0, out);
   const written = JSON.parse(readFileSync(join(dirRaised, 'house.json'), 'utf8'));
   assert.equal(written.ratchet['README.md'], 210);
 });
 
-test('lengths: --accept-lengths without the flag still fails growth even if a ratchetRaises entry exists', () => {
+test('lengths: --accept-lengths is still accepted, changes nothing, and says it is no longer needed', () => {
   const dir = sandbox({
     'README.md': linesOf(200),
     'house.json': houseJson({
@@ -157,21 +157,58 @@ test('lengths: --accept-lengths without the flag still fails growth even if a ra
       ratchetRaises: [{ path: 'README.md', from: 100, to: 210, why: 'legitimately grew', decided: '2026-08-24' }],
     }),
   });
-  const { code } = run(dir, ['--only=lengths']);
-  assert.equal(code, 1);
+  const { code, out } = run(dir, ['--only=lengths', '--accept-lengths']);
+  assert.equal(code, 0, out);
+  assert.match(out, /--accept-lengths is no longer needed/);
 });
 
-test('lengths: a matching ratchetRaises entry without the flag names the second step in the finding', () => {
+test('lengths: a ratchetRaises entry below the current count does not apply', () => {
   const dir = sandbox({
     'README.md': linesOf(200),
     'house.json': houseJson({
       modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } },
-      ratchetRaises: [{ path: 'README.md', from: 100, to: 210, why: 'legitimately grew', decided: '2026-08-24' }],
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, why: 'too small', decided: '2026-08-24' }],
     }),
   });
+  assert.equal(run(dir, ['--only=lengths']).code, 1);
+});
+
+function skillWith(body, front = 'name: demo\ndescription: Does a thing. Use when asked.\n') {
+  return `---\n${front}---\n${body}`;
+}
+
+test('lengths: a SKILL.md body over the 500-line default warns with no lengthLimits entry', () => {
+  const dir = sandbox({
+    '.claude/skills/demo/SKILL.md': skillWith(linesOf(501)),
+    'house.json': houseJson(),
+  });
   const { code, out } = run(dir, ['--only=lengths']);
-  assert.equal(code, 1, out);
-  assert.match(out, /200 lines \(limit 100\); a ratchetRaises entry to 210 is on record, re-run with --accept-lengths to apply it/);
+  assert.equal(code, 0, out);
+  assert.match(out, /\.claude\/skills\/demo\/SKILL\.md \[length\] 501 lines, over the 500-line default for a SKILL\.md body/);
+  const ok = sandbox({ '.claude/skills/demo/SKILL.md': skillWith(linesOf(500)), 'house.json': houseJson() });
+  assert.doesNotMatch(run(ok, ['--only=lengths']).out, /SKILL\.md/);
+});
+
+test('lengths: a SKILL.md covered by a configured limit is judged by that limit, not the default', () => {
+  const dir = sandbox({
+    '.claude/skills/demo/SKILL.md': skillWith(linesOf(600)),
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { '.claude/skills/**/SKILL.md': 800 } } } } }),
+  });
+  const { code, out } = run(dir, ['--only=lengths']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /500-line default/);
+});
+
+test('lengths: a skill description plus when_to_use over 1,536 characters warns, in a folded block too', () => {
+  const long = 'word '.repeat(250).trim();
+  const dir = sandbox({
+    '.claude/skills/demo/SKILL.md': skillWith('Body.\n', `name: demo\ndescription: >\n  ${long}\nwhen_to_use: Use ${'when '.repeat(100).trim()}\n`),
+    'house.json': houseJson(),
+  });
+  const { out } = run(dir, ['--only=lengths']);
+  assert.match(out, /\.claude\/skills\/demo\/SKILL\.md \[length\] description plus when_to_use is \d+ characters, over the 1536 the harness keeps/);
+  const ok = sandbox({ '.claude/skills/demo/SKILL.md': skillWith('Body.\n'), 'house.json': houseJson() });
+  assert.doesNotMatch(run(ok, ['--only=lengths']).out, /when_to_use/);
 });
 
 test('lengths: no ratchetRaises entry leaves the finding without the hint', () => {

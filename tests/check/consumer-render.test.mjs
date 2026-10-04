@@ -129,6 +129,23 @@ test('a freshly rendered consumer repo passes .house/check.mjs with zero finding
   assert.match(out, /Summary: 0 finding/, `expected zero findings, got:\n${out}`);
 });
 
+// #181: a managed rule names the package's own surface (`GIT_DIR`) and a
+// sibling module's vendored file (deployment's scripts/house/deploy-guards.mjs)
+// that no adopter can act on; neither may print as drift in a synced adopter.
+test('#181: a freshly synced adopter prints no drift warning for a house-managed rule file', () => {
+  const repo = fixtureRepo({
+    'package.json': '{"name":"x","scripts":{"test":"node --test","check:house":"node .house/check.mjs"}}',
+    'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'scripts/a.mjs': 'export const a = 1;\n',
+    'tests/a.test.mjs': "import 'node:test';\n", 'src/index.mjs': 'export default 1;\n',
+    'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n',
+  });
+  house(repo, 'init', '--apply');
+  house(repo, 'render', '--apply');
+  git(repo, 'add', '-A');
+  const out = runCheck(repo);
+  assert.doesNotMatch(out, /== drift ==/, `expected no drift section, got:\n${out}`);
+});
+
 test('render into a repo with an existing CLAUDE.md writes a sidecar, never overwrites', () => {
   const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'CLAUDE.md': '# ORIGINAL\n', 'scripts/a.mjs': 'export const a=1;\n' });
   house(repo, 'init', '--apply'); house(repo, 'render', '--apply');

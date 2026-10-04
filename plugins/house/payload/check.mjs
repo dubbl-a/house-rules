@@ -8,7 +8,8 @@
 // notes below). Do not import anything from this repo's other files.
 //
 // Usage:
-//   node check.mjs [--only=fam,fam,...] [--json] [--accept-lengths] [--repo <path>]
+//   node check.mjs [--only=fam,fam,...] [--json] [--repo <path>]
+//   (--accept-lengths is still accepted and does nothing; see ratchetRaises)
 //
 // Families (default: all): drift, todo, tamper, behind, shape, lengths,
 // coload, manifest, minutes, guard, workflows, agent-config.
@@ -1155,9 +1156,15 @@ function checkDrift(ctx) {
     const downgrade = (f, why) => warnings.push({ ...f, message: `${f.message} ${why}` });
     const sink = houseManaged
       ? { push: (f) => {
-          if (siblingDest(f)) return downgrade(f, '(house-managed file: names a sibling module\'s vendored file, present only when that module is enabled here)');
+          if (siblingDest(f)) {
+            // #181: a sibling destination the lock does not record belongs to
+            // a module not enabled here; no PR resolves it, so it is dropped.
+            if (bodyMatchesLock && !lockedManaged.has(f.message.split(/\s/)[0])) return;
+            return downgrade(f, '(house-managed file: names a sibling module\'s vendored file, present only when that module is enabled here)');
+          }
           if (!isPackageRepo) {
-            if (packageSurface(f) && bodyMatchesLock) return;
+            // #181: an env/const token in a managed rule names the package's own surface.
+            if ((packageSurface(f) || f.kind === 'env/const') && bodyMatchesLock) return;
             return downgrade(f, '(house-managed file: this token names the house package\'s own surface, or a wiring step this repo has not done yet; it is gated in the package repo, not here)');
           }
           findings.push(f);
@@ -1677,6 +1684,26 @@ function memoryIndexPath(repoRoot) {
   return join(cfgDir, 'projects', name, 'memory', 'MEMORY.md');
 }
 
+const SKILL_BODY_DEFAULT_LINES = 500;
+const SKILL_LISTING_MAX_CHARS = 1536;
+
+// One top-level frontmatter string, folded to single spaces: the inline value,
+// or the indented lines under a `>` or `|` block header or a wrapped plain or
+// quoted scalar. Empty when the key is absent.
+function frontmatterText(raw, key) {
+  const lines = raw.split('\n');
+  const closeIdx = frontmatterCloseIndex(lines);
+  if (closeIdx <= 0) return '';
+  for (let i = 1; i < closeIdx; i++) {
+    const m = lines[i].match(new RegExp(`^${key}\\s*:\\s*(.*?)\\s*$`));
+    if (!m) continue;
+    const parts = /^[|>][-+0-9]*$/.test(m[1]) ? [] : [m[1].replace(/^(['"])(.*)\1$/, '$2')];
+    for (let j = i + 1; j < closeIdx && (/^\s/.test(lines[j]) || lines[j] === ''); j++) parts.push(lines[j].trim());
+    return parts.filter(Boolean).join(' ');
+  }
+  return '';
+}
+
 function checkLengths(ctx) {
   const findings = [];
   const cfg = moduleConfig(ctx.house, 'docs');
@@ -1792,6 +1819,22 @@ function checkLengths(ctx) {
     for (const f of matches) perFile.set(f, { limitLines, limitBytes });
   }
 
+  // Claude Code documents 500 lines as the ceiling for a SKILL.md body, and
+  // truncates a skill's description plus when_to_use at 1,536 characters
+  // without a word. A skill a configured limit already covers is judged by
+  // that limit; the default only fills the gap, as a warning.
+  for (const file of ctx.allTracked.filter((f) => /(^|\/)SKILL\.md$/.test(f))) {
+    const abs = join(ctx.repoRoot, file);
+    if (!existsSync(abs) || specialFileKind(abs)) continue;
+    const raw = readFileSync(abs, 'utf8');
+    if (!perFile.has(file)) {
+      const count = countLinesExcludingFrontmatter(raw);
+      if (count > SKILL_BODY_DEFAULT_LINES) warnings.push(mk('lengths', file, null, 'length', `${count} lines, over the ${SKILL_BODY_DEFAULT_LINES}-line default for a SKILL.md body (Claude Code's documented ceiling). Move detail into references one level deep, or set a lengthLimits entry for it.`));
+    }
+    const listed = frontmatterText(raw, 'description').length + frontmatterText(raw, 'when_to_use').length;
+    if (listed > SKILL_LISTING_MAX_CHARS) warnings.push(mk('lengths', file, null, 'length', `description plus when_to_use is ${listed} characters, over the ${SKILL_LISTING_MAX_CHARS} the harness keeps in the skill listing; it truncates there silently, so the tail never reaches the model. Put the trigger first and trim the rest.`));
+  }
+
   const tighten = [];
   for (const [file, { limitLines, limitBytes }] of perFile) {
     const abs = join(ctx.repoRoot, file);
@@ -1814,13 +1857,12 @@ function checkLengths(ctx) {
 
     if (linesOver || bytesOver) {
       const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count);
-      if (raise && ctx.acceptLengths) {
+      if (raise) {
         tighten.push({ path: file, to: raise.to });
       } else {
         const linesMsg = linesOver ? `${count} lines (limit ${effectiveCeiling})` : '';
         const bytesMsg = bytesOver ? `${linesMsg ? ', ' : ''}${bytes} bytes (limit ${limitBytes})` : '';
-        const hint = raise ? `; a ratchetRaises entry to ${raise.to} is on record, re-run with --accept-lengths to apply it` : '';
-        findings.push(mk('lengths', file, null, 'length', `${linesMsg}${bytesMsg}${hint}`));
+        findings.push(mk('lengths', file, null, 'length', `${linesMsg}${bytesMsg}`));
       }
     } else if (ceilingFromRatchet !== null && count < ceilingFromRatchet) {
       tighten.push({ path: file, to: count });
@@ -2045,6 +2087,37 @@ function detectPathHit(repoRoot, p) {
     const st = statSync(join(repoRoot, dir ? p.slice(0, -1) : p));
     return dir ? st.isDirectory() : st.isFile();
   } catch { return false; }
+}
+
+// A vendored script counts as referenced when its repo path appears in a
+// tracked file the house did not write (package.json, a workflow, a doc), or
+// its basename appears in another vendored script (an import). Rule files and
+// the lock name every vendored path, so they never count as a reference.
+function unreferencedVendoredScripts(ctx, lockEntries) {
+  const warnings = [];
+  const vendored = lockEntries.filter((e) => isPlainObject(e) && typeof e.path === 'string').map((e) => e.path);
+  const scripts = vendored.filter((p) => p.startsWith('scripts/house/') && ctx.allTracked.includes(p));
+  if (!scripts.length) return warnings;
+  const managed = new Set(vendored);
+  const readers = ctx.allTracked.filter((f) => f !== '.house/lock.json' && !BINARY_EXTS.has(extOf(f)) && !MEDIA_EXTS.has(extOf(f)));
+  const texts = new Map();
+  const textOf = (f) => {
+    if (!texts.has(f)) texts.set(f, safeRead(join(ctx.repoRoot, f)));
+    return texts.get(f);
+  };
+  for (const script of scripts) {
+    const base = basename(script);
+    const referenced = readers.some((f) => {
+      if (f === script) return false;
+      if (!managed.has(f)) return textOf(f).includes(script);
+      return f.startsWith('scripts/house/') && textOf(f).includes(base);
+    });
+    if (referenced) continue;
+    const twins = ctx.allTracked.filter((f) => f !== script && basename(f) === base);
+    const twinNote = twins.length ? ` A tracked file with the same name sits at ${twins.join(', ')}; if that is the copy this repo runs, it will drift from the house one.` : '';
+    warnings.push(mk('manifest', script, null, 'unreferenced script', `vendored script is referenced by no package.json script, workflow, or other tracked file, so nothing runs it.${twinNote} Wire it in, or delete it and drop the module that vendors it.`));
+  }
+  return warnings;
 }
 
 function checkManifest(ctx) {
@@ -2307,6 +2380,12 @@ function checkManifest(ctx) {
       }
     }
   }
+
+  // #178: a vendored script under scripts/house/ that nothing references is
+  // unwired, and a tracked twin of the same basename elsewhere is usually why:
+  // the adopter's own copy keeps running while the house copy sits idle. Said
+  // on every run as a warning, since which copy wins is a judgment call.
+  if (lockEntries) warnings.push(...unreferencedVendoredScripts(ctx, lockEntries));
 
   // #18: what render wrote versus what git tracks. Every other family walks
   // `git ls-files`, so a managed file git cannot see is checked by nobody and
@@ -2598,18 +2677,22 @@ const PLAIN_VALUE_FORMS = [
   /^'(?:[^']|'')*'[ \t]*(?:#.*)?$/,
   /^[[{][^"'[\]{}#]*[\]}][ \t]*(?:#.*)?$/,
 ];
-// Every line it inspects, comments included, must be printable ASCII, space,
-// and tab: anything else may be whitespace to JavaScript and content to
-// YAML, or a line break to YAML and not to the reader. Block-scalar bodies
-// are exempt, since shell text there may hold anything. A byte order mark
-// makes the file not plain, which costs only a warning.
+// Every line it inspects must be printable ASCII, space, and tab outside its
+// comment: anything else may be whitespace to JavaScript and content to
+// YAML, or a line break to YAML and not to the reader. A whole-line comment
+// and the text after a trailing ` #` are exempt (an em dash in an old
+// scaffold's comments is common), and so are block-scalar bodies, since shell
+// text there may hold anything. A line break character inside a comment still
+// splits the line first, so what follows it is judged as code. A byte order
+// mark makes the file not plain, which costs only a warning.
 function plainlyWritten(raw) {
   const lines = raw.split(YAML_LINE_BREAK_RE);
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i];
-    if (/[^\x20-\x7e\t]/.test(text)) return false;
     const trimmed = yamlTrim(text);
-    if (!trimmed || trimmed.startsWith('#')) continue;
+    if (trimmed.startsWith('#')) continue;
+    if (/[^\x20-\x7e\t]/.test(stripYamlComment(text))) return false;
+    if (!trimmed) continue;
     let col = yamlIndent(text);
     let rest = text.slice(col);
     let dashed = false;
@@ -3159,7 +3242,7 @@ function report({ families, results, findings, warnings, info, scannedDocs, colo
     console.log('  2. change the code, so the document was right all along');
     console.log('  3. record the exception with its reason: a `docs-drift-ignore` marker for a token,');
     console.log('     a house.json `deviations` entry for a policy, a `ratchetRaises` entry for a limit');
-    console.log('     (a ratchetRaises entry applies on the next run with --accept-lengths)');
+    console.log('     (a ratchetRaises entry applies on the next run, with nothing else to run)');
   }
 }
 
@@ -3202,6 +3285,8 @@ function main() {
     acceptLengths: args.acceptLengths, familiesRun: new Set(families),
     pendingRatchetTighten: [],
   };
+
+  if (args.acceptLengths && !args.json) console.log('note: --accept-lengths is no longer needed; a ratchetRaises entry applies on its own. The flag is accepted and does nothing.');
 
   const results = {};
   const allFindings = [];

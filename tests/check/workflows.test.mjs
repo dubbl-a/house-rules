@@ -409,11 +409,20 @@ test('unfrozen-install: a non-ASCII character inside a run: | body still lets a 
   assert.deepEqual(warns(withWorkflow(body)), []);
 });
 
-test('unfrozen-install: a non-ASCII character in a name: value or a comment stops the skip (documented false positive)', () => {
-  for (const extra of [`      - name: caf${String.fromCharCode(0xe9)}\n        run: echo hi\n`, `      # caf${String.fromCharCode(0xe9)}\n`]) {
+test('unfrozen-install: a non-ASCII character in a name: value or a run: value stops the skip', () => {
+  for (const extra of [`      - name: caf${String.fromCharCode(0xe9)}\n        run: echo hi\n`, `      - run: echo caf${String.fromCharCode(0xe9)}\n`]) {
     const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', `${extra}      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n`);
     assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install'], extra);
   }
+});
+
+test('#166: an em dash in a whole-line or trailing comment does not stop a truly gated step from skipping', () => {
+  const dash = String.fromCharCode(0x2014);
+  const gated = "      - if: hashFiles('package-lock.json') != ''\n        run: npm ci\n      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n";
+  const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      # install ${dash} frozen when a lockfile exists\n${gated.replace('run: npm install', `run: npm install # no lockfile ${dash} plain`)}`);
+  assert.deepEqual(warns(withWorkflow(body)), []);
+  const bad = CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      # ${dash}\n      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n        env: caf${String.fromCharCode(0xe9)}\n`);
+  assert.deepEqual(kinds(warns(withWorkflow(bad))), ['unfrozen-install']);
 });
 
 test('unfrozen-install: a byte order mark at the start makes the file not plainly written', () => {
