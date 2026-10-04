@@ -43,7 +43,7 @@ access, and they change when the plugin updates, with no sync and no diff to app
 off by default for third-party marketplaces; where it is turned on, it delivers hook changes. The
 install prompt shows that a hook exists but not what it runs, and Claude Code does not document
 whether an update that changes hooks asks again, so assume it does not. Mitigation: pin the
-marketplace to a release tag (`claude plugin marketplace add dubbl-a/house-rules#v0.18.0`), and
+marketplace to a release tag (`claude plugin marketplace add dubbl-a/house-rules#v0.19.0`), and
 read the hooks diff between tags (`git diff vA..vB -- plugins/house/hooks`) before moving the pin.
 Whether auto-update follows or respects a pin is also not documented.
 
@@ -79,7 +79,7 @@ on the residue list in ADR 0013, a decided record this note leaves as written.
 
 A managed-settings allowlist can admit only this marketplace at a tag:
 
-    {"strictKnownMarketplaces":[{"source":"github","repo":"dubbl-a/house-rules","ref":"v0.18.0"}]}
+    {"strictKnownMarketplaces":[{"source":"github","repo":"dubbl-a/house-rules","ref":"v0.19.0"}]}
 
 Three caveats from Claude Code's docs (https://code.claude.com/docs/en/plugins/org#how-entries-match):
 the `repo`, the `ref`, and the `path` must all match or be absent on both sides, and the entry
