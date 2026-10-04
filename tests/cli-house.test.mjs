@@ -147,8 +147,8 @@ function buildFixturePlugin({ withDocsModule = false } = {}) {
 // module's `src/**` and `scripts/**` globs match at least one tracked file and
 // survive render's drop-zero-match filter (F1b). A test that wants a bare repo
 // passes its own files.
-function buildTargetRepo(files = { 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n' }) {
-  const dir = mkdtempSync(join(tmpdir(), 'house-repo-'));
+function buildTargetRepo(files = { 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n' }, prefix = 'house-repo-') {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
   CLEANUP_DIRS.push(dir);
   writeTree(dir, files);
   execFileSync('git', ['-c', 'init.defaultBranch=main', 'init', '-q'], { cwd: dir });
@@ -2843,6 +2843,7 @@ const BROKEN_LOCKS = [
   ['unparseable', (repo) => writeFileSync(join(repo, '.house', 'lock.json'), '{ not json\n')],
   ['with no files array', (repo) => writeFileSync(join(repo, '.house', 'lock.json'), '{"scaffolds": []}\n')],
   ['with an empty files array', (repo) => writeFileSync(join(repo, '.house', 'lock.json'), '{"files": []}\n')],
+  ['whose only path is blank', (repo) => writeFileSync(join(repo, '.house', 'lock.json'), '{"files": [{"path": "   "}]}\n')],
 ];
 for (const [name, breakLock] of BROKEN_LOCKS) {
   test(`#152 uninstall: a lock ${name} proves nothing, so nothing is deleted or unset and the edit survives`, () => {
@@ -2931,6 +2932,7 @@ function unrecordedEditedGamma(cliPath) {
   return { repo, gamma };
 }
 const UNRECORDED_LEFT = /^left\s+\.claude\/rules\/house\/gamma\.md\s+\(not recorded in the lock and differs from the rendered file, left in place\)/m;
+const FORGED_NOTE = /the repo's checker reports it as a forged managed header: delete it, or `house render --force-managed \.claude\/rules\/house\/(gamma|alpha)\.md` if its module is on/;
 
 test('#152 an unrecorded rule file that differs from the render is left by disable and by render', () => {
   const { cliPath } = buildEnableFixture();
@@ -2938,6 +2940,7 @@ test('#152 an unrecorded rule file that differs from the render is left by disab
   const d = runCli(cliPath, ['disable', 'gamma', '--repo', viaDisable.repo, '--apply']);
   assert.equal(d.code, 0, d.out + d.err);
   assert.match(d.out, UNRECORDED_LEFT);
+  assert.match(d.out, FORGED_NOTE);
   assert.match(readFileSync(viaDisable.gamma, 'utf8'), /a line of the repo's own/);
   const viaRender = unrecordedEditedGamma(cliPath);
   const house = JSON.parse(readFileSync(join(viaRender.repo, 'house.json'), 'utf8'));
@@ -2946,26 +2949,143 @@ test('#152 an unrecorded rule file that differs from the render is left by disab
   const r = runCli(cliPath, ['render', '--repo', viaRender.repo, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.out, UNRECORDED_LEFT);
+  assert.match(r.out, FORGED_NOTE);
   assert.match(readFileSync(viaRender.gamma, 'utf8'), /a line of the repo's own/);
 });
 
-test('#152 uninstall: an unrecorded rule file is removed when it matches the render and left when it differs', () => {
+// Drops lock entries matching `drop`, optionally edits one file, commits.
+function unrecordInLock(repo, drop, edit = null) {
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files = lock.files.filter((f) => !drop(f.path));
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  if (edit) writeFileSync(join(repo, edit.path), edit.to(readFileSync(join(repo, edit.path), 'utf8')));
+  commitAll(repo, 'entries dropped from the lock');
+}
+
+// An adoption the lock records only in part is judged against what render
+// would write: an unrecorded file whose body matches goes; one that differs
+// cannot be proved render's, so uninstall refuses up front and changes nothing.
+test('#152 uninstall: an unrecorded rule file is removed when its body matches the render, whatever version its header names', () => {
   const { cliPath } = buildFloorFixture();
   const env = isolatedGitEnv();
-  for (const edited of [false, true]) {
+  for (const older of [false, true]) {
     const repo = uninstallRepo(cliPath, env);
-    const lockPath = join(repo, '.house', 'lock.json');
-    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-    lock.files = lock.files.filter((f) => f.path !== '.claude/rules/house/alpha.md');
-    writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-    const alpha = join(repo, '.claude', 'rules', 'house', 'alpha.md');
-    if (edited) writeFileSync(alpha, `${readFileSync(alpha, 'utf8')}mine\n`);
-    commitAll(repo, 'alpha.md unrecorded');
+    unrecordInLock(repo, (p) => p === '.claude/rules/house/alpha.md', older ? { path: '.claude/rules/house/alpha.md', to: (s) => s.replace('house-managed v9.9.9', 'house-managed v9.8.0') } : null);
     const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
     assert.equal(r.code, 0, r.out + r.err);
-    assert.equal(existsSync(alpha), edited, edited ? 'an edited unrecorded file stays' : 'a byte-identical one goes');
-    if (edited) assert.match(r.out, /\.claude\/rules\/house\/alpha\.md\s+\(not recorded in the lock and differs from the rendered file, left in place\)/);
+    assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'alpha.md')), older ? 'an older header over the current body goes' : 'a byte-identical one goes');
   }
+});
+
+test('#152 uninstall: an unrecorded rule file whose body differs is refused up front, with the checker note, and nothing changes', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  unrecordInLock(repo, (p) => p === '.claude/rules/house/alpha.md', { path: '.claude/rules/house/alpha.md', to: (s) => s.replace('house-managed v9.9.9', 'house-managed v9.8.0').replace('Body text for alpha.', 'An older body.') });
+  for (const args of [['uninstall', '--repo', repo], ['uninstall', '--repo', repo, '--apply']]) {
+    const r = runCli(cliPath, args, env);
+    assert.equal(r.code, 1, `${args.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(not recorded in the lock and differs from the rendered file/m);
+    assert.match(r.out, FORGED_NOTE);
+    assert.doesNotMatch(r.out, /alpha\.md\s+\(yours|not managed \.claude\/rules\/house\/alpha\.md/);
+  }
+  for (const rel of [...MANAGED, 'house.json']) assert.ok(existsSync(join(repo, rel)), `${rel} stays`);
+  assert.equal(localHooksPath(repo, env), floorDir(repo));
+});
+
+test('#152 uninstall: a lock without the .githooks entries still accounts for the floor', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const clean = uninstallRepo(cliPath, env);
+  unrecordInLock(clean, (p) => p.startsWith('.githooks/'));
+  const r = runCli(cliPath, ['uninstall', '--repo', clean, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const rel of [...MANAGED, 'house.json']) assert.ok(!existsSync(join(clean, rel)), `${rel} removed: byte-identical to the render`);
+  const edited = uninstallRepo(cliPath, env);
+  unrecordInLock(edited, (p) => p.startsWith('.githooks/'), { path: '.githooks/pre-push', to: (s) => `${s}# mine\n` });
+  const e = runCli(cliPath, ['uninstall', '--repo', edited, '--apply'], env);
+  assert.equal(e.code, 1, e.out + e.err);
+  assert.match(e.out, /^REFUSE\s+\.githooks\/pre-push\s+\(not recorded in the lock and differs from the rendered file/m);
+  assert.doesNotMatch(e.out, /not managed \.githooks/);
+  for (const rel of [...MANAGED, 'house.json']) assert.ok(existsSync(join(edited, rel)), `${rel} stays`);
+  assert.equal(localHooksPath(edited, env), floorDir(edited));
+});
+
+test('#152 uninstall: a lock that records only a path that is not there still removes what render wrote, block included', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  writeFileSync(join(repo, '.house', 'lock.json'), '{"files": [{"path": "x"}]}\n');
+  commitAll(repo, 'a lock that lost its entries');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const rel of [...MANAGED, 'house.json']) assert.ok(!existsSync(join(repo, rel)), `${rel} removed`);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), AGENTS_OWN, 'the unrecorded block matched the render and went');
+  assert.equal(localHooksPath(repo, env), '');
+});
+
+// Preflight: everything that could stop a removal is checked before the first
+// write, so a refusal leaves the hooks path set and every file in place.
+test('#152 uninstall: a read-only managed directory is refused before anything is written', (t) => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const dir = join(repo, '.claude', 'rules', 'house');
+  chmodSync(dir, 0o555);
+  t.after(() => chmodSync(dir, 0o755));
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(its directory cannot be written/m);
+  assert.match(r.err, /nothing was deleted or unset/);
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'the hooks path is still set');
+  for (const rel of [...MANAGED, 'house.json']) assert.ok(existsSync(join(repo, rel)), `${rel} stays`);
+});
+
+test('#152 uninstall: a lock entry naming a directory is refused before anything is written', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files.push({ path: 'src', module: 'alpha', source: 'x', bodySha256: 'x' });
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'a lock entry naming a directory');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+src\s+\(a directory, not a file\)/m);
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'the hooks path is still set');
+  for (const rel of [...MANAGED, 'house.json', 'src/a.js']) assert.ok(existsSync(join(repo, rel)), `${rel} stays`);
+});
+
+// A failure after the config phase has to say the config changed. The message
+// is a pure function of what was done, lifted out of the CLI and run here.
+test('#152 uninstall: a run that stops part way names the config it already changed', () => {
+  const src = readFileSync(REAL_CLI_SRC, 'utf8').match(/^function partialRunMessage\([^)]*\) \{\n[^]*?\n\}$/m);
+  assert.ok(src, 'partialRunMessage is not a top-level function in the CLI any more');
+  const partialRunMessage = new Function(`${src[0]}\nreturn partialRunMessage;`)();
+  const msg = partialRunMessage('remove .githooks/pre-push', new Error('EACCES'), ['unset core.hooksPath /r/.githooks at local scope'], [], ['.githooks/pre-push', 'house.json'], true);
+  assert.match(msg, /Already changed: unset core\.hooksPath \/r\/\.githooks at local scope\./);
+  assert.match(msg, /Not done: \.githooks\/pre-push, house\.json\./);
+  assert.doesNotMatch(msg, /nothing/);
+  assert.match(msg, /re-run `house uninstall --apply`/);
+});
+
+test('#152 uninstall: in a repo path full of pattern characters, only the floor value is unset', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n' }, 'house-repo-a.b (c)+[d] e-');
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { alpha: { enabled: true, config: {} }, github: { enabled: true, config: {} } } });
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply'], env).code, 0);
+  commitAll(repo, 'adopt');
+  const floor = floorDir(repo);
+  assert.equal(localHooksPath(repo, env), floor, 'precondition: armed');
+  const lookalike = floor.replace('a.b (c)+[d] e', 'aXb cd e').replace(/\/\.githooks$/, '/Xgithooks');
+  assert.ok(new RegExp(`^${floor}$`).test(lookalike), 'precondition: an unescaped pattern would match the second value');
+  assert.equal(gitIn(repo, ['config', '--local', '--add', 'core.hooksPath', lookalike], env).status, 0);
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(gitIn(repo, ['config', '--local', '--get-all', 'core.hooksPath'], env).stdout, `${lookalike}\n`);
 });
 
 test('#152 uninstall: forged lock entries outside the repo or in .git are refused through the shared deletion check, and nothing is deleted', () => {
