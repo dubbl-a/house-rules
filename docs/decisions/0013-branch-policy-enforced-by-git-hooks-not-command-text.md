@@ -108,9 +108,11 @@ as not intact, because the integrity test requires a clean `.githooks/`, so the 
 it is committed, not once it is rendered.
 
 Six more were found after that round and are recorded here as known limits, each with the remote
-ruleset as the ceiling; their issues stay open until each is fixed or declined. The strip that feeds target resolution removes a bare message value up to the next
-whitespace, so a command glued to it, as in `git status -mx|git commit -m x`, goes unseen by the
-text scan, with the floor behind it in an armed repo (#154). A Bash command long enough to outlast
+ruleset as the ceiling; their issues stay open until each is fixed or declined. One is fixed: the strip that feeds target resolution removed a bare message value up to the next
+whitespace, so a command glued to it, as in `git status -mx|git commit -m x` or
+`git status -m "x"|git commit -m x`, went unseen by the text scan; it now ends the value at an
+unquoted `&`, `;`, `|`, `<` or `>`, after a quoted span too, while a path or `cd` inside a quoted
+or substituted value still goes with it (#154). A Bash command long enough to outlast
 the guard's 5 second hook timeout is not denied, because Claude Code does not block on a timed-out
 hook; the file-tool and MCP scans already deny past `SCAN_BUDGET_MS`, and the Bash scans do not
 (#157). The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,

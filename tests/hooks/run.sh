@@ -1353,6 +1353,41 @@ expect_deny "a branch create behind |& is still the main checkout's" \
   "$(mk_payload "cd $d-wt && git status |&git switch -c f" "$d")" "worktree add"
 expect_deny "a commit behind |& on a protected branch is refused" \
   "$(mk_payload "echo x |&git $_cm -m x" "$r")" "feature branch"
+# #154: target resolution's blind strip ends a value at an unquoted separator
+# or redirect too, bare or after a quoted span, so a commit glued behind one
+# still reaches the commit decision. A path or a cd inside the value, quoted
+# or substituted, still goes with it and cannot pick the checkout decided.
+r="$TMP_ROOT/case154"; new_repo "$r"; adopt "$r"
+o="$TMP_ROOT/case154-sib"; new_repo "$o"; adopt "$o"
+git -C "$o" checkout -q -b feat/y
+expect_deny "a commit behind | glued to a bare -m value is refused" \
+  "$(mk_payload "git status -mx|git $_cm -m x" "$r")" "feature branch"
+expect_deny "a commit behind ; glued to a bare -m value is refused" \
+  "$(mk_payload "git status -mx;git $_cm -m x" "$r")" "feature branch"
+expect_deny "a commit behind |& glued to a bare -m value is refused" \
+  "$(mk_payload "git status -mx|&git $_cm -m x" "$r")" "feature branch"
+expect_deny "a commit behind | glued to a quoted -m value is refused" \
+  "$(mk_payload "git status -m \"x\"|git $_cm -m x" "$r")" "feature branch"
+expect_deny "a commit behind | glued to a single-quoted -m value is refused" \
+  "$(mk_payload "git status -m 'x'|git $_cm -m x" "$r")" "feature branch"
+expect_deny "the spaced control is still refused" \
+  "$(mk_payload "git status -mx | git $_cm -m x" "$r")" "feature branch"
+expect_deny "a path-like -m value cannot steer target resolution" \
+  "$(mk_payload "git $_cm -m ../case154-sib" "$r")" "feature branch"
+expect_deny "a cd in a quoted -m value cannot steer target resolution" \
+  "$(mk_payload "git $_cm -m \"x; cd $o && y\"" "$r")" "feature branch"
+expect_deny "a cd in a substituted -m value cannot steer target resolution" \
+  "$(mk_payload "git $_cm -m \$(echo a;cd $o)" "$r")" "feature branch"
+expect_deny "a cd behind a glued ; runs after the commit, not before it" \
+  "$(mk_payload "git $_cm -mx;cd $o" "$r")" "feature branch"
+expect_allow "a path-like -m value on a feature branch is an ordinary commit" \
+  "$(mk_payload "git $_cm -m ../case154" "$o")"
+expect_allow "a bare -m value glued to | on a feature branch is an ordinary commit" \
+  "$(mk_payload "git $_cm -mx|cat" "$o")"
+expect_allow "a glued &> after a bare -m value on a feature branch" \
+  "$(mk_payload "git $_cm -mx&>/dev/null" "$o")"
+expect_allow "a real cd to a feature-branch repo still resolves to it" \
+  "$(mk_payload "cd $o && git $_cm -mx|cat" "$r")"
 git -C "$d" worktree remove --force "$d-wt" >/dev/null 2>&1
 git -C "$d" branch -D wt-base >/dev/null 2>&1
 
