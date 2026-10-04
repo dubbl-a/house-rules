@@ -26,11 +26,10 @@
 #      rewrites an object (update-ref, symbolic-ref including a refs/remotes
 #      spoof, branch -f/-M, push --delete, git replace and any refs/replace/
 #      ref, which changes what HEAD:house.json even says), each one read in
-#      the command, in the body of a configured alias the command runs, and
-#      in the body of an alias it defines with `-c alias.<name>=`, invoked or
-#      not; one level only, so a body calling another alias is not followed.
-#      A `!shell` alias, configured or inline, and an inline body the shell
-#      computes are refused outright
+#      the command and in the body of a configured alias the command runs
+#      (one level), and a configured `!shell` alias refused outright. An alias
+#      the command defines inline with `-c alias.<name>=` is not read beyond
+#      the literals the command text itself shows (ADR 0017's residue)
 #   B. an Edit/Write/MultiEdit whose file_path, or a NotebookEdit whose
 #      notebook_path, is anywhere under the repo's
 #      .githooks/ or under its git directory, in any case and through any
@@ -185,9 +184,9 @@
 #      hooksPath write, a replace ref)
 #  12. an Edit or Write of ~/.gitconfig or $XDG_CONFIG_HOME/git/config from
 #      inside an adopted checkout, whatever the edit was for
-#  13. a `!shell` alias is refused on sight in every adopted repo, armed or
-#      not, `direct` or deferring or with the github module off, since its
-#      body is a script this hook cannot read
+#  13. a configured `!shell` alias is refused on sight in every adopted
+#      repo, armed or not, `direct` or deferring or with the github module
+#      off, since its body is a script this hook cannot read
 #  14. on git older than 2.28 an armed floor reads as unarmed, so every
 #      unarmed refusal above applies in a repo that looks fully armed
 #  15. an MCP write-verb tool any of whose single-line strings names a floor
@@ -1221,42 +1220,6 @@ alias_scan() {
   plumbing_scan "git $body" all
   return 0
 }
-# An alias the command defines for itself, `git -c alias.<name>=<body>`, is
-# read like a configured one, from the command as typed (every strip below
-# either keeps the `-c` value whole or removes it, and the body is what has to
-# be read). Every `-c` value whose key is alias.* in any case is read, invoked
-# or not, since a definition the command carries is text it can run. One
-# shell word per value: bare characters and quoted spans, the quotes then
-# dropped. A body the shell computes (`$`, a backtick) cannot be read, so it
-# is refused. A KEY the shell computes is not chased: `-c "$x"` is also
-# `git switch -c "$branch"`, and refusing that would cost every scripted
-# branch. git takes no glued `-calias...` form. One level, as for alias_scan:
-# a body that calls another alias is not followed.
-inline_alias_scan() {
-  local sq="'" re rest word w body
-  re="(^|[[:space:]])-c[[:space:]]+(([^[:space:]${sq}\"]|${sq}[^${sq}]*${sq}|\"[^\"]*\")+)"
-  rest="$cmd"
-  while [[ "$rest" =~ $re ]]; do
-    word="${BASH_REMATCH[2]}"
-    rest="${rest#*"${BASH_REMATCH[0]}"}"
-    w="${word//$sq/}"; w="${w//\"/}"
-    shopt -s nocasematch
-    if [[ "$w" != alias.*=* ]]; then shopt -u nocasematch; continue; fi
-    shopt -u nocasematch
-    body="${w#*=}"
-    case "$word" in
-      *'$'*|*'`'*)
-        deny "Refusing 'git -c $word': the shell computes the body of this inline alias, so this hook cannot read whether it disables the git-hook floor (house.json at $toplevel). Spell the body out, or run the commands it stands for directly." ;;
-    esac
-    case "$body" in
-      '!'*)
-        deny "Refusing 'git -c $word': it defines a shell alias, which is a script this hook cannot read and the git-hook floor never sees as text. Run the commands it stands for directly." ;;
-    esac
-    disable_scan "git $body"
-    plumbing_scan "git $body" all
-  done
-  return 0
-}
 # alias_scan over every verb in this candidate's clauses that is not one of
 # git's own. Part of A, so it runs before the policy gate, in every adopted
 # repo and every floor state: a `direct` policy or the github module off
@@ -1264,7 +1227,6 @@ inline_alias_scan() {
 # alias is the disable list typed under another name.
 alias_body_scans() {
   local clause
-  inline_alias_scan
   split_clauses "$CAND_TEXT"
   while IFS= read -r clause; do
     git_split "$clause" || continue

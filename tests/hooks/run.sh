@@ -745,10 +745,14 @@ expect_allow "github off on a feature-branch commit, floor armed: an alias whose
 g6="$TMP_ROOT/direct-armed"; new_repo "$g6"; adopt "$g6"; install_floor "$g6"
 git -C "$g6" checkout -q -b feat; adopt "$g6" '{"branchPolicy":"direct"}'; arm_hookspath "$g6"
 _alias_cases "$g6" "direct on a feature-branch commit, floor armed"
-# An alias defined in the command itself (`git -c alias.z=<body> z`) is read
-# the way a configured one is, whether or not the command invokes it, with
-# the module off in every floor state, under `direct`, and in a deferring
-# repo. One level only: a body that calls another alias is not followed.
+# An alias the command defines inline (`git -c alias.z=<body> z`) is NOT read
+# as an alias body (ADR 0017's residue): a text scan for it misread commit
+# messages, echoes, heredocs and grep patterns, missed quoted and escaped
+# spellings, and ran past the hook's timeout. What the command text itself
+# shows is still read: an inline body carrying `--no-verify` or a hooks-path
+# change is refused by the disable list. The ordinary commands below that the
+# scan once refused are pinned as allowed, so a future scan cannot bring the
+# false denies back.
 g8="$TMP_ROOT/gh-off-broken"; new_repo "$g8"; adopt "$g8" "$_gh_on"; install_floor "$g8"
 git -C "$g8" checkout -q -b feat; adopt "$g8" "$_gh_off"; arm_hookspath "$g8"
 echo '# edited' >>"$g8/.githooks/pre-push"
@@ -758,22 +762,22 @@ echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","comm
 git -C "$g9" add house.json .claude/settings.json && git -C "$g9" commit -q -m house
 _ur="update-ref refs/heads/master HEAD"
 _inline_cases() { # <repo> <label>
-  expect_deny "$2: an inline alias body writing a protected ref is refused" \
-    "$(mk_payload "git -c alias.z='$_ur' z" "$1")" "disables or moves"
-  expect_deny "$2: an inline alias quoted whole is refused" \
-    "$(mk_payload "git -c \"alias.z=$_ur\" z" "$1")" "disables or moves"
-  expect_deny "$2: an inline alias with an upper-case key is refused" \
-    "$(mk_payload "git -c ALIAS.z='$_ur' z" "$1")" "disables or moves"
-  expect_deny "$2: an inline alias with a mixed-case key and name is refused" \
-    "$(mk_payload "git -c Alias.Z='$_ur' Z" "$1")" "disables or moves"
-  expect_deny "$2: an inline shell alias is refused" \
-    "$(mk_payload "git -c alias.z='!rm -rf .githooks' z" "$1")" "shell alias"
-  expect_deny "$2: an inline alias defined but not invoked is still read" \
-    "$(mk_payload "git -c alias.s=status -c alias.z='$_ur' s" "$1")" "disables or moves"
-  expect_deny "$2: an inline alias whose body the shell computes is refused" \
-    "$(mk_payload 'git -c alias.z="$b" z' "$1")" "inline alias"
+  expect_deny "$2: an inline alias body skipping the hooks is refused by the disable list" \
+    "$(mk_payload "git -c alias.x='push $_nv' x origin feat:master" "$1")" "disables or moves"
+  expect_deny "$2: an inline alias body changing the hooks path is refused by the disable list" \
+    "$(mk_payload "git -c alias.y='-c core.hooks""Path=/dev/null push' y origin feat:master" "$1")" "disables or moves"
   expect_allow "$2: an inline alias with a harmless body is allowed" \
     "$(mk_payload "git -c alias.s=status s" "$1")"
+  expect_allow "$2: a commit message quoting an inline alias is allowed" \
+    "$(mk_payload "$_gcm -m \"Guard: -c alias.z='$_ur' is now checked\"" "$1")"
+  expect_allow "$2: a grep counting alias lines in the git config is allowed" \
+    "$(mk_payload "grep -c 'alias.*=!' ~/.gitconfig" "$1")"
+  expect_allow "$2: a grep for an alias-shaped pattern is allowed" \
+    "$(mk_payload "grep -c \"alias.z=update-ref\" docs/git-notes.md" "$1")"
+  expect_allow "$2: an echo of an inline alias into a file is allowed" \
+    "$(mk_payload "echo \"git -c alias.z='$_ur' z\" >> notes.md" "$1")"
+  expect_allow "$2: a heredoc holding an inline alias is allowed" \
+    "$(mk_payload "cat <<'EOT' > notes.md"$'\n'"git -c alias.z='$_ur' z"$'\n'"EOT" "$1")"
 }
 _inline_cases "$g" "github off at HEAD, no floor"
 _inline_cases "$g2" "github off on a feature-branch commit, floor armed"
