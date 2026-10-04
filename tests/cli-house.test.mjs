@@ -18,7 +18,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync,
-  chmodSync, existsSync, statSync, rmSync, realpathSync,
+  chmodSync, existsSync, statSync, rmSync, realpathSync, lstatSync,
 } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -3174,4 +3174,133 @@ test('#152 uninstall in a linked worktree: the shared hooks path is not written 
   assert.match(r.out, new RegExp(`run \`house uninstall --apply\` again from the main checkout \\(${realpathSync(main).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`));
   assert.doesNotMatch(r.out, /node \S+\/scripts\/house uninstall/, 'no plugin path that goes stale after an update');
   for (const rel of MANAGED) assert.ok(!existsSync(join(wt, rel)), `${rel} removed in the worktree`);
+});
+
+// #152 round 3: only what THIS repo's adoption would have written is house's.
+// A destination that belongs only to a module that is off here is the repo's
+// own file: never removed, never a reason to refuse, never mentioned.
+const OWN_LIB = '#!/usr/bin/env bash\n# fixture floor file: house-lib.sh\nexit 0\n';
+const OWN_HOOK = '#!/usr/bin/env bash\n# this repo\'s own pre-commit hook\nexit 0\n';
+
+function githubOffRepo(cliPath, env) {
+  const repo = buildTargetRepo({
+    'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n',
+    '.githooks/house-lib.sh': OWN_LIB, '.githooks/pre-commit': OWN_HOOK,
+  });
+  writeHouseJson(repo, {
+    ...BASE_HOUSE_JSON,
+    modules: { alpha: { enabled: true, config: {} }, beta: { enabled: true, config: { slot: ['src/**'] } }, github: { enabled: false, config: {} } },
+  });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  commitAll(repo, 'adopt with github off');
+  return repo;
+}
+function ownFilesUntouched(repo, out, label) {
+  assert.equal(readFileSync(join(repo, '.githooks', 'house-lib.sh'), 'utf8'), OWN_LIB, `${label}: house-lib.sh byte for byte`);
+  assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit'), 'utf8'), OWN_HOOK, `${label}: pre-commit byte for byte`);
+  assert.doesNotMatch(out, /\.githooks\/(house-lib\.sh|pre-commit)(?![\w./-])/, `${label}: not mentioned`);
+}
+
+test('#152 with github off, the repo\'s own .githooks files survive render, disable, and uninstall, unmentioned', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = githubOffRepo(cliPath, env);
+  ownFilesUntouched(repo, '', 'adopt');
+  const dry = runCli(cliPath, ['render', '--repo', repo], env);
+  const apply = runCli(cliPath, ['render', '--repo', repo, '--apply'], env);
+  assert.equal(apply.code, 0, apply.out + apply.err);
+  ownFilesUntouched(repo, dry.out + apply.out, 'render');
+  const d = runCli(cliPath, ['disable', 'beta', '--repo', repo, '--apply'], env);
+  assert.equal(d.code, 0, d.out + d.err);
+  ownFilesUntouched(repo, d.out, 'disable beta');
+  commitAll(repo, 'beta off');
+  const plan = runCli(cliPath, ['uninstall', '--repo', repo], env);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  const u = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(u.code, 0, u.out + u.err);
+  ownFilesUntouched(repo, plan.out + u.out, 'uninstall');
+  assert.ok(!existsSync(join(repo, '.house', 'check.mjs')), 'the adoption itself is gone');
+});
+
+test('#152 a module turned off by hand: with lock entries its files go; without them they are left alone', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  for (const recorded of [true, false]) {
+    const repo = uninstallRepo(cliPath, env);
+    const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+    house.modules.github.enabled = false;
+    writeHouseJson(repo, house);
+    if (!recorded) unrecordInLock(repo, (p) => p.startsWith('.githooks/'));
+    const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+    assert.equal(r.code, 0, r.out + r.err);
+    for (const f of FLOOR_FILES) assert.equal(existsSync(join(repo, '.githooks', f)), !recorded, `${f}: ${recorded ? 'recorded, removed' : 'unrecorded and off, left'}`);
+    if (!recorded) assert.doesNotMatch(r.out, /REFUSE|\.githooks\/pre-push\b/);
+  }
+});
+
+// What render --apply removes, its dry run lists first.
+function renderRemovals(out, apply) {
+  if (!apply) return [...out.matchAll(/^remove\s+(\S+)\s+\(no longer in the plan\)$/gm)].map((m) => m[1]).sort();
+  const at = out.indexOf('\nRemoved (orphaned');
+  return at === -1 ? [] : out.slice(at).split('\n').slice(2).map((l) => l.trim()).filter((l) => l && !l.includes(' ')).sort();
+}
+
+test('#152 render: the dry run lists every file --apply removes', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const off = githubOffRepo(cliPath, env);
+  const byHand = uninstallRepo(cliPath, env);
+  const house = JSON.parse(readFileSync(join(byHand, 'house.json'), 'utf8'));
+  house.modules.github.enabled = false;
+  writeHouseJson(byHand, house);
+  for (const repo of [off, byHand]) {
+    const dry = runCli(cliPath, ['render', '--repo', repo], env);
+    const apply = runCli(cliPath, ['render', '--repo', repo, '--apply'], env);
+    assert.equal(apply.code, 0, apply.out + apply.err);
+    assert.deepEqual(renderRemovals(dry.out, false), renderRemovals(apply.out, true));
+  }
+  assert.ok(renderRemovals(runCli(cliPath, ['render', '--repo', byHand], env).out, false).length === 0, 'and nothing is left to remove');
+});
+
+// A FIFO at a managed path is never read; a read would block forever, so each
+// run gets five seconds and a hang fails this test, not the suite.
+function runCliTimed(cliPath, args, env) {
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  const res = spawnSync(process.execPath, [cliPath, ...args], { encoding: 'utf8', timeout: 5000, env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir } });
+  return { code: res.status, signal: res.signal, out: res.stdout || '', err: res.stderr || '' };
+}
+
+test('#152 a FIFO at a managed path is reported, not read, by render and uninstall', (t) => {
+  if (spawnSync('mkfifo', ['--version']).error && spawnSync('which', ['mkfifo']).status !== 0) { t.skip('no mkfifo on this machine, so a FIFO cannot be made'); return; }
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const alpha = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  rmSync(alpha);
+  execFileSync('mkfifo', [alpha]);
+  for (const args of [['render', '--repo', repo], ['render', '--repo', repo, '--apply'], ['uninstall', '--repo', repo], ['uninstall', '--repo', repo, '--apply']]) {
+    const r = runCliTimed(cliPath, args, env);
+    assert.equal(r.signal, null, `${args.join(' ')} hung reading the FIFO`);
+    assert.equal(r.code, 1, `${args.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.out, /\.claude\/rules\/house\/alpha\.md\s+\(not a regular file/, args.join(' '));
+  }
+  assert.ok(lstatSync(alpha).isFIFO(), 'the FIFO is still there');
+  assert.equal(localHooksPath(repo, env), floorDir(repo));
+});
+
+test('#152 uninstall: a dangling symlink at a recorded path is removed, the link itself', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const pre = join(repo, '.githooks', 'pre-push');
+  rmSync(pre);
+  symlinkSync(join(repo, 'nowhere'), pre);
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^remove\s+\.githooks\/pre-push\s+\(.*a dangling symlink; the link itself is removed/m);
+  assert.doesNotMatch(r.out, /^already gone\s+\.githooks\/pre-push/m);
+  assert.throws(() => lstatSync(pre), 'the link is gone');
+  assert.ok(!existsSync(join(repo, 'nowhere')), 'nothing was created at its target');
 });

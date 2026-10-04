@@ -678,7 +678,7 @@ function expandPaths(defaultPaths, config) {
 // scaffold record starts empty.
 function loadPriorLockJson(repoRoot) {
   const p = path.join(repoRoot, '.house', 'lock.json');
-  if (!existsSync(p)) return null;
+  if (!existsSync(p) || notRegularReason(p)) return null;
   try { return JSON.parse(readFileSync(p, 'utf8')); }
   catch { return null; }
 }
@@ -739,6 +739,8 @@ function classify(repoRoot, target, priorLock, forceManagedPath, treatAsAbsent =
   if (!existsSync(absPath) || (treatAsAbsent && treatAsAbsent.has(target.path))) {
     return { status: priorEntry ? 'missing' : 'create', target };
   }
+  const notRegular = notRegularReason(absPath);
+  if (notRegular) return { status: 'refuse', target, reason: 'not-regular', detail: notRegular };
   const onDiskHash = sha256Hex(managedBody(readFileSync(absPath, 'utf8')));
   const compareHash = priorEntry ? priorEntry.bodySha256 : target.lockHash;
   if (onDiskHash === compareHash) return { status: 'clean', target };
@@ -1018,6 +1020,8 @@ function planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedP
   const priorSep = priorEntry && typeof priorEntry.sep === 'string' ? priorEntry.sep : '';
   const target = { path: AGENTS_MD, module: '_targets', source: 'targets', lockHash, kind: 'block', sep: priorSep };
   const abs = path.join(repoRoot, AGENTS_MD);
+  const notRegular = notRegularReason(abs);
+  if (notRegular) return { status: 'refuse', target: { ...target, content: '' }, reason: 'not-regular', detail: notRegular };
   const raw = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
   const blk = agentsBlock(raw);
   const forced = forceManagedPath === AGENTS_MD;
@@ -1057,6 +1061,8 @@ function planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath) {
   if (!recorded || recorded.kind !== 'block') return null;
   const abs = path.join(repoRoot, AGENTS_MD);
   if (!existsSync(abs)) return null;
+  const notRegular = notRegularReason(abs);
+  if (notRegular) return { status: 'refuse', path: AGENTS_MD, reason: 'not-regular', detail: notRegular };
   const raw = readFileSync(abs, 'utf8');
   const blk = agentsBlock(raw);
   if (blk.status === 'absent') return null;
@@ -1430,7 +1436,7 @@ function orphanedManagedPaths(repoRoot, planDests, modules, houseData) {
   const unmanaged = [];
   const differing = [];
   const priorLock = loadPriorLock(repoRoot);
-  const owners = managedDestOwners(modules);
+  const owners = managedDestOwners(modules, houseData);
   const judge = (rel) => {
     if (matchesRender(repoRoot, rel, owners.get(rel), houseData, modules)) orphans.add(rel);
     else differing.push(rel);
@@ -1460,16 +1466,38 @@ function orphanedManagedPaths(repoRoot, planDests, modules, houseData) {
   return { orphans, unmanaged: unmanaged.sort(), differing: differing.sort() };
 }
 
-// Every destination an adoption can write, with the modules that write it;
-// null owns the checker, which every render writes whatever is enabled.
-function managedDestOwners(modules) {
+// The destinations THIS repo's adoption writes, with the modules that write
+// them, for house.json as it stands before the command's own change: every
+// enabled module's files[] dests, and the checker, which null owns since every
+// render writes it. A files[] dest of a module that is off here (the floor
+// under .githooks/, a script under scripts/house/) sits in a directory the
+// repo shares with house, so a file there is the repo's own and is never
+// judged. Rule dests are the exception, for every module on or off:
+// .claude/rules/house/ is house's directory outright (#151), so a rule file
+// there that render would write is render's whether or not the lock says so.
+function managedDestOwners(modules, houseData) {
   const owners = new Map([['.house/check.mjs', [null]]]);
   const add = (dest, name) => owners.set(dest, [...(owners.get(dest) || []), name]);
   for (const m of modules.filter((x) => !x.error)) {
     for (const r of arr(m.json.rules)) add(posixJoin(VENDORED_RULE_PREFIX, path.basename(r)), moduleName(m));
+    if (!moduleEnabled(houseData, moduleName(m))) continue;
     for (const f of arr(m.json.files)) if (isPlainObject(f) && typeof f.dest === 'string') add(normalizeRepoPath(f.dest), moduleName(m));
   }
   return owners;
+}
+
+// null when `abs` is safe to read as a managed file: a regular file, a
+// symlink to one, or a dangling symlink (nothing to read). Anything else (a
+// FIFO, a socket, a device, a directory) would block or fail a read, so it is
+// reported and never opened. Checked with lstat before every read of a
+// managed path.
+function notRegularReason(abs) {
+  let st;
+  try { st = lstatSync(abs); } catch { return null; }
+  if (st.isSymbolicLink()) {
+    try { st = statSync(abs); } catch { return null; }
+  }
+  return st.isFile() ? null : 'not a regular file (a FIFO, socket, device, or directory), so it is not read; remove or replace it by hand';
 }
 
 // Whether the file at `rel` has the body render would write there now, with
@@ -1480,6 +1508,7 @@ function managedDestOwners(modules) {
 // matches. With no usable house.json there is no render to compare against.
 function matchesRender(repoRoot, rel, owners, houseData, modules) {
   if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) return false;
+  if (notRegularReason(path.join(repoRoot, rel))) return false;
   let onDisk;
   try { onDisk = readFileSync(path.join(repoRoot, rel), 'utf8'); } catch { return false; }
   const body = (s) => s.replace(/<!--\s*house-managed\s+v\S+/g, '<!-- house-managed');
@@ -1570,7 +1599,7 @@ function removeEmptiedParents(repoRoot, abs) {
 // hand since the last render, so removing it would lose that edit unseen.
 function orphanIsHandEdited(repoRoot, rel, priorLock) {
   const e = priorLock.get(rel);
-  if (!e) return false;
+  if (!e || notRegularReason(path.join(repoRoot, rel))) return false; // not read: the caller reports it
   try { return sha256Hex(managedBody(readFileSync(path.join(repoRoot, rel), 'utf8'))) !== e.bodySha256; } catch { return false; }
 }
 
@@ -1588,7 +1617,7 @@ function migrationLine(m, applied) {
     : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
-function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, unmanaged, differing, json, apply }) {
+function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans, unmanaged, differing, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({
@@ -1602,6 +1631,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
       scaffolds: geminiScaffold ? [GEMINI_MD] : [],
       editedOrphans: arr(editedOrphans),
       unsafeOrphans: arr(unsafeOrphans),
+      removals: arr(orphans),
       unmanaged: arr(unmanaged),
       differing: arr(differing),
     }, null, 2));
@@ -1613,6 +1643,10 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
   // actually happened; here the plan only ever promises.
   if (!apply) for (const m of arr(migrations)) console.log(migrationLine(m, false));
   for (const p of plan) {
+    if (p.reason === 'not-regular') {
+      console.log(`${'REFUSE'.padEnd(15)} ${p.target.path}  (${p.detail})`);
+      continue;
+    }
     const label = STATUS_LABEL[p.status] || p.status;
     console.log(`${label.padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
     if (p.status === 'refuse' && p.reason === 'reserved') {
@@ -1631,8 +1665,10 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
   }
   for (const u of arr(unsafeOrphans)) {
     console.log(`${'REFUSE'.padEnd(15)} ${u.path}  (${u.reason})`);
-    console.log(`  ${UNSAFE_REMOVAL_EXIT}`);
+    if (!u.notRegular) console.log(`  ${UNSAFE_REMOVAL_EXIT}`);
   }
+  // #152: the dry run names every file the apply's sweep removes.
+  if (!apply) for (const rel of arr(orphans)) console.log(`${'remove'.padEnd(15)} ${rel}  (no longer in the plan)`);
   for (const rel of arr(unmanaged)) console.log(`${'left'.padEnd(15)} ${rel}  (not managed, left in place)`);
   for (const rel of arr(differing)) {
     console.log(`${'left'.padEnd(15)} ${rel}  (${UNRECORDED_DIFFERS})`);
@@ -1642,7 +1678,9 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
   if (blockRemoval) {
     const label = blockRemoval.status === 'refuse' ? 'REFUSE' : 'remove-block';
     console.log(`${label.padEnd(15)} ${blockRemoval.path}  (no codex or gemini target; ${blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'text outside the markers stays'})`);
-    if (blockRemoval.status === 'refuse' && blockRemoval.reason === 'reserved') {
+    if (blockRemoval.reason === 'not-regular') {
+      console.log(`  ${AGENTS_MD} is ${blockRemoval.detail}.`);
+    } else if (blockRemoval.status === 'refuse' && blockRemoval.reason === 'reserved') {
       console.log(`  ${reservedMarkerMessage(blockRemoval.markerLines, blockRemoval.repairable)}`);
     } else if (blockRemoval.status === 'refuse' && blockRemoval.problems) {
       console.log(`  the house-managed markers are broken, and ${markerProblemLines(blockRemoval.problems)} do not match the block the lock recorded, so they cannot be told apart from your own text. Delete the stale block lines there by hand, then \`house render --apply\`.`);
@@ -1711,6 +1749,11 @@ function cmdRender(args) {
   const sweep = orphanedManagedPaths(repoRoot, planDests, modules, houseData);
   const sweepable = [...sweep.orphans].filter((rel) => existsSync(path.join(repoRoot, rel))).sort();
   const unsafeOrphans = sweepable.map((rel) => ({ path: rel, reason: unsafeRemovalReason(repoRoot, rel) })).filter((u) => u.reason);
+  // #152: an orphan that is not a regular file is not read, and not removed.
+  for (const rel of sweepable) {
+    const detail = !unsafeOrphans.some((u) => u.path === rel) && notRegularReason(path.join(repoRoot, rel));
+    if (detail) unsafeOrphans.push({ path: rel, reason: detail, notRegular: true });
+  }
   // The block removal deletes a whole file too when nothing else is in it, so
   // it is refused on the same terms rather than written somewhere else.
   if (blockRemoval && blockRemoval.deleteFile) {
@@ -1719,7 +1762,8 @@ function cmdRender(args) {
   }
   const editedOrphans = sweepable
     .filter((rel) => rel !== forceManagedPath && !unsafeOrphans.some((u) => u.path === rel) && orphanIsHandEdited(repoRoot, rel, loadPriorLock(repoRoot)));
-  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
+  const sweepRemovals = sweepable.filter((rel) => !unsafeOrphans.some((u) => u.path === rel) && !editedOrphans.includes(rel));
+  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans: sweepRemovals, unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
 
   const refusals = plan.filter((p) => p.status === 'refuse');
   // Marker lines render cannot attribute to one block are unreadable input,
@@ -2416,8 +2460,10 @@ function cmdDisable(args) {
     .sort()
     .map((rel) => {
       const e = priorLock.get(rel);
-      const unsafe = unsafeRemovalReason(repoRoot, rel);
-      return { path: rel, module: (e && e.module) || beforeModule.get(rel) || '(unrecorded)', unsafe, edited: !unsafe && orphanIsHandEdited(repoRoot, rel, priorLock) };
+      const forged = unsafeRemovalReason(repoRoot, rel);
+      const notRegular = forged ? null : notRegularReason(path.join(repoRoot, rel));
+      const unsafe = forged || notRegular;
+      return { path: rel, module: (e && e.module) || beforeModule.get(rel) || '(unrecorded)', unsafe, notRegular: Boolean(notRegular), edited: !unsafe && orphanIsHandEdited(repoRoot, rel, priorLock) };
     });
 
   console.log(`house disable: plan for ${toDisable.join(', ')}${args.apply ? '' : ' (nothing is written without --apply)'}`);
@@ -2432,7 +2478,7 @@ function cmdDisable(args) {
   for (const r of removed) {
     if (r.unsafe) {
       console.log(`${'REFUSE'.padEnd(15)} ${r.path}  (${r.unsafe})`);
-      console.log(`  ${UNSAFE_REMOVAL_EXIT}`);
+      if (!r.notRegular) console.log(`  ${UNSAFE_REMOVAL_EXIT}`);
       continue;
     }
     console.log(`${(r.edited ? 'REFUSE' : 'remove').padEnd(15)} ${r.path}  (module: ${r.module})`);
@@ -2672,8 +2718,13 @@ function uninstallGuardLines(repoRoot, removingConfig) {
 // the index, every module's files[] dest (the floor and scripts/house/
 // included), every rule dest, and anything else under scripts/house/. Without
 // a readable lock these are listed, never deleted, since nothing proves which
-// of them render wrote.
-function unrecordedManagedPaths(repoRoot, modules) {
+// of them render wrote. With a usable house.json, only what this adoption
+// writes (managedDestOwners), so a file at an off module's path is not named.
+function unrecordedManagedPaths(repoRoot, modules, houseData) {
+  if (isPlainObject(houseData) && isPlainObject(houseData.modules)) {
+    return [...managedDestOwners(modules, houseData).keys(), '.house/INDEX.md']
+      .filter((rel) => { try { lstatSync(path.join(repoRoot, rel)); return true; } catch { return false; } }).sort();
+  }
   const ruleDests = modules.filter((m) => !m.error).flatMap((m) => arr(m.json.rules).map((r) => posixJoin('.claude/rules/house', path.basename(r))));
   let scriptsHouse = [];
   try { scriptsHouse = readdirSync(path.join(repoRoot, 'scripts', 'house'), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `scripts/house/${e.name}`); } catch { /* none */ }
@@ -2687,6 +2738,7 @@ function unrecordedManagedPaths(repoRoot, modules) {
 function lockState(repoRoot) {
   const p = path.join(repoRoot, '.house', 'lock.json');
   if (!existsSync(p)) return 'missing';
+  if (notRegularReason(p)) return 'unreadable';
   let j;
   try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { return 'unreadable'; }
   const files = Array.isArray(j) ? j : (isPlainObject(j) && Array.isArray(j.files) ? j.files : null);
@@ -2723,7 +2775,7 @@ function cmdUninstall(args) {
   // wrote, so a file it lists could be the repo's own or carry an edit. Stop
   // before planning anything, whether or not house.json is here.
   if (lock !== 'ok') {
-    const looks = unrecordedManagedPaths(repoRoot, modules);
+    const looks = unrecordedManagedPaths(repoRoot, modules, houseData);
     let block = false;
     try { block = agentsBlock(readFileSync(path.join(repoRoot, AGENTS_MD), 'utf8')).status !== 'absent'; } catch { /* no AGENTS.md */ }
     if (looks.length || block || lock === 'unreadable') {
@@ -2758,11 +2810,16 @@ function cmdUninstall(args) {
   // judges every destination an adoption writes, recorded or not.
   const sweep = orphanedManagedPaths(repoRoot, new Set(), modules, houseData);
   const recorded = [...sweep.orphans].sort();
-  const gone = recorded.filter((rel) => !existsSync(path.join(repoRoot, rel)));
-  const removals = recorded.filter((rel) => existsSync(path.join(repoRoot, rel))).map((rel) => {
+  // Present means lstat finds it, so a dangling symlink at a recorded path is
+  // a managed entry whose link is removed, not a file "already gone".
+  const present = (rel) => { try { lstatSync(path.join(repoRoot, rel)); return true; } catch { return false; } };
+  const dangling = (rel) => present(rel) && !existsSync(path.join(repoRoot, rel));
+  const gone = recorded.filter((rel) => !present(rel));
+  const removals = recorded.filter(present).map((rel) => {
     const e = priorLock.get(rel);
     const unsafe = unsafeRemovalReason(repoRoot, rel);
-    return { path: rel, module: (e && e.module) || '(not recorded; matches the render)', unsafe, edited: !unsafe && orphanIsHandEdited(repoRoot, rel, priorLock) };
+    const module = `${(e && e.module) || '(not recorded; matches the render)'}${dangling(rel) ? '; a dangling symlink; the link itself is removed' : ''}`;
+    return { path: rel, module, unsafe, edited: !unsafe && orphanIsHandEdited(repoRoot, rel, priorLock) };
   });
   // The index and the lock are render's own, written outside the plan; they
   // go only while the lock is there to say this repo was rendered, the lock last.
@@ -2872,7 +2929,7 @@ function cmdUninstall(args) {
   const scaffoldRecord = priorScaffoldRecord(loadPriorLockJson(repoRoot), SCAFFOLDS, houseData, repoRoot);
   const scaffolds = [...new Set(SCAFFOLDS.map((s) => scaffoldRecord.get(s.tmpl) || s.dest))].filter((d) => existsSync(path.join(repoRoot, d)));
   if (houseTargets(houseData).includes('gemini') && existsSync(path.join(repoRoot, GEMINI_MD))) scaffolds.push(GEMINI_MD);
-  const managedDirs = new Set(['.house', ...[...removing, ...managedDestOwners(modules).keys()].map((p) => path.posix.dirname(p)).filter((d) => d !== '.')]);
+  const managedDirs = new Set(['.house', ...[...removing, ...managedDestOwners(modules, houseData).keys()].map((p) => path.posix.dirname(p)).filter((d) => d !== '.')]);
   const unmanaged = new Set(sweep.unmanaged);
   for (const d of managedDirs) {
     if (emptied.includes(d)) continue;
