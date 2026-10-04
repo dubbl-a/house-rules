@@ -10,9 +10,13 @@ updates:
       all-minor-and-patch:
         update-types: ["minor", "patch"]
     cooldown:
-      default-days: 7
+      default-days: 3
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 3
+      exclude: ["@anthropic-ai/*"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
     cooldown:
-      default-days: 7
+      default-days: 3
