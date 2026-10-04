@@ -304,6 +304,17 @@ PATH_MAX_BYTES=4096
 path_bytes() { local LC_ALL=C; PATH_BYTES=${#1}; }
 HOOK_T0_US="${EPOCHREALTIME:-}"; HOOK_T0_US="${HOOK_T0_US//[!0-9]/}"
 HOOK_T0_S="$SECONDS"
+# TEST HOOK ONLY: HOUSE_TEST_SECONDS_SPENT, a positive integer N, puts the
+# hook on the whole-second clock and counts N seconds as already spent, so
+# the suite can drive the bash 3.2 path on any bash. It only ever makes a
+# budget trip sooner: with N of 1 or more the whole-second reading below
+# trips by the time the budget has really elapsed, never later.
+case "${HOUSE_TEST_SECONDS_SPENT:-}" in
+  ''|*[!0-9]*) ;;
+  *) if (( 10#$HOUSE_TEST_SECONDS_SPENT > 0 )); then
+       HOOK_T0_US=''; HOOK_T0_S=$((SECONDS - 10#$HOUSE_TEST_SECONDS_SPENT))
+     fi ;;
+esac
 # Returns 0 once the scan has spent its budget.
 scan_over_budget() {
   local now
@@ -323,13 +334,23 @@ BASH_OVER=0
 # Returns 0 once the Bash scans have spent the budget, read on every 32nd unit
 # of scan work (a clause, a token, a target). A short command's time is the
 # fixed cost of its git processes, which grows with the machine's load and not
-# with the command, and on bash 3.2 the clock can trip a 2000 ms budget after
-# one second; so a command with little to scan is never refused for time,
-# while the work between two readings stays a small part of the margin.
+# with the command, so a command with little to scan is never refused for
+# time, while the work between two readings stays a small part of the margin.
+# On the whole-second clock (bash 3.2) the Bash scans refuse only once the
+# whole budget has certainly elapsed: the start may have been at the end of
+# its second, so one more tick is needed. A heredoc commit message that
+# finishes in about a second used to trip the file modes' reading above,
+# which counts the current second as spent. That leaves 2 to 3 s real at the
+# default budget, still under the timeout.
 BASH_TICKS=0
 bash_scan_spent() {
   BASH_TICKS=$((BASH_TICKS + 1))
-  if (( BASH_TICKS % 32 == 0 )) && scan_over_budget; then return 0; fi
+  (( BASH_TICKS % 32 == 0 )) || return 1
+  if [[ -n "$HOOK_T0_US" ]]; then
+    if scan_over_budget; then return 0; fi
+  elif (( (SECONDS - HOOK_T0_S) * 1000 >= SCAN_BUDGET_MS + 1000 )); then
+    return 0
+  fi
   return 1
 }
 

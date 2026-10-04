@@ -2045,9 +2045,15 @@ for ((i = 0; i < 300; i++)); do _clauses+=" && git status"; done
 HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
 expect_deny "a Bash command of 301 clauses past the scan budget in an adopted repo" \
   "$(mk_payload "$_clauses" "$pg")" "too long to check in time"
-expect_allow "the same 301 clauses past the scan budget in a repo that never adopted house" \
+# The whole-second clock bash 3.2 runs on, forced through the test hook
+# HOUSE_TEST_SECONDS_SPENT on any bash: two seconds counted as spent puts a
+# 1 ms budget past certain, so these do not depend on where a tick falls.
+HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1 HOUSE_TEST_SECONDS_SPENT=2)
+expect_deny "whole-second clock: 301 clauses past the scan budget in an adopted repo" \
+  "$(mk_payload "$_clauses" "$pg")" "too long to check in time"
+expect_allow "whole-second clock: the same 301 clauses in a repo that never adopted house" \
   "$(mk_payload "$_clauses" "$n")"
-expect_deny "301 clauses past the budget from an unadopted cwd, the first aimed at an adopted repo with -C" \
+expect_deny "whole-second clock: 301 clauses from an unadopted cwd, the first aimed at an adopted repo with -C" \
   "$(mk_payload "git -C $pg status && $_clauses" "$n")" "too long to check in time"
 HOOK_ENV=()
 # At the default budget an ordinary long command decides as before.
@@ -2055,6 +2061,14 @@ _files=''
 for ((i = 0; i < 60; i++)); do _files+=" docs/file$i.md"; done
 expect_allow "a 60-path git add and a status at the default budget in an adopted repo" \
   "$(mk_payload "git add$_files && git status" "$pg")"
+# Near the budget but under it, on the whole-second clock: one second already
+# spent leaves the default budget unspent until a second full tick, so the
+# same command, which reads the clock on its way, is still decided as before.
+# Counting the current second as spent refused it.
+HOOK_ENV=(HOUSE_TEST_SECONDS_SPENT=1)
+expect_allow "whole-second clock, one second spent: the 60-path git add is still allowed" \
+  "$(mk_payload "git add$_files && git status" "$pg")"
+HOOK_ENV=()
 # ── a payload jq cannot parse: tool and cwd are unknown, so the hook's own
 # working directory (the project the harness runs it in) decides adoption
 # expect_in_dir <allow|deny> <label> <dir> <stdin>
