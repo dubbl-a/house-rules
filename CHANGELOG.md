@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+- **The deploy guard's wrong-branch refusal prints a command that exists (#179).** Remediation (b) printed `node scripts/house/<script> ...`, a file that does not exist, because the argument is the npm script name. It now prints `npm run <script> ...`.
+
 ### Changed
 - **The closing-keyword rule widens to cover closing by hand (ADR 0011).** The github rule "Close an issue only on purpose, and only on claims you checked" keeps the closing-keyword and post-merge state check, and adds: check each claim in a closing comment against the repo before closing, and never close to lower the count. Prompted by two closes in this repo's own 2026-10-04 triage that overstated the work and were reopened.
 
