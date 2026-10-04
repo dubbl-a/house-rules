@@ -1,6 +1,6 @@
 ---
 name: bootstrap
-description: Sets up house in a repo for the first time, proposing a house.json manifest, vendored rules, and a CLAUDE.md skeleton, dry run by default; in an adopted repo, turns modules on and walks their at-adoption checklist. Use for "bootstrap house", "adopt house here", or "enable the security module".
+description: Sets up house in a repo for the first time, proposing a house.json manifest, vendored rules, and a CLAUDE.md skeleton, dry run by default; in an adopted repo, turns modules on and walks their at-adoption checklist, or removes the adoption. Use for "bootstrap house", "adopt house here", "enable the security module", or "uninstall house from this repo".
 disable-model-invocation: true
 ---
 
@@ -32,7 +32,7 @@ Before probing anything, check whether `house.json` already exists at the repo r
 If it exists, refuse. Print that the repo already has a manifest and point to `/house-rules:sync`
 instead. This holds in dry run too: bootstrap never drafts a second proposal over a first one,
 even one nobody applied yet. A repo gets exactly one bootstrap. The exceptions are a request to
-turn modules on or off, which take the modes below and never re-propose the manifest.
+turn modules on or off, or to uninstall, which take the modes below and never re-propose the manifest.
 
 ## Enable modules in an adopted repo
 
@@ -85,6 +85,32 @@ module is off; say so rather than follow that advice. If `--apply` is denied by 
 permission check, do not retry or route around it; give the person the exact command and the
 directory to run it from. The plan names a `git config --unset` the person runs themselves: the
 guard refuses it to a session, and leaving the setting in place is harmless.
+
+## Uninstall from an adopted repo
+
+When the person asks to remove house from a repo, do it on a branch and open a pull request.
+Run the plan first:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house uninstall --repo <path>
+```
+
+It writes nothing. It lists the managed files and the git-hook floor it removes, the `AGENTS.md`
+block it takes out, the directories that end empty, what it does to `core.hooksPath` at each
+scope, everything it leaves (house.json, scaffolds, files not managed, and each line still calling
+the checker), what stops, and what the branch guard does afterwards. Show all of it and wait for
+the person to say apply it; on approval, run the same command with `--apply`. A hand-edited
+managed file is refused by name and nothing is deleted: leave resolving it to the person. If the
+apply is denied by a permission check, do not retry or route around it: tell the person that a
+blocked action can be retried with manual approval from `/permissions`, and give them the exact
+command and the directory to run it in. A rerun finishes a run that stopped part way.
+
+Then walk the leftovers with the person, one group at a time: each checker caller listed (remove
+it in the same pull request, or CI fails once the checker is gone), each scaffold and file not
+managed (theirs to keep or delete), and `house.json`, which stays because it may hold the only copy
+of their decisions; while it is at HEAD the branch guard keeps enforcing its `branchPolicy`, so
+deleting it is their call, and refusals that advise arming the floor or rendering would re-adopt.
+In a linked worktree the plan names the command to run in the main checkout for `core.hooksPath`.
 
 ## Probe the repo
 

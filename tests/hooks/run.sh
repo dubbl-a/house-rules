@@ -415,6 +415,72 @@ arm_hookspath "$r"
 expect_deny "github module off at HEAD, core.hooksPath still set, floor files gone: push origin master is still denied" \
   "$(mk_payload "git push origin master" "$r")" "feature branch"
 
+# --- #152: house uninstall. Its command text, with a realistic plugin path, is
+#     not a git verb and not a floor mutation, so the guard allows it on a
+#     feature branch, armed and unarmed; the armed case first proves the
+#     fixture IS armed (a push naming master is the floor's business there).
+#     Then the state uninstall leaves, floor files gone, core.hooksPath unset,
+#     house.json still at HEAD, pins each clause of the guard sentence its
+#     plan prints. ---
+_k152="core.hooks""Path"
+r="$TMP_ROOT/case152armed"; new_repo "$r"; adopt "$r"; arm_floor "$r" feat/u
+git -C "$r" checkout -q feat/u
+if [[ -n "$GIT_NEW_DIR" ]]; then
+  HOOK_PATH_PREFIX="$GIT_NEW_DIR"
+  expect_allow "#152 armed control: push origin master from feat/u is the floor's business" \
+    "$(mk_payload "git push origin master" "$r")"
+  for _cmd in "node \"$HOUSE_CLI\" uninstall --apply --repo \"$r\"" "node \"$HOUSE_CLI\" uninstall --apply" "node \"$HOUSE_CLI\" uninstall --repo \"$r\""; do
+    expect_allow "#152 armed, feat/u: $_cmd" "$(mk_payload "$_cmd" "$r")"
+  done
+  HOOK_PATH_PREFIX=''
+else
+  skip "#152 armed uninstall cases" "no git >= 2.28 on this box, so the hook reads every floor as unarmed"
+fi
+r="$TMP_ROOT/case152unarmed"; new_repo "$r"; adopt "$r"
+git -C "$r" checkout -q -b feat/u
+expect_deny "#152 unarmed control: push origin master from feat/u is denied" \
+  "$(mk_payload "git push origin master" "$r")" "protected branch"
+for _cmd in "node \"$HOUSE_CLI\" uninstall --apply --repo \"$r\"" "node \"$HOUSE_CLI\" uninstall --apply"; do
+  expect_allow "#152 unarmed, feat/u: $_cmd" "$(mk_payload "$_cmd" "$r")"
+done
+# The state uninstall leaves: the floor was rendered and armed, then removed.
+r="$TMP_ROOT/case152left"; new_repo "$r"; adopt "$r"; install_floor "$r"
+git -C "$r" rm -r -q .githooks && git -C "$r" commit -q -m "uninstall house"
+git -C "$r" branch feat/u
+expect_deny "#152 after uninstall: a commit on master is still refused (house.json stays at HEAD)" \
+  "$(mk_payload "git commit -m x" "$r")" "needs a PR"
+expect_deny "#152 after uninstall: the refusal advises arming the floor" \
+  "$(mk_payload "git commit -m x" "$r")" "floor is not armed in this checkout"
+expect_deny "#152 after uninstall: a merge on a protected branch is refused" \
+  "$(mk_payload "git merge feat/u" "$r")" "protected branch"
+git -C "$r" checkout -q feat/u
+expect_deny "#152 after uninstall: a git alias is refused (unarmed text rules)" \
+  "$(mk_payload "git lg" "$r")" "not one of git's own commands"
+expect_deny "#152 after uninstall: a push naming master is refused" \
+  "$(mk_payload "git push origin master" "$r")" "protected branch"
+expect_deny "#152 after uninstall: writing core.hooksPath is refused" \
+  "$(mk_payload "git config $_k152 /x" "$r")" "disables or moves"
+expect_deny "#152 after uninstall: writing a file under .githooks/ is refused" \
+  "$(mk_file_payload Write "$r/.githooks/pre-commit" "$r")" "git-hook floor"
+expect_allow "#152 after uninstall, control: a commit on feat/u is allowed" \
+  "$(mk_payload "git commit -m x" "$r")"
+# "direct" at HEAD: no branch refusal, the floor's own protection still on.
+r="$TMP_ROOT/case152direct"; new_repo "$r"; adopt "$r" '{"branchPolicy":"direct"}'
+expect_allow "#152 after uninstall, direct: a commit on master is allowed" \
+  "$(mk_payload "git commit -m x" "$r")"
+expect_deny "#152 after uninstall, direct: writing core.hooksPath is still refused" \
+  "$(mk_payload "git config $_k152 /x" "$r")" "disables or moves"
+# house.json off HEAD but in the working tree: still read; off both: the guard stops.
+r="$TMP_ROOT/case152gone"; new_repo "$r"; adopt "$r"
+git -C "$r" rm -q --cached house.json && git -C "$r" commit -q -m "house.json off HEAD"
+expect_deny "#152 house.json only in the working tree: a commit on master is still refused" \
+  "$(mk_payload "git commit -m x" "$r")" "needs a PR"
+rm -f "$r/house.json"
+expect_allow "#152 house.json gone from HEAD and the working tree: a commit on master is allowed" \
+  "$(mk_payload "git commit -m x" "$r")"
+expect_allow "#152 house.json gone from HEAD and the working tree: writing core.hooksPath is allowed" \
+  "$(mk_payload "git config $_k152 /x" "$r")"
+
 # --- 9. UNARMED: push refspec targeting master from feat/x: DENY ---
 r="$TMP_ROOT/case09"; new_repo "$r"; adopt "$r"
 git -C "$r" checkout -q -b feat/x

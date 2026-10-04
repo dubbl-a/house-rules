@@ -2634,3 +2634,232 @@ test('#151 disable: the --why error names --why=<reason> for a reason that start
   assert.equal(r.code, 2, r.out + r.err);
   assert.match(r.err, /--why=<reason>/);
 });
+
+// ── uninstall (#152) ─────────────────────────────────────────────────────
+//
+// Removes the adoption from one repo: one plan, nothing written without
+// --apply, every managed file and the vendored floor removed through the same
+// sweep and refusals render and disable use, the hooks path undone only where
+// it names this repo's own floor, and everything left listed. Every run gets
+// its own global git config file, so a hooks path on the machine running the
+// suite cannot leak in, and a test can prove that file is never written.
+
+const AGENTS_OWN = '# Agents\n\nOur own instructions, which uninstall leaves byte for byte.\n';
+const PKG_WITH_CALLERS = '{\n  "name": "fixture",\n  "scripts": {\n    "check:house": "node .house/check.mjs",\n    "verify": "npm test && npm run check:house"\n  }\n}\n';
+const CI_WITH_CALLER = 'name: ci\non: push\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node .house/check.mjs\n';
+
+function isolatedGitEnv(globalBody = '') {
+  const d = mkdtempSync(join(tmpdir(), 'house-uninstall-152-'));
+  CLEANUP_DIRS.push(d);
+  const file = join(d, 'global.gitconfig');
+  writeFileSync(file, globalBody);
+  return { GIT_CONFIG_GLOBAL: file, GIT_CONFIG_NOSYSTEM: '1' };
+}
+
+function gitIn(repo, args, env) {
+  return spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+}
+function localHooksPath(repo, env) { return (gitIn(repo, ['config', '--local', '--get', 'core.hooksPath'], env).stdout || '').trim(); }
+
+// An adopted repo with every kind of thing uninstall meets: rule files, the
+// checker, the floor and its scaffold, an AGENTS.md block inside the repo's
+// own text, and the checker wired into package.json and a workflow by hand.
+function uninstallRepo(cliPath, env, extra = {}) {
+  const repo = buildTargetRepo({
+    'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n',
+    'AGENTS.md': AGENTS_OWN, 'package.json': PKG_WITH_CALLERS, '.github/workflows/ci.yml': CI_WITH_CALLER, ...extra,
+  });
+  writeHouseJson(repo, {
+    ...BASE_HOUSE_JSON, targets: ['claude-code', 'codex'],
+    modules: { alpha: { enabled: true, config: {} }, beta: { enabled: false, config: {} }, github: { enabled: true, config: {} } },
+  });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  commitAll(repo, 'adopt');
+  return repo;
+}
+
+const MANAGED = ['.claude/rules/house/alpha.md', '.house/check.mjs', '.house/lock.json', '.house/INDEX.md', ...FLOOR_FILES.map((f) => `.githooks/${f}`)];
+const SECRETS_SCAFFOLD = '.githooks/pre-commit.d/20-secrets';
+
+test('#152 uninstall: refuses a repo with no house.json, naming it, and writes nothing', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildTargetRepo();
+  const env = isolatedGitEnv();
+  for (const args of [['uninstall', '--repo', repo], ['uninstall', '--repo', repo, '--apply']]) {
+    const r = runCli(cliPath, args, env);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.err, /house\.json not found/);
+    assert.match(r.err, /nothing to uninstall/);
+  }
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#152 uninstall: the plan lists what goes, what stays, the hooks path, and what stops, and writes nothing', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  writeFileSync(join(repo, '.house', 'notes.txt'), 'mine\n');
+  commitAll(repo, 'a file of my own in .house');
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'precondition: render armed the floor');
+  const snapshot = () => ({
+    status: execFileSync('git', ['status', '--short', '--ignored'], { cwd: repo, encoding: 'utf8' }),
+    config: gitIn(repo, ['config', '--local', '--list'], env).stdout,
+    bytes: [...MANAGED, 'AGENTS.md', 'house.json'].map((p) => readFileSync(join(repo, p), 'utf8')),
+    global: readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8'),
+  });
+  const before = snapshot();
+  const r = runCli(cliPath, ['uninstall', '--repo', repo], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(snapshot(), before, 'the plan writes nothing: bytes, status, local and global config');
+
+  for (const rel of MANAGED) assert.match(r.out, new RegExp(`^remove\\s+${rel.replace(/\./g, '\\.')}\\s`, 'm'), `lists ${rel}`);
+  assert.match(r.out, /^remove-block\s+AGENTS\.md\s+\(the house-managed block only; your text stays\)/m);
+  assert.match(r.out, /^ {2}\.githooks\/pre-push\.d$/m, 'a directory that ends empty');
+  assert.doesNotMatch(r.out, /^ {2}\.githooks\/pre-commit\.d$/m, 'the scaffold keeps its directory');
+  assert.match(r.out, /core\.hooksPath, local scope .*: .*\.githooks, this repo's floor: will be unset/);
+  assert.match(r.out, /a hooks path from before adoption is not known/i);
+  assert.match(r.out, /^ {2}house\.json: left/m);
+  assert.match(r.out, new RegExp(`^ {2}scaffold ${SECRETS_SCAFFOLD.replace(/\./g, '\\.')}`, 'm'));
+  assert.match(r.out, /^ {2}not managed \.house\/notes\.txt/m);
+  assert.match(r.out, /^ {2}package\.json:4 +"check:house": "node \.house\/check\.mjs",$/m, 'the script that runs the checker');
+  assert.match(r.out, /^ {2}package\.json:5 +"verify": "npm test && npm run check:house"$/m, 'a script that calls it by name');
+  assert.match(r.out, /^ {2}\.github\/workflows\/ci\.yml:7 +- run: node \.house\/check\.mjs$/m, 'the workflow step');
+  assert.match(r.out, /git-hook floor/);
+  assert.match(r.out, /1 rule file\(s\) stop loading/);
+  assert.match(r.out, /tracked in git/);
+  assert.match(r.out, /house render --apply/, 're-adopting from the kept house.json');
+  assert.match(r.out, /--apply/);
+});
+
+test('#152 uninstall --apply: every managed file and the floor go; house.json, the scaffold, and files not managed stay; a commit then succeeds', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  writeFileSync(join(repo, '.claude', 'rules', 'house', 'mine.md'), '# mine\n');
+  commitAll(repo, 'a rule of my own');
+  const houseBefore = readFileSync(join(repo, 'house.json'), 'utf8');
+  const globalBefore = readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const rel of MANAGED) assert.ok(!existsSync(join(repo, rel)), `${rel} removed`);
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-push.d')), 'an emptied directory goes');
+  assert.ok(!existsSync(join(repo, '.house')), '.house goes once empty');
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), houseBefore, 'house.json is left as it was');
+  assert.ok(existsSync(join(repo, SECRETS_SCAFFOLD)), 'the scaffold stays');
+  assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'mine.md')), 'a file not managed stays');
+  assert.match(r.out, /^ {2}not managed \.claude\/rules\/house\/mine\.md/m);
+  assert.equal(readFileSync(join(repo, 'AGENTS.md'), 'utf8'), AGENTS_OWN, 'AGENTS.md is the repo\'s own text again, byte for byte');
+  assert.equal(localHooksPath(repo, env), '', 'the local hooks path is unset');
+  assert.match(r.out, /unset core\.hooksPath at local scope/);
+  assert.equal(readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8'), globalBefore, 'global config untouched');
+  const status = gitStatusShort(repo).split('\n').filter(Boolean);
+  const expected = [...MANAGED.map((p) => ` D ${p}`), ' M AGENTS.md'].sort();
+  assert.deepEqual(status.sort(), expected, 'only deletions of tracked managed files and the AGENTS.md edit; nothing untracked');
+  commitAll(repo, 'uninstall house');
+  assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' }), /uninstall house/);
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#152 uninstall --apply: a hand-edited managed file is refused by name and nothing is deleted or unset', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const alpha = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  writeFileSync(alpha, `${readFileSync(alpha, 'utf8')}hand edit\n`);
+  commitAll(repo, 'hand edit a managed rule');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md/m);
+  assert.match(r.err, /nothing was (deleted|written)/);
+  for (const rel of MANAGED) assert.ok(existsSync(join(repo, rel)), `${rel} stays`);
+  assert.equal(gitStatusShort(repo), '');
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'the hooks path is not touched either');
+});
+
+test('#152 uninstall: forged lock entries outside the repo or in .git are refused through the shared deletion check, and nothing is deleted', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const outside = mkdtempSync(join(tmpdir(), 'house-outside-'));
+  CLEANUP_DIRS.push(outside);
+  writeFileSync(join(outside, 'f.txt'), 'outside\n');
+  symlinkSync(outside, join(repo, 'linkdir'));
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  const gitDesc = readFileSync(join(repo, '.git', 'description'), 'utf8');
+  lock.files.push({ path: 'linkdir/f.txt', module: 'alpha', source: 'x', bodySha256: sha256Hex('outside\n') });
+  lock.files.push({ path: '.git/description', module: 'alpha', source: 'x', bodySha256: sha256Hex(gitDesc) });
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'forged lock entries');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+linkdir\/f\.txt\s+\(lock entry resolves outside this repo/m);
+  assert.match(r.out, /^REFUSE\s+\.git\/description\s+\(lock entry resolves inside \.git/m);
+  assert.ok(existsSync(join(outside, 'f.txt')));
+  assert.equal(readFileSync(join(repo, '.git', 'description'), 'utf8'), gitDesc);
+  for (const rel of MANAGED) assert.ok(existsSync(join(repo, rel)), `${rel} stays`);
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#152 uninstall: a hooks path pointing elsewhere is left and reported, and a global one is never written', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv('[core]\n\thooksPath = /opt/global-hooks\n');
+  const repo = uninstallRepo(cliPath, env);
+  assert.equal(localHooksPath(repo, env), '', 'precondition: arming refused, since a global value governs this repo');
+  assert.equal(gitIn(repo, ['config', '--local', 'core.hooksPath', '/opt/own-hooks'], env).status, 0);
+  const globalBefore = readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(localHooksPath(repo, env), '/opt/own-hooks', 'a local value that is not this repo\'s floor stays');
+  assert.equal(readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8'), globalBefore, 'global config byte-identical');
+  assert.match(r.out, /local scope .*: \/opt\/own-hooks, not this repo's floor: left/);
+  assert.match(r.out, /global scope .*: \/opt\/global-hooks, not this repo's floor: left/);
+});
+
+test('#152 uninstall --apply: a rerun after a completed run finds it done and exits 0', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  assert.equal(runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env).code, 0);
+  const statusAfter = gitStatusShort(repo);
+  const again = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(again.code, 0, again.out + again.err);
+  assert.match(again.out, /already/i);
+  assert.match(again.out, /core\.hooksPath, local scope: unset/);
+  assert.equal(gitStatusShort(repo), statusAfter, 'a rerun changes nothing');
+});
+
+test('#152 uninstall --apply: a rerun after an interrupted run completes it', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  // Interrupted part way: some managed files already gone, the lock still there.
+  for (const rel of ['.githooks/pre-push', '.claude/rules/house/alpha.md']) rmSync(join(repo, rel));
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^already gone\s+\.githooks\/pre-push/m);
+  for (const rel of MANAGED) assert.ok(!existsSync(join(repo, rel)), `${rel} removed`);
+  assert.equal(localHooksPath(repo, env), '');
+  // Interrupted after the lock went but before the hooks path was undone.
+  assert.equal(gitIn(repo, ['config', '--local', 'core.hooksPath', floorDir(repo)], env).status, 0);
+  const rest = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(rest.code, 0, rest.out + rest.err);
+  assert.equal(localHooksPath(repo, env), '', 'the rerun undoes what was left');
+});
+
+test('#152 uninstall in a linked worktree: the shared hooks path is not written from there, and the main-checkout command is named', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const main = uninstallRepo(cliPath, env);
+  const wt = `${main}-wt`;
+  CLEANUP_DIRS.push(wt);
+  execFileSync('git', ['worktree', 'add', '-q', '-b', 'feat/out', wt], { cwd: main });
+  assert.equal(localHooksPath(main, env), floorDir(main));
+  const r = runCli(cliPath, ['uninstall', '--repo', wt, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(localHooksPath(main, env), floorDir(main), 'the shared config is not written from a worktree');
+  assert.match(r.out, /shared with the main checkout/);
+  assert.match(r.out, new RegExp(`uninstall --apply.* \\(from ${realpathSync(main).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`));
+  for (const rel of MANAGED) assert.ok(!existsSync(join(wt, rel)), `${rel} removed in the worktree`);
+});
