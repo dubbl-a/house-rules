@@ -1707,6 +1707,7 @@ function checkLengths(ctx) {
   // repo has such a file but no limit configured for it, warn (do not skip).
   const hasLimitFor = (f) => Object.keys(limits).some((pat) => (/[*?]/.test(pat) ? globToRegExp(pat).test(f) : pat === f));
   if (existsSync(join(ctx.repoRoot, 'README.md')) && !hasLimitFor('README.md')) {
+    // 110 is a house choice; origin in docs/handbook/docs.md.
     warnings.push(mk('lengths', 'README.md', null, 'length', 'no README.md limit set in house.json (house target 110). Set modules.docs.config.lengthLimits["README.md"] so the budget is measured.'));
   }
   const vendoredRules = ctx.allTracked.filter((f) => /^\.claude\/rules\/house\/.*\.md$/.test(f));
@@ -2328,6 +2329,7 @@ function checkMinutes(ctx) {
     warnings.push(mk('minutes', '.github/workflows', null, 'minutes', "actionsBudgetMinutes is null: a public repo's Actions minutes are unmetered, so the minutes family is not gated here"));
     return { findings: [], warnings };
   }
+  // 2000 is GitHub Free's monthly allowance; source in docs/handbook/github.md.
   const budget = Number.isFinite(configured) ? configured : 2000;
   const workflowFiles = ctx.allTracked.filter((f) => /^\.github\/workflows\/.*\.ya?ml$/.test(f));
 

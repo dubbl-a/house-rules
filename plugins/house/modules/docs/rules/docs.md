@@ -53,7 +53,7 @@ Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-ru
 
 ## Keep files under budget, and raise a ceiling only with a written reason
 
-The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
+The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. The Claude Code docs say a file over 200 lines "may reduce adherence", and every loaded line costs context on each read.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work, not renegotiated.
 Raising a ceiling takes an entry naming the path, the old and new limit, the reason, and the date decided, so it argues for itself in the diff, not as a quiet edit; it takes effect only with `--accept-lengths`.
 Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema.

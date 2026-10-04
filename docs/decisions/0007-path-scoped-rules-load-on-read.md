@@ -3,6 +3,8 @@ status: accepted
 date: 2026-08-23
 ---
 
+> Note, 2026-10-04: the 400-line co-load ceiling is a cost and growth budget, not an adherence threshold. No study sets a cross-file number, and a 2026 study (arXiv 2605.10039) found no detectable effect of file size alone; see the research on issue #160 and `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-only-with-a-written-reason`. The decision below stands.
+
 # Path-scoped rule files load on a matching read, so keep them scoped and bound their co-load
 
 ## Context and problem statement
@@ -18,6 +20,7 @@ The package vendors rule files into `.claude/rules/house/` with `paths:` frontma
 
 * Assume the documented behavior.
 * Measure it on the current build before writing content, and design for the measured result.
+
 
 ## Decision outcome
 
