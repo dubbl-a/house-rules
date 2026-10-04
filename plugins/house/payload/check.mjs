@@ -2430,14 +2430,46 @@ function lockfileAbsentForms(locks, tracked) {
   return forms;
 }
 
-// `run: *name` reads the text of the `run: &name ...` anchors in this file,
-// reported at the alias's line; with several, every one is read, so an
-// install in any of them counts. An alias with no anchor reads as nothing.
-function runLinesOf(e, entries) {
-  const alias = e.value.match(/^\*([^\s,[\]{}]+)$/);
-  if (!alias) return entryLines(e);
-  const anchors = entries.filter((x) => x.key === 'run' && x.value.split(/\s/)[0] === `&${alias[1]}`);
-  return anchors.flatMap(entryLines).map(({ text }) => ({ line: e.line, text }));
+// Whether the line reader can vouch for which key belongs to which step in
+// this file, which the lockfile-absent skip depends on. A YAML parser reads a
+// multi-line quoted scalar or flow collection, an anchor, an alias, or a tag
+// in ways a line reader does not, so any of them anywhere means no. Every
+// line outside a block scalar's body must be blank, a comment, or `key:`,
+// `- `, or `- key:` with a value that is empty, a block scalar header, a
+// plain scalar, or a quoted scalar or one-level flow collection closed on
+// that line. When unsure it says no, which costs only a warning.
+const PLAIN_VALUE_FORMS = [
+  /^$/,
+  /^[^"'{[&*!|>%@`]/,
+  /^"(?:[^"\\]|\\.)*"\s*(?:#.*)?$/,
+  /^'(?:[^']|'')*'\s*(?:#.*)?$/,
+  /^[[{][^"'[\]{}#]*[\]}]\s*(?:#.*)?$/,
+];
+function plainlyWritten(raw) {
+  const lines = raw.split(YAML_LINE_BREAK_RE);
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i];
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    let col = text.length - text.trimStart().length;
+    let rest = text.slice(col);
+    let dashed = false;
+    while (/^-(\s|$)/.test(rest)) {
+      const m = rest.match(/^-\s*/);
+      col += m[0].length;
+      rest = rest.slice(m[0].length);
+      dashed = true;
+    }
+    const km = rest.match(/^([\w$][\w.$/-]*|"[^"\\]*"|'[^']*')\s*:(?:\s+(.*))?$/);
+    if (!km && !dashed) return false;
+    const value = (km ? (km[2] || '') : rest).trimEnd();
+    if (/^[|>][-+0-9]*\s*(?:#.*)?$/.test(value)) {
+      while (i + 1 < lines.length && (!lines[i + 1].trim() || lines[i + 1].length - lines[i + 1].trimStart().length > col)) i++;
+      continue;
+    }
+    if (!PLAIN_VALUE_FORMS.some((re) => re.test(value))) return false;
+  }
+  return true;
 }
 
 // Binary by extension; anything else gets a NUL-byte sniff of its first
@@ -2561,13 +2593,27 @@ function checkWorkflows(ctx) {
     // 9. A CI install that can rewrite the lockfile instead of honouring it.
     // A step whose own `if:` runs it only when the lockfile is absent has
     // nothing to be frozen against, so its plain install passes. A fallback
-    // after a failed frozen install (`npm ci || npm install`) does not.
-    for (const e of entries.filter((x) => x.key === 'run')) {
+    // after a failed frozen install (`npm ci || npm install`) does not. The
+    // skip is honoured only in a file the line reader can vouch for.
+    const plain = plainlyWritten(raw);
+    const runs = entries.filter((x) => x.key === 'run').map((e) => {
       const item = nearestItem(e);
       const cond = entries.find((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length);
       // A condition that runs onto a second line never skips.
-      const gate = cond && entryLines(cond).length === 1 ? cond.raw : null;
-      for (const { line, cmd } of runCommands(runLinesOf(e, entries))) {
+      return { lines: entryLines(e), gate: plain && cond && entryLines(cond).length === 1 ? cond.raw : null };
+    });
+    // Where the reader cannot vouch for the file it may also have folded a
+    // `run:` line into another value, so every one-line `run:` it did not
+    // read as a step is judged too, ungated.
+    if (!plain) {
+      const seen = new Set(runs.flatMap((r) => r.lines.map((l) => l.line)));
+      raw.split(YAML_LINE_BREAK_RE).forEach((t, i) => {
+        const m = t.match(/^\s*(?:-\s+)?run:\s+(.+)$/);
+        if (m && !seen.has(i + 1)) runs.push({ lines: [{ line: i + 1, text: m[1] }], gate: null });
+      });
+    }
+    for (const { lines: runText, gate } of runs) {
+      for (const { line, cmd } of runCommands(runText)) {
         for (const inst of INSTALLERS) {
           const m = cmd.match(inst.re);
           // Root lockfiles only: a nested lockfile, and a step run through

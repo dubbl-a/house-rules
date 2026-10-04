@@ -356,11 +356,36 @@ test('event-in-run: an LS line break does not hide a run: from the reader', () =
   assert.equal(ws[0].line, 24);
 });
 
-test('unfrozen-install: an alias to an install anchored in a gated step warns at the ungated alias', () => {
+// Round 6: a parser reads a multi-line quoted or flow value where a line
+// reader sees sibling keys, so the skip is honoured only in a file with
+// none of those, no anchors, aliases, or tags.
+for (const [label, step] of [
+  ['a double-quoted value continuing at the key column', "      - name: \"build\n        if: hashFiles('package-lock.json') == ''\n        x\"\n        run: npm install\n"],
+  ['a flow mapping continuing at the key column', "      - env: { A: \"1\",\n        if: hashFiles('package-lock.json') == ''\n        }\n        run: npm install\n"],
+  ['a double-quoted value continuing at a shallower column', "      - name: \"build\n      if: hashFiles('package-lock.json') == ''\n      x\"\n        run: npm install\n"],
+]) {
+  test(`unfrozen-install: ${label} never lets the skip apply`, () => {
+    assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('      - run: npm ci\n', step)))), ['unfrozen-install']);
+  });
+}
+
+test('unfrozen-install: an anchor and alias make the file not plainly written, so the gated anchored install warns', () => {
   const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n        run: &install npm install\n      - run: *install\n");
   const ws = warns(withWorkflow(body));
   assert.deepEqual(kinds(ws), ['unfrozen-install']);
-  assert.equal(ws[0].line, 25);
+  assert.equal(ws[0].line, 24);
+});
+
+test('unfrozen-install: one multi-line quoted value anywhere stops the skip for a truly gated step (documented false positive)', () => {
+  const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n")
+    + '  other:\n    runs-on: ubuntu-latest\n    steps:\n      - name: "two\n          lines"\n        run: echo hi\n';
+  assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install']);
+});
+
+test('unfrozen-install: a one-line quoted name and a one-line flow sequence still let a truly gated step skip', () => {
+  const body = CLEAN_WORKFLOW.replace('  pull_request:\n', '  pull_request:\n    branches: [main]\n')
+    .replace('      - run: npm ci\n', "      - name: \"build\"\n        if: hashFiles('package-lock.json') == ''\n        run: npm install\n");
+  assert.deepEqual(warns(withWorkflow(body)), []);
 });
 
 test('templates: clean with only a nested lockfile, and with a root and a nested one', () => {
