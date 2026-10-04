@@ -12,7 +12,10 @@
  *     check run and every one must have concluded 'success' or 'neutral'
  *     (GitHub's non-failing conclusion; hosted Code Review always concludes
  *     neutral). Fails CLOSED on zero runs — a commit nothing has checked yet
- *     is not "passing".
+ *     is not "passing". When the tip has zero runs (a squash-merge tip never
+ *     gets one where CI runs on pull requests only), it falls back to the
+ *     merged pull request whose merge commit is the tip: that PR's head must
+ *     have runs, all passing, and the same tree as the tip.
  *   assertPrProvenance — origin/<branch>'s tip commit must belong to a
  *     merged pull request. Skipped, with a line saying so, when the branch is
  *     requires a pull request at the remote (branch protection or a ruleset); when that
@@ -179,6 +182,68 @@ function ghApiJsonOrNull(apiPath) {
 }
 
 /**
+ * findMergedPrForTip — pick, from the pull requests GitHub associates with a
+ * commit, the merged one whose merge commit is that commit. Pure.
+ *
+ * @param {Array<{number?: number, merged_at?: string|null, merge_commit_sha?: string|null, head?: {sha?: string}}>} pulls
+ * @param {string} sha
+ * @returns {{ number: number, headSha: string }|null}
+ */
+export function findMergedPrForTip(pulls, sha) {
+  const pr = (pulls ?? []).find((p) => p && p.merged_at != null && p.merge_commit_sha === sha && p.head?.sha);
+  return pr ? { number: pr.number, headSha: pr.head.sha } : null;
+}
+
+/**
+ * Fallback for a tip with zero check runs: certify it by the merged pull
+ * request whose merge commit is the tip. The PR head must have at least one
+ * run, every run passing (evaluateCiGreen's set), and the same tree as the
+ * tip. Both trees come from the API (`git/commits/<sha>`), because the head
+ * commit is usually not fetched locally. Exits via fail() on any shortfall.
+ */
+function certifyByMergedPrHead(scriptName, repo, sha) {
+  const short = sha.slice(0, 8);
+  const pr = findMergedPrForTip(ghApiJson(scriptName, `repos/${repo}/commits/${sha}/pulls`, 'the merged PR for the tip'), sha);
+  if (!pr) {
+    fail(scriptName, [
+      `refuses: ${short} has zero CI check runs and no merged pull request has it as its merge commit.`,
+      ``,
+      `Zero runs is not success. Wait for the push run to finish:`,
+      `  gh run watch`,
+      ...escapeHatchLines(scriptName),
+    ]);
+    return;
+  }
+  const head = pr.headSha.slice(0, 8);
+  const headRuns = evaluateCiGreen(ghApiJson(scriptName, `repos/${repo}/commits/${pr.headSha}/check-runs`, 'CI status of the PR head').check_runs ?? []);
+  if (!headRuns.ok) {
+    fail(scriptName, [
+      headRuns.total === 0
+        ? `refuses: ${short} has zero CI check runs, and PR #${pr.number} head ${head} has zero CI check runs too.`
+        : `refuses: ${short} has zero CI check runs, and PR #${pr.number} head ${head} is not CI-green.`,
+      ``,
+      ...headRuns.failing.map((r) => `  ${r.name}: ${r.conclusion ?? '(pending)'}`),
+      ...escapeHatchLines(scriptName),
+    ]);
+    return;
+  }
+  const treeOf = (c) => ghApiJson(scriptName, `repos/${repo}/git/commits/${c}`, 'a commit tree').tree?.sha;
+  const tipTree = treeOf(sha);
+  const headTree = treeOf(pr.headSha);
+  if (!tipTree || tipTree !== headTree) {
+    fail(scriptName, [
+      `refuses: ${short} has zero CI check runs, and PR #${pr.number} head ${head} has a different tree (tip ${tipTree ?? 'unknown'}, head ${headTree ?? 'unknown'}).`,
+      ``,
+      `The merge changed content the PR's checks never saw. Run CI on the tip:`,
+      `  gh run watch`,
+      ...escapeHatchLines(scriptName),
+    ]);
+    return;
+  }
+  process.stderr.write(`${scriptName}: tip has no check runs; certified by PR #${pr.number} head ${head}, same tree (${headRuns.passing} passing runs; trees read from the API)\n`);
+}
+
+/**
  * assertCiGreen — require every CI check run on a commit (origin/<branch>'s
  * tip by default) to have concluded 'success' or 'neutral'. Fails closed on
  * zero runs.
@@ -199,13 +264,7 @@ export function assertCiGreen(scriptName, opts = {}) {
   const result = evaluateCiGreen(body.check_runs ?? []);
 
   if (!result.ok && result.total === 0) {
-    fail(scriptName, [
-      `refuses: ${sha.slice(0, 8)} has zero CI check runs.`,
-      ``,
-      `Zero runs is not success. Wait for the push run to finish:`,
-      `  gh run watch`,
-      ...escapeHatchLines(scriptName),
-    ]);
+    certifyByMergedPrHead(scriptName, repo, sha);
   } else if (!result.ok) {
     fail(scriptName, [
       `refuses: ${sha.slice(0, 8)} is not CI-green.`,
