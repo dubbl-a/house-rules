@@ -3,7 +3,7 @@ paths:
   - tests/**
   - .github/workflows/**
 ---
-<!-- house-managed v0.17.0 module=testing source=modules/testing/rules/testing.md body-sha256=4ac5d649daf9179c3cb8e5655c7fffdc1ad9e7c87b71c548e12f3a95c09da3c6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=testing source=modules/testing/rules/testing.md body-sha256=12c99ef2b2c13d5c4811c312983c832353af43ade2e52e17efeef0987d1c2bf0 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -22,7 +22,7 @@ Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you
 Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 Route what the gate cannot afford, the tests wanting a database, a network, or a secret, to a scheduled run or to a pipeline retro, so the slow tier still runs somewhere on a stated cadence. What the gate itself may hold, and what it must name as ungated, is github.md's rule.
 Keep the pre-commit hook faster still and push everything else to CI, because a slow hook gets bypassed and then disabled.
-Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated; `house render --apply` writes it only where it is absent and not offered before, or with --scaffold, and nothing checks the tiering or the routing afterwards.
+Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated; `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold, and nothing checks the tiering or the routing afterwards.
 Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-route-what-the-pr-gate-cannot-afford`
 
 ## Test the guard itself, as its own CI step

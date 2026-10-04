@@ -10,7 +10,7 @@ Each rule names what enforces it, or says plainly that nothing does.
 Gate on file-only checks, so the gate runs with no database, network, or secret to leak. Push stateful checks to a retro or a local pre-deploy step.
 Name what is deliberately not gated, and why, inside the workflow that gates: an unstated gap reads as coverage.
 Run the same set locally before opening the PR, and fail loudly on a missing secret before any lane starts.
-Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent and not offered before, or with --scaffold; `node .house/check.mjs --only=workflows` then warns on what it reads there, such as unpinned actions or missing permissions, but nothing checks that the gate stays credential-free, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
+Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then warns on what it reads there, such as unpinned actions or missing permissions, but nothing checks that the gate stays credential-free, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
 Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated`
 
 ## Give a workflow read-only permissions and pin every action by SHA

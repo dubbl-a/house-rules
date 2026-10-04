@@ -15,7 +15,7 @@ Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 Run the docs gate locally before pushing any branch that touches documents, and wire it into the build and the pull-request check: local is the loop, the build and the check are the net.
 A gate you only meet through a red badge after review costs a round trip per typo, and that round trip is what makes people stop running it.
-Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent and not offered before, or with --scaffold. Nothing checks that either still runs the gate.
+Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold. Nothing checks that either still runs the gate.
 Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-build`
 
 ## Give every rule file a paths list whose first segment resolves

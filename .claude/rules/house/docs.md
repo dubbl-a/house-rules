@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.17.0 module=docs source=modules/docs/rules/docs.md body-sha256=0ece4f9aced9d3e2a393ae54df7b9fc65a6ed437880fd6e96deb16ca35af8cd4 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=docs source=modules/docs/rules/docs.md body-sha256=347c94f0a74b05be6fbf36ae68af36dda0c16c883dd89cca74e186ce83a5b572 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -26,7 +26,7 @@ Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 Run the docs gate locally before pushing any branch that touches documents, and wire it into the build and the pull-request check: local is the loop, the build and the check are the net.
 A gate you only meet through a red badge after review costs a round trip per typo, and that round trip is what makes people stop running it.
-Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent and not offered before, or with --scaffold. Nothing checks that either still runs the gate.
+Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold. Nothing checks that either still runs the gate.
 Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-build`
 
 ## Give every rule file a paths list whose first segment resolves
