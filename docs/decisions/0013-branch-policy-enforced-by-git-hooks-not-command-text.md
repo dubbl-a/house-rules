@@ -114,7 +114,7 @@ whitespace, so a command glued to it, as in `git status -mx|git commit -m x` or
 unquoted `&`, `;`, `|`, `<` or `>`, after a quoted span too. A value holding a `$(`, a backtick,
 `<(` or `>(` (or a double-quoted span holding `$(` or a backtick) keeps the whitespace end from
 that point, so a `cd` behind a separator inside a nested substitution cannot steer target
-resolution; a command glued behind such a value is still unseen by the text scan (#154). A Bash command long enough to outlast
+resolution; a command glued behind such a value, such as `-m "$(cat msg)";git commit`, is still unseen by the text scan, as before this change (#154). A Bash command long enough to outlast
 the guard's 5 second hook timeout is not denied, because Claude Code does not block on a timed-out
 hook; the file-tool and MCP scans already deny past `SCAN_BUDGET_MS`, and the Bash scans do not
 (#157). The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,
