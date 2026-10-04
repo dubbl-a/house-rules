@@ -951,15 +951,16 @@ test('#19: a slot value repeating a literal renders once (positive); a distinct 
 // A module's rules[] entry may be {file, paths} to give that one file its own
 // paths; a plain string keeps the module's defaultPaths, and an object with no
 // file is skipped with a warning.
-test('#177: a {file, paths} rules entry renders its own paths; a plain string keeps defaultPaths; an entry with no file is skipped', () => {
+test('#177: a {file, paths} rules entry renders its own paths; a plain string keeps defaultPaths; an entry with no file or no paths array is skipped', () => {
   const { dir, cliPath } = buildFixturePlugin();
   writeTree(dir, {
     'modules/gamma/module.json': `${JSON.stringify({
       name: 'gamma', default: 'on', configSlots: ['slot'], files: [], defaultPaths: ['src/**'],
-      rules: ['rules/gamma.md', { file: 'rules/gamma-two.md', paths: ['scripts/**', '$slot'] }, { paths: ['src/**'] }],
+      rules: ['rules/gamma.md', { file: 'rules/gamma-two.md', paths: ['scripts/**', '$slot'] }, { paths: ['src/**'] }, { file: 'rules/gamma-three.md', paths: 'src/**' }],
     }, null, 2)}\n`,
     'modules/gamma/rules/gamma.md': ALPHA_BODY,
     'modules/gamma/rules/gamma-two.md': BETA_BODY,
+    'modules/gamma/rules/gamma-three.md': BETA_BODY,
   });
   const repo = buildTargetRepo({ 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n', 'lib/c.mjs': '//c\n' });
   writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { gamma: { enabled: true, config: { slot: ['lib/**'] } } } });
@@ -968,7 +969,9 @@ test('#177: a {file, paths} rules entry renders its own paths; a plain string ke
   const front = (f) => readFileSync(join(repo, '.claude', 'rules', 'house', f), 'utf8').split('\n---\n')[0];
   assert.equal(front('gamma.md'), '---\npaths:\n  - src/**', 'a plain string renders the module defaultPaths, as before');
   assert.equal(front('gamma-two.md'), '---\npaths:\n  - scripts/**\n  - lib/**', 'an object entry renders its own paths, slots expanded');
-  assert.match(r.out + r.err, /rules\[\] entry .* has no file; skipped/);
+  assert.match(r.out + r.err, /rules\[\] entry {"paths":\["src\/\*\*"\]} needs a file and a paths array; skipped/);
+  assert.match(r.out + r.err, /rules\[\] entry {"file":"rules\/gamma-three\.md","paths":"src\/\*\*"} needs a file and a paths array; skipped/);
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma-three.md')), 'a paths value that is not an array renders nothing');
 });
 
 test('#18 init: a path re-included by a negated .gitignore pattern is not reported as ignored', () => {

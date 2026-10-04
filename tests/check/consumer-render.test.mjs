@@ -558,6 +558,32 @@ test('#177: security at defaults beside engineering, github, and data-pipelines 
   assert.doesNotMatch(front('security-server.md'), /\.claude|package\.json/, 'and not on agent config');
 });
 
+// #177: before the split, securityRoots carried the agent config too, and the
+// issue itself suggested narrowing it to those files. Such an entry now feeds
+// only the server-code half, so the agent and supply-chain rules stop loading
+// there unless securityAgentRoots holds it. Render names each such entry once.
+test('#177: an agent-config entry left in securityRoots that securityAgentRoots does not hold is warned by name', () => {
+  const repo = fixtureRepo({
+    'package.json': '{"name":"x"}', 'README.md': '# X\n', 'CLAUDE.md': '# X\n',
+    'src/a.mjs': '// a\n', 'worker/a.mjs': '// a\n', '.mcp.json': '{}\n', '.codex/config.toml': 'a = 1\n', '.claude/settings.json': '{}\n',
+  });
+  house(repo, 'init', '--apply');
+  const render = (config) => {
+    const hj = readHouseJson(repo);
+    hj.modules.security = { enabled: true, config };
+    writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+    git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'security config', '--allow-empty');
+    return house(repo, 'render', '--apply').toString();
+  };
+  const moved = /securityRoots holds (\S+), which securityAgentRoots now carries/g;
+  const named = (out) => [...out.matchAll(moved)].map((x) => x[1]);
+  assert.deepEqual(named(render({ securityRoots: ['src/**', 'worker/**', '.mcp.json', '.codex/**'] })), ['.codex/**'],
+    'a code root and an entry the agent defaults already hold stay quiet; a dot path they do not hold is named');
+  assert.deepEqual(named(render({ securityRoots: ['package.json'], securityAgentRoots: ['.claude/settings.json'] })), ['package.json'],
+    'an agent default the adopter narrowed out of securityAgentRoots is named too');
+  assert.deepEqual(named(render({ securityRoots: ['src/**'], securityAgentRoots: ['.claude/settings.json', '.codex/**'] })), []);
+});
+
 // #23: the CLAUDE.md skeleton exists to be merged into CLAUDE.md by hand and
 // then deleted, but every later `render --apply` wrote it back, so each adopter
 // re-sync had to `rm` it again to keep the commit clean. A scaffold is now

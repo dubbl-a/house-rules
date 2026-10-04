@@ -674,13 +674,14 @@ function expandPaths(defaultPaths, config) {
 
 // #177: a rules[] entry is a path, which loads on the module's defaultPaths, or
 // {file, paths} for a rule file with its own paths list (security's agent and
-// server halves load on different roots). null file: the entry names nothing.
+// server halves load on different roots). null: an object without both a
+// file and a paths array names nothing, and render skips it with a warning.
 function ruleEntryFile(entry) {
   if (typeof entry === 'string') return entry;
-  return isPlainObject(entry) && isNonEmptyString(entry.file) ? entry.file : null;
+  return isPlainObject(entry) && isNonEmptyString(entry.file) && Array.isArray(entry.paths) ? entry.file : null;
 }
 function ruleEntryPaths(json, entry) {
-  return isPlainObject(entry) && Array.isArray(entry.paths) ? entry.paths : json.defaultPaths;
+  return typeof entry === 'string' ? json.defaultPaths : arr(isPlainObject(entry) ? entry.paths : null);
 }
 // Every path entry a module's rules read, for a whole-module view (enable's plan).
 function modulePathEntries(json) {
@@ -1388,10 +1389,24 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     // spread puts cfg.config last and expandPaths only reads Array-valued slots.
     const moduleCfg = { ...slotDefaults(m.json), ...(isPlainObject(cfg.config) ? cfg.config : {}) };
     const moduleDefaultPaths = defaultPathSet(m.json);
+    // #177: a slot declaring `movedFrom` took over paths an older slot carried
+    // (security's agent config left securityRoots for securityAgentRoots). An
+    // entry the adopter still keeps in the old slot that looks like it belongs
+    // in the new one, a dot path or one of the new slot's defaults, and that the
+    // new slot does not hold, no longer loads the new slot's rules: name it.
+    for (const s of arr(m.json.configSlots)) {
+      if (!isPlainObject(s) || !isNonEmptyString(s.movedFrom)) continue;
+      const kept = isPlainObject(cfg.config) ? arr(cfg.config[s.movedFrom]) : [];
+      for (const e of kept) {
+        if (typeof e !== 'string' || arr(moduleCfg[s.name]).includes(e)) continue;
+        if (!e.startsWith('.') && !arr(s.default).includes(e)) continue;
+        moduleWarnings.push(`modules.${name}.config.${s.movedFrom} holds ${e}, which ${s.name} now carries; add it to modules.${name}.config.${s.name}, or the rules that slot feeds no longer load on it`);
+      }
+    }
 
     for (const ruleEntry of arr(m.json.rules)) {
       const rulePath = ruleEntryFile(ruleEntry);
-      if (!rulePath) { moduleWarnings.push(`modules/${m.dirName}/module.json: rules[] entry ${JSON.stringify(ruleEntry)} has no file; skipped`); continue; }
+      if (!rulePath) { moduleWarnings.push(`modules/${m.dirName}/module.json: rules[] entry ${JSON.stringify(ruleEntry)} needs a file and a paths array; skipped`); continue; }
       const sourceAbs = path.join(m.dir, rulePath);
       if (!existsSync(sourceAbs)) { moduleWarnings.push(`modules/${m.dirName}/${rulePath}: rule source is missing`); continue; }
       const sourceBody = readFileSync(sourceAbs, 'utf8');

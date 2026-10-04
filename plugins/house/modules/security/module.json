@@ -18,6 +18,7 @@
     },
     {
       "name": "securityAgentRoots",
+      "movedFrom": "securityRoots",
       "default": [
         ".claude/settings.json",
         ".claude/hooks/**",
