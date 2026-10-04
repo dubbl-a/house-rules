@@ -109,10 +109,10 @@ modules, a dated ledger of declines, line ceilings that tighten, the guard recor
 
 To leave, uninstall the adoption in each repo first, since removing the plugin removes the CLI that
 cleans up: `house uninstall` plans, and with `--apply` removes the managed files, the `AGENTS.md`
-block, and the `core.hooksPath` it set, then lists what is left, `house.json` included. Then
-`claude plugin uninstall house-rules@house-rules` and `claude plugin marketplace remove house-rules`;
+block, the `core.hooksPath` it set, and last `house.json` (`--keep-config` leaves it), then lists the
+rest. Then `claude plugin uninstall house-rules@house-rules` and `claude plugin marketplace remove house-rules`;
 `claude plugin details house-rules` shows a plugin's hooks. Plugin removed first? Delete each file
-`.house/lock.json` lists, the `AGENTS.md` block, and `.house/`; unset `core.hooksPath` where it names `.githooks`.
+`.house/lock.json` lists, the `AGENTS.md` block, `.house/`, and `house.json`; unset `core.hooksPath` where it names `.githooks`.
 
 ## What the hooks run
 

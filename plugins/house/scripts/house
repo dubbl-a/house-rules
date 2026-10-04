@@ -16,7 +16,7 @@
 //       [--force-managed <path>] [--json]
 // house enable <module...> [--repo <path>] [--apply]
 // house confirm <module> <step-id> [--repo <path>]
-// house uninstall [--repo <path>] [--apply]
+// house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]
 //
 // Repo root: `git rev-parse --show-toplevel` from cwd, or the literal path
 // given to --repo (resolved against cwd, not re-resolved through git --
@@ -36,9 +36,11 @@
 // unusable or a name is not a module, 1 when render would refuse, otherwise
 // render's exit when it fails and then the vendored checker's. confirm -- 2
 // when it refuses (no house.json, unknown or disabled module, undeclared
-// step), 0 otherwise. uninstall -- 2 when house.json is absent or
-// unparseable, 1 when a removal is refused or a run could not finish, 0
-// otherwise. check --
+// step), 0 otherwise. uninstall -- 2 when house.json is unparseable, or
+// when neither it nor a lock is here and no commit ever had one (never
+// adopted); 1 when a removal is refused, an unrecoverable house.json is
+// unflagged, files look managed but nothing records them, or a run could not
+// finish; 0 otherwise, a rerun of a finished uninstall included. check --
 // whatever the underlying check.mjs exits. doctor -- always 0 (diagnostic only).
 
 import {
@@ -2536,40 +2538,85 @@ function hooksPathLine(h, done) {
 
 // What the PreToolUse branch guard (plugins/house/hooks/no-direct-master.sh)
 // does in the state uninstall leaves, from its code: it reads branchPolicy and
-// protectedBranches from HEAD:house.json (the working tree only when HEAD has
-// none), so the house.json uninstall leaves keeps it on; it reads the floor as
-// armed only from the floor files, so with them gone it applies its unarmed
-// rules; and its disable list runs whatever the policy. tests/hooks/run.sh pins
-// each clause.
-function uninstallGuardLines(repoRoot, houseData) {
-  let data = houseData;
-  try { data = JSON.parse(execFileSync('git', ['--no-replace-objects', 'show', 'HEAD:house.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); } catch { /* HEAD has none: the guard reads the working tree */ }
+// protectedBranches from HEAD:house.json, and the working tree only when HEAD
+// has none; with neither the repo is not adopted and it does nothing. While it
+// does read one, it decides "armed" from the floor files alone, so with them
+// gone it applies its unarmed rules, and its disable list runs whatever the
+// policy. tests/hooks/run.sh pins each clause.
+function uninstallGuardLines(repoRoot, removingConfig) {
+  let data = null;
+  let atHead = false;
+  try { data = JSON.parse(execFileSync('git', ['--no-replace-objects', 'show', 'HEAD:house.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); atHead = true; } catch { /* HEAD has none: the guard reads the working tree */ }
+  const inTree = existsSync(path.join(repoRoot, 'house.json'));
+  if (!atHead && inTree) { try { data = JSON.parse(readFileSync(path.join(repoRoot, 'house.json'), 'utf8')); } catch { /* unreadable: the guard refuses, see its policy read */ } }
+  if (!atHead && !inTree) return ['  branch guard: house.json is gone from HEAD and the working tree, so the plugin\'s PreToolUse guard reads this repo as not adopted and does nothing here.'];
   const policy = isPlainObject(data) && typeof data.branchPolicy === 'string' ? data.branchPolicy : 'pr';
   const protectedList = isPlainObject(data) && Array.isArray(data.protectedBranches) && data.protectedBranches.length ? data.protectedBranches : ['master', 'main'];
-  const lead = '  branch guard: the plugin\'s PreToolUse guard reads `branchPolicy` from house.json at HEAD (the working tree only when HEAD has none), and uninstall leaves house.json, so the guard keeps treating this repo as adopted, before and after this is merged.';
-  const branch = policy === 'direct'
-    ? ' With "direct" it refuses no branch move.'
-    : ` With "${policy}" it refuses a commit on a protected branch (${protectedList.join(', ')}); with the floor gone it reads this checkout as not armed and applies its stricter text rules (a git alias, a push naming a protected branch or with no refspec, a merge or rebase on a protected branch), and its refusals advise arming the floor or running render, which would re-adopt: do not follow them.`;
-  return [`${lead}${branch} Whatever the policy, it refuses writing core.hooksPath or a file under .githooks/ while house.json is at HEAD. It stops only once house.json is gone from HEAD and the working tree, or the plugin is uninstalled.`];
+  const rules = policy === 'direct'
+    ? 'with "direct" it refuses no branch move'
+    : `with "${policy}" it refuses a commit on a protected branch (${protectedList.join(', ')}), and with the floor gone it reads the checkout as not armed and applies its stricter text rules (a git alias, a push naming a protected branch or with no refspec, a merge or rebase on a protected branch), its refusals advising to arm the floor or run render, which would re-adopt: do not follow them`;
+  const floorList = 'whatever the policy, it refuses writing core.hooksPath or a file under .githooks/';
+  if (removingConfig || !inTree) {
+    return [`  branch guard: the plugin's PreToolUse guard reads house.json at HEAD, and the working tree only when HEAD has none; with neither, the repo is not adopted and the guard does nothing there. Until the removal is committed, HEAD still has house.json, so here it keeps enforcing it: ${rules}; ${floorList}. Once the removal is committed, on that branch it allows everything and gives no advice. Every branch whose HEAD still has house.json, the protected branch included until this merges, is enforced as before.`];
+  }
+  return [`  branch guard: the plugin's PreToolUse guard reads \`branchPolicy\` from house.json at HEAD (the working tree only when HEAD has none), and --keep-config leaves house.json, so the guard keeps treating this repo as adopted, before and after this is merged: ${rules}; ${floorList}. It stops only once house.json is gone from HEAD and the working tree, or the plugin is uninstalled.`];
+}
+
+// The render-owned paths uninstall can recognise without a lock: the checker,
+// the index, every module's files[] dest and every rule dest. With neither
+// house.json nor a lock, these are listed, never deleted, since nothing says
+// which of them render wrote.
+function unrecordedManagedPaths(repoRoot, modules) {
+  const ruleDests = modules.filter((m) => !m.error).flatMap((m) => arr(m.json.rules).map((r) => posixJoin('.claude/rules/house', path.basename(r))));
+  return [...new Set(['.house/check.mjs', '.house/INDEX.md', ...moduleFileDests(modules).map(normalizeRepoPath), ...ruleDests])]
+    .filter((rel) => existsSync(path.join(repoRoot, rel))).sort();
 }
 
 function cmdUninstall(args) {
   const repoRoot = resolveRepoRoot(args);
   const housePath = path.join(repoRoot, 'house.json');
-  if (!existsSync(housePath)) {
-    console.error(`house uninstall: ${housePath} not found, so this repo has not adopted house and there is nothing to uninstall. Nothing was planned or written.`);
-    process.exit(2);
-  }
-  let houseData;
-  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
-  catch (e) {
-    console.error(`house uninstall: ${housePath} is not valid JSON (${e.message}). Fix it first: the branch guard refuses every command in a repo whose house.json it cannot read.`);
-    process.exit(2);
-  }
-
+  const houseExists = existsSync(housePath);
   const modules = findModules();
   const lockPath = path.join(repoRoot, '.house', 'lock.json');
   const hasLock = existsSync(lockPath);
+  let houseData = null;
+  if (houseExists) {
+    try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+    catch (e) {
+      console.error(`house uninstall: ${housePath} is not valid JSON (${e.message}). Fix it first: the branch guard refuses every command in a repo whose house.json it cannot read.`);
+      process.exit(2);
+    }
+  } else if (!hasLock) {
+    // A rerun after a run that removed house.json: the lock, when there, still
+    // records the managed files, and the hooks path needs no config. With
+    // neither, only history says this repo ever adopted house.
+    let everAdopted = false;
+    try { everAdopted = git(repoRoot, ['rev-list', '-1', '--all', '--', 'house.json']).trim() !== ''; } catch { /* no history: never adopted */ }
+    if (!everAdopted) {
+      console.error(`house uninstall: ${housePath} not found and no .house/lock.json, and no commit ever had a house.json, so this repo has not adopted house and there is nothing to uninstall. Nothing was planned or written.`);
+      process.exit(2);
+    }
+    const looks = unrecordedManagedPaths(repoRoot, modules);
+    if (looks.length) {
+      console.log('house uninstall: these look like files render writes, but nothing records that render wrote them here:');
+      for (const rel of looks) console.log(`  ${rel}`);
+      console.error('\nhouse uninstall: there is no house.json and no .house/lock.json, so uninstall cannot tell these from your own files, and nothing was deleted or unset. Delete the ones that are house\'s by hand, or restore .house/lock.json from git and re-run.');
+      process.exit(1);
+    }
+  }
+  if (args.keepConfig && args.discardUntrackedConfig) {
+    console.error('house uninstall: --keep-config and --discard-untracked-config contradict each other; pass one. Nothing was planned or written.');
+    process.exit(2);
+  }
+  const removeConfig = houseExists && !args.keepConfig;
+  let headConfig = null;
+  try { headConfig = execFileSync('git', ['show', 'HEAD:house.json'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { /* not in HEAD */ }
+  let headRev = 'HEAD';
+  try { headRev = git(repoRoot, ['rev-parse', '--short', 'HEAD']).trim() || 'HEAD'; } catch { /* no commit yet */ }
+  const configRecoverable = houseExists && headConfig !== null && headConfig === readFileSync(housePath, 'utf8');
+  const configNeedsFlag = removeConfig && !configRecoverable && !args.discardUntrackedConfig;
+  const configUnsafe = removeConfig ? unsafeRemovalReason(repoRoot, 'house.json') : null;
+
   const priorLock = loadPriorLock(repoRoot);
   const tracked = new Set(gitLsFiles(repoRoot));
   // The same sweep render and disable run, for a plan that keeps nothing.
@@ -2587,12 +2634,12 @@ function cmdUninstall(args) {
   for (const rel of tail) removals.push({ path: rel, module: '_render', unsafe: unsafeRemovalReason(repoRoot, rel), edited: false });
   const blockRemoval = planAgentsBlockRemoval(repoRoot, priorLock, null);
   const blockUnsafe = blockRemoval && blockRemoval.deleteFile ? unsafeRemovalReason(repoRoot, blockRemoval.path) : null;
-  const removing = new Set([...removals.map((r) => r.path), ...(blockRemoval && blockRemoval.deleteFile ? [blockRemoval.path] : [])]);
+  const removing = new Set([...removals.map((r) => r.path), ...(blockRemoval && blockRemoval.deleteFile ? [blockRemoval.path] : []), ...(removeConfig ? ['house.json'] : [])]);
   const emptied = dirsLeftEmpty(repoRoot, removing);
   const hooks = hooksPathPlan(repoRoot);
 
   console.log(`house uninstall: plan for ${repoRoot}${args.apply ? '' : ' (nothing is written without --apply)'}`);
-  console.log('\nManaged files to remove (what .house/lock.json records, or a module\'s rule renders to):');
+  console.log('\nManaged files to remove (what .house/lock.json records, or a module\'s rule renders to), then house.json:');
   if (!hasLock) console.log('  .house/lock.json is absent, so nothing is recorded: the managed files are already removed, or this repo was never rendered.');
   for (const r of removals) {
     if (r.unsafe) {
@@ -2600,7 +2647,7 @@ function cmdUninstall(args) {
       console.log(`  ${UNSAFE_REMOVAL_EXIT}`);
       continue;
     }
-    const note = r.path === '.house/lock.json' ? 'the record of what render wrote, removed last'
+    const note = r.path === '.house/lock.json' ? 'the record of what render wrote, removed after the files it lists'
       : r.path === '.house/INDEX.md' ? 'generated by render' : `module: ${r.module}`;
     console.log(`${(r.edited ? 'REFUSE' : 'remove').padEnd(15)} ${r.path}  (${note}${tracked.has(r.path) ? '' : ', untracked'})`);
     if (r.edited) console.log('  on-disk body no longer matches what render last wrote, so uninstall will not delete it. Keep your edit somewhere that is yours and restore or delete this file by hand, then re-run uninstall.');
@@ -2608,7 +2655,16 @@ function cmdUninstall(args) {
   for (const rel of gone) console.log(`${'already gone'.padEnd(15)} ${rel}`);
   if (blockRemoval) {
     console.log(`${(blockRemoval.status === 'refuse' || blockUnsafe ? 'REFUSE' : 'remove-block').padEnd(15)} ${AGENTS_MD}  (${blockUnsafe || (blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'the house-managed block only; your text stays')})`);
-    if (blockRemoval.status === 'refuse') console.log(`  the house-managed block was edited by hand, or its markers are broken, so it is not removed silently. Move your edit outside the markers or restore the block, then re-run uninstall.`);
+    if (blockRemoval.status === 'refuse') console.log('  the house-managed block was edited by hand, or its markers are broken, so it is not removed silently. Move your edit outside the markers or restore the block, then re-run uninstall.');
+  }
+  if (removeConfig) {
+    const ledger = arr(houseData.deviations).length;
+    const back = configRecoverable
+      ? `get it back with \`git show ${headRev}:house.json > house.json\`, or re-adopt from scratch with /house-rules:bootstrap`
+      : `${headConfig === null ? 'house.json is not in HEAD, so its contents are not recoverable from git' : `house.json differs from HEAD (${headRev}), so these edits are not recoverable from git`}; --apply needs --discard-untracked-config to remove it anyway, or --keep-config to leave it`;
+    console.log(`${(configUnsafe ? 'REFUSE' : 'remove').padEnd(15)} house.json  (${configUnsafe || `last, after everything else; ${ledger} deviation(s) in its ledger go with it; ${back}`})`);
+  } else if (!houseExists) {
+    console.log(`${'already gone'.padEnd(15)} house.json`);
   }
   if (!removals.length && !blockRemoval && hasLock) console.log('  none left: already removed');
   if (emptied.length) {
@@ -2618,7 +2674,7 @@ function cmdUninstall(args) {
 
   console.log('\nGit hooks path (each scope read on its own; uninstall writes the local one only, and only where it names this repo\'s floor):');
   for (const h of hooks) console.log(hooksPathLine(h, false));
-  console.log('  A hooks path from before adoption is not known: house\'s arming sets core.hooksPath only when no scope has one, and records nothing, so if one was removed to make room for house, put it back yourself.');
+  console.log('  No hooks path from before adoption to restore: house\'s arming sets core.hooksPath only when no scope has one, so it never displaced one.');
 
   const scaffoldRecord = priorScaffoldRecord(loadPriorLockJson(repoRoot), SCAFFOLDS, houseData, repoRoot);
   const scaffolds = [...new Set(SCAFFOLDS.map((s) => scaffoldRecord.get(s.tmpl) || s.dest))].filter((d) => existsSync(path.join(repoRoot, d)));
@@ -2637,7 +2693,7 @@ function cmdUninstall(args) {
   }
   const callers = checkerCallerLines(repoRoot);
   console.log('\nLeft in place:');
-  console.log('  house.json: left, since it may hold the only copy of this repo\'s decisions (deviations, waivers, confirmations, ratchets); delete it yourself once nothing in it is needed (see the branch guard below).');
+  if (houseExists && !removeConfig) console.log('  house.json: left (--keep-config); while it stays, the branch guard keeps treating this repo as adopted and session start reports the floor missing (see below). Delete it yourself, or re-run without --keep-config, to finish leaving.');
   for (const d of scaffolds) console.log(`  scaffold ${d}  (one-time, yours, never managed)`);
   for (const rel of [...unmanaged].sort()) console.log(`  not managed ${rel}  (yours, in a directory house wrote to)`);
   if (callers.length) {
@@ -2649,8 +2705,9 @@ function cmdUninstall(args) {
 
   const ruleCount = removals.filter((r) => r.path.startsWith(VENDORED_RULE_PREFIX)).length;
   const workflowCallers = callers.filter((c) => c.startsWith('.github/'));
-  const policy = typeof houseData.branchPolicy === 'string' ? houseData.branchPolicy : 'pr';
-  const githubOff = isPlainObject(houseData.modules) && isPlainObject(houseData.modules.github) && houseData.modules.github.enabled === false;
+  const configLeft = houseExists && !removeConfig;
+  const policy = isPlainObject(houseData) && typeof houseData.branchPolicy === 'string' ? houseData.branchPolicy : 'pr';
+  const githubOff = isPlainObject(houseData) && isPlainObject(houseData.modules) && isPlainObject(houseData.modules.github) && houseData.modules.github.enabled === false;
   console.log('\nWhat stops:');
   if (ruleCount) console.log(`  ${ruleCount} rule file(s) stop loading in Claude Code sessions here`);
   if (blockRemoval) console.log(`  Codex and Gemini CLI stop reading the house block in ${AGENTS_MD}`);
@@ -2659,26 +2716,42 @@ function cmdUninstall(args) {
     console.log(`  ${checkerGoes ? 'the checker goes, so its families (drift, tamper, lengths, and the rest) run nowhere' : 'the checker is already gone'}; ${workflowCallers.length ? 'the workflow line(s) above still run it in CI and fail once this is merged, until you remove them' : 'no tracked workflow runs it, so CI was not running it'}`);
   }
   if (removals.some((r) => isGitHookDest(r.path))) console.log('  git-hook floor: its files go, so git stops refusing a commit or push to a protected branch in this clone, and in every clone once this is merged; a server-side ruleset, where the repo has one, still refuses');
-  for (const line of uninstallGuardLines(repoRoot, houseData)) console.log(line);
-  if (policy === 'pr' && !githubOff) console.log('  session start: while the plugin is installed and house.json says "pr", its arming hook prints "house: git-hook floor not rendered here" with a render command at each session start here; running it re-adopts');
+  if (removeConfig) console.log('  house.json goes: once that is committed, the branch guard and the session-start hook read this repo as not adopted (below)');
+  for (const line of uninstallGuardLines(repoRoot, removeConfig)) console.log(line);
+  // plugins/house/hooks/arm-git-hooks.sh reads house.json from the working
+  // tree, never HEAD, and is silent when there is none or the github module is off.
+  if (!configLeft) {
+    console.log('  session start: the arming hook reads house.json from the working tree, so with it gone it prints nothing here, committed or not. A session started on a branch that still has house.json and the floor (the protected branch until this merges) arms core.hooksPath again; re-run uninstall there after the merge to undo it.');
+  } else if (policy === 'pr' && !githubOff) {
+    console.log('  session start: while the plugin is installed and house.json says "pr", its arming hook prints "house: git-hook floor not rendered here" with a render command at each session start here; running it re-adopts');
+  } else {
+    console.log('  session start: the arming hook prints nothing here, since house.json does not ask for the floor');
+  }
 
   const untrackedRemovals = [...removing].filter((p) => !tracked.has(p));
   if (removing.size) console.log(`\nRecovery: ${removing.size - untrackedRemovals.length} of ${removing.size} file(s) to remove are tracked in git, so each comes back from history (\`git checkout <commit> -- <path>\`, or a revert of the merge).${untrackedRemovals.length ? ` Not tracked, so not recoverable from git: ${untrackedRemovals.join(', ')}.` : ''}`);
-  console.log('\nRe-adopting later: with house.json kept, `house render --apply` (what /house-rules:sync runs) brings back the rules, the checker, the AGENTS.md block and the floor, writes any scaffold that is missing (the scaffold record goes with the lock), and arms core.hooksPath where no scope sets one; /house-rules:bootstrap only once house.json is deleted, since it refuses a repo that has one. A hooks path from before adoption: not known, as above.');
+  console.log(configLeft
+    ? '\nRe-adopting later: with house.json kept, `house render --apply` (what /house-rules:sync runs) brings back the rules, the checker, the AGENTS.md block and the floor, writes any scaffold that is missing (the scaffold record goes with the lock), and arms core.hooksPath where no scope sets one; /house-rules:bootstrap only once house.json is deleted, since it refuses a repo that has one.'
+    : '\nRe-adopting later: /house-rules:bootstrap, from scratch. To keep this repo\'s decisions, first restore the old house.json from a commit that has it (`git show <commit>:house.json > house.json`) and run `house render --apply` instead, which brings back the rules, the checker, the AGENTS.md block and the floor, writes any scaffold that is missing, and arms core.hooksPath where no scope sets one.');
 
-  const refused = removals.some((r) => r.edited || r.unsafe) || Boolean(blockUnsafe) || (blockRemoval && blockRemoval.status === 'refuse');
+  const refused = removals.some((r) => r.edited || r.unsafe) || Boolean(blockUnsafe) || Boolean(configUnsafe) || (blockRemoval && blockRemoval.status === 'refuse');
   if (refused) {
-    console.error('\nhouse uninstall: a file above is refused (REFUSE), so nothing was deleted or unset. Resolve it as that line says, then re-run uninstall.');
+    console.error('\nhouse uninstall: a file above is refused (REFUSE), so nothing was deleted or unset, house.json included. Resolve it as that line says, then re-run uninstall.');
     process.exit(1);
   }
   if (!args.apply) {
-    console.log('\nNothing written. Re-run with --apply to remove the files above and undo the hooks path where it says so.');
+    console.log(`\nNothing written. Re-run with --apply to remove the files above and undo the hooks path where it says so${configNeedsFlag ? ', adding --keep-config or --discard-untracked-config for house.json' : ''}.`);
     process.exit(0);
+  }
+  if (configNeedsFlag) {
+    console.error('\nhouse uninstall: house.json is not recoverable from git (see its line above), so nothing was deleted or unset. Re-run with --keep-config to leave it, or with --discard-untracked-config to remove it anyway.');
+    process.exit(1);
   }
 
   // Lock entries first, then the block (read against the lock), then the
-  // index and the lock, then git config: every step is one a rerun redoes or
-  // finds done, and the lock stays until the files it records are gone.
+  // index and the lock, then git config, then house.json: every step is one a
+  // rerun redoes or finds done, the lock stays until the files it records are
+  // gone, and house.json goes last of all.
   const done = [];
   const stop = (what, e) => {
     console.error(`\nhouse uninstall: could not ${what} (${e.message}), so the run stopped there. Removed so far: ${done.length ? done.join(', ') : 'nothing'}. ${hasLock && existsSync(lockPath) ? '.house/lock.json still records what is left; ' : ''}re-run \`house uninstall --apply\` to finish.`);
@@ -2701,17 +2774,20 @@ function cmdUninstall(args) {
     done.push(rel);
     removeEmptiedParents(repoRoot, abs);
   }
+  for (const h of hooks) {
+    if (h.action !== 'unset') continue;
+    const res = spawnSync('git', ['-C', repoRoot, 'config', h.flag, '--unset', 'core.hooksPath'], { encoding: 'utf8' });
+    if (res.error || res.status !== 0) stop(`unset core.hooksPath at ${h.scope} scope`, res.error || new Error((res.stderr || `git exited ${res.status}`).trim()));
+  }
+  if (removeConfig) {
+    try { unlinkSync(housePath); } catch (e) { stop('remove house.json', e); }
+    done.push('house.json');
+  }
   console.log(done.length ? '\nRemoved:' : '\nRemoved: nothing, the managed files were already gone');
   for (const d of done) console.log(`  ${d}`);
   console.log('Git hooks path:');
-  for (const h of hooks) {
-    if (h.action === 'unset') {
-      const res = spawnSync('git', ['-C', repoRoot, 'config', h.flag, '--unset', 'core.hooksPath'], { encoding: 'utf8' });
-      if (res.error || res.status !== 0) stop(`unset core.hooksPath at ${h.scope} scope`, res.error || new Error((res.stderr || `git exited ${res.status}`).trim()));
-    }
-    console.log(hooksPathLine(h, true));
-  }
-  console.log('\nNext: commit the removal on a branch, with the checker callers above removed in the same change, and open a pull request. Remove the plugin only after every repo that adopted house is uninstalled (see the README).');
+  for (const h of hooks) console.log(hooksPathLine(h, true));
+  console.log(`\nNext: commit the removal on a branch${removeConfig ? ', house.json included,' : ''} with the checker callers above removed in the same change, and open a pull request. Remove the plugin only after every repo that adopted house is uninstalled (see the README).`);
   process.exit(0);
 }
 
@@ -2965,7 +3041,7 @@ function cmdCheck(rawArgs) {
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, why: null, names: [] };
+  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, names: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
@@ -2975,6 +3051,8 @@ function parseArgs(argv) {
     else if (a.startsWith('--force-managed=')) out.forceManaged = a.slice('--force-managed='.length);
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
+    else if (a === '--keep-config') out.keepConfig = true;
+    else if (a === '--discard-untracked-config') out.discardUntrackedConfig = true;
     // A flag where the reason should be is not the reason: `--why --apply`
     // used to record "--apply" and drop the apply.
     else if (a === '--why') out.why = (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) ? '' : argv[++i];
@@ -2995,7 +3073,7 @@ function main() {
   if (cmd === 'check') { cmdCheck(rest); return; }
 
   if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply]\n       house confirm <module> <step-id> [--repo <path>]');
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]');
     process.exit(2);
   }
 

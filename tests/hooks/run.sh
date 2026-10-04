@@ -419,9 +419,11 @@ expect_deny "github module off at HEAD, core.hooksPath still set, floor files go
 #     not a git verb and not a floor mutation, so the guard allows it on a
 #     feature branch, armed and unarmed; the armed case first proves the
 #     fixture IS armed (a push naming master is the floor's business there).
-#     Then the state uninstall leaves, floor files gone, core.hooksPath unset,
-#     house.json still at HEAD, pins each clause of the guard sentence its
-#     plan prints. ---
+#     Then the states uninstall leaves pin each clause of the guard sentence
+#     its plan prints: with --keep-config (floor gone, core.hooksPath unset,
+#     house.json still at HEAD), and by default (house.json removed too:
+#     uncommitted, committed on a feature branch, and the protected branch
+#     before the merge). ---
 _k152="core.hooks""Path"
 r="$TMP_ROOT/case152armed"; new_repo "$r"; adopt "$r"; arm_floor "$r" feat/u
 git -C "$r" checkout -q feat/u
@@ -470,6 +472,22 @@ expect_allow "#152 after uninstall, direct: a commit on master is allowed" \
   "$(mk_payload "git commit -m x" "$r")"
 expect_deny "#152 after uninstall, direct: writing core.hooksPath is still refused" \
   "$(mk_payload "git config $_k152 /x" "$r")" "disables or moves"
+# The default uninstall, which removes house.json too, in its three states.
+r="$TMP_ROOT/case152default"; new_repo "$r"; adopt "$r"; install_floor "$r" feat/u
+git -C "$r" checkout -q feat/u
+rm -rf "$r/.githooks" "$r/house.json"
+expect_deny "#152 default, removal not yet committed: HEAD still has house.json, so a push naming master is still refused" \
+  "$(mk_payload "git push origin master" "$r")" "protected branch"
+git -C "$r" add -A && git -C "$r" commit -q -m "uninstall house"
+expect_allow "#152 default, removal committed on feat/u: a git alias is allowed (not adopted, no advice)" \
+  "$(mk_payload "git lg" "$r")"
+expect_allow "#152 default, removal committed on feat/u: a push naming master is allowed" \
+  "$(mk_payload "git push origin master" "$r")"
+expect_allow "#152 default, removal committed on feat/u: writing core.hooksPath is allowed" \
+  "$(mk_payload "git config $_k152 /x" "$r")"
+git -C "$r" checkout -q master
+expect_deny "#152 default, the protected branch before the merge: a commit there is still refused" \
+  "$(mk_payload "git commit -m x" "$r")" "needs a PR"
 # house.json off HEAD but in the working tree: still read; off both: the guard stops.
 r="$TMP_ROOT/case152gone"; new_repo "$r"; adopt "$r"
 git -C "$r" rm -q --cached house.json && git -C "$r" commit -q -m "house.json off HEAD"

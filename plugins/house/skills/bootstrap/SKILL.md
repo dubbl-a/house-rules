@@ -96,21 +96,26 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house uninstall --repo <path>
 ```
 
 It writes nothing. It lists the managed files and the git-hook floor it removes, the `AGENTS.md`
-block it takes out, the directories that end empty, what it does to `core.hooksPath` at each
-scope, everything it leaves (house.json, scaffolds, files not managed, and each line still calling
-the checker), what stops, and what the branch guard does afterwards. Show all of it and wait for
-the person to say apply it; on approval, run the same command with `--apply`. A hand-edited
-managed file is refused by name and nothing is deleted: leave resolving it to the person. If the
-apply is denied by a permission check, do not retry or route around it: tell the person that a
-blocked action can be retried with manual approval from `/permissions`, and give them the exact
-command and the directory to run it in. A rerun finishes a run that stopped part way.
+block it takes out, `house.json` last (with its deviation count and the `git show` that brings it
+back), the directories that end empty, what it does to `core.hooksPath` at each scope, everything
+it leaves (scaffolds, files not managed, and each line still calling the checker), what stops, and
+what the branch guard and session start do afterwards. Show all of it and wait for the person to
+say apply it; on approval, run the same command with `--apply`. If the person wants to keep
+`house.json`, pass `--keep-config`: the guard then keeps enforcing its `branchPolicy` and session
+start keeps reporting the floor missing, as the plan says. A `house.json` not in HEAD is not
+recoverable from git, so `--apply` needs `--keep-config` or `--discard-untracked-config`: ask which,
+never choose for them. A hand-edited managed file is refused by name and nothing is deleted: leave
+resolving it to the person. If the apply is denied by a permission check, do not retry or route
+around it: tell the person that a blocked action can be retried with manual approval from
+`/permissions`, and give them the exact command and the directory to run it in. A rerun finishes a
+run that stopped part way, with or without `house.json`.
 
-Then walk the leftovers with the person, one group at a time: each checker caller listed (remove
-it in the same pull request, or CI fails once the checker is gone), each scaffold and file not
-managed (theirs to keep or delete), and `house.json`, which stays because it may hold the only copy
-of their decisions; while it is at HEAD the branch guard keeps enforcing its `branchPolicy`, so
-deleting it is their call, and refusals that advise arming the floor or rendering would re-adopt.
-In a linked worktree the plan names the command to run in the main checkout for `core.hooksPath`.
+Until the removal is committed, HEAD still has `house.json`, so the guard keeps enforcing it in
+this session; its refusals advise arming the floor or rendering, which would re-adopt, so do not
+follow them. Then walk the leftovers with the person, one group at a time: each checker caller
+listed (remove it in the same pull request, or CI fails once the checker is gone), and each
+scaffold and file not managed (theirs to keep or delete). In a linked worktree the plan names the
+command to run in the main checkout for `core.hooksPath`.
 
 ## Probe the repo
 
