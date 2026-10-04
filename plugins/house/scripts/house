@@ -1366,6 +1366,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
   const plan = [];
   const skips = [];
   const moduleWarnings = [];
+  const available = [];
   const droppedDefaults = [];
   // Hoisted: one `git ls-files` for the whole plan (it was re-run per rule),
   // unioned with the dests this render will write, so a glob is dropped only
@@ -1378,7 +1379,15 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     const cfg = houseData.modules[name];
     const missing = missingDetectModuleWarning(repoRoot, houseData, name, m.json);
     if (missing) moduleWarnings.push(missing);
-    if (!moduleEnabled(houseData, name)) continue;
+    if (!moduleEnabled(houseData, name)) {
+      // #176: a module that ships, is not on, and did not detect is silent
+      // otherwise; its signal may live where detectPaths does not look.
+      const dflt = m.json.default;
+      if ((dflt === 'off' || dflt === 'detect') && !detectPathMatch(repoRoot, m.json) && !disabledModuleDeviation(houseData, name)) {
+        available.push(`${name} (${dflt === 'off' ? 'off by default' : 'detect-only, nothing detected here'}; enable with: house enable ${name})`);
+      }
+      continue;
+    }
     // #13: a $slot referenced by defaultPaths falls back to its DECLARED
     // default when house.json does not set it, so a load-bearing default path
     // (docs' README.md/CLAUDE.md set via $docFiles, engineering's src/** via
@@ -1454,7 +1463,10 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       const lockHash = sha256Hex(managedBody(content));
       const destPath = normalizeRepoPath(fEntry.dest);
       const source = `modules/${m.dirName}/${relSrc}`;
-      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'file' }, priorLock, forceManagedPath, treatAsAbsent));
+      // #184: a source the package ships executable is vendored executable
+      // (cleanup-worktree.sh documents a direct call). Mode is not in the lock.
+      const exec = (statSync(sourceAbs).mode & 0o100) !== 0;
+      plan.push(classify(repoRoot, { path: destPath, module: name, source, content, lockHash, kind: 'file', exec }, priorLock, forceManagedPath, treatAsAbsent));
     }
   }
 
@@ -1473,7 +1485,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
   if (wantsAgentsBlock(targets)) plan.push(planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedPath));
   else blockRemoval = planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath);
 
-  return { plan, skips, moduleWarnings, droppedDefaults, blockRemoval, targets };
+  return { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets };
 }
 
 // #12: the managed files a render with these plan dests removes: every dest
@@ -1698,7 +1710,7 @@ function migrationLine(m, applied) {
     : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
-function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans, unmanaged, differing, json, apply }) {
+function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans, unmanaged, differing, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({
@@ -1706,7 +1718,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
         // A reserved-marker refusal is not a hand edit; say which lines.
         ...(p.reason === 'reserved' ? { reason: p.reason, markerLines: p.markerLines } : {}),
       })),
-      skips, moduleWarnings, droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
+      skips, moduleWarnings, available: arr(available), droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
       migrations: arr(migrations),
       blockRemoval: blockRemoval ? { status: blockRemoval.status, path: blockRemoval.path, deleteFile: Boolean(blockRemoval.deleteFile) } : null,
       scaffolds: geminiScaffold ? [GEMINI_MD] : [],
@@ -1719,6 +1731,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
     return;
   }
   for (const w of moduleWarnings) console.log(`warning: ${w}`);
+  for (const a of arr(available)) console.log(`${'available'.padEnd(12)}${a}`);
   for (const line of ignoredDestWarningLines(ignoredDests)) console.log(line);
   // Past tense belongs to the apply phase, which prints it after the rename
   // actually happened; here the plan only ever promises.
@@ -1775,7 +1788,23 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefault
   }
 }
 
+// #167: the hand-off cmdDisable sets in its child render's environment; see
+// parseArgs. Not a documented switch.
+const EXPECT_MODULE_HANDOFF = 'HOUSE_DISABLE_HANDOFF';
+function expectModuleProblem(args) {
+  if (args.expectModules.length === 0) return null;
+  if (process.env[EXPECT_MODULE_HANDOFF] !== '1') return '--expect-module is internal to `house disable`, which passes it to the render it runs; it is not a render option, and typed by hand it can delete files no documented command deletes';
+  const shipped = new Set(findModules().filter((m) => !m.error).map(moduleName));
+  for (const n of args.expectModules) {
+    if (!n) return '--expect-module needs a module name (--expect-module <name> or --expect-module=<name>)';
+    if (!shipped.has(n)) return `--expect-module names no module that ships: ${n}`;
+  }
+  return null;
+}
+
 function cmdRender(args) {
+  const expectProblem = expectModuleProblem(args);
+  if (expectProblem) { console.error(`house render: ${expectProblem}`); process.exit(2); }
   const repoRoot = resolveRepoRoot(args);
   const housePath = path.join(repoRoot, 'house.json');
   if (!existsSync(housePath)) {
@@ -1815,7 +1844,7 @@ function cmdRender(args) {
   const migration = planOldPreCommitMigration(repoRoot, houseData, modules, loadPriorLock(repoRoot));
   const migrations = migration ? [migration] : [];
   const treatAsAbsent = new Set(migrations.map((m) => m.from));
-  const { plan, skips, moduleWarnings, droppedDefaults, blockRemoval, targets } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
+  const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
@@ -1844,7 +1873,7 @@ function cmdRender(args) {
   const editedOrphans = sweepable
     .filter((rel) => rel !== forceManagedPath && !unsafeOrphans.some((u) => u.path === rel) && orphanIsHandEdited(repoRoot, rel, loadPriorLock(repoRoot)));
   const sweepRemovals = sweepable.filter((rel) => !unsafeOrphans.some((u) => u.path === rel) && !editedOrphans.includes(rel));
-  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans: sweepRemovals, unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
+  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans: sweepRemovals, unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
 
   const sideBlockers = renderSideFileBlockers(repoRoot);
   if (!args.json) for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
@@ -1880,7 +1909,7 @@ function cmdRender(args) {
       writeIfChanged(abs, p.target.content);
       // Mode, unlike content, is restored on every status that leaves the file
       // in place -- including `clean`, where writeIfChanged wrote nothing.
-      if (isGitHookDest(p.target.path)) ensureExecutable(abs);
+      if (isGitHookDest(p.target.path) || p.target.exec) ensureExecutable(abs);
     }
   }
 
@@ -2481,7 +2510,7 @@ function hooksPathLines(repoRoot) {
 // keeps running. tests/hooks/run.sh pins each clause.
 function guardFloorLines() {
   return [
-    '  branch guard: the vendored git hooks are removed. The PreToolUse branch guard reads the github module\'s switch from house.json at HEAD, so once this change is committed, on whichever branch is checked out, it stops refusing commits, pushes and history commands on a protected branch and stops advising to arm the floor. It still refuses a core.hooksPath change, a write or removal under .githooks/, and --no-verify. With no hook floor, the remote\'s branch protection is what still stops a push to a protected branch.',
+    '  branch guard: the vendored git hooks are removed. The PreToolUse branch guard reads the github module\'s switch from house.json at HEAD, so the commit and push refusals on a protected branch stand down once this change is on HEAD, on whichever branch is checked out, as do its history refusals and its advice to arm the floor. Its disable list (a core.hooksPath change, a write or removal under .githooks/, --no-verify), the ref-writing plumbing scan, and the configured-alias checks stay. With no hook floor, the remote\'s branch protection is what still stops a push to a protected branch.',
   ];
 }
 
@@ -2627,7 +2656,7 @@ function cmdDisable(args) {
   // The plan above judged unrecorded files with these modules still on; the
   // render reads house.json after the change, so it is told the same view.
   const expect = toDisable.flatMap((n) => ['--expect-module', n]);
-  const render = spawnSync(process.execPath, [__filename, 'render', '--repo', repoRoot, '--apply', ...expect], { encoding: 'utf8' });
+  const render = spawnSync(process.execPath, [__filename, 'render', '--repo', repoRoot, '--apply', ...expect], { encoding: 'utf8', env: { ...process.env, [EXPECT_MODULE_HANDOFF]: '1' } });
   relay(render);
   if (render.status !== 0) {
     console.error(`house disable: render exited ${render.status}, after house.json was written. Fix what it printed, then \`house render --apply\`.`);
@@ -3470,8 +3499,15 @@ function parseArgs(argv) {
     else if (a === '--keep-config') out.keepConfig = true;
     else if (a === '--discard-untracked-config') out.discardUntrackedConfig = true;
     // Internal to disable's hand-off to render (#152): a module this run still
-    // counts as on, so the render applies the plan disable printed.
-    else if (a === '--expect-module') out.expectModules.push(argv[++i]);
+    // counts as on, so the render applies the plan disable printed. Typed by
+    // hand it would delete files no documented command deletes (#167), so
+    // cmdRender honors it only when HOUSE_DISABLE_HANDOFF is set, which
+    // cmdDisable sets for its child render alone.
+    // Parsed strictly and judged in cmdRender, which knows the hand-off and the
+    // module list: a missing value or a flag in its place is kept as '' so it
+    // errors there instead of swallowing the next flag.
+    else if (a === '--expect-module') out.expectModules.push((argv[i + 1] === undefined || argv[i + 1].startsWith('-')) ? '' : argv[++i]);
+    else if (a.startsWith('--expect-module=')) out.expectModules.push(a.slice('--expect-module='.length));
     // A flag where the reason should be is not the reason: `--why --apply`
     // used to record "--apply" and drop the apply.
     else if (a === '--why') out.why = (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) ? '' : argv[++i];

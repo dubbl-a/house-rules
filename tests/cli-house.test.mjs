@@ -2560,8 +2560,8 @@ test('#151 disable github: the plan states what the guard follows and who unsets
   commitAll(repo, 'adopt with the floor');
   const plan = runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture']);
   for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(plan.out, re);
-  assert.match(plan.out, /The PreToolUse branch guard reads the github module's switch from house\.json at HEAD, so once this change is committed, on whichever branch is checked out, it stops refusing commits, pushes and history commands on a protected branch and stops advising to arm the floor\./);
-  assert.match(plan.out, /It still refuses a core\.hooksPath change, a write or removal under \.githooks\/, and --no-verify\./);
+  assert.match(plan.out, /The PreToolUse branch guard reads the github module's switch from house\.json at HEAD, so the commit and push refusals on a protected branch stand down once this change is on HEAD, on whichever branch is checked out, as do its history refusals and its advice to arm the floor\./);
+  assert.match(plan.out, /Its disable list \(a core\.hooksPath change, a write or removal under \.githooks\/, --no-verify\), the ref-writing plumbing scan, and the configured-alias checks stay\./);
   assert.match(plan.out, /the remote's branch protection is what still stops a push to a protected branch/);
   assert.doesNotMatch(plan.out, /will tell you to arm the floor/, 'the advice varies with core.hooksPath, so it is not quoted');
   assert.match(plan.out, new RegExp(`you run \`git config --unset core\\.hooksPath\` yourself, from ${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
@@ -3468,4 +3468,108 @@ test('#152 a symlink to a device at a recorded path is refused by uninstall as b
   }
   assert.ok(lstatSync(pre).isSymbolicLink(), 'the link is still there');
   assert.equal(localHooksPath(repo, env), floorDir(repo));
+});
+
+// ── #184, #176, #167 ─────────────────────────────────────────────────────
+
+test('#184 render --apply keeps the execute bit of an executable module file, on write and on restore, and leaves a plain one plain', () => {
+  const fx = buildFixturePlugin();
+  writeTree(fx.dir, {
+    'modules/tools/module.json': `${JSON.stringify({
+      name: 'tools', default: 'on', rules: [], configSlots: [], defaultPaths: [],
+      files: [{ src: 'files/run.sh', dest: 'scripts/house/run.sh' }, { src: 'files/data.txt', dest: 'scripts/house/data.txt' }],
+    }, null, 2)}\n`,
+    'modules/tools/files/run.sh': '#!/usr/bin/env bash\nexit 0\n',
+    'modules/tools/files/data.txt': 'plain\n',
+  });
+  chmodSync(join(fx.dir, 'modules/tools/files/run.sh'), 0o755);
+  chmodSync(join(fx.dir, 'modules/tools/files/data.txt'), 0o644);
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { tools: { enabled: true, config: {} } } });
+  const r = runCli(fx.cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(modeOf(join(repo, 'scripts/house/run.sh')), 0o755);
+  assert.equal(modeOf(join(repo, 'scripts/house/data.txt')), 0o644);
+  chmodSync(join(repo, 'scripts/house/run.sh'), 0o644);
+  assert.equal(runCli(fx.cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  assert.equal(modeOf(join(repo, 'scripts/house/run.sh')), 0o755, 'a clean file that lost the bit is restored');
+  rmSync(join(repo, 'scripts/house/run.sh'));
+  assert.equal(runCli(fx.cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  assert.equal(modeOf(join(repo, 'scripts/house/run.sh')), 0o755, 'a deleted file comes back executable');
+});
+
+test('#176 render prints one available line per shipped module that is off or detect and neither enabled, detected, nor declined', () => {
+  const fx = buildFixturePlugin();
+  const mod = (name, dflt, extra = {}) => ({
+    [`modules/${name}/module.json`]: `${JSON.stringify({ name, default: dflt, rules: [], files: [], configSlots: [], defaultPaths: [], ...extra }, null, 2)}\n`,
+  });
+  writeTree(fx.dir, {
+    ...mod('evals', 'detect', { detectPaths: ['evals/'] }),
+    ...mod('retrieval', 'off'),
+    ...mod('declined', 'off'),
+    ...mod('wanted', 'off'),
+  });
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n', 'sub/evals/questions.yaml': 'q: 1\n' });
+  writeHouseJson(repo, {
+    ...BASE_HOUSE_JSON,
+    modules: { alpha: { enabled: true, config: {} }, wanted: { enabled: true, config: {} }, declined: { enabled: false, config: {} } },
+    deviations: [{ kind: 'disabled-module', module: 'declined', what: 'off', why: 'no', decided: '2026-10-01' }],
+  });
+  const r = runCli(fx.cliPath, ['render', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^available {3}evals \(detect-only, nothing detected here; enable with: house enable evals\)$/m);
+  assert.match(r.out, /^available {3}retrieval \(off by default; enable with: house enable retrieval\)$/m);
+  assert.doesNotMatch(r.out, /available {3}(declined|wanted|alpha)\b/);
+  const json = JSON.parse(runCli(fx.cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.ok(json.available.some((l) => l.startsWith('evals ')));
+  // Detected here: render does not call it silent, the existing warning speaks.
+  writeTree(repo, { 'evals/q.yaml': 'q: 1\n' });
+  const d = runCli(fx.cliPath, ['render', '--repo', repo]);
+  assert.doesNotMatch(d.out, /available {3}evals/);
+});
+
+test('#167 render --expect-module is refused outside disable\'s hand-off, with a clear error and nothing written', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const before = gitStatusShort(repo);
+  for (const args of [['--expect-module', 'gamma'], ['--expect-module=gamma']]) {
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply', ...args]);
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.err, /--expect-module is internal to `house disable`/);
+  }
+  assert.equal(gitStatusShort(repo), before);
+});
+
+test('#167 render --expect-module with the hand-off: a missing value, a flag as the value, an empty or unknown name are errors', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const env = { HOUSE_DISABLE_HANDOFF: '1' };
+  for (const args of [['--expect-module'], ['--expect-module', '--apply'], ['--expect-module='], ['--expect-module=nope'], ['--expect-module', 'nope', '--apply']]) {
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply', ...args], env);
+    assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.err, /--expect-module (needs a module name|names no module that ships)/, args.join(' '));
+  }
+  const ok = runCli(cliPath, ['render', '--repo', repo, '--apply', '--expect-module=gamma'], env);
+  assert.equal(ok.code, 0, ok.out + ok.err);
+});
+
+test('#167 disable --apply still works through its own hand-off to render', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(!existsSync(join(repo, '.claude/rules/house/gamma.md')));
+});
+
+test('#167 disable github: the plan sentence about the guard says what ADR 0017 shipped', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  const plan = runCli(cliPath, ['disable', 'github', '--repo', repo]);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  const line = plan.out.split('\n').find((l) => l.includes('branch guard:'));
+  assert.ok(line, 'the plan has a branch guard line');
+  assert.match(line, /commit and push refusals on a protected branch stand down once this change is on HEAD/);
+  assert.match(line, /disable list \(a core\.hooksPath change, a write or removal under \.githooks\/, --no-verify\), the ref-writing plumbing scan, and the configured-alias checks stay/);
 });
