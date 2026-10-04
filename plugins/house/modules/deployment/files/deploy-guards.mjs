@@ -15,7 +15,7 @@
  *     is not "passing".
  *   assertPrProvenance — origin/<branch>'s tip commit must belong to a
  *     merged pull request. Skipped, with a line saying so, when the branch is
- *     protected at the remote (branch protection or a ruleset); when that
+ *     requires a pull request at the remote (branch protection or a ruleset); when that
  *     query fails or is unavailable the check runs.
  *
  * assertPrProvenance exists as application code, not server-side branch
@@ -146,23 +146,27 @@ export function evaluatePrProvenance(pulls = []) {
 }
 
 /**
- * evaluateBranchProtection — decide whether a branch is protected at the
- * remote from the two API answers. `protection` is the parsed body of
- * branches/<branch>/protection (null when the call failed or 404'd) and
- * `rules` the parsed array from rules/branches/<branch> (null on failure).
- * Any failure reads as "not protected", so the provenance fallback still runs
- * where protection does not exist or cannot be queried. Pure, like the others.
+ * evaluateBranchProtection — decide whether the remote requires a pull
+ * request on a branch, from the two API answers. `protection` is the parsed
+ * body of branches/<branch>/protection (null when the call failed or 404'd)
+ * and `rules` the parsed array from rules/branches/<branch> (null on failure).
+ * Only a pull-request requirement counts: protection that requires status
+ * checks alone, or a ruleset that only blocks deletion or force-push, still
+ * allows a direct push. Anything else, failures included, reads as "not
+ * required", so the provenance fallback still runs. Pure, like the others.
  *
  * @param {object|null} protection
  * @param {Array|null} rules
- * @returns {{ protected: boolean, via: 'branch protection'|'ruleset'|null }}
+ * @returns {{ requiresPr: boolean, via: 'branch protection'|'ruleset'|null }}
  */
 export function evaluateBranchProtection(protection, rules) {
-  if (protection && typeof protection === 'object' && !Array.isArray(protection) && !protection.message) {
-    return { protected: true, via: 'branch protection' };
+  if (protection && typeof protection === 'object' && !Array.isArray(protection) && protection.required_pull_request_reviews) {
+    return { requiresPr: true, via: 'branch protection' };
   }
-  if (Array.isArray(rules) && rules.length > 0) return { protected: true, via: 'ruleset' };
-  return { protected: false, via: null };
+  if (Array.isArray(rules) && rules.some((r) => r && r.type === 'pull_request')) {
+    return { requiresPr: true, via: 'ruleset' };
+  }
+  return { requiresPr: false, via: null };
 }
 
 /** Run `gh api <path>`, JSON-parsed; null on any failure (never exits). */
@@ -217,7 +221,7 @@ export function assertCiGreen(scriptName, opts = {}) {
 
 /**
  * assertPrProvenance — require a commit (origin/<branch>'s tip by default) to
- * belong to a merged pull request, unless the branch is protected at the
+ * belong to a merged pull request, unless the remote requires a pull request on the
  * remote. See this module's header for when this substitutes for server-side
  * branch protection.
  *
@@ -234,11 +238,11 @@ export function assertPrProvenance(scriptName, opts = {}) {
     ghApiJsonOrNull(`repos/${repo}/branches/${branch}/protection`),
     ghApiJsonOrNull(`repos/${repo}/rules/branches/${branch}`),
   );
-  if (prot.protected) {
-    process.stderr.write(`${scriptName}: PR provenance skipped, ${branch} is protected at the remote (${prot.via})\n`);
+  if (prot.requiresPr) {
+    process.stderr.write(`${scriptName}: PR provenance skipped, ${branch} requires a pull request at the remote (${prot.via})\n`);
     return;
   }
-  process.stderr.write(`${scriptName}: ${branch} protection not found or unavailable, checking PR provenance\n`);
+  process.stderr.write(`${scriptName}: ${branch} pull request requirement not found or unavailable at the remote, checking PR provenance\n`);
   const pulls = ghApiJson(scriptName, `repos/${repo}/commits/${sha}/pulls`, 'PR provenance');
   const result = evaluatePrProvenance(pulls);
 

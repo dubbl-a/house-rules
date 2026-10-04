@@ -388,25 +388,37 @@ function runProvenance(answers) {
   );
 }
 
-test('deploy-guards: evaluateBranchProtection reads protection or a ruleset, and any failure as unprotected', async () => {
+test('deploy-guards: evaluateBranchProtection counts only a pull-request requirement, and any failure as none', async () => {
   const { evaluateBranchProtection } = await import(DEPLOY_GUARDS_URL);
-  assert.deepEqual(evaluateBranchProtection({ url: 'x' }, null), { protected: true, via: 'branch protection' });
-  assert.deepEqual(evaluateBranchProtection(null, [{ type: 'pull_request' }]), { protected: true, via: 'ruleset' });
-  assert.equal(evaluateBranchProtection(null, null).protected, false);
-  assert.equal(evaluateBranchProtection({ message: 'Upgrade to GitHub Pro' }, []).protected, false);
+  const pr = { required_pull_request_reviews: { required_approving_review_count: 1 } };
+  assert.deepEqual(evaluateBranchProtection(pr, null), { requiresPr: true, via: 'branch protection' });
+  assert.deepEqual(evaluateBranchProtection(null, [{ type: 'pull_request' }]), { requiresPr: true, via: 'ruleset' });
+  assert.equal(evaluateBranchProtection({ required_status_checks: {} }, null).requiresPr, false);
+  assert.equal(evaluateBranchProtection(null, [{ type: 'deletion' }, { type: 'non_fast_forward' }]).requiresPr, false);
+  assert.equal(evaluateBranchProtection(null, null).requiresPr, false);
+  assert.equal(evaluateBranchProtection({ message: 'Upgrade to GitHub Pro' }, []).requiresPr, false);
 });
 
-test('deploy-guards: assertPrProvenance skips the PR check when the branch is protected at the remote', () => {
+test('deploy-guards: assertPrProvenance skips the PR check when branch protection requires a pull request', () => {
   // No /pulls answer: if the guard asked for provenance, the fake gh would fail and the guard would refuse.
-  const res = runProvenance({ '/branches/main/protection': { url: 'x' } });
+  const res = runProvenance({ '/branches/main/protection': { required_pull_request_reviews: {} } });
   assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stderr, /PR provenance skipped, main is protected at the remote \(branch protection\)/);
+  assert.match(res.stderr, /PR provenance skipped, main requires a pull request at the remote \(branch protection\)/);
 });
 
-test('deploy-guards: assertPrProvenance skips the PR check when a ruleset covers the branch', () => {
+test('deploy-guards: assertPrProvenance skips the PR check when a ruleset has a pull_request rule', () => {
   const res = runProvenance({ '/rules/branches/main': [{ type: 'pull_request' }] });
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stderr, /\(ruleset\)/);
+});
+
+test('deploy-guards: assertPrProvenance runs the PR check when protection or rules do not require a pull request', () => {
+  const statusOnly = runProvenance({ '/branches/main/protection': { required_status_checks: {} }, '/pulls': [] });
+  assert.equal(statusOnly.status, 1);
+  assert.match(statusOnly.stderr, /does not belong to a merged pull request/);
+  const deletionOnly = runProvenance({ '/rules/branches/main': [{ type: 'deletion' }], '/pulls': [] });
+  assert.equal(deletionOnly.status, 1);
+  assert.match(deletionOnly.stderr, /does not belong to a merged pull request/);
 });
 
 test('deploy-guards: assertPrProvenance still runs the PR check when protection is unavailable', () => {
