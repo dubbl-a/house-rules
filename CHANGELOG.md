@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+- **The package's own CI and development run on Node 26 via `.nvmrc`.** Workflows read it through `node-version-file`. The adopter floor stays Node 22 (`engines.node`).
+
 ### Fixed
 - **Checker: the unreferenced-script twin needs evidence for JavaScript (#178).** A same-named `.mjs`, `.js`, `.cjs`, or `.ts` file is a twin of the vendored script only when it shares at least one exported name with it, so an unrelated program that happens to share a basename no longer draws the warning. Other file types keep the basename rule.
 
