@@ -445,3 +445,62 @@ test('manifest: a malformed confirmed record is a finding', () => {
     assert.match(out, re);
   }
 });
+
+// #178: a vendored script no one references, beside the adopter's own wired twin.
+function lockFor(paths) {
+  return JSON.stringify({ files: paths.map((path) => ({ path, module: 'engineering', source: 'x', bodySha256: 'a'.repeat(64) })) });
+}
+
+test('#178: an unreferenced scripts/house script names the same-named tracked file elsewhere', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/foo-guard.mjs']),
+    'scripts/house/foo-guard.mjs': 'export const a = 1;\n',
+    'scripts/foo-guard.mjs': 'export const a = 1;\n',
+    'package.json': '{"scripts":{"guard":"node scripts/foo-guard.mjs"}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.match(out, /scripts\/house\/foo-guard\.mjs \[unreferenced script\] vendored script is referenced by no package\.json script/);
+  assert.match(out, /same name sits at scripts\/foo-guard\.mjs/);
+});
+
+test('#178: wiring the vendored script into package.json clears the warning', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/foo-guard.mjs']),
+    'scripts/house/foo-guard.mjs': 'export const a = 1;\n',
+    'scripts/foo-guard.mjs': 'export const a = 1;\n',
+    'package.json': '{"scripts":{"guard":"node scripts/house/foo-guard.mjs"}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unreferenced script/);
+});
+
+test('#178: a vendored script imported by another vendored script counts as referenced', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/deploy-guards.mjs', 'scripts/house/assert-main-at-origin.mjs']),
+    'scripts/house/deploy-guards.mjs': "import { a } from './assert-main-at-origin.mjs';\n",
+    'scripts/house/assert-main-at-origin.mjs': 'export const a = 1;\n',
+    'scripts/assert-main-at-origin.mjs': 'export const a = 1;\n',
+    'package.json': '{"scripts":{"deploy":"node scripts/house/deploy-guards.mjs"}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unreferenced script/);
+});
+
+test('#178: an unreferenced vendored script with no same-named twin elsewhere is not warned', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/foo-guard.mjs']),
+    'scripts/house/foo-guard.mjs': 'export const a = 1;\n',
+    'scripts/myfoo-guard.mjs': 'export const a = 1;\n',
+    'package.json': '{"scripts":{}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unreferenced script/);
+});
