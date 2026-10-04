@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+- **The scaffold's action pins move to v7.** `plugins/house/templates/pr-checks.yml` now pins `actions/checkout` v7.0.1 and `actions/setup-node` v7.0.0, matching this repo's workflows (Dependabot does not scan the templates; a test now holds them equal). Existing adopters keep their file and can copy the two `uses:` lines.
+
 ### Fixed
 - **The deploy guard no longer refuses every squash-merge tip where CI runs on pull requests only (#195).** `assertCiGreen` failed closed on a tip with zero check runs, which pushed adopters to `DEPLOY_FROM=any` and skipped every guard. A zero-run tip is now certified by the merged pull request whose merge commit is the tip, when every check run on its head passed (at least one) and the head's tree equals the tip's; the guard prints which commit certified it, and refuses naming both shas on a tree mismatch. Zero runs on the head, a failing run, or no merged PR still refuse. Rule content (ADR 0011).
 - **The deploy guard's wrong-branch refusal prints a command that exists (#179).** Remediation (b) printed `node scripts/house/<script> ...`, a file that does not exist, because the argument is the npm script name. It now prints `npm run <script> ...`.
