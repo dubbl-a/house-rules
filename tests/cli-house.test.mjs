@@ -3508,24 +3508,25 @@ test('#176 render prints one available line per shipped module that is off or de
     ...mod('retrieval', 'off'),
     ...mod('declined', 'off'),
     ...mod('wanted', 'off'),
+    ...mod('chosen', 'off'),
   });
   const repo = buildTargetRepo({ 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n', 'sub/evals/questions.yaml': 'q: 1\n' });
   writeHouseJson(repo, {
     ...BASE_HOUSE_JSON,
-    modules: { alpha: { enabled: true, config: {} }, wanted: { enabled: true, config: {} }, declined: { enabled: false, config: {} } },
+    modules: { alpha: { enabled: true, config: {} }, wanted: { enabled: true, config: {} }, declined: { enabled: false, config: {} }, chosen: { enabled: false, config: {} } },
     deviations: [{ kind: 'disabled-module', module: 'declined', what: 'off', why: 'no', decided: '2026-10-01' }],
   });
   const r = runCli(fx.cliPath, ['render', '--repo', repo]);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.out, /^available {3}evals \(detect-only, nothing detected here; enable with: house enable evals\)$/m);
-  assert.match(r.out, /^available {3}retrieval \(off by default; enable with: house enable retrieval\)$/m);
-  assert.doesNotMatch(r.out, /available {3}(declined|wanted|alpha)\b/);
+  assert.equal(r.out.match(/^available /gm).length, 1, 'one line');
+  assert.match(r.out, /^available {3}not enabled here: (beta, )?evals, retrieval \(enable with: house enable <name>\)$/m);
+  assert.doesNotMatch(r.out, /available .*\b(declined|wanted|alpha|chosen)\b/);
   const json = JSON.parse(runCli(fx.cliPath, ['render', '--repo', repo, '--json']).out);
-  assert.ok(json.available.some((l) => l.startsWith('evals ')));
+  assert.ok(json.available.includes('evals') && json.available.includes('retrieval'));
   // Detected here: render does not call it silent, the existing warning speaks.
   writeTree(repo, { 'evals/q.yaml': 'q: 1\n' });
   const d = runCli(fx.cliPath, ['render', '--repo', repo]);
-  assert.doesNotMatch(d.out, /available {3}evals/);
+  assert.doesNotMatch(d.out, /^available .*evals/m);
 });
 
 test('#167 render --expect-module is refused outside disable\'s hand-off, with a clear error and nothing written', () => {

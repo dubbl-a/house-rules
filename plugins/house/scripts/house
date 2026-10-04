@@ -1383,8 +1383,10 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       // #176: a module that ships, is not on, and did not detect is silent
       // otherwise; its signal may live where detectPaths does not look.
       const dflt = m.json.default;
-      if ((dflt === 'off' || dflt === 'detect') && !detectPathMatch(repoRoot, m.json) && !disabledModuleDeviation(houseData, name)) {
-        available.push(`${name} (${dflt === 'off' ? 'off by default' : 'detect-only, nothing detected here'}; enable with: house enable ${name})`);
+      // An explicit "enabled": false is the adopter's choice, so it stays quiet.
+      const chose = isPlainObject(houseData.modules[name]) && houseData.modules[name].enabled === false;
+      if ((dflt === 'off' || dflt === 'detect') && !chose && !detectPathMatch(repoRoot, m.json) && !disabledModuleDeviation(houseData, name)) {
+        available.push(name);
       }
       continue;
     }
@@ -1731,7 +1733,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
     return;
   }
   for (const w of moduleWarnings) console.log(`warning: ${w}`);
-  for (const a of arr(available)) console.log(`${'available'.padEnd(12)}${a}`);
+  if (arr(available).length) console.log(`${'available'.padEnd(12)}not enabled here: ${available.join(', ')} (enable with: house enable <name>)`);
   for (const line of ignoredDestWarningLines(ignoredDests)) console.log(line);
   // Past tense belongs to the apply phase, which prints it after the rename
   // actually happened; here the plan only ever promises.
