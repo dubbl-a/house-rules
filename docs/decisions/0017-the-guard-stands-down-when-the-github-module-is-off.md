@@ -109,8 +109,9 @@ push, `send-pack`, history and unreadable-verb refusals, and every piece of armi
 What tightens, and for whom:
 
 * A repo on `branchPolicy: direct`, or one deferring to its own guard: a configured alias whose
-  body carries a disable literal or protected-ref plumbing, and any `!shell` alias, are now
-  refused, where `main` let both through. A `direct` adopter's ordinary shell alias, such as
+  body carries a disable literal or protected-ref plumbing, and any configured `!shell` alias,
+  are now refused, where `main` let both through. An alias defined inline with `-c` is not
+  read as an alias in any state (see the residue below). A `direct` adopter's ordinary shell alias, such as
   `up = !git fetch && git rebase`, now meets a false deny; the hook's message names the way out,
   "Run the commands it stands for directly."
 * Every adopted repo: a `house.json` holding a control character in `branchPolicy`,
