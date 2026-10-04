@@ -649,6 +649,72 @@ expect_allow "Write on house.json is allowed" \
 expect_allow "Edit on house.json is allowed" \
   "$(mk_file_payload Edit "house.json" "$p")"
 
+# ── the github module off: C and the arming advice stand down (#159) ─────
+# ADR 0017. Turning the module off removes the floor, so the guard used to
+# switch to its unarmed rules and tell the user to arm what they had removed.
+# Only the JSON literal false, on HEAD, stands C down; A, B, D and E stay.
+_gh_off='{"branchPolicy":"pr","modules":{"github":{"enabled":false}}}'
+_gh_on='{"branchPolicy":"pr","modules":{"github":{"enabled":true}}}'
+_ps="git"" push"; _gu="git"" config --unset core.hooks""Path"
+_nv="--no-""verify"; _gcm="git"" commit"; _co="git"" check""out -b"
+g="$TMP_ROOT/gh-off"; new_repo "$g"; adopt "$g" "$_gh_off"
+expect_allow "github off at HEAD, no floor: a commit on the protected branch" \
+  "$(mk_payload "$_gcm -m x" "$g")"
+expect_allow "github off at HEAD, no floor: a push to the protected branch" \
+  "$(mk_payload "$_ps origin master" "$g")"
+expect_allow "github off at HEAD, no floor: a merge on the protected branch" \
+  "$(mk_payload "git merge topic" "$g")"
+expect_deny_without "github off at HEAD: unsetting the hooks path is still refused, with no arming advice" \
+  "$(mk_payload "$_gu" "$g")" "arm it"
+expect_deny_without "github off at HEAD: an rm of .githooks is still refused, with no arming advice" \
+  "$(mk_payload "rm -rf .githooks" "$g")" "arm it"
+expect_deny_without "github off at HEAD: an Edit under .githooks is still refused, with no arming advice" \
+  "$(mk_file_payload Edit "$g/.githooks/pre-push" "$g")" "arm it"
+expect_deny_without "github off at HEAD: $_nv is still refused, with no arming advice" \
+  "$(mk_payload "$_gcm $_nv -m x" "$g")" "arm it"
+expect_deny "github off at HEAD: section E still refuses a branch in the main checkout" \
+  "$(mk_payload "$_co topic" "$g")" "Branch in a worktree"
+git -C "$g" checkout -q -b feat
+expect_allow "github off at HEAD on a feature branch: a push onto the protected branch" \
+  "$(mk_payload "$_ps origin HEAD:master" "$g")"
+expect_deny_without "github off at HEAD on a feature branch: unsetting the hooks path is still refused" \
+  "$(mk_payload "$_gu" "$g")" "arm it"
+# The two-call sequence: commit the module off on a feature branch of an
+# ARMED repo, then unset the hooks path and push onto master. The first call
+# is refused, so the floor stays armed and its pre-push decides the second.
+g2="$TMP_ROOT/gh-off-armed"; new_repo "$g2"; adopt "$g2" "$_gh_on"; install_floor "$g2"
+git -C "$g2" checkout -q -b feat; adopt "$g2" "$_gh_off"; arm_hookspath "$g2"
+expect_deny "github off on a feature-branch commit, floor armed: unsetting the hooks path is refused" \
+  "$(mk_payload "$_gu" "$g2")" "disables or moves the git-hook floor"
+# Default on and fail closed: anything but the literal false is on.
+for _j in '{"branchPolicy":"pr","modules":{"github":{"enabled":"false"}}}' \
+          '{"branchPolicy":"pr","modules":{"github":{"enabled":null}}}' \
+          '{"branchPolicy":"pr","modules":{"github":{"enabled":0}}}' \
+          '{"branchPolicy":"pr","modules":{"github":{}}}' \
+          '{"branchPolicy":"pr","modules":{}}' \
+          '{"branchPolicy":"pr","modules":"github"}' \
+          "$_gh_on"; do
+  _k=$((${_k:-0} + 1)); g3="$TMP_ROOT/gh-on-$_k"; new_repo "$g3"; adopt "$g3" "$_j"
+  expect_deny "house.json $_j at HEAD: a commit on the protected branch is refused" \
+    "$(mk_payload "$_gcm -m x" "$g3")" "feature branch"
+  expect_deny "house.json $_j at HEAD: a push to the protected branch is refused" \
+    "$(mk_payload "$_ps origin master" "$g3")" "protected branch"
+done
+g4="$TMP_ROOT/gh-malformed"; new_repo "$g4"; adopt "$g4" '{"branchPolicy":"pr","modules":{"github":{"enabled":false}}'
+expect_deny "a malformed house.json at HEAD that would turn github off: refused" \
+  "$(mk_payload "$_gcm -m x" "$g4")" "cannot be read as the branch policy"
+# Off only in the working tree: HEAD decides, so the module is still on,
+# including for a commit that would carry that very edit onto master.
+g5="$TMP_ROOT/gh-off-worktree"; new_repo "$g5"; adopt "$g5" "$_gh_on"
+printf '%s' "$_gh_off" >"$g5/house.json"
+git -C "$g5" add house.json
+expect_deny "github off only in the working tree: a commit carrying it onto master is refused" \
+  "$(mk_payload "$_gcm -m x" "$g5")" "feature branch"
+expect_deny "github off only in the working tree: a push to the protected branch is refused" \
+  "$(mk_payload "$_ps origin master" "$g5")" "protected branch"
+expect_deny "github on at HEAD: section E refuses a branch in the main checkout" \
+  "$(mk_payload "$_co topic" "$g5")" "Branch in a worktree"
+
 # ── the deference matrix: only a PreToolUse entry that can SEE the call ───
 repo_d="$TMP_ROOT/defer"; new_repo "$repo_d"; adopt "$repo_d"
 mkdir -p "$repo_d/.claude"

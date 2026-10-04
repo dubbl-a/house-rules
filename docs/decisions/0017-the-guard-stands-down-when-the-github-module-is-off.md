@@ -1,0 +1,144 @@
+---
+status: accepted
+date: 2026-10-03
+---
+
+# The guard stands down when the github module is off
+
+## Context and problem statement
+
+`house disable github` (#151) removes the vendored git-hook floor, but the PreToolUse hook
+(`plugins/house/hooks/no-direct-master.sh`) never read module state. It followed the branch policy
+in the committed `house.json` and judged the floor from the files on disk, so once the module was
+off it kept refusing commits and pushes on a protected branch, switched to its stricter unarmed
+rules because the floor was gone, and told the user to arm a floor they had just removed (#159). A
+repo that asked for less protection got a louder guard.
+
+## Decision drivers
+
+* Turning the github module off is a choice the repo owner makes; the guard should quiet the rules
+  that exist to enforce that module's branch policy, and stop giving advice about its floor.
+* ADR 0013's second adversarial round closed one specific hole: a feature branch whose committed
+  policy said `direct` switched the disable list off, because the policy gate ran first. Nothing
+  here may reopen it.
+* Default on and fail closed, as everywhere else in the package: only an explicit, readable
+  "off" counts.
+* No second way to turn the guard off: no environment variable, no flag, no working-tree switch.
+
+## Considered options
+
+* **A. Read the switch from a trusted ref that moves only at a merge**, such as the remote's
+  default branch as recorded locally (`refs/remotes/origin/HEAD` and the ref it names).
+* **B. Require agreement**: stand down only when every one of a fixed set of refs says off, for
+  example the remote-tracking default branch and each local protected branch.
+* **C. Read the switch from the same `house.json` the policy is read from, and stand down only the
+  rules `branchPolicy: direct` already stands down**, keeping the disable list and the
+  named-repository rules in every adopted repo.
+
+## Decision outcome
+
+Chosen option: "C: the same blob as the policy, the same stand-down as `direct`", because a probe
+showed neither A nor B can be trusted to move only at a merge, and C quiets everything the issue
+names while keeping the off switch for the floor itself where ADR 0013 put it.
+
+The switch is `modules.github.enabled` in the `house.json` the hook already reads its policy from:
+`git --no-replace-objects show HEAD:house.json`, or the working-tree file only when HEAD carries
+none. It is read in the same jq pass as the policy. Only the JSON literal `false` turns the module
+off. A missing `modules`, a missing `github`, a missing `enabled`, the string `"false"`, `0`,
+`null`, or a `modules` of the wrong shape leave it on, and a `house.json` that does not parse is
+refused exactly as before. jq is already required: without it the hook refuses every call before
+reading anything, so the switch is never read.
+
+Rule by rule, with the module off:
+
+* **Stands down**: the commit refusal on a protected branch; the push and `send-pack` refusals;
+  the unarmed history refusals (merge, rebase, cherry-pick, revert, am, commit-tree) and the
+  unreadable-verb refusal; the floor's integrity check for this candidate and every piece of
+  arming advice. The hook is quiet: no advice and no notice per call.
+* **Keeps running (section A, the disable list)**: `--no-verify` and `-n` on a commit,
+  `core.hooksPath`, `include.path` and `includeIf`, git config through the environment,
+  `HUSKY=0` and `LEFTHOOK=0`, a mutation of `.githooks/`, the ref-writing plumbing, `git replace`
+  and any `refs/replace/` write. None of these refusals carries arming advice.
+* **Keeps running (the file-tool rule)**: an Edit or Write under `.githooks/`, under the git
+  directory, or to git's per-user config.
+* **Keeps running (section D)**: a branch-moving command aimed at a repository it names rather
+  than enters.
+* **Keeps running (section E)**: creating a branch in the main checkout. It is the claude-code
+  module's rule ("Treat git state as shared across sessions"), a workspace rule rather than part of
+  the github module.
+* **Unchanged**: `house.json` itself stays editable by the file tools, as before; an edit counts
+  once it is committed.
+
+This is the same stand-down `branchPolicy: direct` gets, made in the same function, with one
+difference: `direct` returns at the policy gate and so also stands section E down, while the
+github switch is taken after section E so that E keeps running.
+
+### Consequences
+
+* Good, because a repo that turns the github module off no longer gets refusals for the policy it
+  turned off, nor advice to arm a floor it removed.
+* Good, because the disable list still runs before the policy gate, so the ordering ADR 0013 fixed
+  holds. An armed repo whose feature branch commits the module off still cannot unset
+  `core.hooksPath` or touch `.githooks/`, and its floor's `pre-push` still reads the target
+  branch's own `house.json` when the session pushes.
+* Bad, because the switch is read from HEAD like the policy, so it counts as soon as it is
+  committed on whatever branch is checked out, a feature branch included, not only once it is
+  merged. That is why A, B, D and E stay; the remote's branch protection is the ceiling, as ADR
+  0013 says.
+* Bad, because a repo with the module off still has `--no-verify` and `core.hooksPath` writes
+  refused, and the file-tool refusals still suggest `house render --apply`, which restores
+  nothing while the module is off.
+* Neutral, because this loosens the deny set rather than tightening it, so under ADR 0012 it is
+  not the breaking class.
+
+### Confirmation
+
+`tests/hooks/run.sh` pins both directions. With the module off at HEAD and no floor files, a
+commit on the protected branch, a push onto it (from it and from a feature branch) and a merge on
+it are allowed with no output; unsetting the hooks path, an `rm` of `.githooks`, an Edit under
+`.githooks/` and `--no-verify` are still refused with no arming advice; section E still refuses. In
+an armed repo whose feature branch commits the module off, unsetting the hooks path is refused.
+The string `"false"`, `null`, `0`, a missing `enabled`, a missing `github`, a `modules` that is not
+an object, `true`, and a malformed `house.json` all still refuse a commit and a push, and so does a
+module turned off only in the working tree, including a staged commit that would carry that edit
+onto the protected branch.
+
+## Pros and cons of the options
+
+### A. A trusted ref that moves only at a merge
+
+* Good, because in principle it would make the switch take effect only after review.
+* Bad, because no local ref moves only at a merge. A probe on 2026-10-03, with the guard on and the
+  floor armed, showed `git remote set-head origin <feature>` (and the matching `symbolic-ref`)
+  repoints `origin/HEAD` in one allowed call, and `git fetch origin <feature>:refs/remotes/origin/main`
+  rewrites the remote-tracking ref in one more, since the floor's `reference-transaction` hook
+  ignores transactions that touch no `refs/heads/`. A `remote.origin.url` change does the same.
+  Those moves are filed as #161.
+
+### B. Agreement between refs
+
+* Good, because moving one ref would not be enough.
+* Bad, because the same probe moved both: the forged remote-tracking ref above, then
+  `git fetch . <feature>:main`, which the floor accepts because the commit now looks as though the
+  remote has it. If the protected list is read from the remote blob, the session wrote that list
+  too. Closing these needs text scans of fetch refspecs, `remote set-head` and `remote.*.url`,
+  which is the open-ended class ADR 0013 declined.
+
+### C. The same blob as the policy, the same stand-down as `direct`
+
+* Good, because it is one more condition on a path that already exists, so the two switches
+  cannot drift apart.
+* Good, because it keeps every way of turning the floor off refused, which is the part a
+  feature-branch commit could otherwise exploit.
+* Bad, because it does not wait for a merge, which is stated above rather than hidden.
+
+## More information
+
+This record supersedes nothing. It extends [0013](0013-branch-policy-enforced-by-git-hooks-not-command-text.md),
+whose second-round item (the disable list running before the policy gate) is the reason the
+disable list stays, and it keeps [0002](0002-hook-fails-open-without-a-manifest.md)'s fail-open
+gates unchanged. [0012](0012-below-one-spend-the-minor-on-the-breaking-class.md) classes the
+change.
+
+Receipts: #159, the problem and the requirement; #151, `house disable github`; #161, the
+remote-tracking ref moves that ruled out options A and B.

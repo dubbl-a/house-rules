@@ -69,6 +69,15 @@
 # reason to let a session unarm core.hooksPath or edit a vendored hook. Only C
 # and E sit behind those gates.
 #
+# The github module off (ADR 0017): when `modules.github.enabled` is the JSON
+# literal false in the same house.json the policy is read from, C and the
+# floor's arming check and advice stand down, exactly as they do under
+# `direct`, while A, B, D and E keep running. Anything else at that key (a
+# string, null, a missing key, a malformed file) leaves the module on. Like
+# the policy, the switch counts once committed on the checked-out branch, a
+# feature branch included, which is why A and D stay: the remote's branch
+# protection is the ceiling.
+#
 # "Armed" (floor_is_armed) is verified against the plugin's own copy of the
 # floor, never against literals in the command: core.hooksPath must resolve to
 # this checkout's (or, in a linked worktree, the main checkout's) .githooks;
@@ -95,7 +104,8 @@
 # command names no git, hook, HUSKY or
 # LEFTHOOK text at all; the target is not inside a git repo; house.json is absent from HEAD and
 # from the working tree (the repo has not adopted house); it sets
-# "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); or
+# "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); it
+# turns the github module off (for C only, see above); or
 # the target repo has its own substantive
 # .claude/hooks/no-direct-master.sh or a .claude/settings.json PreToolUse entry
 # whose matcher can see Bash (the repo-local guard wins during migration onto
@@ -1428,8 +1438,12 @@ BRANCH_CREATED_AT=''
 CLAUSE_IDX=0
 run_branch_scans() {
   local clause armed=0 n=0
-  if floor_is_armed; then armed=1; fi
-  set_arm_suffix
+  # With the github module off there is no floor to read and no arming advice
+  # to give: E still runs below, and B and C stand down after it (ADR 0017).
+  if [[ "$github_module" != off ]]; then
+    if floor_is_armed; then armed=1; fi
+    set_arm_suffix
+  fi
 
   # E, over the WHOLE command (cmd_safe, not the blind-stripped CAND_TEXT: the
   # blind strip removes a bare `-c` for target resolution, which is also
@@ -1448,6 +1462,11 @@ run_branch_scans() {
       done
     done <<<"$CLAUSES"
   fi
+
+  # The github module off in house.json: the same stand-down `branchPolicy:
+  # direct` gives B and C at the policy gate, taken here instead so that E,
+  # which is the claude-code module's workspace rule, keeps running.
+  [[ "$github_module" != off ]] || return 0
 
   # B and C, over this candidate's clauses only. First pass: the clause that
   # creates a branch, if any.
@@ -1738,23 +1757,28 @@ decide_for_target() {
   [[ -n "$house_json" ]] || { memo_put ''; return 0; }
 
   # One jq pass for the whole manifest: policy, then the protected list, then
-  # the carve-outs, separated by a record-separator line. An adopted repo whose
-  # manifest cannot be parsed gets a refusal, not a silently disarmed guard:
-  # existence signals adoption, so unreadable policy is treated like a crash.
+  # the carve-outs, then the github module's switch, separated by a
+  # record-separator line. An adopted repo whose manifest cannot be parsed gets
+  # a refusal, not a silently disarmed guard: existence signals adoption, so
+  # unreadable policy is treated like a crash. The switch reads `off` only for
+  # the JSON literal false at modules.github.enabled (ADR 0017); a missing key,
+  # a string, null, or a `modules` of the wrong shape all read `on`.
   local parsed ln section=0
   if ! parsed=$(printf '%s' "$house_json" | jq -r '
         (.branchPolicy // "pr"), "\u001e",
         ((.protectedBranches // ["master","main"])[]), "\u001e",
-        ((.carveOuts // [])[])' 2>/dev/null); then
+        ((.carveOuts // [])[]), "\u001e",
+        (if (try (.modules.github.enabled == false) catch false) then "off" else "on" end)' 2>/dev/null); then
     deny "house.json ($house_src) cannot be read as the branch policy, so this hook cannot tell a safe command from a dangerous one. Refusing rather than guessing. Fix house.json (node .house/check.mjs names the error), then retry."
   fi
-  branch_policy='pr'; protected_list=''; carve_outs=''
+  branch_policy='pr'; protected_list=''; carve_outs=''; github_module='on'
   while IFS= read -r ln; do
     if [[ "$ln" == $'\x1e' ]]; then section=$((section + 1)); continue; fi
     case "$section" in
       0) branch_policy="$ln" ;;
       1) protected_list+="$ln"$'\n' ;;
-      *) carve_outs+="$ln"$'\n' ;;
+      2) carve_outs+="$ln"$'\n' ;;
+      *) [[ "$ln" != off ]] || github_module='off' ;;
     esac
   done <<<"$parsed"
   [[ -n "$protected_list" ]] || protected_list=$'master\nmain'
