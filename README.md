@@ -93,26 +93,26 @@ Install the plugin once per machine, pinned to a release tag:
     claude plugin marketplace add dubbl-a/house-rules#v0.17.0
     claude plugin install house-rules@house-rules --scope user
 
-The `#v0.17.0` pins the marketplace to that tag, and the plugin resolves from the marketplace's
-checkout, so the tag is the pin. Without it (`claude plugin marketplace add dubbl-a/house-rules`)
-you follow the default branch, and whatever it holds is what an update brings. To move to a newer
-tag, read the hooks diff first (`git diff v0.17.0..vX.Y.Z -- plugins/house/hooks`), then remove and
-re-add: `claude plugin marketplace remove house-rules` (this uninstalls its plugins), add with the
-new tag, install again. Claude Code documents no dedicated command for moving a pin, and whether
-auto-update respects a `#` pin is not documented, so leave auto-update off for this marketplace (its
-default for third-party marketplaces).
+The plugin resolves from the marketplace's checkout, so the `#v0.17.0` tag is the pin; without it
+you follow the default branch. To move a pin, read `git diff v0.17.0..vX.Y.Z -- plugins/house/hooks`,
+remove the marketplace (which uninstalls its plugins), then add and install with the new tag. Whether
+auto-update respects a pin is undocumented, so leave it off here (its third-party default).
 
-Inside the target repo, run `/house-rules:bootstrap`: it probes the repo, proposes a `house.json`,
-and on approval writes the vendored rules, templates, `.house/check.mjs`, `.house/lock.json`, and
-`.house/INDEX.md`. Run `/house-rules:sync` after this package or the repo's `house.json` changes.
-To turn modules on later, `house enable <module...>` prints one plan (paths, files, load cost, and
-the at-adoption checklist) and writes, renders, and checks only with `--apply`; `house disable` is
-its reverse, `--why` recording why a default-on module is off. `house confirm` dates each done step.
-Wire the checker in by hand: add `"check:house": "node .house/check.mjs"` and
-`"check:docs": "node .house/check.mjs --only=drift,todo"` to `package.json`'s scripts, and run
-`node .house/check.mjs` as a CI step. `house.json` records which modules are on, a dated ledger of
-what the repo declined and why, per-file line ceilings that tighten as files shrink, and the guard
-record; `plugins/house/schema/house.schema.json` describes every key. Its `targets` key adds Codex or Gemini CLI, which read the rules through a block in `AGENTS.md`.
+In the target repo, `/house-rules:bootstrap` probes, proposes a `house.json`, and on approval writes
+the vendored rules, templates, and `.house/`; `/house-rules:sync` re-renders after this package or
+`house.json` changes. `house enable <module...>` prints one plan (paths, files, load cost, checklist)
+and acts only with `--apply`; `house disable` is its reverse, `--why` recording why a default-on
+module is off; `house confirm` dates a done step. By hand, run `node .house/check.mjs` in CI and in
+`package.json` as `check:house` (and `check:docs`, with `--only=drift,todo`). `house.json` holds the
+modules, a dated ledger of declines, line ceilings that tighten, the guard record, and `targets`
+(Codex or Gemini CLI read an `AGENTS.md` block); `plugins/house/schema/house.schema.json` has each key.
+
+To leave, uninstall the adoption in each repo first, since removing the plugin removes the CLI that
+cleans up: `house uninstall` plans, and with `--apply` removes the managed files, the `AGENTS.md`
+block, the `core.hooksPath` it set, and last `house.json` (`--keep-config` leaves it), then lists the
+rest. Then `claude plugin uninstall house-rules@house-rules` and `claude plugin marketplace remove house-rules`;
+`claude plugin details house-rules` shows a plugin's hooks. Plugin removed first? Delete each file
+`.house/lock.json` lists, the `AGENTS.md` block, `.house/`, and `house.json`; unset `core.hooksPath` where it names `.githooks`.
 
 ## What the hooks run
 
