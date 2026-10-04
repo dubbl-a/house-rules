@@ -25,7 +25,11 @@
 #      files, and the ref-writing plumbing that moves a protected branch or
 #      rewrites an object (update-ref, symbolic-ref including a refs/remotes
 #      spoof, branch -f/-M, push --delete, git replace and any refs/replace/
-#      ref, which changes what HEAD:house.json even says)
+#      ref, which changes what HEAD:house.json even says), each one read in
+#      the command and in the body of a configured alias the command runs
+#      (one level), and a configured `!shell` alias refused outright. An alias
+#      the command defines inline with `-c alias.<name>=` is not read beyond
+#      the literals the command text itself shows (ADR 0017's residue)
 #   B. an Edit/Write/MultiEdit whose file_path, or a NotebookEdit whose
 #      notebook_path, is anywhere under the repo's
 #      .githooks/ or under its git directory, in any case and through any
@@ -69,6 +73,18 @@
 # reason to let a session unarm core.hooksPath or edit a vendored hook. Only C
 # and E sit behind those gates.
 #
+# The github module off (ADR 0017): when `modules.github.enabled` is the JSON
+# literal false in the same house.json the policy is read from, C and the
+# floor's arming check and advice stand down, exactly as they do under
+# `direct`, while A (alias bodies included), B, D and E keep running.
+# Anything else at that key (a string, null, a missing key) leaves the module
+# on, and a malformed file, one that is not exactly one JSON document, or one
+# whose policy strings hold a control character is refused. Like the policy,
+# the switch counts once committed on the checked-out commit, a feature
+# branch or a detached HEAD included, and the working-tree file counts when
+# HEAD has none; that is why A and D stay: the remote's branch protection is
+# the ceiling.
+#
 # "Armed" (floor_is_armed) is verified against the plugin's own copy of the
 # floor, never against literals in the command: core.hooksPath must resolve to
 # this checkout's (or, in a linked worktree, the main checkout's) .githooks;
@@ -95,7 +111,8 @@
 # command names no git, hook, HUSKY or
 # LEFTHOOK text at all; the target is not inside a git repo; house.json is absent from HEAD and
 # from the working tree (the repo has not adopted house); it sets
-# "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); or
+# "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); it
+# turns the github module off (for C only, see above); or
 # the target repo has its own substantive
 # .claude/hooks/no-direct-master.sh or a .claude/settings.json PreToolUse entry
 # whose matcher can see Bash (the repo-local guard wins during migration onto
@@ -119,7 +136,8 @@
 # tool's path is longer than 4096 bytes (PATH_MAX_BYTES), or an MCP string
 # that long names .git, .githooks or a hook (both in an adopted payload cwd;
 # an unmarked over-length MCP string is content and skipped), when the policy
-# JSON will not parse, and on an unexpected internal failure after the policy
+# JSON will not parse (or is not one document, or a policy string holds a
+# control character), and on an unexpected internal failure after the policy
 # has been read (the ERR trap below, and the EXIT trap beside it for a fatal
 # shell error such as an unset variable, which never fires ERR).
 #
@@ -166,8 +184,9 @@
 #      hooksPath write, a replace ref)
 #  12. an Edit or Write of ~/.gitconfig or $XDG_CONFIG_HOME/git/config from
 #      inside an adopted checkout, whatever the edit was for
-#  13. while the floor IS armed: a `!shell` alias is refused on sight, since
-#      its body is a script this hook cannot read
+#  13. a configured `!shell` alias is refused on sight in every adopted
+#      repo, armed or not, `direct` or deferring or with the github module
+#      off, since its body is a script this hook cannot read
 #  14. on git older than 2.28 an armed floor reads as unarmed, so every
 #      unarmed refusal above applies in a repo that looks fully armed
 #  15. an MCP write-verb tool any of whose single-line strings names a floor
@@ -1181,8 +1200,9 @@ unreadable_deny() {
   if [[ -n "${1:-}" ]]; then what="the git verb '$1', which is not one of git's own commands (an alias, or a typo)"; fi
   deny "Refusing $what: this hook cannot tell what it does to a protected branch, and the git-hook floor that would decide is not enforcing the policy in this checkout. Aliases are never resolved here by design.${arm_suffix}"
 }
-# While the floor IS armed an unknown verb is the floor's business, with one
-# exception: an alias body is text, and the disable literals in it (a
+# While the floor IS armed an unknown verb is the floor's business, and with
+# the github module off nothing decides it, with one exception in every
+# state: an alias body is text, and the disable literals in it (a
 # `-c core.hooksPath=`, an `update-ref` on a protected branch) are exactly what
 # the floor cannot see, because they run before git reaches a ref. So the body
 # is looked up once, not resolved further, and read with the same two scans as
@@ -1198,6 +1218,23 @@ alias_scan() {
   body=$(trap - ERR; printf '%s' "$body" | _unquote)
   disable_scan "git $body"
   plumbing_scan "git $body" all
+  return 0
+}
+# alias_scan over every verb in this candidate's clauses that is not one of
+# git's own. Part of A, so it runs before the policy gate, in every adopted
+# repo and every floor state: a `direct` policy or the github module off
+# (ADR 0017) stands down the branch refusals, never the disable list, and an
+# alias is the disable list typed under another name.
+alias_body_scans() {
+  local clause
+  split_clauses "$CAND_TEXT"
+  while IFS= read -r clause; do
+    git_split "$clause" || continue
+    while :; do
+      verb_is_known "$GV_VERB" || alias_scan "$GV_VERB"
+      git_next || break
+    done
+  done <<<"$CLAUSES"
   return 0
 }
 # The verbs that write history onto the current branch without the word
@@ -1428,8 +1465,12 @@ BRANCH_CREATED_AT=''
 CLAUSE_IDX=0
 run_branch_scans() {
   local clause armed=0 n=0
-  if floor_is_armed; then armed=1; fi
-  set_arm_suffix
+  # With the github module off there is no floor to read and no arming advice
+  # to give: E still runs below, and B and C stand down after it (ADR 0017).
+  if [[ "$github_module" != off ]]; then
+    if floor_is_armed; then armed=1; fi
+    set_arm_suffix
+  fi
 
   # E, over the WHOLE command (cmd_safe, not the blind-stripped CAND_TEXT: the
   # blind strip removes a bare `-c` for target resolution, which is also
@@ -1448,6 +1489,11 @@ run_branch_scans() {
       done
     done <<<"$CLAUSES"
   fi
+
+  # The github module off in house.json: the same stand-down `branchPolicy:
+  # direct` gives B and C at the policy gate, taken here instead so that E,
+  # which is the claude-code module's workspace rule, keeps running.
+  [[ "$github_module" != off ]] || return 0
 
   # B and C, over this candidate's clauses only. First pass: the clause that
   # creates a branch, if any.
@@ -1472,8 +1518,10 @@ run_branch_scans() {
       continue
     fi
     while :; do
-      if ! verb_is_known "$GV_VERB"; then
-        if [[ "$armed" -eq 0 ]]; then unreadable_deny "$GV_VERB"; else alias_scan "$GV_VERB"; fi
+      # Armed, an unknown verb is the floor's business; its alias body was
+      # already read by alias_body_scans.
+      if [[ "$armed" -eq 0 ]] && ! verb_is_known "$GV_VERB"; then
+        unreadable_deny "$GV_VERB"
       fi
       case "$GV_VERB" in
         commit) commit_decision ;;
@@ -1737,23 +1785,34 @@ decide_for_target() {
   fi
   [[ -n "$house_json" ]] || { memo_put ''; return 0; }
 
-  # One jq pass for the whole manifest: policy, then the protected list, then
-  # the carve-outs, separated by a record-separator line. An adopted repo whose
-  # manifest cannot be parsed gets a refusal, not a silently disarmed guard:
-  # existence signals adoption, so unreadable policy is treated like a crash.
+  # One jq pass for the whole manifest: the github module's switch, then the
+  # policy, then the protected list, then the carve-outs, separated by a
+  # record-separator line. An adopted repo whose manifest cannot be parsed gets
+  # a refusal, not a silently disarmed guard: existence signals adoption, so
+  # unreadable policy is treated like a crash. The switch goes FIRST and is a
+  # fixed token, `off` only for the JSON literal false at
+  # modules.github.enabled (ADR 0017); a missing key, a string, null, or a
+  # `modules` of the wrong shape all read `on`. No value from the file can
+  # move a line into another field: a string holding a control character (a
+  # newline, the separator) is unreadable, and so is a file holding anything
+  # but exactly one JSON document.
   local parsed ln section=0
-  if ! parsed=$(printf '%s' "$house_json" | jq -r '
-        (.branchPolicy // "pr"), "\u001e",
-        ((.protectedBranches // ["master","main"])[]), "\u001e",
-        ((.carveOuts // [])[])' 2>/dev/null); then
+  if ! parsed=$(printf '%s' "$house_json" | jq -rs '
+        def one: tostring | if test("[[:cntrl:]]") then error("control character") else . end;
+        if length != 1 then error("not one JSON document") else .[0] end
+        | (if (try (.modules.github.enabled == false) catch false) then "off" else "on" end), "\u001e",
+          ((.branchPolicy // "pr") | one), "\u001e",
+          ((.protectedBranches // ["master","main"])[] | one), "\u001e",
+          ((.carveOuts // [])[] | one)' 2>/dev/null); then
     deny "house.json ($house_src) cannot be read as the branch policy, so this hook cannot tell a safe command from a dangerous one. Refusing rather than guessing. Fix house.json (node .house/check.mjs names the error), then retry."
   fi
-  branch_policy='pr'; protected_list=''; carve_outs=''
+  branch_policy='pr'; protected_list=''; carve_outs=''; github_module='on'
   while IFS= read -r ln; do
     if [[ "$ln" == $'\x1e' ]]; then section=$((section + 1)); continue; fi
     case "$section" in
-      0) branch_policy="$ln" ;;
-      1) protected_list+="$ln"$'\n' ;;
+      0) [[ "$ln" != off ]] || github_module='off' ;;
+      1) branch_policy="$ln" ;;
+      2) protected_list+="$ln"$'\n' ;;
       *) carve_outs+="$ln"$'\n' ;;
     esac
   done <<<"$parsed"
@@ -1798,6 +1857,7 @@ decide_for_target() {
     return 0
   fi
   run_early_scans
+  alias_body_scans
 
   # B and C, the BRANCH refusals, are what the policy and the repo-local guard
   # speak to.

@@ -2264,15 +2264,15 @@ function hooksPathLines(repoRoot) {
   ];
 }
 
-// #151: what plugins/house/hooks/no-direct-master.sh does once the floor is
-// gone. It reads `branchPolicy` and `protectedBranches` from HEAD:house.json
-// (the working tree only when HEAD has none) and never reads `modules`; it
-// decides "armed" from the floor files on disk. So the github module being
-// off changes nothing it follows, and with no floor it applies its unarmed
-// text rules for as long as the policy stands. tests/hooks/run.sh pins this.
+// #159 (ADR 0017): plugins/house/hooks/no-direct-master.sh reads
+// `modules.github.enabled` from HEAD:house.json (the working tree only when
+// HEAD has none). Off, it stops refusing commits, pushes and history commands
+// on a protected branch and gives no arming advice, while its disable list
+// (a hooksPath change, a write or removal under .githooks/, --no-verify)
+// keeps running. tests/hooks/run.sh pins each clause.
 function guardFloorLines() {
   return [
-    '  branch guard: the vendored git hooks are removed, and the PreToolUse branch guard does not read module state: it follows `branchPolicy` (and `protectedBranches`) in house.json at HEAD, which this disable does not change. While that says "pr" it keeps enforcing it by its text rules, which are stricter with no hook floor, and its refusals will give floor advice (to arm the floor, or to restore it with a render) that does not apply while the github module is off.',
+    '  branch guard: the vendored git hooks are removed. The PreToolUse branch guard reads the github module\'s switch from house.json at HEAD, so once this change is committed, on whichever branch is checked out, it stops refusing commits, pushes and history commands on a protected branch and stops advising to arm the floor. It still refuses a core.hooksPath change, a write or removal under .githooks/, and --no-verify. With no hook floor, the remote\'s branch protection is what still stops a push to a protected branch.',
   ];
 }
 
