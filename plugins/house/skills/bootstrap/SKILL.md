@@ -77,11 +77,12 @@ module, and the load each path sheds. Show all of it and wait for the person to 
 approval, re-run with `--apply` and report the checker's summary as printed. A module that is on
 by default needs `--why "<reason>"`, recorded as a dated deviation: ask the person for the reason
 and pass their words, never one of your own. A hand-edited managed file is refused by name: leave
-resolving it to the person. Do this on a branch and open a pull request. The branch guard does
-not read module state: it follows `branchPolicy` in `house.json` at HEAD, so turning github off
-leaves it enforcing that policy by its stricter rules for a repo with no hook floor, and its
-refusals give floor advice (arm it, or restore it with a render) that does not apply while the
-module is off; say so rather than follow that advice. If `--apply` is denied by a
+resolving it to the person. Do this on a branch and open a pull request. The branch guard reads
+the github module's switch from `house.json` at HEAD, so once turning github off is committed, on
+whichever branch is checked out, it stops refusing commits, pushes and history commands on a
+protected branch and stops advising to arm the floor; it still refuses a `core.hooksPath` change,
+a write or removal under `.githooks/`, and `--no-verify`, and the remote's branch protection is
+what still stops a push to a protected branch. If `--apply` is denied by a
 permission check, do not retry or route around it; give the person the exact command and the
 directory to run it from. The plan names a `git config --unset` the person runs themselves: the
 guard refuses it to a session, and leaving the setting in place is harmless.

@@ -393,27 +393,41 @@ git -C "$r" checkout -q -b feat/x
 expect_allow "unarmed: push origin feat/x from feat/x" \
   "$(mk_payload "git push origin feat/x" "$r")"
 
-# --- #151: the guard never reads `modules`. With the github module off at
-#     HEAD and no floor on disk, branchPolicy "pr" still decides, by the
-#     unarmed rules, and the refusal still says to arm the floor. This is the
-#     sentence `house disable github` prints about the guard. ---
+# --- #151 and #159 (ADR 0017): the two states `house disable github` leaves,
+#     with the module off at HEAD. Each clause of the guard sentence the plan
+#     prints is pinned here: commits, pushes and history commands on the
+#     protected branch go through with no arming advice, while a hooksPath
+#     change, a write or removal under .githooks/, and --no-verify are still
+#     refused. ---
+_unset_hp="git"" config --unset core.hooks""Path"; _noverify="--no-""verify"
+_disable_states() { # <repo> <label>
+  expect_allow "$2: push origin master is allowed, with no arming advice" \
+    "$(mk_payload "git push origin master" "$1")"
+  expect_allow "$2: a commit on master is allowed" \
+    "$(mk_payload "git commit -m x" "$1")"
+  expect_allow "$2: a merge on master is allowed" \
+    "$(mk_payload "git merge topic" "$1")"
+  expect_deny_without "$2: unsetting core.hooksPath is still refused, with no arming advice" \
+    "$(mk_payload "$_unset_hp" "$1")" "arm it"
+  expect_deny_without "$2: removing .githooks is still refused, with no arming advice" \
+    "$(mk_payload "rm -rf .githooks" "$1")" "arm it"
+  expect_deny_without "$2: an Edit under .githooks is still refused, with no arming advice" \
+    "$(mk_file_payload Edit "$1/.githooks/pre-commit.d/20-secrets" "$1")" "arm it"
+  expect_deny_without "$2: $_noverify is still refused, with no arming advice" \
+    "$(mk_payload "git commit $_noverify -m x" "$1")" "arm it"
+}
 r="$TMP_ROOT/case151off"; new_repo "$r"
 adopt "$r" '{"branchPolicy":"pr","modules":{"github":{"enabled":false,"config":{}}}}'
-expect_deny "github module off at HEAD, no floor: push origin master is still denied" \
-  "$(mk_payload "git push origin master" "$r")" "feature branch"
-expect_deny "github module off at HEAD, no floor: the deny still says to arm the floor" \
-  "$(mk_payload "git push origin master" "$r")" "floor is not armed in this checkout"
+_disable_states "$r" "github module off at HEAD, no floor"
 # The other state disable leaves: core.hooksPath still set (the user has not
-# unset it yet) and the floor files gone. Still denied; the advice differs
-# (restore, not arm), which is why the plan does not quote it.
+# unset it yet) and the floor files gone, the secrets scaffold left behind.
 r="$TMP_ROOT/case151set"; new_repo "$r"
 adopt "$r" '{"branchPolicy":"pr","modules":{"github":{"enabled":false,"config":{}}}}'
 mkdir -p "$r/.githooks/pre-commit.d"
 printf '#!/bin/sh\nexit 0\n' >"$r/.githooks/pre-commit.d/20-secrets"
 git -C "$r" add .githooks && git -C "$r" commit -q -m "scaffold left behind"
 arm_hookspath "$r"
-expect_deny "github module off at HEAD, core.hooksPath still set, floor files gone: push origin master is still denied" \
-  "$(mk_payload "git push origin master" "$r")" "feature branch"
+_disable_states "$r" "github module off at HEAD, core.hooksPath still set, floor files gone"
 
 # --- 9. UNARMED: push refspec targeting master from feat/x: DENY ---
 r="$TMP_ROOT/case09"; new_repo "$r"; adopt "$r"
@@ -805,8 +819,8 @@ _inline_cases() { # <repo> <label>
     "$(mk_payload "$_gcm -m \"Guard: -c alias.z='$_ur' is now checked\"" "$1")"
   expect_allow "$2: a grep counting alias lines in the git config is allowed" \
     "$(mk_payload "grep -c 'alias.*=!' ~/.gitconfig" "$1")"
-  expect_allow "$2: a grep for an alias-shaped pattern is allowed" \
-    "$(mk_payload "grep -c \"alias.z=update-ref\" docs/git-notes.md" "$1")"
+  expect_allow "$2: a grep of the git config for an alias-shaped pattern is allowed" \
+    "$(mk_payload "grep -c 'alias.z=update-ref refs/heads/master' .git/config" "$1")"
   expect_allow "$2: an echo of an inline alias into a file is allowed" \
     "$(mk_payload "echo \"git -c alias.z='$_ur' z\" >> notes.md" "$1")"
   expect_allow "$2: a heredoc holding an inline alias is allowed" \
@@ -817,6 +831,7 @@ _inline_cases "$g2" "github off on a feature-branch commit, floor armed"
 _inline_cases "$g8" "github off on a feature-branch commit, floor broken"
 _inline_cases "$g6" "direct on a feature-branch commit, floor armed"
 _inline_cases "$g9" "a repo deferring to its own guard"
+_alias_cases "$g9" "a repo deferring to its own guard"
 # The switch is the jq pass's FIRST field, a fixed token, but nothing pins
 # that order: the control-character refusal below already keeps every value
 # on its own line, so no string can reach another field whatever the order.
