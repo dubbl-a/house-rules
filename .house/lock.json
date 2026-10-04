@@ -106,7 +106,7 @@
       "path": ".claude/rules/house/security-server.md",
       "module": "security",
       "source": "modules/security/rules/security-server.md",
-      "bodySha256": "fbe4e23f37feae7372e1907f5d924a0cf809c9871c7cfd02c1366ae1857e615f"
+      "bodySha256": "63e794b0374f425f93ed8f74d1239f384b41c572024d1f4d33042fbad83fbc9f"
     },
     {
       "path": ".claude/rules/house/testing.md",

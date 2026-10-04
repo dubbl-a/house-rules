@@ -196,7 +196,7 @@
 - Authenticate every non-public function, and authorize every object on the server
   Decide access on the server for every route and every object id a request names, deny by default, and make the check and the act one step; a client-side check, or one that confirms a login but not ownership, is no check.
 - Use vetted mechanisms for crypto, sessions, and transport
-  Use the platform or a vetted library with its defaults for password hashing, tokens, and encryption, never a hand-rolled scheme, a fast general-purpose hash for a password, or a non-cryptographic random source for a secret; keep a session short-lived and revocable, replace it at sign-in, and verify its signature, algorithm, and expiry on every use.
+  Use the platform or a vetted library with its defaults for password hashing, tokens, and encryption, never a hand-rolled scheme, a fast general-purpose hash for a password, or a non-cryptographic random source for a secret; keep a session or token short-lived and revocable, replace it at sign-in, and verify its signature, algorithm, and expiry on every use.
 - Fail closed, and tell an outside caller little
   Deny when a security decision errors, return a generic message to an untrusted caller, and log the detail on the server; engineering.md's teach-the-fix rule is for an operator reading a tool's output, not for a response crossing the trust boundary.
 - Ship secure defaults, and bound what one caller can consume
