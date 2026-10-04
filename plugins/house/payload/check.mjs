@@ -1938,9 +1938,18 @@ function checkManifest(ctx) {
         if (!('enabled' in entry)) findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` missing required \`enabled\``));
         else if (typeof entry.enabled !== 'boolean') findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\`.enabled must be boolean`));
         for (const k of Object.keys(entry)) {
-          if (k !== 'enabled' && k !== 'config') findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` has unknown key \`${k}\``));
+          if (k !== 'enabled' && k !== 'config' && k !== 'confirmed') findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` has unknown key \`${k}\``));
         }
         if ('config' in entry && !isPlainObject(entry.config)) findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\`.config must be an object`));
+        // #135: { "<step-id>": "YYYY-MM-DD" }, written by `house confirm`. Shape
+        // only: an adopter's CI has no module.json to know the declared steps,
+        // so `house confirm` and `house doctor` own the id check.
+        if ('confirmed' in entry) {
+          if (!isPlainObject(entry.confirmed)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.${name}.confirmed must be an object of step id to date (YYYY-MM-DD); \`house confirm ${name} <step-id>\` writes it`));
+          else for (const [id, date] of Object.entries(entry.confirmed)) {
+            if (typeof date !== 'string' || !DATE_RE.test(date)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.${name}.confirmed[${JSON.stringify(id)}] must be a date (YYYY-MM-DD), got ${JSON.stringify(date)}`));
+          }
+        }
       }
     }
   }

@@ -23,5 +23,11 @@
   "defaultPaths": [
     "$securityRoots",
     "$securityGlobs"
+  ],
+  "atAdoption": [
+    {"id": "code-scanning", "step": "Turn on the platform's code scanning and dependency alerts for this repository."},
+    {"id": "branch-protection", "step": "Protect the default branch at the remote, requiring a pull request and the passing required checks before it moves."},
+    {"id": "code-owners", "step": "Once there is a second maintainer, add a code-owners entry naming a reviewer for workflow, release, and agent config files."},
+    {"id": "credential-deny", "step": "Deny the key and cloud-credential paths in each developer's user settings, and put that step in the onboarding doc."}
   ]
 }

@@ -71,6 +71,7 @@ Receipts: `docs/handbook/engineering.md#demote-a-gate-that-has-been-wrong-before
 
 Write every architecturally significant decision as a numbered record in the repo, on a short standard template so writing one stays normal.
 Never edit a decided record: supersede it by number with a visible marker, keep a ruled value canonical and an unruled one blocked from output, and reserve records for decisions with measurable effect, since one per choice devalues the set.
+Record a ruling apart from a measurement: a change adopted on other grounds after a null result reads "adopted by ruling", with the measurement and the reason as separate statements and never as improved, and a change rejected after measuring well is recorded the same way.
 Anchor: numbered files under `docs/decisions/`, and `node .house/check.mjs` fails an unresolved link; auto memory keeps notes machine-local and rewritable, so a decision with measurable effect belongs in a numbered repo record instead.
 Receipts: `docs/handbook/engineering.md#record-a-significant-decision-as-a-numbered-immutable-record`
 

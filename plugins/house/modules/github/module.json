@@ -14,5 +14,12 @@
     {"src": "files/githooks/reference-transaction.d/10-house-branch", "dest": ".githooks/reference-transaction.d/10-house-branch"}
   ],
   "configSlots": ["actionsBudgetMinutes", "secretGlobs", {"name": "githubGlobs", "default": [".github/**", ".githooks/**", ".env.example"]}, {"name": "worktreeKillProcesses", "default": ["node", "npm"]}],
-  "defaultPaths": ["$githubGlobs", "$secretGlobs"]
+  "defaultPaths": ["$githubGlobs", "$secretGlobs"],
+  "atAdoption": [
+    {"id": "push-protection", "step": "Turn on secret scanning push protection for this repository."},
+    {"id": "head-branch-deletion", "step": "Turn on automatic deletion of head branches after a merge."},
+    {"id": "branch-protection", "step": "Protect the default branch at the remote, requiring a pull request and the passing required checks before it moves."},
+    {"id": "multi-factor", "step": "Require multi-factor sign-in for every account with write access, enforced by the organization where there is one."},
+    {"id": "community-profile", "step": "Read the community-profile endpoint and ship whichever of the code of conduct, security policy, and contributing guide it reports missing."}
+  ]
 }

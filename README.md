@@ -9,11 +9,10 @@ Claude Code is a program that builds and changes software from what you describe
 is good at building. What it does not bring on its own is the working knowledge an experienced team
 carries, such as taking a proven backup before a change to stored data, or trying a fix on a
 separate copy before touching the shared one. You would have to know to ask. house-rules is that
-expertise, researched and written down as rules across eleven areas: working with Claude Code
+expertise, researched and written down as rules across twelve areas: working with Claude Code
 itself, documentation, engineering, GitHub, security, testing, measurement, databases, deployment,
-data pipelines, and text a model produced. Each rule comes from what went wrong on a real project or
-from a practice the wider engineering community has already settled, with its source named, so you
-do not have to research it yourself.
+data pipelines, text a model produced, and answering from a corpus. Each rule comes from a failure
+on a real project or a settled practice of the field, its source named, so you need not research it.
 
 The rules are also how your instructions to Claude Code are managed, and that matters because
 whatever you write for it is advice: nothing checks that a session followed it, that it is still
@@ -25,7 +24,7 @@ the project have stopped matching.
 
 ## What the rules cover
 
-Eleven sets of rules, called modules, each researched for one area. Five are on unless switched off:
+Twelve sets of rules, called modules, each researched for one area. Five are on unless switched off:
 
 - **claude-code**: the assistant's own setup: what it reads each time, how long that may be, and where a new fact belongs.
 - **docs**: the written record, so no document points at something that no longer exists.
@@ -34,7 +33,7 @@ Eleven sets of rules, called modules, each researched for one area. Five are on 
   copy, and no passwords or keys in the project.
 - **testing**: what "done" may claim, and what a passing test proves.
 
-Five turn on when your project looks like it needs them, and **security** only when you enable it in `house.json`:
+Five turn on when your project looks like it needs them; the last two only when enabled in `house.json`:
 
 - **database**: stored data, with a backup taken and proven before any change that could lose it.
 - **deployment**: putting something live, deliberately, with a backup restored for real from time
@@ -45,6 +44,7 @@ Five turn on when your project looks like it needs them, and **security** only w
   model wrote is read as fact by accident.
 - **evals**: measuring what a rule or a model really does, with each score shown beside its sample.
 - **security**: what a session may trust or install, and what the code it writes must never do.
+- **retrieval**: answers drawn from a corpus, each failure traced to the stage where it happened.
 
 Every rule was earned or borrowed, never invented: `docs/handbook/` records the incident or the
 published practice behind each one, `docs/handbook/inventory.md` traces every harvested practice to
@@ -59,7 +59,7 @@ knowing its name, and each rule says why in the same breath, so you learn the re
 Start with the plain-language guide, which explains every technical word where it first appears:
 https://house-rules-guide.vercel.app
 
-**If you are an engineer**, this is a Claude Code plugin. The eleven modules render into
+**If you are an engineer**, this is a Claude Code plugin. The twelve modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
 enforces it, and a receipt; `.house/lock.json` hashes every managed file; `node .house/check.mjs` runs
 in CI; a git-hook floor refuses a commit or push to a protected branch, backed by a PreToolUse hook;
@@ -105,6 +105,9 @@ default for third-party marketplaces).
 Inside the target repo, run `/house-rules:bootstrap`: it probes the repo, proposes a `house.json`,
 and on approval writes the vendored rules, templates, `.house/check.mjs`, `.house/lock.json`, and
 `.house/INDEX.md`. Run `/house-rules:sync` after this package or the repo's `house.json` changes.
+To turn modules on later, `house enable <module...>` prints one plan (paths, files, load cost, and
+the module's at-adoption checklist) and writes, renders, and checks only with `--apply`;
+`house confirm <module> <step-id>` records each checklist step as done, with the date.
 Wire the checker in by hand: add `"check:house": "node .house/check.mjs"` and
 `"check:docs": "node .house/check.mjs --only=drift,todo"` to `package.json`'s scripts, and run
 `node .house/check.mjs` as a CI step. `house.json` records which modules are on, a dated ledger of

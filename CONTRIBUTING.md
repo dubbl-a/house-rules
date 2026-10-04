@@ -47,6 +47,12 @@ node plugins/house/scripts/house render --apply
 and commit the regenerated `.house/` and `.claude/rules/house/` files alongside your source edit,
 in the same PR, by explicit path. Never `git add -A`.
 
+A new module has to be listed by hand in several places: its handbook chapter, the manifest and
+inventory, `house.json` and the rendered outputs, the README and the site, the rule-proposal
+template, the marketplace description, and the harness-audit module list.
+`tests/module-registration.test.mjs` lists each one and fails naming the module and the file when
+any is missing or a stated module or rule count disagrees with the module directories.
+
 ## The rule-file prose shape
 
 Every rule, in its module source and in the rendered copy, follows one shape: an imperative

@@ -120,7 +120,8 @@
 # that long names .git, .githooks or a hook (both in an adopted payload cwd;
 # an unmarked over-length MCP string is content and skipped), when the policy
 # JSON will not parse, and on an unexpected internal failure after the policy
-# has been read (the ERR trap below).
+# has been read (the ERR trap below, and the EXIT trap beside it for a fatal
+# shell error such as an unset variable, which never fires ERR).
 #
 # Accepted false denies, all in the safe direction, all pinned in
 # tests/hooks/run.sh:
@@ -449,17 +450,26 @@ deny() {
 # from inside its own handler would recurse.
 # shellcheck disable=SC2329 # invoked indirectly via `trap crashed ERR`
 crashed() {
-  trap - ERR
+  trap - ERR EXIT
   cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "house guard crashed; refusing rather than guessing"
+    "permissionDecisionReason": "house guard internal error in plugins/house/hooks/no-direct-master.sh; refusing rather than guessing. This is a bug in the guard, not a policy refusal: report the command that hit it."
   }
 }
 EOF
   exit 0
+}
+
+# A fatal shell error (an unset variable under `set -u`, a bad substitution)
+# exits non-zero without firing ERR, and the harness reads any non-zero exit
+# here as no objection, so the call went through (#147). Armed beside the ERR
+# trap: every deliberate exit in this hook is 0, so a non-zero one is a crash.
+# shellcheck disable=SC2329 # invoked indirectly via `trap crashed_on_exit EXIT`
+crashed_on_exit() {
+  [[ "$?" -eq 0 ]] || crashed
 }
 
 # ── Text preparation ─────────────────────────────────────────────────────
@@ -549,13 +559,21 @@ fi
 # A value that would EXPAND is never stripped: a double-quoted or bare value
 # holding `$`, a backtick or `(` is code the shell will run, not prose, and
 # this used to remove `-m "$(git push origin master)"` whole while the push
-# inside ran (#1). Under-stripping costs a false deny, over-stripping costs a
-# bypass; both directions are pinned in tests/hooks/run.sh.
+# inside ran (#1). A bare value also ends at a shell separator (`&`, `;`,
+# `|`), not just at whitespace: `-mx&git switch -c f` used to lose the `&git`
+# with the value, and the command behind it with the separator (#125). It
+# ends at a redirect (`<`, `>`) too, which stays in view whole: `-mx>&2 -n` is
+# one command, and a value that ate the `>` left a bare `&` for split_clauses
+# to cut the `-n` away from its commit. A glued `&>` (or `&>>`) loses only its
+# `&`, the one spelling split_clauses would read as a background.
+# Under-stripping costs a false deny, over-stripping costs a bypass; both
+# directions are pinned in tests/hooks/run.sh.
 _strip_flag_args() {
   printf '%s' "$2" | sed -E "
     s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"\`\$]*\"/\1/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(]+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(&;|<>]*&>/\1>/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(&;|<>]+/\1/g"
 }
 # The BLIND strip: the value is one shell WORD (bare characters, quoted spans,
 # substitutions and parameter expansions in any mix, ending at unquoted
@@ -586,7 +604,9 @@ split_clauses() {
   # `&` split below must not cut it in half. Protected here with a control
   # character no shell text carries, and restored once the splits are done.
   c="${c//>&/>$'\x01'}"
-  c="${c//\|\|/$'\n'}"; c="${c//&&/$'\n'}"; c="${c//;/$'\n'}"
+  # `|&` is a pipe that carries stderr too: one break, not the `&` and `|`
+  # splits below cutting it into two with an empty clause between (#147).
+  c="${c//\|\|/$'\n'}"; c="${c//\|&/$'\n'}"; c="${c//&&/$'\n'}"; c="${c//;/$'\n'}"
   c="${c//&/$'\n'}"; c="${c//\|/$'\n'}"
   c="${c//\(/ }"; c="${c//\)/ }"; c="${c//\`/ }"
   # Restored with tr, not `${c//.../>&}`: since bash 5.2 (patsub_replacement)
@@ -801,7 +821,9 @@ disable_scan() {
   # The three key patterns below fire only in a clause that could actually
   # RUN git, or that assigns the key with `=`: prose naming the key (a `gh
   # issue create --title`, an `echo`) is not a way to read or write it.
-  for t2 in "${toks[@]}"; do
+  # An empty clause (`;;`, a separator before a space) leaves toks empty, and
+  # bash before 4.4 calls a bare "${toks[@]}" of an empty array unbound (#147).
+  for t2 in ${toks[@]+"${toks[@]}"}; do
     t2s="$t2"
     case "$t2s" in "'"*|'"'*) t2s="${t2s:1}" ;; esac
     case "$t2s" in git|*/git) has_git_tok=1; break ;; esac
@@ -1743,8 +1765,10 @@ decide_for_target() {
   # (which Claude Code treats as non-blocking, i.e. the guard silently vanishes
   # exactly when it matters). Every command substitution past this line disarms
   # the trap in its own subshell, or a failing git lookup would print the
-  # crash-deny JSON into a variable instead of to stdout.
+  # crash-deny JSON into a variable instead of to stdout. The EXIT trap stays
+  # armed for the rest of the run: a fatal error never fires ERR.
   trap crashed ERR
+  trap crashed_on_exit EXIT
 
   # carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
   # in plugins/house/schema/house.schema.json.

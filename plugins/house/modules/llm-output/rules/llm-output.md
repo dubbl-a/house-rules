@@ -41,7 +41,7 @@ Receipts: `docs/handbook/llm-output.md#refute-with-named-lenses-drop-by-default-
 ## Cite or stay silent
 
 Attach evidence to every claim: a quote that does not match its source, a fact absent from the source bank and unconfirmed in session, or a principle attributed to someone who never said it, is a bug, not an answer.
-Verify each citation mechanically before making it, reading the raw markup and heading tree rather than a fetched summary, and diff the whole block against what is published instead of trusting the extractor.
+Verify each citation mechanically before making it, reading the raw markup and heading tree rather than a fetched summary, and diff the whole block against what is published instead of trusting the extractor; match a quote word for word against the one passage it cites, since a quote stitched from two places reads as one source saying what it never said.
 Respect an explicit authoring marker: an entry its source flags as unconfirmed never ships as settled, whatever the rest of the page implies.
 Being the only candidate is not evidence: corroborate before treating a match as settled, round confidence down, let a weak match cap or forbid output classes, and turn a near miss into a question, not an insertion, unless mechanically checkable.
 Repoint a dead source rather than delete it, and confirm the replacement carries the cited claim, not merely responds; verify an outcome before calling it a track record, and change a published number only against the primary filing.
