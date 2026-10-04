@@ -6,6 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-04
+
+Six checks that warned now fail (five workflow and agent-config checks, each clearable with a recorded waiver, and a docs opt-out marker with no reason), and the branch guard refuses a command glued to a message value; the security module splits into agent and server-code rule files, the deploy guards lose friction with a pull-request CI fallback, the dependabot.yml scaffold splits its cooldowns, rules are trimmed, the checker raises fewer unactionable warnings, and release tags are no longer signed. Minor under ADR 0012: the checks and the guard's deny set tighten (the breaking class); rule content also changes (ADR 0011).
+
+### Upgrading from 0.18.0
+After `/house-rules:sync`, run `npm run check:house` and fix or waive what now fails: `unpinned-uses`, `no-permissions`, `event-in-run` and `pr-target-checkout` (clear with a reason under `modules.github.config.waivers`), `agent-settings` (under `modules.claude-code.config.waivers`), and any whole-file `docs-drift-ignore-file` marker with no reason (add a reason after its colon). Scaffolds are written once and not rewritten: in `.github/workflows/pr-checks.yml` set `actions/checkout` to v7.0.1 and `actions/setup-node` to v7.0.0, and copy the cooldown block from `plugins/house/templates/dependabot.yml` into your `dependabot.yml` (npm: 3 days patch and minor, 7 major, `@anthropic-ai/*` exempt; GitHub Actions: 3 days). If you set `securityRoots` to agent-config paths, move them to `securityAgentRoots`.
+
 ### Changed
 - **The scaffold's action pins move to v7.** `plugins/house/templates/pr-checks.yml` now pins `actions/checkout` v7.0.1 and `actions/setup-node` v7.0.0, matching this repo's workflows (Dependabot does not scan the templates; a test now holds them equal). Existing adopters keep their file and can copy the two `uses:` lines.
 

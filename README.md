@@ -90,11 +90,11 @@ without one they are skipped, not failed; `bareScriptAllowlist` and `packageRoot
 
 Install the plugin once per machine, pinned to a release tag:
 
-    claude plugin marketplace add dubbl-a/house-rules#v0.18.0
+    claude plugin marketplace add dubbl-a/house-rules#v0.19.0
     claude plugin install house-rules@house-rules --scope user
 
-The plugin resolves from the marketplace's checkout, so the `#v0.18.0` tag is the pin; without it
-you follow the default branch. To move a pin, read `git diff v0.18.0..vX.Y.Z -- plugins/house/hooks`,
+The plugin resolves from the marketplace's checkout, so the `#v0.19.0` tag is the pin; without it
+you follow the default branch. To move a pin, read `git diff v0.19.0..vX.Y.Z -- plugins/house/hooks`,
 remove the marketplace (which uninstalls its plugins), then add and install with the new tag. Whether
 auto-update respects a pin is undocumented, so leave it off here (its third-party default).
 
