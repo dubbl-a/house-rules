@@ -624,15 +624,16 @@ test('P9: excluding a tracked .md with no opt-out marker warns; with the marker 
 
 // P13: the whole-file `docs-drift-ignore-file` opt-out suppresses ALL drift for
 // a file, so it must record why -- mirroring a deviations entry.
-test('P13: a reasonless whole-file opt-out warns; the same opt-out with a reason does not', () => {
-  // positive control: marker with no reason still exempts the file, but warns.
+test('P13: a reasonless whole-file opt-out fails; the same opt-out with a reason does not', () => {
+  // positive control: marker with no reason still exempts the file, but fails.
   const dirNoReason = sandbox({
     'README.md': '<!-- docs-drift-ignore-file -->\n\nSee `src/missing.ts`.\n',
   });
   const noReason = run(dirNoReason, ['--only=drift', '--json']);
-  assert.equal(noReason.code, 0, noReason.out); // still exempted -> no findings
-  assert.ok((noReason.json.warnings || []).some((w) => w.kind === 'ignore-file' && /no reason/.test(w.message)),
-    'a reasonless whole-file opt-out must warn');
+  assert.equal(noReason.code, 1, noReason.out); // still exempted, but the missing reason fails
+  assert.deepEqual(noReason.json.findings.filter((w) => w.kind !== 'ignore-file'), [], noReason.out);
+  assert.ok((noReason.json.findings || []).some((w) => w.kind === 'ignore-file' && /no reason/.test(w.message)),
+    'a reasonless whole-file opt-out must fail');
   // negative control: the same opt-out WITH a reason does not warn.
   const dirReason = sandbox({
     'README.md': '<!-- docs-drift-ignore-file: archival snapshot, tokens are historical -->\n\nSee `src/missing.ts`.\n',

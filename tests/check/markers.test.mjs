@@ -22,11 +22,11 @@ for (const reason of ['a > b', 'old -> new', 'a < b', 'trailing spaces   ']) {
   });
 }
 
-test('markers: a file-level opt-out with an empty reason still opts out and still warns', () => {
+test('markers: a file-level opt-out with an empty reason still opts out and fails for the missing reason', () => {
   const dir = sandbox({ 'README.md': '<!-- docs-drift-ignore-file:   -->\n\nRun `check:unmapped` before committing.\n', ...PKG });
   const r = run(dir, ['--only=drift', '--json']);
-  assert.equal(r.code, 0, r.out);
-  assert.ok((r.json.warnings || []).some((w) => w.kind === 'ignore-file' && /no reason/.test(w.message)));
+  assert.equal(r.code, 1, r.out);
+  assert.ok((r.json.findings || []).some((w) => w.kind === 'ignore-file' && /no reason/.test(w.message)));
 });
 
 // The second marker is not an ignore marker, so only the first can suppress the claim.

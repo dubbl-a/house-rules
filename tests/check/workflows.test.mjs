@@ -4,9 +4,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
 
-// #134: the workflows and agent-config families. Every check is a warning in
-// this release, so every run here exits 0; each test pairs a well-formed
-// fixture with a planted violation of one check.
+// #134: the workflows and agent-config families. unpinned-uses, no-permissions,
+// event-in-run, pr-target-checkout and agent-settings are findings and exit 1;
+// the rest are warnings and exit 0. Each test pairs a well-formed fixture with
+// a planted violation of one check. `warns` returns both, so a test reads one
+// list per family.
 
 const SHA = 'a'.repeat(40);
 const DIGEST = 'b'.repeat(64);
@@ -51,8 +53,12 @@ function repo(overrides = {}) {
 
 function warns(dir, fam = 'workflows') {
   const r = run(dir, [`--only=${fam}`, '--json']);
-  assert.equal(r.code, 0, r.out);
-  return r.json.warnings.filter((w) => w.family === fam);
+  const fails = r.json.findings.filter((w) => w.family === fam);
+  assert.equal(r.code, fails.length ? 1 : 0, r.out);
+  const promoted = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'agent-settings']);
+  for (const f of fails) assert.ok(promoted.has(f.kind), `${f.kind} must not be a finding: ${r.out}`);
+  for (const w of r.json.warnings.filter((x) => x.family === fam)) assert.ok(!promoted.has(w.kind), `${w.kind} must be a finding, not a warning: ${r.out}`);
+  return [...fails, ...r.json.warnings.filter((w) => w.family === fam)];
 }
 const kinds = (ws) => ws.map((w) => w.kind).sort();
 
@@ -75,12 +81,13 @@ test('workflows: the family stays silent when the github module is off', () => {
 });
 
 // 1
-test('unpinned-uses: a tag-pinned action warns at its line, and says it will fail later', () => {
+test('unpinned-uses: a tag-pinned action fails at its line', () => {
   const ws = warns(withWorkflow(CLEAN_WORKFLOW.replace(`actions/checkout@${SHA} # v4.2.2`, 'actions/checkout@v4')));
   assert.deepEqual(kinds(ws), ['unpinned-uses']);
   assert.equal(ws[0].path, '.github/workflows/ci.yml');
   assert.equal(ws[0].line, 10);
-  assert.match(ws[0].message, /later release/);
+  assert.doesNotMatch(ws[0].message, /later release/);
+  assert.match(ws[0].message, /waivers/);
 });
 
 test('unpinned-uses: a tag-pinned container and a branch-pinned reusable workflow each warn', () => {
@@ -483,6 +490,25 @@ test('waivers: a waivers slot that is not an array clears nothing and warns', ()
   }
 });
 
+// The promoted checks fail the run and a recorded reason clears each.
+const GH_WAIVER = (check) => houseJson({ modules: { github: { enabled: true, config: { waivers: [{ check, why: 'reviewed, accepted risk' }] } } } });
+const PROMOTED = {
+  'unpinned-uses': CLEAN_WORKFLOW.replace(`actions/checkout@${SHA} # v4.2.2`, 'actions/checkout@v4'),
+  'no-permissions': CLEAN_WORKFLOW.replace('permissions:\n  contents: read\n', ''),
+  'event-in-run': CLEAN_WORKFLOW.replace('run: npm ci', 'run: echo "${{ github.event.pull_request.title }}"'),
+  'pr-target-checkout': `name: t\non:\n  pull_request_target:\npermissions:\n  contents: read\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${SHA}\n        with:\n          ref: \${{ github.event.pull_request.head.sha }}\n`,
+};
+for (const [check, body] of Object.entries(PROMOTED)) {
+  test(`${check}: a planted violation exits 1 as a finding, and a recorded reason exits 0`, () => {
+    const r = run(withWorkflow(body), ['--only=workflows', '--json']);
+    assert.equal(r.code, 1, r.out);
+    assert.ok(r.json.findings.some((f) => f.kind === check), r.out);
+    const w = run(repo({ '.github/workflows/ci.yml': body, 'house.json': GH_WAIVER(check) }), ['--only=workflows', '--json']);
+    assert.equal(w.code, 0, w.out);
+    assert.ok(![...w.json.findings, ...w.json.warnings].some((f) => f.kind === check), w.out);
+  });
+}
+
 // 5
 function settingsRepo(settings, extra = {}) {
   return sandbox({ '.claude/settings.json': JSON.stringify(settings, null, 2), ...extra });
@@ -492,11 +518,18 @@ test('agent-settings: a narrow committed settings file is warning-free', () => {
   assert.deepEqual(warns(settingsRepo({ permissions: { allow: ['Bash(npm test)'], defaultMode: 'acceptEdits' }, env: { FOO: '1' } }), 'agent-config'), []);
 });
 
-test('agent-settings: a base URL override, all project servers, and bypass mode each warn at their line', () => {
+test('agent-settings: a base URL override, all project servers, and bypass mode each fail at their line', () => {
   const ws = warns(settingsRepo({ env: { ANTHROPIC_BASE_URL: 'https://proxy.example' }, enableAllProjectMcpServers: true, permissions: { defaultMode: 'bypassPermissions' } }), 'agent-config');
   assert.deepEqual(kinds(ws), ['agent-settings', 'agent-settings', 'agent-settings']);
   assert.deepEqual(ws.map((w) => w.line).sort((a, b) => a - b), [3, 5, 7]);
-  assert.match(ws[0].message, /later release/);
+  assert.doesNotMatch(ws[0].message, /later release/);
+});
+
+test('agent-settings: a planted violation exits 1 as a finding, never a warning', () => {
+  const r = run(settingsRepo({ enableAllProjectMcpServers: true }), ['--only=agent-config', '--json']);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(r.json.findings.some((f) => f.kind === 'agent-settings'), r.out);
+  assert.ok(!r.json.warnings.some((f) => f.kind === 'agent-settings'), r.out);
 });
 
 // A global excludesFile often ignores settings.local.json, so the fixture

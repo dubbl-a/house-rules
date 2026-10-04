@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.18.0 module=docs source=modules/docs/rules/docs.md body-sha256=1266bea19318613e22c23a29324659990bfeb7dd95034152159135ca2ecd2826 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.18.0 module=docs source=modules/docs/rules/docs.md body-sha256=3aeece0f5f35cc03e97b4462b0228038f7a65405031181d483bbde4dbfafe1d5 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -96,7 +96,7 @@ Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what happened instead of deleting it, and state the supersession inside the new doc.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
 Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in block-level HTML comments, which the harness strips from a CLAUDE.md file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader.
-Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, reads a marker's reason after the colon, and warns, without failing, on a file-level opt-out with no reason or an excluded doc that never opted out; a marker's reason runs to its closing `-->`, so an angle bracket inside the reason is part of the reason, and a marker with no closing `-->` opts nothing out.
+Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, reads a marker's reason after the colon, fails on a file-level opt-out with no reason, and warns, without failing, on an excluded doc that never opted out; a marker's reason runs to its closing `-->`, so an angle bracket inside the reason is part of the reason, and a marker with no closing `-->` opts nothing out.
 Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-reason`
 
 ## Don't document a command that does not exist
