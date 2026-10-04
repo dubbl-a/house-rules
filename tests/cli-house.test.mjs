@@ -2302,7 +2302,11 @@ test('#151 disable --apply: the real vendored checker exits 0 afterwards', () =>
   assert.match(gitStatusShort(repo), /^ D \.claude\/rules\/house\/gamma\.md$/m);
   const after = runVendoredCheck(repo);
   assert.equal(after.status, 0, after.stdout + after.stderr);
-  assert.doesNotMatch(after.stdout, /gamma/, 'no orphan, lock entry, or index section left for the checker to name');
+  // Where no house plugin is installed (a CI runner), the checker warns that it
+  // could not verify the disabled modules against their defaults and names them.
+  // That line is about the environment, not about anything disable left behind.
+  const named = after.stdout.split('\n').filter((l) => !/disabled-module check could not resolve module defaults/.test(l)).join('\n');
+  assert.doesNotMatch(named, /gamma/, 'no orphan, lock entry, or index section left for the checker to name');
 });
 
 // The checker's disabled-module check reads module defaults from an installed
