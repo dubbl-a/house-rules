@@ -2801,7 +2801,7 @@ function checkWorkflows(ctx) {
       if (e.key === 'cooldown' && e.parents.length === 2) seen.get(id).cooldown = true;
     }
     for (const u of seen.values()) {
-      if (!u.cooldown) warn('dependabot-cooldown', dependabot, u.line, 'has an update entry with no `cooldown`, so a release is proposed the day it ships, before a compromised one is usually caught and pulled. Add `cooldown: default-days: 7` (security updates ignore it by design).');
+      if (!u.cooldown) warn('dependabot-cooldown', dependabot, u.line, 'has an update entry with no `cooldown`, so a release is proposed the day it ships, before a compromised one is usually caught and pulled. Add `cooldown: default-days: 3` (the template splits it by update type; security updates ignore it by design).');
     }
   }
 

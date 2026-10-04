@@ -487,7 +487,9 @@ test('security: off at init, renders its roots once enabled, narrows by slot, an
   const dependabot = templateBody('dependabot.yml');
   const entries = dependabot.split(/^ {2}- package-ecosystem:/m).slice(1);
   assert.ok(entries.length > 0);
-  for (const e of entries) assert.match(e, /^ {4}cooldown:\n {6}default-days: 7$/m, `every updates entry carries a 7-day cooldown:\n${e}`);
+  for (const e of entries) assert.match(e, /^ {4}cooldown:\n {6}default-days: 3$/m, `every updates entry carries a 3-day default cooldown:\n${e}`);
+  assert.match(entries[0], /^ {6}semver-major-days: 7$/m, 'npm waits a week on a major');
+  assert.match(entries[0], /^ {6}exclude: \["@anthropic-ai\/\*"\]$/m, 'npm exempts the first-party SDK scope');
 });
 
 // An adopter whose house.json predates the security module has no key for it.
