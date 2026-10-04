@@ -1175,7 +1175,7 @@ function checkDrift(ctx) {
     }
     if (fileIgnored) {
       if (!isNonEmptyString(fileIgnoreReason)) {
-        warnings.push(mk('drift', docPath, null, 'ignore-file', 'whole-file `docs-drift-ignore-file` opt-out carries no reason. Add one after a colon (`<!-- docs-drift-ignore-file: why this file opts out -->`) so a blanket suppression always records why.'));
+        findings.push(mk('drift', docPath, null, 'ignore-file', 'whole-file `docs-drift-ignore-file` opt-out carries no reason. Add one after a colon (`<!-- docs-drift-ignore-file: why this file opts out -->`) so a blanket suppression always records why.'));
       }
       continue;
     }
@@ -2402,14 +2402,12 @@ function checkMinutes(ctx) {
 // ── workflows ────────────────────────────────────────────────────────────
 
 // #134: security checks that read repo files only, no network and no
-// credential. Every one is a WARNING in this release. The ids in
-// FAIL_LATER_CHECKS (and agent-config's `agent-settings`) are due to become
-// findings in a later release; their messages say so, so an adopter sees the
-// change coming before it fails a gate. zizmor covers the workflow checks in
+// credential. The ids in FAILING_CHECKS (and agent-config's `agent-settings`)
+// are findings and fail the run; the rest are warnings. A recorded waiver
+// clears either. zizmor covers the workflow checks in
 // more depth; this family is the floor every adopter gets without installing it.
 const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy'];
-const FAIL_LATER_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'agent-settings']);
-const FAIL_LATER_NOTE = ' Warning today; due to become a failure in a later release.';
+const FAILING_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout']);
 const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
 // ADR 0009: a warning the repo cannot act on is cleared by a recorded reason,
@@ -2676,15 +2674,16 @@ function codeownersPatternRe(pattern) {
 }
 
 function checkWorkflows(ctx) {
+  const findings = [];
   const warnings = [];
   const github = ctx.house?.data?.modules?.github;
-  if (isPlainObject(github) && github.enabled === false) return { findings: [], warnings };
+  if (isPlainObject(github) && github.enabled === false) return { findings, warnings };
   const workflowFiles = ctx.allTracked.filter((f) => WORKFLOW_FILE_RE.test(f));
-  if (workflowFiles.length === 0) return { findings: [], warnings };
+  if (workflowFiles.length === 0) return { findings, warnings };
   const waivers = readWaivers(moduleConfig(ctx.house, 'github'), 'github', WORKFLOW_CHECKS, 'workflows', warnings);
   const warn = (check, path, line, message) => {
     if (isWaived(waivers, check, path)) return;
-    warnings.push(mk('workflows', path, line, check, `${message}${FAIL_LATER_CHECKS.has(check) ? FAIL_LATER_NOTE : ''} Or record why with a {"check": "${check}", "path": "${path}", "why": "..."} entry in modules.github.config.waivers.`));
+    (FAILING_CHECKS.has(check) ? findings : warnings).push(mk('workflows', path, line, check, `${message} Or record why with a {"check": "${check}", "path": "${path}", "why": "..."} entry in modules.github.config.waivers.`));
   };
 
   for (const f of workflowFiles) {
@@ -2836,7 +2835,7 @@ function checkWorkflows(ctx) {
     warn('security-policy', 'SECURITY.md', null, 'is missing (also looked for in `.github/` and `docs/`), so a reporter finds no private route and files a public issue. Add one naming the private reporting route and a response time.');
   }
 
-  return { findings: [], warnings };
+  return { findings, warnings };
 }
 
 // ── agent-config ─────────────────────────────────────────────────────────
@@ -2853,25 +2852,26 @@ const RISKY_AGENT_SETTINGS = [
 ];
 
 function checkAgentConfig(ctx) {
+  const findings = [];
   const warnings = [];
   const cc = ctx.house?.data?.modules?.['claude-code'];
-  if (isPlainObject(cc) && cc.enabled === false) return { findings: [], warnings };
+  if (isPlainObject(cc) && cc.enabled === false) return { findings, warnings };
   const p = '.claude/settings.json';
-  if (!ctx.allTracked.includes(p)) return { findings: [], warnings };
+  if (!ctx.allTracked.includes(p)) return { findings, warnings };
   const waivers = readWaivers(moduleConfig(ctx.house, 'claude-code'), 'claude-code', ['agent-settings'], 'agent-config', warnings);
-  if (isWaived(waivers, 'agent-settings', p)) return { findings: [], warnings };
+  if (isWaived(waivers, 'agent-settings', p)) return { findings, warnings };
   const raw = safeRead(join(ctx.repoRoot, p));
   let j;
-  try { j = JSON.parse(raw); } catch { return { findings: [], warnings }; }
+  try { j = JSON.parse(raw); } catch { return { findings, warnings }; }
   const lines = raw.split(/\r?\n/);
   for (const s of RISKY_AGENT_SETTINGS) {
     const v = s.keys.reduce((o, k) => (isPlainObject(o) ? o[k] : undefined), j);
     if (!s.hit(v)) continue;
     const last = s.keys[s.keys.length - 1];
     const idx = lines.findIndex((l) => l.includes(`"${last}"`));
-    warnings.push(mk('agent-config', p, idx >= 0 ? idx + 1 : null, 'agent-settings', `commits \`${s.keys.join('.')}: ${JSON.stringify(v)}\`, which ${s.why}, for everyone who opens this repo. Move it to \`.claude/settings.local.json\` on the machine that needs it.${FAIL_LATER_NOTE} Or record why with a {"check": "agent-settings", "why": "..."} entry in modules.claude-code.config.waivers.`));
+    findings.push(mk('agent-config', p, idx >= 0 ? idx + 1 : null, 'agent-settings', `commits \`${s.keys.join('.')}: ${JSON.stringify(v)}\`, which ${s.why}, for everyone who opens this repo. Move it to \`.claude/settings.local.json\` on the machine that needs it. Or record why with a {"check": "agent-settings", "why": "..."} entry in modules.claude-code.config.waivers.`));
   }
-  return { findings: [], warnings };
+  return { findings, warnings };
 }
 
 // ── guard ────────────────────────────────────────────────────────────────

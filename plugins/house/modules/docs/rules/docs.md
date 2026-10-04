@@ -85,7 +85,7 @@ Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what happened instead of deleting it, and state the supersession inside the new doc.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
 Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in block-level HTML comments, which the harness strips from a CLAUDE.md file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader.
-Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, reads a marker's reason after the colon, and warns, without failing, on a file-level opt-out with no reason or an excluded doc that never opted out; a marker's reason runs to its closing `-->`, so an angle bracket inside the reason is part of the reason, and a marker with no closing `-->` opts nothing out.
+Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, reads a marker's reason after the colon, fails on a file-level opt-out with no reason, and warns, without failing, on an excluded doc that never opted out; a marker's reason runs to its closing `-->`, so an angle bracket inside the reason is part of the reason, and a marker with no closing `-->` opts nothing out.
 Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-reason`
 
 ## Don't document a command that does not exist

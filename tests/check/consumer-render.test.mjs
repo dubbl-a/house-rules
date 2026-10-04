@@ -108,7 +108,7 @@ test('a freshly rendered consumer repo passes .house/check.mjs with zero finding
     'README.md': '# X\n', 'CLAUDE.md': '# X\n',
     'scripts/a.mjs': 'export const a = 1;\n', 'tests/a.test.mjs': "import 'node:test';\n",
     'src/index.mjs': 'export default 1;\n', 'db/schema.sql': 'create table t();\n',
-    '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
+    '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
     'docs/note.md': '# note\n', 'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n',
   });
   house(repo, 'init', '--apply');
@@ -762,7 +762,7 @@ test('#26: a deleted scaffold stops counting as a render target, so no dead glob
     'package.json': '{"name":"x","scripts":{"check:house":"node .house/check.mjs"}}',
     'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n',
     'tests/a.test.mjs': "import 'node:test';\n",
-    '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
+    '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
   });
   house(repo, 'init', '--apply');
   house(repo, 'render', '--apply');
@@ -843,7 +843,7 @@ test('parity: a house.json with every slot absent renders and checks identically
   const repo = fixtureRepo({
     'package.json': '{"name":"x","scripts":{"check:house":"node .house/check.mjs"}}',
     'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'CHANGELOG.md': '# c\n',
-    '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
+    '.github/workflows/x.yml': 'name: x\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{run: "true"}]\n',
     // Every 10 minutes is ~4320 runs/month (estimateRunsPerMonth), well past
     // a 2000-minute budget: this makes actionsBudgetMinutes load-bearing. If
     // check.mjs's own fallback (2000) ever diverges from the literal this
