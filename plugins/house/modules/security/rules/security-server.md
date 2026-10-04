@@ -26,7 +26,7 @@ Receipts: `docs/handbook/security.md#authenticate-every-non-public-function-and-
 
 ## Use vetted mechanisms for crypto, sessions, and transport
 
-Use the platform or a vetted library with its defaults for password hashing, tokens, and encryption, never a hand-rolled scheme, a fast general-purpose hash for a password, or a non-cryptographic random source for a secret; keep a session short-lived and revocable, replace it at sign-in, and verify its signature, algorithm, and expiry on every use.
+Use the platform or a vetted library with its defaults for password hashing, tokens, and encryption, never a hand-rolled scheme, a fast general-purpose hash for a password, or a non-cryptographic random source for a secret; keep a session or token short-lived and revocable, replace it at sign-in, and verify its signature, algorithm, and expiry on every use.
 Limit attempts on a credential, offer a second factor where the platform has one, send every connection over verified transport encryption, and never disable certificate checks, not even in a helper meant only for tests.
 Anchor: a test that presents an expired, a tampered, and a wrong-algorithm token and asserts each is refused; security.md's scan rule flags a disabled certificate check.
 Receipts: `docs/handbook/security.md#use-vetted-mechanisms-for-crypto-sessions-and-transport`
