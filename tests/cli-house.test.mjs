@@ -22,7 +22,7 @@ import {
 } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import nodePath, { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
@@ -2592,6 +2592,25 @@ test('#151 resolvedIsInside: exact on resolved paths, so a sibling differing onl
   assert.equal(inside('/m/Proj/repo', '/m/Proj/repo-x/x'), false, 'a prefix that is not a path segment');
   assert.equal(inside('/m/Proj/repo', '/m/Proj/repo'), false, 'the root itself is never a removal');
   assert.equal(inside('/', '/etc/x'), true, 'a root ending in the separator');
+});
+
+// The call site, not just the helper: unsafeRemovalReason must hand
+// resolvedIsInside the resolved paths untouched. Its own source, with the two
+// functions it calls, runs here against a fake resolver standing in for a
+// case-sensitive filesystem where `out` is a symlink to a sibling `proj`.
+test('#151 unsafeRemovalReason: a lock path resolving to a case-different sibling of the root is refused', () => {
+  const cli = readFileSync(REAL_CLI_SRC, 'utf8');
+  const fn = (name) => {
+    const m = cli.match(new RegExp(`^function ${name}\\([^)]*\\) \\{\\n[^]*?\\n\\}$`, 'm'));
+    assert.ok(m, `${name} is not a top-level function in the CLI any more`);
+    return m[0];
+  };
+  const unsafeRemovalReason = new Function('path', 'realpathSync',
+    `${fn('isInsideRoot')}\n${fn('resolvedIsInside')}\n${fn('unsafeRemovalReason')}\nreturn unsafeRemovalReason;`)(nodePath.posix, null);
+  const disk = new Map([['/m/Proj/repo', '/m/Proj/repo'], ['/m/Proj/repo/out', '/m/proj/repo'], ['/m/Proj/repo/in', '/m/Proj/repo/in']]);
+  const resolve = (p) => { if (disk.has(p)) return disk.get(p); throw new Error(`ENOENT ${p}`); };
+  assert.match(unsafeRemovalReason('/m/Proj/repo', 'out/victim.txt', resolve), /^lock entry resolves outside this repo, to \/m\/proj\/repo\/victim\.txt$/);
+  assert.equal(unsafeRemovalReason('/m/Proj/repo', 'in/kept.md', resolve), null, 'negative control: a path that stays inside is allowed');
 });
 
 test('#151 disable: a --repo spelled in another case still resolves to the same repo', (t) => {

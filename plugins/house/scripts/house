@@ -1456,17 +1456,19 @@ function orphanedManagedPaths(repoRoot, planDests, modules) {
 // fold there is a false pass that deletes a sibling's file. realpathSync.native
 // returns the on-disk case on a case-insensitive filesystem, so the exact
 // comparison holds there too, including for a --repo typed in another case.
-function unsafeRemovalReason(repoRoot, rel) {
+// `resolve` is realpathSync.native; a parameter only so a test can hand it a
+// case-sensitive filesystem this machine cannot mount.
+function unsafeRemovalReason(repoRoot, rel, resolve = realpathSync.native) {
   if (!isInsideRoot(repoRoot, rel)) return 'lock entry path escapes this repo';
   const isGit = (p) => p.split(/[\\/]/).some((seg) => seg.toLowerCase() === '.git');
   if (isGit(rel)) return 'lock entry resolves inside .git (repository metadata)';
   let realRoot;
-  try { realRoot = realpathSync.native(repoRoot); } catch { return 'the repo root cannot be resolved'; }
+  try { realRoot = resolve(repoRoot); } catch { return 'the repo root cannot be resolved'; }
   // The deepest parent that exists, resolved; the missing rest is appended.
   let parent = path.dirname(path.join(repoRoot, rel));
   const tail = [path.basename(rel)];
   for (;;) {
-    try { parent = realpathSync.native(parent); break; } catch { /* not there yet: step up */ }
+    try { parent = resolve(parent); break; } catch { /* not there yet: step up */ }
     const up = path.dirname(parent);
     if (up === parent) return 'lock entry cannot be resolved';
     tail.unshift(path.basename(parent));
