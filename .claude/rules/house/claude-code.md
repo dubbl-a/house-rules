@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.18.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4bcc7da2f2046ab82bf8a0fb96412270048f053cb02834950ee72d4ebe28cdcb DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.18.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=1f1bc333dc8819d195c8ca92ad00099a845386698d9741e0ee6a22f343793b46 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -50,13 +50,13 @@ Receipts: `docs/handbook/claude-code.md#make-a-procedure-a-skill-not-a-rule`
 
 ## Keep a skill body short, its references one level deep, and its name equal to its directory
 
-Hold the body under its configured cap and move detail into references rather than appending, and keep references exactly one level deep; a nested file gets partially read.
-No documented cap covers the body itself; the harness only documents a truncated listing and a compaction pass that keeps each skill's opening slice and drops the least recent, so a long body is what stops surviving.
+Hold the body under 500 lines, Claude Code's documented ceiling, or a lower cap you configure, and move detail into references rather than appending, and keep references exactly one level deep; a nested file gets partially read.
+The harness also truncates a skill's description plus `when_to_use` at 1,536 characters in its listing, and a compaction pass keeps each skill's opening slice and drops the least recent, so a long body is what stops surviving.
 Open any reference past the length threshold with a table of contents, so a partial read shows scope.
 Write the description in third person, saying what the skill does and when to use it, and offer a default with an escape hatch rather than a menu.
 Keep time-sensitive facts out of the method; the full rule on that lives in docs.md.
 The harness treats a personal or project skill's name as a display label, invoking it by directory, while a plugin skill's name replaces the last segment of its namespaced command; a legal mismatch is an error in both here.
-Anchor: check.mjs `lengths` caps the skill body, and `shape` fails any skill whose name differs from its directory, including a plugin skill.
+Anchor: check.mjs `lengths` warns on a skill body over 500 lines (a `lengthLimits` entry for it overrides that) and on a description plus `when_to_use` over 1,536 characters, and `shape` fails any skill whose name differs from its directory, including a plugin skill.
 Receipts: `docs/handbook/claude-code.md#keep-a-skill-body-short-its-references-one-level-deep-and-its-name-equal-to-its-directory`
 
 ## Disable model invocation on a skill with side effects

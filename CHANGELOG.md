@@ -17,7 +17,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - **Render names each module that ships but is neither on nor detected (#176).** One line, such as `available   not enabled here: evals, retrieval, security (enable with: house enable <name>)`, lists every module whose default is `off` or `detect` that is not enabled and did not detect, so a module whose signal lives where `detectPaths` does not look is no longer silent on sync. A module the adopter set to `"enabled": false`, or declined with a recorded deviation, is not listed, and nothing prints when the list is empty. `render --json` gains an `available` array.
 
 ### Added
-- **Checker: an unreferenced vendored script is named (#178).** The `manifest` family warns when a lock-recorded `scripts/house/` script is referenced by no `package.json` script, workflow, or other tracked file, and names any tracked file elsewhere with the same basename.
+- **Checker: an unreferenced vendored script is named (#178).** The `manifest` family warns when a lock-recorded `scripts/house/` script is referenced by no `package.json` script, workflow, or other tracked file and a tracked file outside `scripts/house/` has the same basename, naming that file. No twin, no warning.
 - **Checker: skill size defaults.** The `lengths` family warns on a `SKILL.md` body over 500 lines (Claude Code's documented ceiling) when no `lengthLimits` entry covers it, and on a skill whose `description` plus `when_to_use` passes 1,536 characters, where the harness truncates the listing silently.
 
 ### Changed
