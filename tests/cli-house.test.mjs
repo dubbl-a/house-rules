@@ -17,12 +17,12 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync,
   chmodSync, existsSync, statSync, rmSync, realpathSync,
 } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import nodePath, { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
@@ -2116,4 +2116,521 @@ test('#135 enable --apply: an off module keeps the config written for it by hand
   const gamma = readFileSync(join(repo, '.claude', 'rules', 'house', 'gamma.md'), 'utf8');
   assert.match(gamma, /^ {2}- scripts\/\*\*$/m);
   assert.doesNotMatch(gamma, /src\/\*\*/);
+});
+
+// ── disable (#151) ───────────────────────────────────────────────────────
+//
+// The reverse of enable: one plan, nothing written without --apply, then one
+// render, which already sweeps a disabled module's managed files, and the
+// vendored checker. These reuse the enable fixture (gamma and delta).
+
+function deltaOnRepo(cliPath) {
+  return adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: true, config: {} },
+    delta: { enabled: true, config: {} },
+  });
+}
+
+function lockPaths(repo) {
+  return JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8')).files.map((f) => f.path);
+}
+
+test('#151 disable: refuses a repo with no house.json, and an unknown module, writing nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const bare = buildTargetRepo();
+  const none = runCli(cliPath, ['disable', 'gamma', '--repo', bare, '--apply']);
+  assert.equal(none.code, 2, none.out + none.err);
+  assert.match(none.err, /bootstrap/);
+  assert.equal(gitStatusShort(bare), '');
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', 'nosuch', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /`nosuch` is not a module/);
+  assert.match(r.err, /gamma/, 'lists the modules that do exist');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 disable: plan only prints the house.json diff, the files it removes, and the load change, and writes nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const houseBefore = readFileSync(join(repo, 'house.json'));
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^- +"gamma": \{"enabled":true,"config":\{\}\}$/m, 'house.json diff, before');
+  assert.match(r.out, /^\+ +"gamma": \{"enabled":false,"config":\{\}\}$/m, 'house.json diff, after');
+  assert.match(r.out, /^remove\s+\.claude\/rules\/house\/gamma\.md\s+\(module: gamma\)/m, 'the managed file render removes');
+  assert.doesNotMatch(r.out, /^remove\s+\.claude\/rules\/house\/alpha\.md/m, 'a module staying on loses nothing');
+  assert.match(r.out, /Load cost/);
+  assert.match(r.out, /gamma: -\d+ lines on \d+ tracked path/);
+  assert.match(r.out, /^ {2}src\/a\.js: \d+ -> \d+ lines \(gamma -\d+\)$/m, 'lines the module stops loading on that path');
+  assert.match(r.out, /--apply/);
+  assert.ok(readFileSync(join(repo, 'house.json')).equals(houseBefore), 'house.json bytes untouched');
+  assert.equal(gitStatusShort(repo), '', 'plan only leaves the tree untouched');
+});
+
+test('#151 disable --apply: one module, one render, no orphan left in the tree, the lock, or the index', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.equal(house.modules.gamma.enabled, false);
+  assert.equal(house.modules.alpha.enabled, true, 'other modules untouched');
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma.md')), 'rule file removed');
+  assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'alpha.md')));
+  assert.ok(!lockPaths(repo).includes('.claude/rules/house/gamma.md'), 'no orphaned lock entry');
+  assert.doesNotMatch(readFileSync(join(repo, '.house', 'INDEX.md'), 'utf8'), /gamma\.md/, 'no orphaned index section');
+  assert.equal((r.out.match(/^Rendering /gm) || []).length, 1, `one render:\n${r.out}`);
+  assert.match(r.out, /fake house check: ok/, 'the vendored checker ran and its output is printed');
+});
+
+test('#151 disable --apply: two modules share one plan and one render', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = deltaOnRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', 'delta', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal((r.out.match(/^house disable: plan for /gm) || []).length, 1, 'one plan');
+  assert.equal((r.out.match(/^Rendering /gm) || []).length, 1, 'one render');
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.equal(house.modules.gamma.enabled, false);
+  assert.equal(house.modules.delta.enabled, false);
+  for (const f of ['gamma.md', 'delta.md']) assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', f)), `${f} removed`);
+  assert.deepEqual(lockPaths(repo).filter((p) => /gamma|delta/.test(p)), []);
+});
+
+test('#151 disable: a module already off is reported, not an error, and the rest still plan', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const solo = runCli(cliPath, ['disable', 'delta', '--repo', repo, '--apply']);
+  assert.equal(solo.code, 0, solo.out + solo.err);
+  assert.match(solo.out, /`delta` is already off/);
+  assert.equal(gitStatusShort(repo), '', 'nothing to change, nothing written');
+  const both = runCli(cliPath, ['disable', 'delta', 'gamma', '--repo', repo]);
+  assert.equal(both.code, 0, both.out + both.err);
+  assert.match(both.out, /`delta` is already off/);
+  assert.match(both.out, /"gamma": \{"enabled":false/);
+});
+
+test('#151 disable --apply: a hand-edited managed file of the module is refused by name and nothing is written', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const gamma = join(repo, '.claude', 'rules', 'house', 'gamma.md');
+  writeFileSync(gamma, `${readFileSync(gamma, 'utf8')}hand edit\n`);
+  commitAll(repo, 'hand edit a managed rule');
+  const before = readFileSync(join(repo, 'house.json'), 'utf8');
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/gamma\.md/m);
+  assert.match(r.err, /nothing was written/);
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), before);
+  assert.ok(existsSync(gamma), 'the edited file stays');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 disable --apply: config and at-adoption confirmations survive; only enabled changes', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: true, config: { gammaRoots: ['scripts/**'] }, confirmed: { owners: '2026-01-02' } },
+  });
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma,
+    { enabled: false, config: { gammaRoots: ['scripts/**'] }, confirmed: { owners: '2026-01-02' } });
+  assert.match(r.out, /confirm/i, 'the plan says the confirmations are kept');
+});
+
+test('#151 round trip: enable, disable, enable returns house.json and the rendered files to the same bytes', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = adoptedRepo(cliPath, {
+    alpha: { enabled: true, config: {} },
+    gamma: { enabled: false, config: { gammaRoots: ['scripts/**'] }, confirmed: { owners: '2026-01-02' } },
+  });
+  const tracked = ['house.json', '.house/lock.json', '.house/INDEX.md', '.claude/rules/house/alpha.md'];
+  const snap = () => Object.fromEntries([...tracked, '.claude/rules/house/gamma.md'].map((p) => [p, existsSync(join(repo, p)) ? readFileSync(join(repo, p), 'utf8') : null]));
+  const beforeEnable = snap();
+  assert.equal(runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']).code, 0);
+  const enabledOnce = snap();
+  commitAll(repo, 'enable gamma');
+  const off = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(off.code, 0, off.out + off.err);
+  assert.deepEqual(snap(), beforeEnable, 'disable after enable returns every file to its bytes before the enable');
+  assert.equal(runCli(cliPath, ['enable', 'gamma', '--repo', repo, '--apply']).code, 0);
+  assert.deepEqual(snap(), enabledOnce, 'enabling again lands on the same bytes as the first enable');
+});
+
+test('#151 disable github: the plan names the removed floor, the scaffold left in place, what stops enforcing, and core.hooksPath', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  const rendered = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(rendered.code, 0, rendered.out + rendered.err);
+  commitAll(repo, 'adopt with the floor');
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'precondition: the scaffold was written');
+
+  const plan = runCli(cliPath, ['disable', 'github', '--repo', repo]);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  for (const rel of FLOOR_FILES) assert.match(plan.out, new RegExp(`^remove\\s+\\.githooks/${rel.replace(/\./g, '\\.')}\\s`, 'm'), `lists ${rel}`);
+  assert.match(plan.out, /^left\s+\.githooks\/pre-commit\.d\/20-secrets\s/m, 'the scaffold is listed as left in place');
+  assert.match(plan.out, /branch policy is no longer enforced by git hooks in this repo/);
+  assert.match(plan.out, /core\.hooksPath/);
+  assert.match(plan.out, /git config --unset core\.hooksPath/, 'says what the user does');
+  assert.equal(gitStatusShort(repo), '', 'plan only');
+  const hooksPathBefore = gitConfigGet(repo, 'core.hooksPath');
+
+  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const rel of FLOOR_FILES) assert.ok(!existsSync(join(repo, '.githooks', rel)), `${rel} removed`);
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold stays');
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), hooksPathBefore, 'disable writes no git config');
+  assert.deepEqual(lockPaths(repo).filter((p) => p.startsWith('.githooks/')), []);
+
+  const quiet = runCli(cliPath, ['disable', 'gamma', '--repo', enabledGammaRepo(buildEnableFixture().cliPath)]);
+  assert.doesNotMatch(quiet.out, /git hooks|core\.hooksPath/, 'negative control: a module with no hook files says nothing about the floor');
+});
+
+test('#151 disable --apply: the real vendored checker exits 0 afterwards', () => {
+  const { dir, cliPath } = buildEnableFixture();
+  copyFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), join(dir, 'payload', 'check.mjs'));
+  const repo = enabledGammaRepo(cliPath);
+  assert.equal(runVendoredCheck(repo).status, 0, `precondition: the adopted repo passes\n${runVendoredCheck(repo).stdout}`);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^Checker \(/m, 'disable ran the checker');
+  // Nothing staged: the removed rule file is still in the index, which the
+  // checker must not read as an empty document.
+  assert.match(gitStatusShort(repo), /^ D \.claude\/rules\/house\/gamma\.md$/m);
+  const after = runVendoredCheck(repo);
+  assert.equal(after.status, 0, after.stdout + after.stderr);
+  // Where no house plugin is installed (a CI runner), the checker warns that it
+  // could not verify the disabled modules against their defaults and names them.
+  // That line is about the environment, not about anything disable left behind.
+  const named = after.stdout.split('\n').filter((l) => !/disabled-module check could not resolve module defaults/.test(l)).join('\n');
+  assert.doesNotMatch(named, /gamma/, 'no orphan, lock entry, or index section left for the checker to name');
+});
+
+// The checker's disabled-module check reads module defaults from an installed
+// plugin; point it at the fixture plugin, so a default-on module turned off
+// with no deviation is the finding it is in a real adopter.
+function runCheckWithPlugin(repo, pluginDir) {
+  const cfg = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(cfg);
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({
+    plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: pluginDir, version: '9.9.9' }] },
+  }));
+  return spawnSync(process.execPath, [join(repo, '.house', 'check.mjs'), '--repo', repo], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+}
+
+function todayLocal() {
+  const now = new Date();
+  return [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+}
+
+function realCheckerFixture() {
+  const fx = buildEnableFixture();
+  copyFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), join(fx.dir, 'payload', 'check.mjs'));
+  return fx;
+}
+
+test('#151 disable: a default-on module needs --why; without it --apply refuses and writes nothing', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const plan = runCli(cliPath, ['disable', 'alpha', '--repo', repo]);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  assert.match(plan.out, /alpha.*on by default.*--why/);
+  const r = runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--why/);
+  assert.equal(gitStatusShort(repo), '', 'nothing written');
+  const empty = runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', '  ']);
+  assert.equal(empty.code, 2, 'a blank reason is no reason');
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 disable --why: a default-on module gets a dated disabled-module deviation in the user\'s words, and the checker passes', () => {
+  const { dir, cliPath } = realCheckerFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', 'no source tree here']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.deepEqual(house.deviations, [{ kind: 'disabled-module', module: 'alpha', what: 'the alpha module is off in this repo', why: 'no source tree here', decided: todayLocal() }]);
+  const ok = runCheckWithPlugin(repo, dir);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  delete house.deviations;
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+  const control = runCheckWithPlugin(repo, dir);
+  assert.equal(control.status, 1, 'positive control: the same repo without the deviation is a finding');
+  assert.match(control.stdout, /module `alpha` is default-on but disabled with no deviations entry/);
+});
+
+test('#151 disable --why on a module off by default records nothing and says so', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply', '--why', 'not needed']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /gamma is off by default.*not recorded/);
+  assert.equal(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).deviations, undefined);
+});
+
+test('#151 round trip with a reason: enable drops the deviation it supersedes, and the checker stays at 0', () => {
+  const { dir, cliPath } = realCheckerFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const before = readFileSync(join(repo, 'house.json'), 'utf8');
+  assert.equal(runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', 'trial']).code, 0);
+  commitAll(repo, 'alpha off');
+  const plan = runCli(cliPath, ['enable', 'alpha', '--repo', repo]);
+  assert.match(plan.out, /deviations.*disabled-module.*alpha.*removed/);
+  const on = runCli(cliPath, ['enable', 'alpha', '--repo', repo, '--apply']);
+  assert.equal(on.code, 0, on.out + on.err);
+  // No stale deviation. The array disable created stays, emptied: nothing
+  // records who created it, and a repo's own `"deviations": []` must survive.
+  assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')), { ...JSON.parse(before), deviations: [] });
+  const check = runCheckWithPlugin(repo, dir);
+  assert.equal(check.status, 0, check.stdout + check.stderr);
+});
+
+test('#151 render refuses to delete a hand-edited managed file whose module was turned off by hand', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const gamma = join(repo, '.claude', 'rules', 'house', 'gamma.md');
+  writeFileSync(gamma, `${readFileSync(gamma, 'utf8')}hand edit\n`);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.modules.gamma.enabled = false;
+  writeHouseJson(repo, house);
+  const lockBefore = readFileSync(join(repo, '.house', 'lock.json'), 'utf8');
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/gamma\.md/m);
+  assert.ok(existsSync(gamma), 'the edited file stays');
+  assert.equal(readFileSync(join(repo, '.house', 'lock.json'), 'utf8'), lockBefore, 'nothing rewritten');
+  const forced = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', '.claude/rules/house/gamma.md']);
+  assert.equal(forced.code, 0, forced.out + forced.err);
+  assert.ok(!existsSync(gamma), '--force-managed names the file, and render removes it');
+});
+
+test('#151 disable github: a directory render emptied is removed; one still holding a file stays', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-push.d')), 'emptied by render, removed');
+  assert.ok(!existsSync(join(repo, '.githooks', 'reference-transaction.d')));
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold keeps its directory');
+});
+
+// ── #151 review notes ────────────────────────────────────────────────────
+
+test('#151 disable: a file of the user\'s own in .claude/rules/house/ is not managed, so it is listed and left', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  writeFileSync(join(repo, '.claude', 'rules', 'house', 'mine.md'), '# mine\n');
+  commitAll(repo, 'a rule of my own');
+  const plan = runCli(cliPath, ['disable', 'gamma', '--repo', repo]);
+  assert.equal(plan.code, 0, plan.out + plan.err);
+  assert.match(plan.out, /^left\s+\.claude\/rules\/house\/mine\.md\s+\(not managed, left in place\)/m);
+  assert.doesNotMatch(plan.out, /^remove\s+\.claude\/rules\/house\/mine\.md/m);
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'mine.md')), 'the user\'s file stays');
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma.md')), 'the managed one goes');
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'mine.md')), 'a plain render leaves it too');
+});
+
+test('#151 disable: a module\'s rule file from before the lock recorded it is still removed', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files = lock.files.filter((f) => f.path !== '.claude/rules/house/gamma.md');
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'a lock that predates gamma.md');
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma.md')), 'a dest render produces for a module now off is still swept');
+});
+
+test('#151 a forged lock entry reaching outside the repo through a symlinked directory, or into .git, is refused and nothing is deleted', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const outside = mkdtempSync(join(tmpdir(), 'house-outside-'));
+  CLEANUP_DIRS.push(outside);
+  writeFileSync(join(outside, 'f.txt'), 'outside\n');
+  symlinkSync(outside, join(repo, 'linkdir'));
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  const gitDesc = readFileSync(join(repo, '.git', 'description'), 'utf8');
+  lock.files.push({ path: 'linkdir/f.txt', module: 'gamma', source: 'x', bodySha256: sha256Hex('outside\n') });
+  lock.files.push({ path: '.git/description', module: 'gamma', source: 'x', bodySha256: sha256Hex(gitDesc) });
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'forged lock entries');
+  for (const args of [['disable', 'gamma', '--repo', repo, '--apply'], ['render', '--repo', repo, '--apply']]) {
+    const r = runCli(cliPath, args);
+    assert.equal(r.code, 1, `${args[0]}: ${r.out}${r.err}`);
+    assert.match(r.out, /^REFUSE\s+linkdir\/f\.txt\s+\(lock entry resolves outside this repo/m, args[0]);
+    assert.match(r.out, /^REFUSE\s+\.git\/description\s+\(lock entry resolves inside \.git/m, args[0]);
+    assert.ok(existsSync(join(outside, 'f.txt')), `${args[0]}: the file outside the repo is still on disk`);
+    assert.ok(existsSync(join(repo, '.git', 'description')), `${args[0]}: .git is untouched`);
+    assert.equal(gitStatusShort(repo), '', `${args[0]}: nothing written`);
+  }
+});
+
+test('#151 disable: --why followed by another flag, or by nothing, is an error naming it', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  for (const args of [['--why', '--apply'], ['--apply', '--why']]) {
+    const r = runCli(cliPath, ['disable', 'alpha', '--repo', repo, ...args]);
+    assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.err, /--why needs a reason/);
+  }
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#151 enable keeps a deviations array that was already there, emptied or not', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.deviations = [];
+  writeHouseJson(repo, house);
+  assert.equal(runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', 'trial']).code, 0);
+  assert.equal(runCli(cliPath, ['enable', 'alpha', '--repo', repo, '--apply']).code, 0);
+  assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).deviations, []);
+});
+
+test('#151 with github off, doctor says the floor is off because the module is, and the arming script stays silent', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  const armedBefore = spawnSync('bash', [REAL_ARM_SCRIPT, '--repo', repo], { encoding: 'utf8' });
+  assert.equal(armedBefore.stdout, '', 'precondition: an armed floor is silent');
+  assert.equal(runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']).code, 0);
+  commitAll(repo, 'github off');
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.match(doc.out, /^git-hook floor: off \(the github module is off in house\.json/m);
+  assert.doesNotMatch(doc.out, /git-hook floor: not rendered/);
+  const arm = spawnSync('bash', [REAL_ARM_SCRIPT, '--repo', repo], { encoding: 'utf8' });
+  assert.equal(arm.status, 0);
+  assert.equal(arm.stdout, '', 'nothing at session start for a module that is off');
+});
+
+// What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh):
+// branchPolicy and protectedBranches from HEAD:house.json, never `modules`, and
+// "armed" from the floor files on disk. tests/hooks/run.sh pins the guard side.
+const FALSE_GUARD_CLAIMS = [/takes effect for the branch guard when/, /until then the guard/, /guard sees it once it is merged/];
+
+test('#151 disable github: the plan states what the guard follows and who unsets core.hooksPath; a commit still works', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  const plan = runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture']);
+  for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(plan.out, re);
+  assert.match(plan.out, /the PreToolUse branch guard does not read module state/);
+  assert.match(plan.out, /it follows `branchPolicy` \(and `protectedBranches`\) in house\.json at HEAD/);
+  assert.match(plan.out, /While that says "pr" it keeps enforcing it by its text rules, which are stricter with no hook floor, and its refusals will give floor advice \(to arm the floor, or to restore it with a render\) that does not apply while the github module is off/);
+  assert.doesNotMatch(plan.out, /will tell you to arm the floor/, 'the advice varies with core.hooksPath, so it is not quoted');
+  assert.match(plan.out, new RegExp(`you run \`git config --unset core\\.hooksPath\` yourself, from ${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.match(plan.out, /an agent cannot: the branch guard refuses it/);
+  assert.match(plan.out, /leaving it set is harmless/);
+  const other = runCli(cliPath, ['disable', 'gamma', '--repo', enabledGammaRepo(buildEnableFixture().cliPath)]);
+  for (const re of [...FALSE_GUARD_CLAIMS, /branch guard/]) assert.doesNotMatch(other.out, re, 'a module that ships no floor says nothing about the guard');
+  assert.equal(runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture', '--apply']).code, 0);
+  assert.notEqual(gitConfigGet(repo, 'core.hooksPath'), '', 'still set');
+  commitAll(repo, 'a commit with core.hooksPath naming a floor that is gone');
+  assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' }), /floor that is gone/);
+});
+
+test('#151 enable: the plan makes no claim about when the branch guard sees the change', () => {
+  const { cliPath } = buildEnableFixture();
+  const r = runCli(cliPath, ['enable', 'gamma', '--repo', adoptedRepo(cliPath)]);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(r.out, re);
+});
+
+// The reviewer's sequence: on a case-insensitive filesystem `.GIT/description`
+// names .git/description, and a byte comparison against ".git" let it through.
+test('#151 forged lock entries naming .git in another case, or a nested repo\'s .git, are refused and every file survives byte for byte', (t) => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  mkdirSync(join(repo, 'sub', '.git'), { recursive: true });
+  writeFileSync(join(repo, 'sub', '.git', 'x'), 'nested\n');
+  const caseInsensitive = existsSync(join(repo, '.GIT', 'config'));
+  const forged = [['sub/.git/x', join(repo, 'sub', '.git', 'x')]];
+  if (caseInsensitive) forged.push(['.GIT/description', join(repo, '.git', 'description')], ['.Git/config', join(repo, '.git', 'config')]);
+  else t.diagnostic('case-sensitive filesystem here: `.GIT` is not `.git`, so the case variants have nothing to reach and are not planted');
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  const bytes = new Map();
+  for (const [rel, abs] of forged) {
+    bytes.set(abs, readFileSync(abs));
+    lock.files.push({ path: rel, module: 'docs', source: 'x', bodySha256: sha256Hex(readFileSync(abs, 'utf8')) });
+  }
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  for (const args of [['render', '--repo', repo, '--apply'], ['disable', 'gamma', '--repo', repo, '--apply']]) {
+    const r = runCli(cliPath, args);
+    assert.equal(r.code, 1, `${args[0]}: ${r.out}${r.err}`);
+    for (const [rel] of forged) assert.match(r.out, new RegExp(`^REFUSE\\s+${rel.replace(/\./g, '\\.')}\\s+\\(lock entry resolves inside \\.git`, 'm'), `${args[0]} names ${rel}`);
+    for (const [abs, b] of bytes) assert.ok(readFileSync(abs).equals(b), `${args[0]}: ${abs} unchanged`);
+  }
+});
+
+// The outside-the-repo test is a pure function of two resolved paths, so it is
+// lifted out of the real CLI source and run here, with no filesystem: a
+// case-sensitive mount, where `Proj` and `proj` are different directories,
+// cannot be made inside `npm test` on a case-insensitive machine.
+function loadResolvedIsInside() {
+  const src = readFileSync(REAL_CLI_SRC, 'utf8').match(/^function resolvedIsInside\([^)]*\) \{\n[^]*?\n\}$/m);
+  assert.ok(src, 'resolvedIsInside is not a top-level function in the CLI any more');
+  return new Function('path', `${src[0]}\nreturn resolvedIsInside;`)({ sep: '/' });
+}
+
+test('#151 resolvedIsInside: exact on resolved paths, so a sibling differing only by case is outside', () => {
+  const inside = loadResolvedIsInside();
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/repo/a/b.md'), true, 'positive control');
+  assert.equal(inside('/m/Proj/repo', '/m/proj/repo/victim.txt'), false, 'case-different sibling');
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/REPO/x'), false);
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/repo-x/x'), false, 'a prefix that is not a path segment');
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/repo'), false, 'the root itself is never a removal');
+  assert.equal(inside('/', '/etc/x'), true, 'a root ending in the separator');
+});
+
+// The call site, not just the helper: unsafeRemovalReason must hand
+// resolvedIsInside the resolved paths untouched. Its own source, with the two
+// functions it calls, runs here against a fake resolver standing in for a
+// case-sensitive filesystem where `out` is a symlink to a sibling `proj`.
+test('#151 unsafeRemovalReason: a lock path resolving to a case-different sibling of the root is refused', () => {
+  const cli = readFileSync(REAL_CLI_SRC, 'utf8');
+  const fn = (name) => {
+    const m = cli.match(new RegExp(`^function ${name}\\([^)]*\\) \\{\\n[^]*?\\n\\}$`, 'm'));
+    assert.ok(m, `${name} is not a top-level function in the CLI any more`);
+    return m[0];
+  };
+  const unsafeRemovalReason = new Function('path', 'realpathSync',
+    `${fn('isInsideRoot')}\n${fn('resolvedIsInside')}\n${fn('unsafeRemovalReason')}\nreturn unsafeRemovalReason;`)(nodePath.posix, null);
+  const disk = new Map([['/m/Proj/repo', '/m/Proj/repo'], ['/m/Proj/repo/out', '/m/proj/repo'], ['/m/Proj/repo/in', '/m/Proj/repo/in']]);
+  const resolve = (p) => { if (disk.has(p)) return disk.get(p); throw new Error(`ENOENT ${p}`); };
+  assert.match(unsafeRemovalReason('/m/Proj/repo', 'out/victim.txt', resolve), /^lock entry resolves outside this repo, to \/m\/proj\/repo\/victim\.txt$/);
+  assert.equal(unsafeRemovalReason('/m/Proj/repo', 'in/kept.md', resolve), null, 'negative control: a path that stays inside is allowed');
+});
+
+test('#151 disable: a --repo spelled in another case still resolves to the same repo', (t) => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const other = repo.replace(/house-repo-/, 'HOUSE-REPO-');
+  if (!existsSync(other)) { t.skip('case-sensitive filesystem: the other spelling is a different path'); return; }
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', other, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(r.out, /REFUSE/);
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma.md')));
+});
+
+test('#151 disable: the --why error names --why=<reason> for a reason that starts with dashes', () => {
+  const { cliPath } = buildEnableFixture();
+  const r = runCli(cliPath, ['disable', 'alpha', '--repo', enabledGammaRepo(cliPath), '--why', '--no-ci-here']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--why=<reason>/);
 });

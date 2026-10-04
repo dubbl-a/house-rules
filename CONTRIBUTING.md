@@ -53,6 +53,17 @@ template, the marketplace description, and the harness-audit module list.
 `tests/module-registration.test.mjs` lists each one and fails naming the module and the file when
 any is missing or a stated module or rule count disagrees with the module directories.
 
+### What the shape checks enforce
+
+A rule that breaks one of these fails `npm run verify`:
+
+- A rule heading may not start with a word ending in `s`, `ing`, or `ion`, so "Use branches" passes and "Branches" does not. The checker reads such a word as non-imperative (`tests/check/shape.test.mjs`, "an ambiguous non-imperative heading").
+- A rule file carries at most three `Anchor: none (because ...)` lines, each with its reason (`tests/check/shape.test.mjs`, "more than three").
+- Rule prose carries no date-like or percent-like token (`tests/check/shape.test.mjs`, "date-like token" and "percent-like token").
+- A rule that says "at adoption" needs the module to declare a matching `atAdoption` step in its `module.json`, each with a unique kebab-case id (`tests/at-adoption.test.mjs`).
+- An Anchor that names a file path must name one that exists, or the drift check flags it (`tests/check/drift.test.mjs`, "unresolved file-path anchor").
+- A module's default `paths:` glob that matches no tracked file in a consumer is dropped when the rule renders, so a default for a directory the consumer lacks vendors the rule without that trigger (`tests/check/consumer-render.test.mjs`, "still dropped").
+
 ## The rule-file prose shape
 
 Every rule, in its module source and in the rendered copy, follows one shape: an imperative

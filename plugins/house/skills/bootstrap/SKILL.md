@@ -31,8 +31,8 @@ Before probing anything, check whether `house.json` already exists at the repo r
 
 If it exists, refuse. Print that the repo already has a manifest and point to `/house-rules:sync`
 instead. This holds in dry run too: bootstrap never drafts a second proposal over a first one,
-even one nobody applied yet. A repo gets exactly one bootstrap. The one exception is a request to
-turn on modules, which takes the mode below and never re-proposes the manifest.
+even one nobody applied yet. A repo gets exactly one bootstrap. The exceptions are a request to
+turn modules on or off, which take the modes below and never re-propose the manifest.
 
 ## Enable modules in an adopted repo
 
@@ -62,6 +62,29 @@ It writes the step id and today's date beside the module's entry in `house.json`
 first date if the step was already confirmed. It refuses while `.house/check.mjs` is not this
 plugin's copy, since an older checker fails CI on the record: run `/house-rules:sync` first. Do not confirm a step on the person's behalf. A
 step left open is fine: `house doctor` lists every step of an enabled module not yet confirmed.
+
+## Disable modules in an adopted repo
+
+When the person asks to turn modules off, run the plan first, for every module named, in one run:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house disable <module...> --repo <path>
+```
+
+It writes nothing. It prints the `house.json` change (only `enabled`; config and confirmations
+stay), the managed files render would remove, the scaffolds left in place, what stops for each
+module, and the load each path sheds. Show all of it and wait for the person to say apply it; on
+approval, re-run with `--apply` and report the checker's summary as printed. A module that is on
+by default needs `--why "<reason>"`, recorded as a dated deviation: ask the person for the reason
+and pass their words, never one of your own. A hand-edited managed file is refused by name: leave
+resolving it to the person. Do this on a branch and open a pull request. The branch guard does
+not read module state: it follows `branchPolicy` in `house.json` at HEAD, so turning github off
+leaves it enforcing that policy by its stricter rules for a repo with no hook floor, and its
+refusals give floor advice (arm it, or restore it with a render) that does not apply while the
+module is off; say so rather than follow that advice. If `--apply` is denied by a
+permission check, do not retry or route around it; give the person the exact command and the
+directory to run it from. The plan names a `git config --unset` the person runs themselves: the
+guard refuses it to a session, and leaving the setting in place is harmless.
 
 ## Probe the repo
 

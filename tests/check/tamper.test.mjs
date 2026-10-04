@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { sandbox, run, houseJson, fakeClaudeConfigDir, writeTree, CHECK_SRC } from './helpers.mjs';
 
@@ -81,6 +81,22 @@ test('tamper: lock entry pointing at a missing managed file is a finding', () =>
   const { code, out } = run(dir, ['--only=tamper']);
   assert.equal(code, 1, out);
   assert.match(out, /\[missing\]/);
+});
+
+// #151: the checker drops tracked files that are gone from disk from what its
+// families walk. Tamper reads the lock, not that list, so a managed file the
+// lock names, committed and then deleted, is still a finding.
+test('tamper: a committed managed file deleted from disk is still a missing finding', () => {
+  const body = `${HEADER}\nbody\n`;
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.claude/rules/house/gone.md': body,
+    '.house/lock.json': lockJson([{ path: '.claude/rules/house/gone.md', module: 'git-workflow', source: 'modules/git-workflow/rules/gone.md', bodySha256: bodyHash(body) }]),
+  });
+  rmSync(join(dir, '.claude/rules/house/gone.md'));
+  const { code, out } = run(dir, ['--only=tamper']);
+  assert.equal(code, 1, out);
+  assert.match(out, /gone\.md \[missing\]/);
 });
 
 test('tamper: no .house/lock.json at all is silently fine', () => {

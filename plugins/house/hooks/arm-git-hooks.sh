@@ -167,6 +167,22 @@ read_branch_policy() {
   sed -n 's/.*"branchPolicy"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" 2>/dev/null | head -1 | tr -d '\n'
 }
 
+# Prints 1 when house.json turns the github module off ("enabled": false), the
+# checker's own reading. The github module is what ships the floor, so with it
+# off there is nothing to arm and nothing to report (#151). jq, else node; with
+# neither, prints nothing and the module reads as on, which is the old
+# behaviour: one advisory line, never a write.
+read_github_off() {
+  local f="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r 'if type == "object" and (.modules | type) == "object" and (.modules.github | type) == "object" and .modules.github.enabled == false then "1" else empty end' "$f" 2>/dev/null
+    return 0
+  fi
+  if command -v node >/dev/null 2>&1; then
+    node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const g=j&&j.modules&&j.modules.github;if(g&&typeof g==="object"&&g.enabled===false)process.stdout.write("1");}catch(e){}' "$f" 2>/dev/null
+  fi
+}
+
 # ── resolve the target repo ──────────────────────────────────────────────
 #
 # With --repo, the caller named it. Without, this is the SessionStart hook and
@@ -339,6 +355,10 @@ fi
 # ── arm ──────────────────────────────────────────────────────────────────
 
 [ "$APPLICABLE" = "1" ] || exit 0
+
+# The module that ships the floor is off: no render advice (it would not bring
+# the floor back) and no arming. Session start says nothing.
+[ "$(read_github_off "$TOPLEVEL/house.json")" = "1" ] && exit 0
 
 if [ "$RENDERED" != "1" ]; then
   # MISSING is a space-separated list; the splitting is the point.

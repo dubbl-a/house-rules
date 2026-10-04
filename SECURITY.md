@@ -55,6 +55,25 @@ does not check Sigstore signatures. Verify one in a clone with
 `gitsign verify-tag --certificate-identity-regexp '\+dubbl-a@users\.noreply\.github\.com$' --certificate-oidc-issuer https://github.com/login/oauth vX.Y.Z`,
 or check the release itself with `gh release verify vX.Y.Z`.
 
+### What local enforcement is not
+
+The branch guard hook reads the text of each command, and the git hooks in the repo check each ref
+update. They exist to stop mistakes, an agent's included. They do not stop a session that sets out
+to get around them, because everything in a checkout can be rewritten by whoever controls the
+checkout. Two findings from 2026-10-03 show the edge:
+
+- A session can write remote-tracking refs with commands the guard allows (`git fetch origin
+  f:refs/remotes/origin/main`, `git remote set-head`, `git config remote.origin.url`). The git-hook
+  floor's "the remote already has it" test then accepts moving a local protected branch to an
+  unmerged commit. Probed against the hook with the floor armed.
+- The CLI removes the vendored floor files from inside its own process (`house render --apply` after
+  the github module is turned off, `house disable github`), which a guard scanning command text does
+  not see. Reasoned, not run end to end.
+
+Branch protection on the remote is the control that holds: see "Protect the default branch at the
+remote" in `plugins/house/modules/github/rules/github.md`, and issue #161. These findings are not
+on the residue list in ADR 0013, a decided record this note leaves as written.
+
 ### For an organization
 
 A managed-settings allowlist can admit only this marketplace at a tag:

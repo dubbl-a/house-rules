@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.17.0 module=github source=modules/github/rules/github.md body-sha256=682466b238ddf145c47e7605bf9c8c14104ad7ed7147c8edc9c31aff24843d64 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=github source=modules/github/rules/github.md body-sha256=8a0dd3f9970061592d3f5c3b78ec552a6bc0b27b53112a44cbc5755733f11f8d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -17,7 +17,7 @@ Each rule names what enforces it, or says plainly that nothing does.
 Gate on file-only checks, so the gate runs with no database, network, or secret to leak. Push stateful checks to a retro or a local pre-deploy step.
 Name what is deliberately not gated, and why, inside the workflow that gates: an unstated gap reads as coverage.
 Run the same set locally before opening the PR, and fail loudly on a missing secret before any lane starts.
-Anchor: the rendered `.github/workflows/pr-checks.yml`, wall-time target and concurrency shipped with the template; `npm run check:house` runs it locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
+Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then warns on what it reads there, such as unpinned actions or missing permissions, but nothing checks that the gate stays credential-free, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
 Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated`
 
 ## Give a workflow read-only permissions and pin every action by SHA
@@ -34,7 +34,7 @@ Treat CI minutes as one pool shared by every repo on the account, billed per job
 Pause an expensive cron by hand, then ship a one-shot job to re-enable it, since a token cannot re-enable another repo's workflow.
 Read the check-run annotation when a run dies at startup: a billing failure carries no logs and looks nothing like code failure.
 Set the slot to null on a public repo, since its minutes are unmetered, and let the check say so instead of estimating against a stale budget.
-Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's spending budget is the hard stop. An agent workflow caps nothing; its minutes draw from the same pool.
+Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow caps nothing; its minutes draw from the same pool.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
