@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.18.0 module=docs source=modules/docs/rules/docs.md body-sha256=3aeece0f5f35cc03e97b4462b0228038f7a65405031181d483bbde4dbfafe1d5 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.18.0 module=docs source=modules/docs/rules/docs.md body-sha256=965a86bbc95713150b1460eb9d9dc4276ed3bcf839fb79970d7214fc350fbbac DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -38,9 +38,8 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 
 ## Put a fact where its litmus test says it belongs
 
-The harness advises keeping only broad facts in the root file, moving procedures to a skill and path-bound facts to a path-scoped rule, and its checkup proposes cutting what the code already says. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
+Give working rules, a runbook, strategy, the changelog, reference, and orientation each their own document (the README for a landing human, the archive for a dated observation), restating neither the code nor the manifest, and index a reference set with a start-here pointer; say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
-Index a set of reference docs with a start-here pointer instead of restating them, say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file).
 Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belongs`
 

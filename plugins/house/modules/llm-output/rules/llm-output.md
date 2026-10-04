@@ -60,17 +60,15 @@ Receipts: `docs/handbook/llm-output.md#gate-output-on-status-tags`
 
 ## Reword a locked claim, never strengthen it
 
-Rewording a claim to mirror the reader's vocabulary is allowed; changing the claim, metric, scope, or verb strength is not, and a number never rounds up.
-The concise built-in style is the nearest native counterpart where a session selects it: it compresses a response while keeping the full content of an error report, a security warning, and a destructive-action confirmation, but it is advisory, absent from the default style, and never reaches a subagent that runs its own prompt; every locked claim carries that same protection in every style and every agent.
+Rewording a claim to mirror the reader's vocabulary is allowed; changing the claim, metric, scope, or verb strength is not, and a number never rounds up, in every output style and every agent.
 Freeze drafts by number, treat authored spans as immutable unless you show an itemized before and after, and check the decision ledger before publishing so a settled question stays settled.
 Anchor: test. A diff check fails the run when a locked span changes without a matching ledger entry.
 Receipts: `docs/handbook/llm-output.md#reword-a-locked-claim-never-strengthen-it`
 
 ## Treat silence as not approval
 
-Where the harness gates a write, its permission prompt is the floor, and it already refuses an agent message as consent on a person's behalf; elsewhere, show the diff and wait for an explicit yes before generating a file, since silence is not approval, nor is an unanswered question.
-Plan mode is the harness floor here: it holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread. A printed run has nobody to answer: with no mode configured it can start in auto mode, where the classifier rather than a person clears a write, and where prompts are off it denies, so ask for the yes yourself.
-The same reading applies to data: said nothing is not said yes; the full rule lives in engineering.md.
+Outside a write the harness gates, show the diff and wait for an explicit yes before generating a file, since silence and an unanswered question are not approval, of a change or of data; a printed run has nobody to answer, so ask for the yes yourself.
+Plan mode holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread.
 Anchor: none (because a script-grantable approval is not an approval; the gate is the person).
 Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
 

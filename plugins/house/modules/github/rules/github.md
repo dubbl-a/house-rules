@@ -40,9 +40,7 @@ Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-
 
 ## Turn on push protection, head-branch deletion, and grouped dependency updates
 
-Turn on secret scanning push protection, blocking a credential before it enters history.
-Turn on automatic head-branch deletion so a merged branch stops accumulating.
-Configure grouped dependency updates and leave security updates on, since grouping cuts PR volume without muting updates that matter.
+Turn on secret scanning push protection and automatic head-branch deletion, and group dependency updates with security updates left on, so a credential is blocked before history and grouping cuts volume without muting what matters.
 Anchor: the rendered `.github/dependabot.yml` carries the grouping and a cooldown, and `node .house/check.mjs --only=workflows` warns on an update entry with no cooldown; the other two are repository settings, confirmed at adoption.
 Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-and-grouped-dependency-updates`
 
@@ -56,9 +54,7 @@ Receipts: `docs/handbook/github.md#protect-the-default-branch-at-the-remote-and-
 
 ## Make the PR template force a docs-check answer
 
-Ask every PR for a summary, a test plan, and a docs check.
-Make the docs check binary: either the docs edit is in this PR, or the PR says why none is needed.
-Keep the template in the platform's own directory, the first place it is looked for.
+Ask every PR for a summary, a test plan, and a binary docs check: either the docs edit is in this PR, or the PR says why none is needed.
 Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit where it runs, so the template makes the answer mandatory.
 Receipts: `docs/handbook/github.md#make-the-pr-template-force-a-docs-check-answer`
 
@@ -123,18 +119,9 @@ Read the scopes off the vendor dashboard the day you issue the key, and cross-ch
 Anchor: a probe test that calls every resource the key can reach and asserts each write outside the one scope fails.
 Receipts: `docs/handbook/github.md#give-a-restricted-key-exactly-one-writable-scope`
 
-## Never log a vendor object
-
-Log ids, amounts, and outcomes, never a customer, charge, or row object, since observability is how personal data leaves a database sideways.
-Keep the same data out of errors and URLs.
-Anchor: a unit test asserting the logger receives named scalar fields and never a vendor object.
-Receipts: `docs/handbook/github.md#never-log-a-vendor-object`
-
 ## Treat a preview URL as production for exposure
 
-A preview URL outside the auth policy leaks what production would.
-Cover every route with the policy and allow no bypasses; adding one is a decision to write down, not a route to add.
-Verify by hand with an unauthenticated request to each route after any auth or routing change.
+A preview URL outside the auth policy leaks what production would, so cover every route with the policy, write down any bypass as a decision, and send an unauthenticated request to each route after any auth or routing change.
 Anchor: the deploy script's post-deploy step, sending an unauthenticated request to every route on production and preview hosts.
 Receipts: `docs/handbook/github.md#treat-a-preview-url-as-production-for-exposure`
 

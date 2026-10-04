@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.18.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=4b64db1ac948983236dfec8c225a1d4a5d85d3a1bff7b270d56740ef06c375cb DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.18.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=0c8406cb9325d593cba339cfaccfe6946620bb010113390f57a4a2faf7dbb0ba DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -89,9 +89,8 @@ Receipts: `docs/handbook/engineering.md#land-a-build-time-guard-with-the-code-it
 
 ## Search public prior art before building a tool, and record what you did not adopt
 
-Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated.
+Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated and an approved plan is not that record.
 Judge a system against its own rules first, then against current external guidance with the sources listed.
-Run the search in the harness planning phase, where edits stay blocked until a plan is approved, and hold that posture in a session where the block does not apply, since the plan is not the record.
 Anchor: a `docs/decisions/` record naming the candidates, the deciding case, and the adopt call
 Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-a-tool-and-record-what-you-did-not-adopt`
 

@@ -55,11 +55,8 @@ Receipts: `docs/handbook/claude-code.md#keep-a-skill-body-short-its-references-o
 
 ## Disable model invocation on a skill with side effects
 
-Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, so nothing in the session can fire it on its own and its body costs nothing until a caller names it.
-The harness blocks a model-initiated call to a skill with this field set and keeps a scheduled prompt from firing one; treat that as the floor, since it cannot decide which effects count as side effects.
-Remember that a print-mode run expands a named skill before the turn starts, so the gate is the caller who wrote the string, not a person watching a prompt.
+Set `disable-model-invocation: true` on any skill that writes, deploys, or spends; the harness then blocks a model-initiated call but cannot decide which effects count, and a print-mode run still expands a named skill, so the caller who wrote the string is the gate.
 Make the later phases of a procedure explicit opt-in gates rather than an automatic continuation.
-Expect an automatic mode to route a production deploy through a classifier rather than through you; answer with explicit intent, not a route around it.
 Anchor: none (because frontmatter cannot tell which effects are side effects; skill review is the check).
 Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with-side-effects`
 

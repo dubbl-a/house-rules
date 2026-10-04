@@ -27,9 +27,8 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 
 ## Put a fact where its litmus test says it belongs
 
-The harness advises keeping only broad facts in the root file, moving procedures to a skill and path-bound facts to a path-scoped rule, and its checkup proposes cutting what the code already says. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation. Working rules, a runbook, strategy, the changelog, reference, and orientation are separate roles; give each its own document, and restate neither the code nor the manifest.
+Give working rules, a runbook, strategy, the changelog, reference, and orientation each their own document (the README for a landing human, the archive for a dated observation), restating neither the code nor the manifest, and index a reference set with a start-here pointer; say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
-Index a set of reference docs with a start-here pointer instead of restating them, say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file).
 Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belongs`
 

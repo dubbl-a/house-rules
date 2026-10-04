@@ -281,13 +281,12 @@
         "Keep credentials out of the repo, the commit, and the chat",
         "Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires",
         "Give a restricted key exactly one writable scope",
-        "Never log a vendor object",
         "Treat a preview URL as production for exposure",
         "Label a non-secret as a non-secret",
         "Ship the community files the platform looks for, and keep issue intake as forms",
         "Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it"
       ],
-      "notes": "20 headings and 50 owned rows against 200 lines is 11.3 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
+      "notes": "19 headings and 49 owned rows against 200 lines is 10.5 lines per rule including blanks. TIGHT: hold each rule to heading, one-clause why, Anchor line, one link, and push every example and receipt into the handbook chapter; if it still will not fit, defer a named heading to v0.2 rather than trimming the why. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/github.md, and the file ends with ## Don't."
     },
     {
       "path": "plugins/house/modules/claude-code/rules/claude-code.md",
@@ -788,7 +787,7 @@
         "Fail closed, and tell an outside caller little",
         "Ship secure defaults, and bound what one caller can consume"
       ],
-      "notes": "6 headings and 6 owned rows against 75 lines is 12.5 lines per rule including blanks. Split from security.md by issue #177; it loads on securityRoots, the code roots, so it is the half that co-loads with engineering.md. Rules moved verbatim; only the intro is new and the crypto anchor names security.md's scan rule instead of saying above. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/security.md, and the file ends with ## Don't. Its module.json entry is the plain string \"rules/security-server.md\", so it renders the module's defaultPaths; see the security.md artifact for the module shape. Cross-ref, never restate: what a session may trust, install, and release stays security.md's; the vendor-object logging half stays github.md's; the preview-URL request the authorization anchor reuses stays github.md#treat-a-preview-url-as-production-for-exposure."
+      "notes": "6 headings and 6 owned rows against 75 lines is 12.5 lines per rule including blanks. Split from security.md by issue #177; it loads on securityRoots, the code roots, so it is the half that co-loads with engineering.md. Rules moved verbatim; only the intro is new and the crypto anchor names security.md's scan rule instead of saying above. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/security.md, and the file ends with ## Don't. Its module.json entry is the plain string \"rules/security-server.md\", so it renders the module's defaultPaths; see the security.md artifact for the module shape. Cross-ref, never restate: what a session may trust, install, and release stays security.md's; the preview-URL request the authorization anchor reuses stays github.md#treat-a-preview-url-as-production-for-exposure."
     },
     {
       "path": "plugins/house/modules/retrieval/rules/retrieval.md",

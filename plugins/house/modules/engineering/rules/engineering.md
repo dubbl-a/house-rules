@@ -84,9 +84,8 @@ Receipts: `docs/handbook/engineering.md#land-a-build-time-guard-with-the-code-it
 
 ## Search public prior art before building a tool, and record what you did not adopt
 
-Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated.
+Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated and an approved plan is not that record.
 Judge a system against its own rules first, then against current external guidance with the sources listed.
-Run the search in the harness planning phase, where edits stay blocked until a plan is approved, and hold that posture in a session where the block does not apply, since the plan is not the record.
 Anchor: a `docs/decisions/` record naming the candidates, the deciding case, and the adopt call
 Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-a-tool-and-record-what-you-did-not-adopt`
 
