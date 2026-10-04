@@ -88,28 +88,58 @@ test('tamper-resolve: the root comparison is exact and by segment (case-differen
   assert.equal(inside('/work/Proj/', '/work/Proj/a'), true);
 });
 
-// Review round: a malformed lock never crashes the family.
+// Review round: no lock input throws. Each row is a lock shape and what the
+// tamper family says about it: exit code, finding text (null: a clean pass),
+// and an optional `setup` that builds what a path names on disk. A bare array
+// is the lock's older entry-list shape and is read as the list; an object with
+// no `files` has nothing recorded, which is clean.
+const dirsAndLinks = (dir) => {
+  mkdirSync(join(dir, 'docs'));
+  writeFileSync(join(dir, 'docs', 'keep'), '');
+  symlinkSync(join(dir, 'docs'), join(dir, 'docslink'));
+  symlinkSync(dir, join(dir, 'rootlink'));
+};
 const MALFORMED = [
   ['number path', { files: [{ path: 123 }] }, 1, /123.*not a string/],
   ['array path', { files: [{ path: ['a'] }] }, 1, /not a string \(an array\)/],
   ['boolean path', { files: [{ path: true }] }, 1, /true.*not a string/],
   ['object path', { files: [{ path: { a: 1 } }] }, 1, /not a string/],
-  ['null path', { files: [{ path: null }] }, 0],
-  ['empty path', { files: [{ path: '' }] }, 0],
-  ['missing path', { files: [{ module: 'x' }] }, 0],
-  ['null entry', { files: [null] }, 0],
-  ['files not an array', { files: 'nope' }, 0],
-  ['lock an array', [], 0],
+  ['null path', { files: [{ path: null, module: 'x' }] }, 1, /lock entry 0 has no usable path \(path is null, module `x`\)/],
+  ['empty path', { files: [{ path: '' }] }, 1, /lock entry 0 has no usable path \(path is ""\)/],
+  ['missing path', { files: [{ module: 'x' }] }, 1, /lock entry 0 has no usable path \(path is missing, module `x`\)/],
+  ['empty-object entry', { files: [{}] }, 1, /lock entry 0 has no usable path \(path is missing\)/],
+  ['null entry', { files: [null] }, 1, /lock entry 0 is null, not an object/],
+  ['number entry', { files: [1] }, 1, /lock entry 0 is number, not an object/],
+  ['string entry', { files: ['a'] }, 1, /lock entry 0 is string, not an object/],
+  ['array entry', { files: [[]] }, 1, /lock entry 0 is an array, not an object/],
+  ['mixed junk array as lock', [null, 1, 'a', [], {}], 1, /lock entry 4 has no usable path/],
+  ['junk entry after a good one', { files: [{ path: 'a.md', module: 'x' }, null] }, 1, /lock entry 1 is null/],
+  ['files null', { files: null }, 1, /`files` is null, not a list/],
+  ['files string', { files: 'nope' }, 1, /`files` is string, not a list/],
+  ['files number', { files: 5 }, 1, /`files` is number, not a list/],
+  ['files object', { files: {} }, 1, /`files` is object, not a list/],
+  ['lock null', null, 1, /the lock is null, not an object/],
+  ['lock number', 5, 1, /the lock is number, not an object/],
+  ['lock string', 'x', 1, /the lock is string, not an object/],
+  ['lock boolean', true, 1, /the lock is boolean, not an object/],
+  ['lock an empty array', [], 0],
+  ['lock an empty object', {}, 0],
   ['dot path', { files: [{ path: '.' }] }, 1, /repo root, not a file/],
+  ['directory path', { files: [{ path: 'docs' }] }, 1, /`docs` is a directory, not a file/, dirsAndLinks],
+  ['directory path with a slash', { files: [{ path: 'docs/' }] }, 1, /`docs\/` is a directory, not a file/, dirsAndLinks],
+  ['symlink to a directory', { files: [{ path: 'docslink' }] }, 1, /`docslink` is a directory, not a file/, dirsAndLinks],
+  ['symlink to the repo root', { files: [{ path: 'rootlink' }] }, 1, /`rootlink` is a directory, not a file/, dirsAndLinks],
 ];
-for (const [name, lock, want, re] of MALFORMED) {
+for (const [name, lock, want, re, setup] of MALFORMED) {
   test(`tamper-resolve: a lock with ${name} gives exit ${want} and no stack trace`, () => {
     const dir = sandbox({ 'house.json': houseJson(), '.house/lock.json': JSON.stringify(lock) });
+    if (setup) setup(dir);
     const { code, out } = tamper(dir);
-    assert.doesNotMatch(out, /TypeError|\n\s+at /, out);
+    assert.doesNotMatch(out, /TypeError|EISDIR|\n\s+at /, out);
     assert.match(out, /Summary:/, out);
     assert.equal(code, want, out);
     if (re) assert.match(out, re);
+    else assert.doesNotMatch(out, /== tamper ==/, out);
   });
 }
 test('tamper-resolve: a bad entry does not stop the next entry being checked', () => {

@@ -950,7 +950,7 @@ function checkDrift(ctx) {
     for (const f of allMd) {
       if (scannedSet.has(f)) continue;
       const head = headWindow(safeRead(join(ctx.repoRoot, f)).split('\n'));
-      const optedOut = head.some((l) => /<!--\s*docs-drift-ignore-file(?::(?:(?!-->)[\s\S])*)?\s*-->/.test(l));
+      const optedOut = head.some((l) => /<!--\s*docs-drift-ignore-file(?::(?:(?!-->)[\s\S])*|\s*)-->/.test(l));
       // ADR 0009: an exclusion whose config entry carries a `why` opted out in
       // house.json, which is the right home when the file is a living doc the
       // checker cannot scan rather than a point-in-time record (the marker's
@@ -1135,7 +1135,7 @@ function checkDrift(ctx) {
     let fileIgnored = false;
     let fileIgnoreReason = null;
     for (const l of headWindow(lines)) {
-      const m = l.match(/<!--\s*docs-drift-ignore-file(?::((?:(?!-->)[\s\S])*))?\s*-->/);
+      const m = l.match(/<!--\s*docs-drift-ignore-file(?::((?:(?!-->)[\s\S])*)|\s*)-->/);
       if (m) { fileIgnored = true; fileIgnoreReason = m[1] ?? null; break; }
     }
     if (fileIgnored) {
@@ -1196,7 +1196,7 @@ function checkDrift(ctx) {
       // one lets one stray or orphaned marker cover a claim written later
       // and somewhere else, which is the opposite of what a deliberate,
       // narrow suppression is for.
-      const ignoreMatch = line.match(/<!--\s*docs-drift-ignore(?!-file)\b(?::(?:(?!-->)[\s\S])*)?\s*-->/);
+      const ignoreMatch = line.match(/<!--\s*docs-drift-ignore(?!-file)\b(?::(?:(?!-->)[\s\S])*|\s*)-->/);
       if (ignoreMatch) { pendingIgnore = true; return; }
       if (pendingIgnore) { pendingIgnore = false; return; }
 
@@ -1255,6 +1255,17 @@ function checkTamper(ctx) {
     findings.push(mk('tamper', '.house/lock.json', null, 'lock', 'invalid JSON'));
     return { findings, warnings };
   }
+  // A bare array is read as the entry list (the lock's older shape, still
+  // accepted); an object carries it under `files`. Anything else cannot hold
+  // entries, and an unreadable list must not read as "nothing is managed".
+  if (!Array.isArray(lock) && !isPlainObject(lock)) {
+    findings.push(mk('tamper', '.house/lock.json', null, 'lock', `the lock is ${lock === null ? 'null' : typeof lock}, not an object with a \`files\` list; managed-file integrity checking is off. Run \`house render --apply\` to rewrite it.`));
+    return { findings, warnings };
+  }
+  if (!Array.isArray(lock) && lock.files !== undefined && !Array.isArray(lock.files)) {
+    findings.push(mk('tamper', '.house/lock.json', null, 'lock', `the lock's \`files\` is ${lock.files === null ? 'null' : typeof lock.files}, not a list; managed-file integrity checking is off. Run \`house render --apply\` to rewrite it.`));
+    return { findings, warnings };
+  }
   const entries = Array.isArray(lock) ? lock : Array.isArray(lock.files) ? lock.files : [];
 
   const record = resolveHousePluginRecord(readInstalledPlugins());
@@ -1263,8 +1274,16 @@ function checkTamper(ctx) {
   const installedNewer = typeof pin === 'string' && SEMVER_RE.test(pin)
     && installedVersion && SEMVER_RE.test(installedVersion) && semverGt(installedVersion, pin);
 
-  for (const entry of entries) {
-    if (!isPlainObject(entry) || !entry.path) continue;
+  for (const [idx, entry] of entries.entries()) {
+    if (!isPlainObject(entry) || !entry.path) {
+      // No path to name, so the entry is identified by its place in the list
+      // and whatever else it carries; a blanked path must not hide its file.
+      const what = isPlainObject(entry)
+        ? `has no usable path (path is ${entry.path === undefined ? 'missing' : JSON.stringify(entry.path)}${typeof entry.module === 'string' ? `, module \`${entry.module}\`` : ''})`
+        : `is ${entry === null ? 'null' : Array.isArray(entry) ? 'an array' : typeof entry}, not an object`;
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry ${idx} ${what}; refusing to skip it silently`));
+      continue;
+    }
     const { path: relPath, module, source, bodySha256 } = entry;
     if (typeof relPath !== 'string') {
       findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path ${JSON.stringify(relPath)} is not a string (${Array.isArray(relPath) ? 'an array' : typeof relPath}); refusing to read it`));
@@ -1280,6 +1299,12 @@ function checkTamper(ctx) {
     const abs = join(ctx.repoRoot, relPath);
     if (!existsSync(abs)) {
       findings.push(mk('tamper', relPath, null, 'missing', `managed file from module \`${module}\` is missing`));
+      continue;
+    }
+    let isDir = false;
+    try { isDir = statSync(abs).isDirectory(); } catch { /* unreadable: the read below reports it */ }
+    if (isDir) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path \`${relPath}\` is a directory, not a file; refusing to read it`));
       continue;
     }
     const localRaw = readFileSync(abs, 'utf8');
