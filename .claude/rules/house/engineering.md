@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.17.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=56bb15b88e7ee5084dfe1b57e71ec82812cc698d380402a9a9e9ea245002923b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=cae8b510af775282d42748e547f19a5f1670e35cd1417c212ed05c058863cd0c DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -76,6 +76,7 @@ Receipts: `docs/handbook/engineering.md#demote-a-gate-that-has-been-wrong-before
 
 Write every architecturally significant decision as a numbered record in the repo, on a short standard template so writing one stays normal.
 Never edit a decided record: supersede it by number with a visible marker, keep a ruled value canonical and an unruled one blocked from output, and reserve records for decisions with measurable effect, since one per choice devalues the set.
+Record a ruling apart from a measurement: a change adopted on other grounds after a null result reads "adopted by ruling", with the measurement and the reason as separate statements and never as improved, and a change rejected after measuring well is recorded the same way.
 Anchor: numbered files under `docs/decisions/`, and `node .house/check.mjs` fails an unresolved link; auto memory keeps notes machine-local and rewritable, so a decision with measurable effect belongs in a numbered repo record instead.
 Receipts: `docs/handbook/engineering.md#record-a-significant-decision-as-a-numbered-immutable-record`
 
