@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-03
+
+`house enable`, `house disable`, and `house uninstall` give an adopted repo a guided way to turn modules on and off and to leave, each as a plan that writes only with `--apply`; the checker gains a `workflows` family of eleven security checks, all warnings in this release; an opt-in `retrieval` module joins as the twelfth; and the branch guard goes quiet when the github module is off. Minor under ADR 0012: the guard's deny set tightens (the breaking class) for a separator or redirect glued to a message value, for the `|&` operator and internal errors, for configured alias bodies under `branchPolicy: direct`, and for a malformed `house.json`; rule content also changes (ADR 0011). Releases are immutable from this one, and its tag is signed with gitsign.
+
 ### Added
 - **Subagents commit, and the session pushes and opens the pull request (#131).** The orchestration defaults say a parent asked to run a denied action asks the user instead, and that a subagent with worktree isolation writes inside its own worktree. The builder agent's definition refuses a push or a pull request and says why. The harness survey records the denial as observed, with its cause inferred.
 - **A handed-off command comes with its directory (#141).** Before giving the user a command, the session leaves the worktree for the place the command must run and names the directory in the same message; a command that writes shared state says what its output looks like when it worked.

@@ -4,7 +4,7 @@ paths:
   - .claude/settings.json
   - package.json
 ---
-<!-- house-managed v0.17.0 module=security source=modules/security/rules/security.md body-sha256=e6121e0b5a9ee9e1bc71fb5d41d06edd3d5cd51371c18c992c84ee7a525a14f6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.18.0 module=security source=modules/security/rules/security.md body-sha256=e6121e0b5a9ee9e1bc71fb5d41d06edd3d5cd51371c18c992c84ee7a525a14f6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security
 
