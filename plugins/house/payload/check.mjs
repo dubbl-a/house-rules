@@ -3046,7 +3046,13 @@ function main() {
   const houseUnusable = !house.present || house.data === null;
   const needsHouse = families.some((f) => NEEDS_HOUSE_JSON.has(f));
 
-  const allTracked = gitLsFilesZ(repoRoot);
+  // #151: a file still in the index but gone from disk (a removal not yet
+  // staged, as `house disable` and render's orphan sweep leave) is not a
+  // document to check: read as empty, it failed every required section. One
+  // extra `git ls-files --deleted` call, not a stat per path. Tamper reads the
+  // lock, not this list, so a managed file the lock names stays `[missing]`.
+  const deletedFromDisk = new Set(gitLsFilesZ(repoRoot, ['--deleted']));
+  const allTracked = gitLsFilesZ(repoRoot).filter((f) => !deletedFromDisk.has(f));
 
   const ctx = {
     repoRoot, house, houseUnusable, allTracked, json: args.json,
