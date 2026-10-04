@@ -7,7 +7,7 @@ name: pr-checks
 on:
   pull_request:
   workflow_dispatch:
-  # Deliberately no `push:` trigger on the protected branch — pull_request
+  # Deliberately no `push:` trigger on the protected branch: pull_request
   # already covers every merge, and adding push would bill every commit twice.
 permissions:
   contents: read # Read-only checkout; no comment/issue/PR mutation from this workflow.
@@ -25,14 +25,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22 }
-      - run: npm ci --ignore-scripts || npm install --ignore-scripts
+      # Frozen install where a lockfile is committed; a plain install only
+      # where there is none to hold it to. Never fall back from one to the
+      # other: that fallback is the unfrozen install the lockfile exists to stop.
+      # `npm ci` honours either lockfile npm writes, so both are named.
+      - if: hashFiles('package-lock.json') != '' || hashFiles('npm-shrinkwrap.json') != ''
+        run: npm ci --ignore-scripts
+      - if: hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''
+        run: npm install --ignore-scripts
       - run: node .house/check.mjs
       # The branch-guard hook protects this repo; test it here too, not only
       # on the machine that happened to write it.
       - run: npm run test:hooks --if-present
       # If this repo commits a rendered artifact (a generated doc, a built
       # email, a snapshot), re-render it here and diff against what's
-      # committed — a drift gate beats trusting the generator ran.
+      # committed; a drift gate beats trusting the generator ran.
       - run: npm run check:snapshots --if-present
       - run: npm test --if-present
 
