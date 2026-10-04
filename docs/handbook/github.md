@@ -77,9 +77,11 @@ A code-owners file is the part a repo file can hold; GitHub's code-owners docume
 
 Native floor, as of 2026-09-02: hosted Code Review reads the repo CLAUDE.md and flags documentation a pull request leaves outdated, as a non-blocking nit, only on drift the pull request newly introduces, and only where that Team and Enterprise preview runs (https://code.claude.com/docs/en/code-review.md#claudemd, https://code.claude.com/docs/en/code-review.md#severity-levels).
 
-## Never put a closing keyword beside an issue number you do not mean to close
+## Close an issue only on purpose, and only on claims you checked
 
 **repo-a, first on 2026-08-18 and again on the #629 merge.** GitHub's linked-issue parser matches `close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved #N` anywhere in a PR body or commit message and does not parse the words around it. The first time, a PR body reading "Does not close #623, which still decides whether the transcript can carry a quote" closed issue #623 (a council-transcript spot-check against the source video, still open) silently on merge, because the parser ignores negation before the closing keyword; it happened again on the #629 merge. The issue closed with reason COMPLETED and no comment, reading exactly as though the work had been done, a wrong state nothing else catches when the closing was unintended. The fix in practice: write "Does not address #N," "Related: #N," or "#N stays open" instead, never a closing keyword immediately before a number you mean to leave open, and check the issue's actual state after merging any PR that mentions one.
+
+**This repo's own triage, 2026-10-04.** A triage meant to reduce open issues closed #166 and #163 with closing comments that overstated the work. #166's comment said its remaining items were documented, but one verification, a real GitHub Actions run of the install template adopters are told to copy, was never done. #163 was closed to keep the package small while its live safety runs were still undone. Checking each claim against the repo found both, and both were reopened with narrowed scope. The lesson widens the rule past accidental closes: a closing comment is a claim, and a closed issue reads as done to every later reader, so each claim gets checked against the doc that records it and the commit that shipped it before the issue closes.
 
 ## Ship phased work as commits on one PR
 
