@@ -2517,10 +2517,13 @@ test('#151 with github off, doctor says the floor is off because the module is, 
   assert.equal(arm.stdout, '', 'nothing at session start for a module that is off');
 });
 
-// What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh):
-// branchPolicy and protectedBranches from HEAD:house.json, never `modules`, and
-// "armed" from the floor files on disk. tests/hooks/run.sh pins the guard side.
-const FALSE_GUARD_CLAIMS = [/takes effect for the branch guard when/, /until then the guard/, /guard sees it once it is merged/];
+// What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh,
+// ADR 0017): modules.github.enabled from HEAD:house.json, so with the module off
+// it quiets its commit, push and history refusals and its arming advice, and
+// keeps its disable list. tests/hooks/run.sh pins the guard side. The last
+// three are the sentence the plan printed before #159, true only then.
+const FALSE_GUARD_CLAIMS = [/takes effect for the branch guard when/, /until then the guard/, /guard sees it once it is merged/,
+  /does not read module state/, /keeps enforcing it by its text rules/, /floor advice/];
 
 test('#151 disable github: the plan states what the guard follows and who unsets core.hooksPath; a commit still works', () => {
   const { cliPath } = buildFloorFixture();
@@ -2529,9 +2532,9 @@ test('#151 disable github: the plan states what the guard follows and who unsets
   commitAll(repo, 'adopt with the floor');
   const plan = runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture']);
   for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(plan.out, re);
-  assert.match(plan.out, /the PreToolUse branch guard does not read module state/);
-  assert.match(plan.out, /it follows `branchPolicy` \(and `protectedBranches`\) in house\.json at HEAD/);
-  assert.match(plan.out, /While that says "pr" it keeps enforcing it by its text rules, which are stricter with no hook floor, and its refusals will give floor advice \(to arm the floor, or to restore it with a render\) that does not apply while the github module is off/);
+  assert.match(plan.out, /The PreToolUse branch guard reads the github module's switch from house\.json at HEAD, so once this change is committed, on whichever branch is checked out, it stops refusing commits, pushes and history commands on a protected branch and stops advising to arm the floor\./);
+  assert.match(plan.out, /It still refuses a core\.hooksPath change, a write or removal under \.githooks\/, and --no-verify\./);
+  assert.match(plan.out, /the remote's branch protection is what still stops a push to a protected branch/);
   assert.doesNotMatch(plan.out, /will tell you to arm the floor/, 'the advice varies with core.hooksPath, so it is not quoted');
   assert.match(plan.out, new RegExp(`you run \`git config --unset core\\.hooksPath\` yourself, from ${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   assert.match(plan.out, /an agent cannot: the branch guard refuses it/);

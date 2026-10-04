@@ -393,27 +393,41 @@ git -C "$r" checkout -q -b feat/x
 expect_allow "unarmed: push origin feat/x from feat/x" \
   "$(mk_payload "git push origin feat/x" "$r")"
 
-# --- #151: the guard never reads `modules`. With the github module off at
-#     HEAD and no floor on disk, branchPolicy "pr" still decides, by the
-#     unarmed rules, and the refusal still says to arm the floor. This is the
-#     sentence `house disable github` prints about the guard. ---
+# --- #151 and #159 (ADR 0017): the two states `house disable github` leaves,
+#     with the module off at HEAD. Each clause of the guard sentence the plan
+#     prints is pinned here: commits, pushes and history commands on the
+#     protected branch go through with no arming advice, while a hooksPath
+#     change, a write or removal under .githooks/, and --no-verify are still
+#     refused. ---
+_unset_hp="git"" config --unset core.hooks""Path"; _noverify="--no-""verify"
+_disable_states() { # <repo> <label>
+  expect_allow "$2: push origin master is allowed, with no arming advice" \
+    "$(mk_payload "git push origin master" "$1")"
+  expect_allow "$2: a commit on master is allowed" \
+    "$(mk_payload "git commit -m x" "$1")"
+  expect_allow "$2: a merge on master is allowed" \
+    "$(mk_payload "git merge topic" "$1")"
+  expect_deny_without "$2: unsetting core.hooksPath is still refused, with no arming advice" \
+    "$(mk_payload "$_unset_hp" "$1")" "arm it"
+  expect_deny_without "$2: removing .githooks is still refused, with no arming advice" \
+    "$(mk_payload "rm -rf .githooks" "$1")" "arm it"
+  expect_deny_without "$2: an Edit under .githooks is still refused, with no arming advice" \
+    "$(mk_file_payload Edit "$1/.githooks/pre-commit.d/20-secrets" "$1")" "arm it"
+  expect_deny_without "$2: $_noverify is still refused, with no arming advice" \
+    "$(mk_payload "git commit $_noverify -m x" "$1")" "arm it"
+}
 r="$TMP_ROOT/case151off"; new_repo "$r"
 adopt "$r" '{"branchPolicy":"pr","modules":{"github":{"enabled":false,"config":{}}}}'
-expect_deny "github module off at HEAD, no floor: push origin master is still denied" \
-  "$(mk_payload "git push origin master" "$r")" "feature branch"
-expect_deny "github module off at HEAD, no floor: the deny still says to arm the floor" \
-  "$(mk_payload "git push origin master" "$r")" "floor is not armed in this checkout"
+_disable_states "$r" "github module off at HEAD, no floor"
 # The other state disable leaves: core.hooksPath still set (the user has not
-# unset it yet) and the floor files gone. Still denied; the advice differs
-# (restore, not arm), which is why the plan does not quote it.
+# unset it yet) and the floor files gone, the secrets scaffold left behind.
 r="$TMP_ROOT/case151set"; new_repo "$r"
 adopt "$r" '{"branchPolicy":"pr","modules":{"github":{"enabled":false,"config":{}}}}'
 mkdir -p "$r/.githooks/pre-commit.d"
 printf '#!/bin/sh\nexit 0\n' >"$r/.githooks/pre-commit.d/20-secrets"
 git -C "$r" add .githooks && git -C "$r" commit -q -m "scaffold left behind"
 arm_hookspath "$r"
-expect_deny "github module off at HEAD, core.hooksPath still set, floor files gone: push origin master is still denied" \
-  "$(mk_payload "git push origin master" "$r")" "feature branch"
+_disable_states "$r" "github module off at HEAD, core.hooksPath still set, floor files gone"
 
 # --- #152: house uninstall. Its command text, with a realistic plugin path, is
 #     not a git verb and not a floor mutation, so the guard allows it on a
@@ -765,6 +779,163 @@ expect_allow "Write on house.json is allowed" \
   "$(mk_file_payload Write "$p/house.json" "$p")"
 expect_allow "Edit on house.json is allowed" \
   "$(mk_file_payload Edit "house.json" "$p")"
+
+# ── the github module off: C and the arming advice stand down (#159) ─────
+# ADR 0017. Turning the module off removes the floor, so the guard used to
+# switch to its unarmed rules and tell the user to arm what they had removed.
+# Only the JSON literal false, on HEAD, stands C down; A, B, D and E stay.
+_gh_off='{"branchPolicy":"pr","modules":{"github":{"enabled":false}}}'
+_gh_on='{"branchPolicy":"pr","modules":{"github":{"enabled":true}}}'
+_ps="git"" push"; _gu="git"" config --unset core.hooks""Path"
+_nv="--no-""verify"; _gcm="git"" commit"; _co="git"" check""out -b"
+g="$TMP_ROOT/gh-off"; new_repo "$g"; adopt "$g" "$_gh_off"
+expect_allow "github off at HEAD, no floor: a commit on the protected branch" \
+  "$(mk_payload "$_gcm -m x" "$g")"
+expect_allow "github off at HEAD, no floor: a push to the protected branch" \
+  "$(mk_payload "$_ps origin master" "$g")"
+expect_allow "github off at HEAD, no floor: a merge on the protected branch" \
+  "$(mk_payload "git merge topic" "$g")"
+expect_deny_without "github off at HEAD: unsetting the hooks path is still refused, with no arming advice" \
+  "$(mk_payload "$_gu" "$g")" "arm it"
+expect_deny_without "github off at HEAD: an rm of .githooks is still refused, with no arming advice" \
+  "$(mk_payload "rm -rf .githooks" "$g")" "arm it"
+expect_deny_without "github off at HEAD: an Edit under .githooks is still refused, with no arming advice" \
+  "$(mk_file_payload Edit "$g/.githooks/pre-push" "$g")" "arm it"
+expect_deny_without "github off at HEAD: $_nv is still refused, with no arming advice" \
+  "$(mk_payload "$_gcm $_nv -m x" "$g")" "arm it"
+expect_deny "github off at HEAD: section E still refuses a branch in the main checkout" \
+  "$(mk_payload "$_co topic" "$g")" "Branch in a worktree"
+git -C "$g" checkout -q -b feat
+expect_allow "github off at HEAD on a feature branch: a push onto the protected branch" \
+  "$(mk_payload "$_ps origin HEAD:master" "$g")"
+expect_deny_without "github off at HEAD on a feature branch: unsetting the hooks path is still refused" \
+  "$(mk_payload "$_gu" "$g")" "arm it"
+# The two-call sequence: commit the module off on a feature branch of an
+# ARMED repo, then unset the hooks path and push onto master. The first call
+# is refused, so the floor stays armed and its pre-push decides the second.
+g2="$TMP_ROOT/gh-off-armed"; new_repo "$g2"; adopt "$g2" "$_gh_on"; install_floor "$g2"
+git -C "$g2" checkout -q -b feat; adopt "$g2" "$_gh_off"; arm_hookspath "$g2"
+expect_deny "github off on a feature-branch commit, floor armed: unsetting the hooks path is refused" \
+  "$(mk_payload "$_gu" "$g2")" "disables or moves the git-hook floor"
+# Default on and fail closed: anything but the literal false is on.
+for _j in '{"branchPolicy":"pr","modules":{"github":{"enabled":"false"}}}' \
+          '{"branchPolicy":"pr","modules":{"github":{"enabled":null}}}' \
+          '{"branchPolicy":"pr","modules":{"github":{"enabled":0}}}' \
+          '{"branchPolicy":"pr","modules":{"github":{}}}' \
+          '{"branchPolicy":"pr","modules":{}}' \
+          '{"branchPolicy":"pr","modules":"github"}' \
+          "$_gh_on"; do
+  _k=$((${_k:-0} + 1)); g3="$TMP_ROOT/gh-on-$_k"; new_repo "$g3"; adopt "$g3" "$_j"
+  expect_deny "house.json $_j at HEAD: a commit on the protected branch is refused" \
+    "$(mk_payload "$_gcm -m x" "$g3")" "feature branch"
+  expect_deny "house.json $_j at HEAD: a push to the protected branch is refused" \
+    "$(mk_payload "$_ps origin master" "$g3")" "protected branch"
+done
+g4="$TMP_ROOT/gh-malformed"; new_repo "$g4"; adopt "$g4" '{"branchPolicy":"pr","modules":{"github":{"enabled":false}}'
+expect_deny "a malformed house.json at HEAD that would turn github off: refused" \
+  "$(mk_payload "$_gcm -m x" "$g4")" "cannot be read as the branch policy"
+# Off only in the working tree: HEAD decides, so the module is still on,
+# including for a commit that would carry that very edit onto master.
+g5="$TMP_ROOT/gh-off-worktree"; new_repo "$g5"; adopt "$g5" "$_gh_on"
+printf '%s' "$_gh_off" >"$g5/house.json"
+git -C "$g5" add house.json
+expect_deny "github off only in the working tree: a commit carrying it onto master is refused" \
+  "$(mk_payload "$_gcm -m x" "$g5")" "feature branch"
+expect_deny "github off only in the working tree: a push to the protected branch is refused" \
+  "$(mk_payload "$_ps origin master" "$g5")" "protected branch"
+expect_deny "github on at HEAD: section E refuses a branch in the main checkout" \
+  "$(mk_payload "$_co topic" "$g5")" "Branch in a worktree"
+# An alias body is text the floor never sees, so the disable list and the
+# plumbing scan read it with the module off too, in every floor state, and in
+# a `direct` repo. Only the commit, push and history refusals stand down: an
+# alias whose body is a plain push is allowed like a typed one.
+_alias_cases() { # <repo> <label>
+  git -C "$1" config alias.hp "-c core.hooks""Path=/dev/null push"
+  git -C "$1" config alias.pd "push --delete origin master"
+  git -C "$1" config alias.ur "update-ref refs/heads/master HEAD"
+  git -C "$1" config alias.nuke '!rm -rf .githooks && git push'
+  git -C "$1" config alias.pn "push $_nv"
+  git -C "$1" config alias.pp "push"
+  expect_deny "$2: an alias body carrying core.hooksPath is refused" \
+    "$(mk_payload "git hp origin master" "$1")" "disables or moves"
+  expect_deny "$2: an alias body deleting a protected branch is refused" \
+    "$(mk_payload "git pd" "$1")" "disables or moves"
+  expect_deny "$2: an alias body writing a protected ref is refused" \
+    "$(mk_payload "git ur" "$1")" "disables or moves"
+  expect_deny "$2: a shell alias that removes the floor is refused" \
+    "$(mk_payload "git nuke" "$1")" "shell alias"
+  expect_deny "$2: an alias body skipping the hooks is refused" \
+    "$(mk_payload "git pn origin feat:master" "$1")" "disables or moves"
+}
+_alias_cases "$g" "github off at HEAD, no floor"
+expect_allow "github off at HEAD, no floor: an alias whose body is a plain push" \
+  "$(mk_payload "git pp origin feat:master" "$g")"
+_alias_cases "$g2" "github off on a feature-branch commit, floor armed"
+expect_allow "github off on a feature-branch commit, floor armed: an alias whose body is a plain push" \
+  "$(mk_payload "git pp origin feat:master" "$g2")"
+g6="$TMP_ROOT/direct-armed"; new_repo "$g6"; adopt "$g6"; install_floor "$g6"
+git -C "$g6" checkout -q -b feat; adopt "$g6" '{"branchPolicy":"direct"}'; arm_hookspath "$g6"
+_alias_cases "$g6" "direct on a feature-branch commit, floor armed"
+# An alias the command defines inline (`git -c alias.z=<body> z`) is NOT read
+# as an alias body (ADR 0017's residue): a text scan for it misread commit
+# messages, echoes, heredocs and grep patterns, missed quoted and escaped
+# spellings, and ran past the hook's timeout. What the command text itself
+# shows is still read: an inline body carrying `--no-verify` or a hooks-path
+# change is refused by the disable list. The ordinary commands below that the
+# scan once refused are pinned as allowed, so a future scan cannot bring the
+# false denies back.
+g8="$TMP_ROOT/gh-off-broken"; new_repo "$g8"; adopt "$g8" "$_gh_on"; install_floor "$g8"
+git -C "$g8" checkout -q -b feat; adopt "$g8" "$_gh_off"; arm_hookspath "$g8"
+echo '# edited' >>"$g8/.githooks/pre-push"
+g9="$TMP_ROOT/defer-inline"; new_repo "$g9"; mkdir -p "$g9/.claude"
+echo '{"branchPolicy":"pr"}' >"$g9/house.json"
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}]}}' >"$g9/.claude/settings.json"
+git -C "$g9" add house.json .claude/settings.json && git -C "$g9" commit -q -m house
+_ur="update-ref refs/heads/master HEAD"
+_inline_cases() { # <repo> <label>
+  expect_deny "$2: an inline alias body skipping the hooks is refused by the disable list" \
+    "$(mk_payload "git -c alias.x='push $_nv' x origin feat:master" "$1")" "disables or moves"
+  expect_deny "$2: an inline alias body changing the hooks path is refused by the disable list" \
+    "$(mk_payload "git -c alias.y='-c core.hooks""Path=/dev/null push' y origin feat:master" "$1")" "disables or moves"
+  expect_allow "$2: an inline alias with a harmless body is allowed" \
+    "$(mk_payload "git -c alias.s=status s" "$1")"
+  expect_allow "$2: a commit message quoting an inline alias is allowed" \
+    "$(mk_payload "$_gcm -m \"Guard: -c alias.z='$_ur' is now checked\"" "$1")"
+  expect_allow "$2: a grep counting alias lines in the git config is allowed" \
+    "$(mk_payload "grep -c 'alias.*=!' ~/.gitconfig" "$1")"
+  expect_allow "$2: a grep of the git config for an alias-shaped pattern is allowed" \
+    "$(mk_payload "grep -c 'alias.z=update-ref refs/heads/master' .git/config" "$1")"
+  expect_allow "$2: an echo of an inline alias into a file is allowed" \
+    "$(mk_payload "echo \"git -c alias.z='$_ur' z\" >> notes.md" "$1")"
+  expect_allow "$2: a heredoc holding an inline alias is allowed" \
+    "$(mk_payload "cat <<'EOT' > notes.md"$'\n'"git -c alias.z='$_ur' z"$'\n'"EOT" "$1")"
+}
+_inline_cases "$g" "github off at HEAD, no floor"
+_inline_cases "$g2" "github off on a feature-branch commit, floor armed"
+_inline_cases "$g8" "github off on a feature-branch commit, floor broken"
+_inline_cases "$g6" "direct on a feature-branch commit, floor armed"
+_inline_cases "$g9" "a repo deferring to its own guard"
+_alias_cases "$g9" "a repo deferring to its own guard"
+# The switch is the jq pass's FIRST field, a fixed token, but nothing pins
+# that order: the control-character refusal below already keeps every value
+# on its own line, so no string can reach another field whatever the order.
+# The switch cannot be set from a string: no value in house.json can shift
+# the jq pass's fields, and a second JSON document is not read.
+g7="$TMP_ROOT/gh-sep"; new_repo "$g7"
+echo staged >"$g7/staged.txt"
+for _j in '{"branchPolicy":"pr","carveOuts":["\u001e","off"]}' \
+          '{"branchPolicy":"pr","protectedBranches":["master","\u001e","off"]}' \
+          '{"branchPolicy":"pr","carveOuts":["a\n\u001e\noff"]}' \
+          '{"branchPolicy":"pr"}{"modules":{"github":{"enabled":false}}}' \
+          '{"branchPolicy":"pr","protectedBranches":["master","\u001e","*"]}' \
+          '{"branchPolicy":"pr\ndirect"}'; do
+  printf '%s' "$_j" >"$g7/house.json"
+  git -C "$g7" add house.json && git -C "$g7" commit -q -m house
+  git -C "$g7" add staged.txt
+  expect_deny "house.json $_j at HEAD: a commit on the protected branch is refused" \
+    "$(mk_payload "$_gcm -m x" "$g7")"
+  git -C "$g7" reset -q staged.txt
+done
 
 # ── the deference matrix: only a PreToolUse entry that can SEE the call ───
 repo_d="$TMP_ROOT/defer"; new_repo "$repo_d"; adopt "$repo_d"

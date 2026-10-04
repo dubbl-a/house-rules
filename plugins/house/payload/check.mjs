@@ -143,9 +143,9 @@
 // to a glob that matches nothing in THIS repo loads nowhere, which is a
 // defect of this repo's house.json and is fixed by re-rendering.
 
-import { readFileSync, existsSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { join, resolve, relative, sep, dirname } from 'node:path';
+import { join, resolve, relative, sep, dirname, basename, isAbsolute, normalize } from 'node:path';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 
@@ -428,6 +428,58 @@ function isInsideRoot(root, rel) {
   if (typeof rel !== 'string' || rel === '') return false;
   const r = relative(root, resolve(root, rel));
   return r !== '..' && !r.startsWith(`..${sep}`) && !r.startsWith('../') && !/^([A-Za-z]:)?[\\/]/.test(r);
+}
+
+// Whether resolved path `real` lies strictly under resolved root `realRoot`,
+// compared exactly and by path segment: the root itself is not inside, and
+// neither is a sibling sharing its prefix (`repo-x`) or differing only by case
+// (on a case-sensitive filesystem `Proj` and `proj` are different directories,
+// so folding here would be a false pass). Pure, so a test runs it with no
+// filesystem.
+function resolvedIsInside(realRoot, real) {
+  const root = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`;
+  return real.startsWith(root) && real.length > root.length;
+}
+
+// Why a lock path must not be read, or null when it is safe. Text alone
+// (isInsideRoot) misses a committed symlinked directory or file that points
+// out of the repo, so this resolves the path: the whole path through realpath
+// when it exists (a managed file is READ, so a symlink leaf is followed), else
+// the deepest existing parent with the missing rest appended. A `.git`
+// segment is matched case-insensitively (on a case-insensitive filesystem
+// `.GIT/config` IS .git/config; on a case-sensitive one the fold only flags a
+// `.GIT` nobody has); the inside-the-repo test is NOT folded. The path is
+// normalised first, so `./`, `evals/.` and `a//b` mean what they say; the repo
+// root itself is inside for a detect path (`rootOk`) and not a file for a lock
+// entry. `real` is realpathSync.native, a parameter only so a test can hand it
+// a filesystem this machine cannot mount.
+function unsafeLockPathReason(repoRoot, rel, { rootOk = false, real = realpathSync.native } = {}) {
+  if (typeof rel !== 'string' || rel === '') return 'is not a non-empty string';
+  if (isAbsolute(rel)) return 'is an absolute path';
+  let norm = normalize(rel);
+  while (norm.length > 1 && /[\\/]$/.test(norm)) norm = norm.slice(0, -1);
+  if (norm === '.') return rootOk ? null : 'is the repo root, not a file';
+  if (!isInsideRoot(repoRoot, norm)) return 'escapes the repo root';
+  const isGit = (p) => p.split(/[\\/]/).some((seg) => seg.toLowerCase() === '.git');
+  if (isGit(norm)) return 'is under .git (repository metadata)';
+  let realRoot;
+  try { realRoot = real(repoRoot); } catch { return 'cannot be resolved against the repo root'; }
+  let resolved;
+  try { resolved = real(join(repoRoot, norm)); } catch {
+    let parent = dirname(join(repoRoot, norm));
+    const tail = [basename(norm)];
+    for (;;) {
+      try { parent = real(parent); break; } catch { /* not there yet: step up */ }
+      const up = dirname(parent);
+      if (up === parent) return 'cannot be resolved';
+      tail.unshift(basename(parent));
+      parent = up;
+    }
+    resolved = join(parent, ...tail);
+  }
+  if (resolved !== realRoot && !resolvedIsInside(realRoot, resolved)) return `resolves outside the repo root through a symlink, to ${resolved}`;
+  if (isGit(relative(realRoot, resolved))) return 'resolves under .git through a symlink (repository metadata)';
+  return null;
 }
 
 // ── house.json / lock.json / installed_plugins.json ────────────────────
@@ -898,7 +950,7 @@ function checkDrift(ctx) {
     for (const f of allMd) {
       if (scannedSet.has(f)) continue;
       const head = headWindow(safeRead(join(ctx.repoRoot, f)).split('\n'));
-      const optedOut = head.some((l) => /<!--\s*docs-drift-ignore-file(?::[^>]*?)?\s*-->/.test(l));
+      const optedOut = head.some((l) => /<!--\s*docs-drift-ignore-file(?::(?:(?!-->)[\s\S])*|\s*)-->/.test(l));
       // ADR 0009: an exclusion whose config entry carries a `why` opted out in
       // house.json, which is the right home when the file is a living doc the
       // checker cannot scan rather than a point-in-time record (the marker's
@@ -1083,7 +1135,7 @@ function checkDrift(ctx) {
     let fileIgnored = false;
     let fileIgnoreReason = null;
     for (const l of headWindow(lines)) {
-      const m = l.match(/<!--\s*docs-drift-ignore-file(?::([^>]*?))?\s*-->/);
+      const m = l.match(/<!--\s*docs-drift-ignore-file(?::((?:(?!-->)[\s\S])*)|\s*)-->/);
       if (m) { fileIgnored = true; fileIgnoreReason = m[1] ?? null; break; }
     }
     if (fileIgnored) {
@@ -1144,7 +1196,7 @@ function checkDrift(ctx) {
       // one lets one stray or orphaned marker cover a claim written later
       // and somewhere else, which is the opposite of what a deliberate,
       // narrow suppression is for.
-      const ignoreMatch = line.match(/<!--\s*docs-drift-ignore(?!-file)\b(?::[^>]*?)?\s*-->/);
+      const ignoreMatch = line.match(/<!--\s*docs-drift-ignore(?!-file)\b(?::(?:(?!-->)[\s\S])*|\s*)-->/);
       if (ignoreMatch) { pendingIgnore = true; return; }
       if (pendingIgnore) { pendingIgnore = false; return; }
 
@@ -1203,6 +1255,17 @@ function checkTamper(ctx) {
     findings.push(mk('tamper', '.house/lock.json', null, 'lock', 'invalid JSON'));
     return { findings, warnings };
   }
+  // A bare array is read as the entry list (the lock's older shape, still
+  // accepted); an object carries it under `files`. Anything else cannot hold
+  // entries, and an unreadable list must not read as "nothing is managed".
+  if (!Array.isArray(lock) && !isPlainObject(lock)) {
+    findings.push(mk('tamper', '.house/lock.json', null, 'lock', `the lock is ${lock === null ? 'null' : typeof lock}, not an object with a \`files\` list; managed-file integrity checking is off. Run \`house render --apply\` to rewrite it.`));
+    return { findings, warnings };
+  }
+  if (!Array.isArray(lock) && lock.files !== undefined && !Array.isArray(lock.files)) {
+    findings.push(mk('tamper', '.house/lock.json', null, 'lock', `the lock's \`files\` is ${lock.files === null ? 'null' : typeof lock.files}, not a list; managed-file integrity checking is off. Run \`house render --apply\` to rewrite it.`));
+    return { findings, warnings };
+  }
   const entries = Array.isArray(lock) ? lock : Array.isArray(lock.files) ? lock.files : [];
 
   const record = resolveHousePluginRecord(readInstalledPlugins());
@@ -1211,18 +1274,37 @@ function checkTamper(ctx) {
   const installedNewer = typeof pin === 'string' && SEMVER_RE.test(pin)
     && installedVersion && SEMVER_RE.test(installedVersion) && semverGt(installedVersion, pin);
 
-  for (const entry of entries) {
-    if (!isPlainObject(entry) || !entry.path) continue;
+  for (const [idx, entry] of entries.entries()) {
+    if (!isPlainObject(entry) || !entry.path) {
+      // No path to name, so the entry is identified by its place in the list
+      // and whatever else it carries; a blanked path must not hide its file.
+      const what = isPlainObject(entry)
+        ? `has no usable path (path is ${entry.path === undefined ? 'missing' : JSON.stringify(entry.path)}${typeof entry.module === 'string' ? `, module \`${entry.module}\`` : ''})`
+        : `is ${entry === null ? 'null' : Array.isArray(entry) ? 'an array' : typeof entry}, not an object`;
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry ${idx} ${what}; refusing to skip it silently`));
+      continue;
+    }
     const { path: relPath, module, source, bodySha256 } = entry;
+    if (typeof relPath !== 'string') {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path ${JSON.stringify(relPath)} is not a string (${Array.isArray(relPath) ? 'an array' : typeof relPath}); refusing to read it`));
+      continue;
+    }
     // F9: a lock entry whose path escapes the repo root is a manifest-level
     // defect, not a file to read through as if it were managed.
-    if (!isInsideRoot(ctx.repoRoot, relPath)) {
-      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path \`${relPath}\` escapes the repo root; refusing to read it`));
+    const unsafe = unsafeLockPathReason(ctx.repoRoot, relPath);
+    if (unsafe) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path \`${relPath}\` ${unsafe}; refusing to read it`));
       continue;
     }
     const abs = join(ctx.repoRoot, relPath);
     if (!existsSync(abs)) {
       findings.push(mk('tamper', relPath, null, 'missing', `managed file from module \`${module}\` is missing`));
+      continue;
+    }
+    let isDir = false;
+    try { isDir = statSync(abs).isDirectory(); } catch { /* unreadable: the read below reports it */ }
+    if (isDir) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path \`${relPath}\` is a directory, not a file; refusing to read it`));
       continue;
     }
     const localRaw = readFileSync(abs, 'utf8');
@@ -1882,7 +1964,11 @@ function readLockDetectPaths(repoRoot, refused = []) {
   const out = {};
   for (const [name, paths] of Object.entries(j.detectPaths)) {
     const list = Array.isArray(paths) ? paths.filter((x) => typeof x === 'string' && x) : [];
-    const kept = list.filter((x) => isInsideRoot(repoRoot, x) || (refused.push(`${name}: ${x}`), false));
+    const kept = list.filter((x) => {
+      const reason = unsafeLockPathReason(repoRoot, x, { rootOk: true });
+      if (reason) refused.push({ label: `${name}: ${x}`, reason });
+      return !reason;
+    });
     if (kept.length) out[name] = kept;
   }
   return out;
@@ -2141,7 +2227,7 @@ function checkManifest(ctx) {
   // lock) match this repo.
   const refusedDetect = [];
   const detectPaths = resolveModuleDetectPaths(ctx, refusedDetect);
-  for (const r of refusedDetect) findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock detectPaths entry \`${r}\` escapes the repo root; refusing to probe it`));
+  for (const r of refusedDetect) findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock detectPaths entry \`${r.label}\` ${r.reason}; refusing to probe it`));
   if (detectPaths && isPlainObject(d.modules)) {
     for (const [name, paths] of Object.entries(detectPaths)) {
       if (Object.prototype.hasOwnProperty.call(d.modules, name)) continue;
