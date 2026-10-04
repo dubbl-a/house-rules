@@ -51,6 +51,10 @@ every fact in it still holds. This skill finds all four and fixes them.
    or UNIQUE (definitions in [references/dispositions.md](references/dispositions.md)). Grep the
    rule files, `plugins/house/orchestration/ORCHESTRATION.md`, the agents, the hooks, the skills,
    and the evals for any text that claims the old behavior.
+   Beside each release's triage, review `RISKY_AGENT_SETTINGS` in `plugins/house/payload/check.mjs`
+   against the release notes: a new, renamed, or removed setting that redirects the API endpoint,
+   approves servers wholesale, or bypasses permissions belongs on that list. Report the proposed
+   change in the PR body; never edit the checker inside the triage run.
 7. **Verify.** A DUPLICATE or CONFLICT counts only after two skeptics fail to refute it. One reads
    for doc accuracy and one for enforcement reality, and each defaults to refuted when unsure. The
    session then reads the cited line and the rule text itself. Anything you can settle by running
