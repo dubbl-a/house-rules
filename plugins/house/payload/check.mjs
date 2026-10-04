@@ -562,6 +562,8 @@ function renderLooksComplete(repoRoot, house) {
 function loadHouseJson(repoRoot) {
   const p = join(repoRoot, 'house.json');
   if (!existsSync(p)) return { present: false, data: null, path: p };
+  const special = specialFileKind(p);
+  if (special) return { present: true, data: null, path: p, special };
   let raw;
   try { raw = readFileSync(p, 'utf8'); } catch { return { present: true, data: null, path: p }; }
   try { return { present: true, data: JSON.parse(raw), path: p, raw }; }
@@ -3065,7 +3067,10 @@ function checkTargets(ctx, d) {
       findings.push(mk('guard', 'AGENTS.md', null, 'target', `targets names ${targets.filter((t) => t !== 'claude-code').join(' and ')}, which read the house rules only through the house-managed block in AGENTS.md, and there is none. Run \`house render --apply\` to write it; your own AGENTS.md text is kept.`));
     }
   }
-  if (targets.includes('gemini') && !geminiReadsAgents(ctx.repoRoot)) {
+  const geminiSpecial = targets.includes('gemini') ? specialFileKind(join(ctx.repoRoot, 'GEMINI.md')) : null;
+  if (geminiSpecial) {
+    findings.push(mk('guard', 'GEMINI.md', null, 'target', `GEMINI.md is ${geminiSpecial}, not a regular file; refusing to open it, so whether it points at AGENTS.md is unknown. Replace it with a file.`));
+  } else if (targets.includes('gemini') && !geminiReadsAgents(ctx.repoRoot)) {
     findings.push(mk('guard', 'GEMINI.md', null, 'target', 'targets names gemini, but Gemini CLI reads GEMINI.md, not AGENTS.md, and nothing here points it at AGENTS.md. Add an `@AGENTS.md` import line to GEMINI.md (`house render --apply` writes one when GEMINI.md is absent), or name "AGENTS.md" in `.gemini/settings.json` context.fileName.'));
   }
   return { findings, info };
@@ -3207,7 +3212,11 @@ function main() {
 
   for (const fam of families) {
     if (NEEDS_HOUSE_JSON.has(fam) && houseUnusable) {
-      results[fam] = { findings: [], warnings: [], skipped: true };
+      const findings = fam === 'manifest' && house.special
+        ? [mk('manifest', 'house.json', null, 'manifest', `house.json is ${house.special}, not a regular file; refusing to open it. Replace it with a file.`)]
+        : [];
+      results[fam] = findings.length ? { findings, warnings: [] } : { findings, warnings: [], skipped: true };
+      allFindings.push(...findings);
       continue;
     }
     let r;
