@@ -47,13 +47,14 @@ marketplace to a release tag (`claude plugin marketplace add dubbl-a/house-rules
 read the hooks diff between tags (`git diff vA..vB -- plugins/house/hooks`) before moving the pin.
 Whether auto-update follows or respects a pin is also not documented.
 
-Tags `v0.16.0` and `v0.17.0` are annotated and unsigned, and `v0.15.2` and older are lightweight.
-From the release after `v0.17.0`, a release is immutable on GitHub (its tag and assets cannot be
-changed once published) and its tag is signed with Sigstore's gitsign under the maintainer's GitHub
-identity (`CONTRIBUTING.md`, "Cutting a release"). GitHub shows such a tag as unverified because it
-does not check Sigstore signatures. Verify one in a clone with
-`gitsign verify-tag --certificate-identity-regexp '\+dubbl-a@users\.noreply\.github\.com$' --certificate-oidc-issuer https://github.com/login/oauth vX.Y.Z`,
-or check the release itself with `gh release verify vX.Y.Z`.
+Tags `v0.15.2` and older are lightweight, and `v0.16.0` and `v0.17.0` are annotated and unsigned.
+`v0.18.0` is immutable on GitHub (its tag and assets cannot be changed once published) and its tag
+is signed with Sigstore's gitsign under the maintainer's GitHub identity. GitHub shows that tag as
+unverified because it does not check Sigstore signatures. Verify it in a clone with
+`gitsign verify-tag --certificate-identity-regexp '\+dubbl-a@users\.noreply\.github\.com$' --certificate-oidc-issuer https://github.com/login/oauth v0.18.0`.
+Later tags are annotated and unsigned, since signing needs a browser sign-in at the maintainer's
+machine for every release. Releases stay immutable, and a release is verified with
+`gh release verify vX.Y.Z`, which checks its release attestation (`CONTRIBUTING.md`, "Cutting a release").
 
 ### What local enforcement is not
 
