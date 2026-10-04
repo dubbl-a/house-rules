@@ -29,11 +29,22 @@ test('markers: a file-level opt-out with an empty reason still opts out and stil
   assert.ok((r.json.warnings || []).some((w) => w.kind === 'ignore-file' && /no reason/.test(w.message)));
 });
 
-test('markers: two markers on one line, the first reason holding an angle bracket, both read', () => {
-  const dir = sandbox({ 'README.md': '<!-- docs-drift-ignore: a > b --> <!-- docs-drift-ignore: second -->\nRun `check:unmapped` before committing.\n', ...PKG });
+// The second marker is not an ignore marker, so only the first can suppress the claim.
+test('markers: two markers on one line, the first reason holding an angle bracket, the first one suppresses', () => {
+  const dir = sandbox({ 'README.md': '<!-- docs-drift-ignore: a > b --> <!-- note: second -->\nRun `check:unmapped` before committing.\n', ...PKG });
   const r = run(dir, ['--only=drift']);
   assert.equal(r.code, 0, r.out);
 });
+
+// A reason may hold any character, including the line separators the per-line split leaves in place.
+for (const [name, ch] of [['U+2028', ' '], ['U+2029', ' '], ['a lone CR', '\r']]) {
+  test(`markers: a reason containing ${name} still opts the file out`, () => {
+    const dir = sandbox({ 'README.md': `<!-- docs-drift-ignore-file: a${ch}b -->\n\nRun \`check:unmapped\` before committing.\n`, ...PKG });
+    const r = run(dir, ['--only=drift', '--json']);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(!(r.json.warnings || []).some((w) => w.kind === 'ignore-file'));
+  });
+}
 
 test('markers: a marker with no closing --> opts nothing out and does not swallow the rest of the file', () => {
   const dir = sandbox({ 'README.md': 'Run `check:unmapped` before committing.\n<!-- docs-drift-ignore-file: never closed\n', ...PKG });

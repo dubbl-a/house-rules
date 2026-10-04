@@ -33,7 +33,7 @@ test('tamper-resolve: an entry under .git/ is a finding', () => {
   const { code, out } = tamper(repoWith('.git/hooks/pre-commit'));
   assert.equal(code, 1, out);
   assert.match(out, /\.git\/hooks\/pre-commit/);
-  assert.match(out, /inside \.git/);
+  assert.match(out, /under \.git/);
 });
 
 // `.GIT` is refused on every filesystem: the segment test folds case. On this
@@ -44,7 +44,7 @@ test('tamper-resolve: an entry under .GIT/ is a finding on a case-insensitive an
   const { code, out } = tamper(repoWith('.GIT/hooks/pre-commit'));
   assert.equal(code, 1, out);
   assert.match(out, /\.GIT\/hooks\/pre-commit/);
-  assert.match(out, /inside \.git/);
+  assert.match(out, /under \.git/);
 });
 
 test('tamper-resolve: an absolute lock path is a finding that names it, not a silent path inside the repo', () => {
@@ -86,4 +86,83 @@ test('tamper-resolve: the root comparison is exact and by segment (case-differen
   assert.equal(inside('/work/Proj', '/work/Proj-x/a'), false, 'a prefix sibling is outside');
   assert.equal(inside('/work/Proj', '/work/Proj'), false, 'the root itself is not inside');
   assert.equal(inside('/work/Proj/', '/work/Proj/a'), true);
+});
+
+// Review round: a malformed lock never crashes the family.
+const MALFORMED = [
+  ['number path', { files: [{ path: 123 }] }, 1, /123.*not a string/],
+  ['array path', { files: [{ path: ['a'] }] }, 1, /not a string \(an array\)/],
+  ['boolean path', { files: [{ path: true }] }, 1, /true.*not a string/],
+  ['object path', { files: [{ path: { a: 1 } }] }, 1, /not a string/],
+  ['null path', { files: [{ path: null }] }, 0],
+  ['empty path', { files: [{ path: '' }] }, 0],
+  ['missing path', { files: [{ module: 'x' }] }, 0],
+  ['null entry', { files: [null] }, 0],
+  ['files not an array', { files: 'nope' }, 0],
+  ['lock an array', [], 0],
+  ['dot path', { files: [{ path: '.' }] }, 1, /repo root, not a file/],
+];
+for (const [name, lock, want, re] of MALFORMED) {
+  test(`tamper-resolve: a lock with ${name} gives exit ${want} and no stack trace`, () => {
+    const dir = sandbox({ 'house.json': houseJson(), '.house/lock.json': JSON.stringify(lock) });
+    const { code, out } = tamper(dir);
+    assert.doesNotMatch(out, /TypeError|\n\s+at /, out);
+    assert.match(out, /Summary:/, out);
+    assert.equal(code, want, out);
+    if (re) assert.match(out, re);
+  });
+}
+test('tamper-resolve: a bad entry does not stop the next entry being checked', () => {
+  const lock = { files: [{ path: 123 }, { path: '../x' }] };
+  const { out } = tamper(sandbox({ 'house.json': houseJson(), '.house/lock.json': JSON.stringify(lock) }));
+  assert.match(out, /not a string/);
+  assert.match(out, /escapes the repo root/);
+});
+
+// A leaf that is itself a symlink is read through, so it is judged resolved.
+test('tamper-resolve: a managed entry that is a symlink to a file outside the repo is a finding', () => {
+  const outside = mkdtempSync(join(tmpdir(), 'house-outside-'));
+  writeFileSync(join(outside, 'f.txt'), BODY);
+  const dir = repoWith('rules/f.txt', { 'rules/keep': '' });
+  symlinkSync(join(outside, 'f.txt'), join(dir, 'rules', 'f.txt'));
+  const { code, out } = tamper(dir);
+  assert.equal(code, 1, out);
+  assert.match(out, /resolves outside the repo root through a symlink/);
+});
+test('tamper-resolve: a managed entry that is a symlink to .git/config is a finding', () => {
+  const dir = repoWith('rules/f.txt', { 'rules/keep': '' });
+  symlinkSync(join(dir, '.git', 'config'), join(dir, 'rules', 'f.txt'));
+  const { code, out } = tamper(dir);
+  assert.equal(code, 1, out);
+  assert.match(out, /under \.git through a symlink/);
+});
+test('tamper-resolve: a managed entry that is a symlink to a file inside the repo is clean', () => {
+  const dir = repoWith('rules/f.txt', { 'real/f.txt': BODY, 'rules/keep': '' });
+  symlinkSync(join(dir, 'real', 'f.txt'), join(dir, 'rules', 'f.txt'));
+  const { code, out } = tamper(dir);
+  assert.equal(code, 0, out);
+});
+
+// detectPaths: the repo root and any directory inside it are legitimate.
+const detectRepo = (paths) => sandbox({
+  'house.json': houseJson(),
+  '.house/lock.json': JSON.stringify({ files: [], detectPaths: { evals: paths } }),
+  'evals/x': '',
+});
+for (const p of ['./', '.', 'evals/.', 'evals/./x', 'evals//x', 'evals/']) {
+  test(`tamper-resolve: detectPaths entry ${JSON.stringify(p)} is not refused`, () => {
+    const { code, out } = run(detectRepo([p]), ['--only=manifest']);
+    assert.equal(code, 0, out);
+    assert.doesNotMatch(out, /refusing to probe/);
+  });
+}
+test('tamper-resolve: a detectPaths entry under .git or through an outward symlink says what it is', () => {
+  const outside = mkdtempSync(join(tmpdir(), 'house-outside-'));
+  const dir = detectRepo(['.git/config', 'link/x']);
+  symlinkSync(outside, join(dir, 'link'));
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 1, out);
+  assert.match(out, /`evals: \.git\/config` is under \.git/);
+  assert.match(out, /`evals: link\/x` resolves outside the repo root through a symlink/);
+  assert.doesNotMatch(out, /`evals: \.git\/config` escapes/);
 });
