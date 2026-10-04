@@ -1153,13 +1153,28 @@ function checkDrift(ctx) {
     const packageSurface = (f) => typeof f.message === 'string'
       && (f.kind === 'file path' || f.kind === 'heading link' || f.kind === 'glob parent')
       && PACKAGE_SURFACE_PREFIXES.some((p) => f.message.startsWith(p));
+    const moduleDests = new Set();
+    if (isPackageRepo) {
+      const modsDir = join(ctx.repoRoot, 'plugins', 'house', 'modules');
+      let mods = [];
+      try { mods = readdirSync(modsDir, { withFileTypes: true }); } catch { /* no modules dir */ }
+      for (const ent of mods) {
+        try {
+          const j = JSON.parse(readFileSync(join(modsDir, ent.name, 'module.json'), 'utf8'));
+          for (const fl of arr(j.files)) if (isPlainObject(fl) && typeof fl.dest === 'string') moduleDests.add(fl.dest);
+        } catch { /* not a module directory */ }
+      }
+    }
     const downgrade = (f, why) => warnings.push({ ...f, message: `${f.message} ${why}` });
     const sink = houseManaged
       ? { push: (f) => {
           if (siblingDest(f)) {
             // #181: a sibling destination the lock does not record belongs to
             // a module not enabled here; no PR resolves it, so it is dropped.
-            if (bodyMatchesLock && !lockedManaged.has(f.message.split(/\s/)[0])) return;
+            // In the package repo only a destination some module.json lists
+            // is a sibling file; any other path is a typo or a stale name.
+            const tok = f.message.split(/\s/)[0];
+            if (bodyMatchesLock && !lockedManaged.has(tok) && (!isPackageRepo || moduleDests.has(tok))) return;
             return downgrade(f, '(house-managed file: names a sibling module\'s vendored file, present only when that module is enabled here)');
           }
           if (!isPackageRepo) {
@@ -1697,9 +1712,9 @@ function frontmatterText(raw, key) {
   for (let i = 1; i < closeIdx; i++) {
     const m = lines[i].match(new RegExp(`^${key}\\s*:\\s*(.*?)\\s*$`));
     if (!m) continue;
-    const parts = /^[|>][-+0-9]*$/.test(m[1]) ? [] : [m[1].replace(/^(['"])(.*)\1$/, '$2')];
+    const parts = /^[|>][-+0-9]*$/.test(m[1]) ? [] : [m[1]];
     for (let j = i + 1; j < closeIdx && (/^\s/.test(lines[j]) || lines[j] === ''); j++) parts.push(lines[j].trim());
-    return parts.filter(Boolean).join(' ');
+    return parts.filter(Boolean).join(' ').replace(/^(['"])(.*)\1$/, '$2');
   }
   return '';
 }
@@ -1856,7 +1871,7 @@ function checkLengths(ctx) {
     }
 
     if (linesOver || bytesOver) {
-      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count);
+      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && typeof r.decided === 'string' && DATE_RE.test(r.decided));
       if (raise) {
         tighten.push({ path: file, to: raise.to });
       } else {
@@ -2096,9 +2111,9 @@ function detectPathHit(repoRoot, p) {
 function unreferencedVendoredScripts(ctx, lockEntries) {
   const warnings = [];
   const vendored = lockEntries.filter((e) => isPlainObject(e) && typeof e.path === 'string').map((e) => e.path);
+  const managedPaths = new Set(vendored);
   const scripts = vendored.filter((p) => p.startsWith('scripts/house/') && ctx.allTracked.includes(p));
   if (!scripts.length) return warnings;
-  const managed = new Set(vendored);
   const readers = ctx.allTracked.filter((f) => f !== '.house/lock.json' && !BINARY_EXTS.has(extOf(f)) && !MEDIA_EXTS.has(extOf(f)));
   const texts = new Map();
   const textOf = (f) => {
@@ -2106,16 +2121,13 @@ function unreferencedVendoredScripts(ctx, lockEntries) {
     return texts.get(f);
   };
   for (const script of scripts) {
-    const base = basename(script);
-    const referenced = readers.some((f) => {
-      if (f === script) return false;
-      if (!managed.has(f)) return textOf(f).includes(script);
-      return f.startsWith('scripts/house/') && textOf(f).includes(base);
-    });
+    // No twin, no warning: an unwired vendored script alone is the adopter's
+    // module choice, and warning on it would be permanent noise.
+    const twins = ctx.allTracked.filter((f) => !f.startsWith('scripts/house/') && basename(f) === basename(script));
+    if (!twins.length) continue;
+    const referenced = readers.some((f) => f !== script && !managedPaths.has(f) && textOf(f).includes(script));
     if (referenced) continue;
-    const twins = ctx.allTracked.filter((f) => f !== script && basename(f) === base);
-    const twinNote = twins.length ? ` A tracked file with the same name sits at ${twins.join(', ')}; if that is the copy this repo runs, it will drift from the house one.` : '';
-    warnings.push(mk('manifest', script, null, 'unreferenced script', `vendored script is referenced by no package.json script, workflow, or other tracked file, so nothing runs it.${twinNote} Wire it in, or delete it and drop the module that vendors it.`));
+    warnings.push(mk('manifest', script, null, 'unreferenced script', `vendored script is referenced by no package.json script, workflow, or other tracked file, so nothing runs it, while a tracked file with the same name sits at ${twins.join(', ')}; if that is the copy this repo runs, it will drift from the house one. Wire the house copy in, or delete it and drop the module that vendors it.`));
   }
   return warnings;
 }
@@ -2523,7 +2535,11 @@ function stripYamlComment(v) {
   let q = null;
   for (let i = 0; i < v.length; i++) {
     const c = v[i];
-    if (q) { if (c === q) q = null; continue; }
+    if (q) {
+      if (q === '"' && c === '\\') i++;
+      else if (c === q) q = null;
+      continue;
+    }
     if (c === '"' || c === "'") { q = c; continue; }
     if (c === '#' && (i === 0 || v[i - 1] === ' ' || v[i - 1] === '\t')) return yamlTrimEnd(v.slice(0, i));
   }

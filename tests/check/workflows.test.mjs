@@ -425,6 +425,15 @@ test('#166: an em dash in a whole-line or trailing comment does not stop a truly
   assert.deepEqual(kinds(warns(withWorkflow(bad))), ['unfrozen-install']);
 });
 
+test('#166: a backslash-escaped quote does not end a double-quoted span, so a # inside it is not a comment', () => {
+  const nbsp = String.fromCharCode(0xa0);
+  const gated = "      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n";
+  for (const extra of ['      - run: "echo \\"a #' + String.fromCharCode(0xe9) + '\\""\n', '      - name: "a\\" #' + nbsp + 'b"\n        run: echo hi\n']) {
+    const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', extra + gated);
+    assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install'], extra);
+  }
+});
+
 test('unfrozen-install: a byte order mark at the start makes the file not plainly written', () => {
   const body = String.fromCharCode(0xfeff) + CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n");
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install']);

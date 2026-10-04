@@ -162,6 +162,16 @@ test('lengths: --accept-lengths is still accepted, changes nothing, and says it 
   assert.match(out, /--accept-lengths is no longer needed/);
 });
 
+test('lengths: a ratchetRaises entry missing from or decided does not apply', () => {
+  for (const entry of [{ path: 'README.md', to: 210, why: 'w', decided: '2026-08-24' }, { path: 'README.md', from: 100, to: 210, why: 'w' }]) {
+    const dir = sandbox({
+      'README.md': linesOf(200),
+      'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } }, ratchetRaises: [entry] }),
+    });
+    assert.equal(run(dir, ['--only=lengths']).code, 1, JSON.stringify(entry));
+  }
+});
+
 test('lengths: a ratchetRaises entry below the current count does not apply', () => {
   const dir = sandbox({
     'README.md': linesOf(200),

@@ -711,6 +711,22 @@ test('ADR 0010: package-surface tokens in a lock-vouched managed file are silent
 
 const SIBLING_RULE = MANAGED_RULE(['Anchor: `scripts/house/deploy-guards.mjs` gates it.']);
 
+test('#181: in the package repo a sibling path is dropped only when a module.json lists it, so a typo still warns', () => {
+  const rule = (name) => MANAGED_RULE([`Anchor: \`scripts/house/${name}\` gates it.`]);
+  const pkg = (name) => sandbox({
+    'README.md': '# r\n',
+    'scripts/x.mjs': 'export {};\n', 'docs/handbook/x.md': 'x\n', 'docs/decisions/0001.md': 'x\n', 'tests/x.txt': 'x\n',
+    'plugins/house/modules/deployment/module.json': JSON.stringify({ name: 'deployment', files: [{ src: 'files/deploy-guards.mjs', dest: 'scripts/house/deploy-guards.mjs' }] }),
+    '.claude/rules/house/r.md': rule(name),
+    '.house/lock.json': lockFor(rule(name)),
+    'house.json': houseJson(),
+  });
+  const ok = run(pkg('deploy-guards.mjs'), ['--only=drift', '--json']);
+  assert.ok(!(ok.json.warnings || []).some((w) => /deploy-guards/.test(w.message)), ok.out);
+  const typo = run(pkg('deploy-gaurds.mjs'), ['--only=drift', '--json']);
+  assert.ok((typo.json.warnings || []).some((w) => /deploy-gaurds/.test(w.message)), typo.out);
+});
+
 test('#181: a sibling destination the lock does not record is silent; one it records but is missing still warns', () => {
   const unrecorded = sandbox({
     'README.md': '# r\n',

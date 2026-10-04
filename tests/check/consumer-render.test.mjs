@@ -144,6 +144,7 @@ test('#181: a freshly synced adopter prints no drift warning for a house-managed
   git(repo, 'add', '-A');
   const out = runCheck(repo);
   assert.doesNotMatch(out, /== drift ==/, `expected no drift section, got:\n${out}`);
+  assert.doesNotMatch(out, /unreferenced script/, `a fresh default render must not trip #178:\n${out}`);
 });
 
 test('render into a repo with an existing CLAUDE.md writes a sidecar, never overwrites', () => {

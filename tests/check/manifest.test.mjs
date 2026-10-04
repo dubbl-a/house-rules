@@ -476,3 +476,16 @@ test('#178: wiring the vendored script into package.json clears the warning', ()
   assert.equal(code, 0, out);
   assert.doesNotMatch(out, /unreferenced script/);
 });
+
+test('#178: an unreferenced vendored script with no same-named twin elsewhere is not warned', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/foo-guard.mjs']),
+    'scripts/house/foo-guard.mjs': 'export const a = 1;\n',
+    'scripts/myfoo-guard.mjs': 'export const a = 1;\n',
+    'package.json': '{"scripts":{}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unreferenced script/);
+});
