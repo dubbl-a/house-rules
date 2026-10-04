@@ -78,7 +78,7 @@
 - Assert an invariant where its state is created, with a why and a remedy
   Write each invariant as key, severity, title, why, remedy, and check, and assert it where the state is created, since a violation never announces itself there.
 - Make every waiver print its reason, and give an integrity gate none
-  Require a reason on every escape hatch, print it, scope it to one run, and keep it deliberately awkward, since a silent override quietly becomes normal.
+  Require a reason on every waiver written into a config file, print it, scope it to one run, and keep it deliberately awkward, since a silent override quietly becomes normal; a one-off typed override such as the deploy guard's `DEPLOY_FROM=any` prints a notice that the check was skipped and may omit the reason.
 - Read a missing field as missing, because absence is not confidence
   Report an explicit false and an absent value as different outcomes, since collapsing them turns a data hole into a finding.
 - Demote a gate that has been wrong before

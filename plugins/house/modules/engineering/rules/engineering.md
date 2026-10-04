@@ -50,9 +50,9 @@ Receipts: `docs/handbook/engineering.md#assert-an-invariant-where-its-state-is-c
 
 ## Make every waiver print its reason, and give an integrity gate none
 
-Require a reason on every escape hatch, print it, scope it to one run, and keep it deliberately awkward, since a silent override quietly becomes normal.
+Require a reason on every waiver written into a config file, print it, scope it to one run, and keep it deliberately awkward, since a silent override quietly becomes normal; a one-off typed override such as the deploy guard's `DEPLOY_FROM=any` prints a notice that the check was skipped and may omit the reason.
 Give a gate that protects an integrity claim no waiver at all, and short-circuit it before the waiver is even read.
-Anchor: reason-carrying environment escapes as a repo-wide convention, eval case `integrity-gate-no-waiver`; a PreToolUse denial holds even in bypass mode but demands no reason, so the printed reason and one-run scope are this repo's addition.
+Anchor: a config-file waiver carries its reason and a typed one-off override prints a skip notice, as a repo-wide convention, eval case `integrity-gate-no-waiver`; a PreToolUse denial holds even in bypass mode but demands no reason, so the printed reason or notice and the one-run scope are this repo's addition.
 Receipts: `docs/handbook/engineering.md#make-every-waiver-print-its-reason-and-give-an-integrity-gate-none`
 
 ## Read a missing field as missing, because absence is not confidence
