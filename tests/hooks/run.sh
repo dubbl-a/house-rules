@@ -2036,6 +2036,25 @@ expect_allow "a Write of 300 KB to an ordinary path in an adopted repo" \
   "$(printf '%s' "$_big" | jq -Rs --arg fp "$pg/docs/big.md" --arg cwd "$pg" '{tool_name: "Write", tool_input: {file_path: $fp, content: .}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
 expect_deny "an MCP write with a 300 KB string beside a floor path denies for the floor path" \
   "$(printf '%s' "$_big/x" | jq -Rs --arg p "$pg/.githooks/pre-push" --arg cwd "$pg" '{tool_name: "mcp__fs__write_file", tool_input: {path: $p, content: .}, cwd: $cwd, hook_event_name: "PreToolUse"}')" "git-hook floor"
+# A Bash command of thousands of clauses used to outrun the 5 s timeout and
+# pass unchecked (#157). Its scans stop at the same budget as the file modes'
+# and refuse in an adopted repo; an unadopted one stays quiet. The budget is
+# lowered to 1 ms, as above, so the overrun does not depend on machine speed.
+_clauses="git status"
+for ((i = 0; i < 300; i++)); do _clauses+=" && git status"; done
+HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
+expect_deny "a Bash command of 301 clauses past the scan budget in an adopted repo" \
+  "$(mk_payload "$_clauses" "$pg")" "too long to check in time"
+expect_allow "the same 301 clauses past the scan budget in a repo that never adopted house" \
+  "$(mk_payload "$_clauses" "$n")"
+expect_deny "301 clauses past the budget from an unadopted cwd, the first aimed at an adopted repo with -C" \
+  "$(mk_payload "git -C $pg status && $_clauses" "$n")" "too long to check in time"
+HOOK_ENV=()
+# At the default budget an ordinary long command decides as before.
+_files=''
+for ((i = 0; i < 60; i++)); do _files+=" docs/file$i.md"; done
+expect_allow "a 60-path git add and a status at the default budget in an adopted repo" \
+  "$(mk_payload "git add$_files && git status" "$pg")"
 # ── a payload jq cannot parse: tool and cwd are unknown, so the hook's own
 # working directory (the project the harness runs it in) decides adoption
 # expect_in_dir <allow|deny> <label> <dir> <stdin>

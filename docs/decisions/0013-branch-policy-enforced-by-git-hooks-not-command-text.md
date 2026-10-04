@@ -111,9 +111,11 @@ Six more were found after that round and are recorded here as known limits, each
 ruleset as the ceiling; their issues stay open until each is fixed or declined. The strip that feeds target resolution removes a bare message value up to the next
 whitespace, so a command glued to it, as in `git status -mx|git commit -m x`, goes unseen by the
 text scan, with the floor behind it in an armed repo (#154). A Bash command long enough to outlast
-the guard's 5 second hook timeout is not denied, because Claude Code does not block on a timed-out
-hook; the file-tool and MCP scans already deny past `SCAN_BUDGET_MS`, and the Bash scans do not
-(#157). The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,
+the guard's 5 second hook timeout used to pass, because Claude Code does not block on a timed-out
+hook; the Bash clause scans now stop at `SCAN_BUDGET_MS`, as the file-tool and MCP scans do, and
+refuse the command in an adopted repo, while a repo that never adopted house stays quiet (#157).
+On the bash 3.2 that macOS ships, splitting a command of several hundred clauses takes longer than
+the timeout by itself, before the first budget reading, so such a command still passes there. The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,
 written by `git fetch origin f:refs/remotes/origin/main` or `git remote set-head`, lets it accept
 a local protected branch moved to an unmerged commit (#161). An inline `git -c alias.x='!...'`
 body is not read in any state, and an alias that calls another alias is read one level deep (#161).

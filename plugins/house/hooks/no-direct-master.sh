@@ -128,7 +128,8 @@
 # no path (in an adopted repo), when stdin is empty or does not parse as JSON
 # (in the adopted repo the hook itself runs in, since the payload's cwd is
 # unreadable too), when a Bash command is not a string (in the adopted repo
-# the payload's cwd names), when an MCP scan outruns its time budget (in
+# the payload's cwd names), when a Bash command's clause scans outrun the
+# time budget (in an adopted repo, see 17), when an MCP scan outruns it (in
 # any repo while a string still unchecked has a .git or .githooks path
 # component after file: decoding, see 16; otherwise in an adopted repo seen
 # so far or an adopted payload cwd, so a string whose only marker is a
@@ -197,6 +198,9 @@
 #      that never adopted house is refused too; one whose only marker is a
 #      substring, even through a symlink into a floor, is left to adoption,
 #      see the residue below)
+#  17. a Bash command too long to check within the scan's time budget, in an
+#      adopted repo (#157): the clause scans stop there, and every target
+#      grouped so far is tested for adoption, the payload cwd first
 # Deliberately NOT chased, because the floor covers it: a computed working
 # directory (`cd "$d"`), a `popd`, a refspec the config supplies, xargs, and a
 # git command inside a file this command runs. While the floor IS armed, a
@@ -230,7 +234,9 @@
 # has been seen and the cwd is not adopted, since closing it needs a link
 # walk per string, which costs the hook's timeout (a fail open) and denies
 # system-link paths (/tmp, /var, /etc) in repos that never adopted the
-# guard; a planted file more than
+# guard; past the time budget, a Bash command from a cwd that never adopted
+# house whose adopted target (a `git -C` or `cd` path) sits in a clause the
+# scans never reached; a planted file more than
 # three levels under the hooks directory, which no dispatcher can run; and
 # `git config --file <path> --get core.hooksPath`, readable for the same
 # reason `--get` alone is (see 1) because `--file` and its value never reach
@@ -271,8 +277,8 @@ set -Euf -o pipefail
 
 payload=$(cat)
 
-# The file modes' scan runs against a time budget, since the harness lets a
-# call through once a hook passes its `timeout` (5 s for this hook in
+# The file modes' scan and the Bash command's clause scans run against a time
+# budget, since the harness lets a call through once a hook passes its `timeout` (5 s for this hook in
 # hooks.json; a change there is a change here). The budget leaves margin for
 # the jq passes, the deny, and a slow machine. Elapsed time is read with
 # builtins: EPOCHREALTIME (bash 5, microseconds), or SECONDS (whole seconds,
@@ -310,6 +316,21 @@ scan_over_budget() {
     # once rather than at the next tick.
     (( (SECONDS - HOOK_T0_S) * 1000 + 999 >= SCAN_BUDGET_MS ))
   fi
+}
+# Set once the Bash command's scans have spent the budget before every target
+# was decided: each target left is then only tested for adoption.
+BASH_OVER=0
+# Returns 0 once the Bash scans have spent the budget, read on every 32nd unit
+# of scan work (a clause, a token, a target). A short command's time is the
+# fixed cost of its git processes, which grows with the machine's load and not
+# with the command, and on bash 3.2 the clock can trip a 2000 ms budget after
+# one second; so a command with little to scan is never refused for time,
+# while the work between two readings stays a small part of the margin.
+BASH_TICKS=0
+bash_scan_spent() {
+  BASH_TICKS=$((BASH_TICKS + 1))
+  if (( BASH_TICKS % 32 == 0 )) && scan_over_budget; then return 0; fi
+  return 1
 }
 
 # No early exit on the raw text. There used to be one for a payload naming
@@ -723,6 +744,7 @@ git_split() {
   IFS=$' \t\n' read -r -a toks <<<"$1"
   n="${#toks[@]}"
   while [[ "$i" -lt "$n" ]]; do
+    bash_budget_check
     tok="${toks[$i]}"; i=$((i + 1))
     [[ "$tok" == git || "$tok" == */git ]] || continue
     while [[ "$i" -lt "$n" ]]; do
@@ -734,7 +756,7 @@ git_split() {
         *'$'*|*'{'*) GV_BAD=1; return 1 ;;
         *)
           GV_VERB="$tok"
-          while [[ "$i" -lt "$n" ]]; do GV_ARGS+="${toks[$i]}"$'\n'; i=$((i + 1)); done
+          while [[ "$i" -lt "$n" ]]; do bash_budget_check; GV_ARGS+="${toks[$i]}"$'\n'; i=$((i + 1)); done
           return 0 ;;
       esac
     done
@@ -782,6 +804,7 @@ collect_candidates() {
     IFS=$' \t\n' read -r -a toks <<<"$clause"
     n="${#toks[@]}"; i=0
     while [[ "$i" -lt "$n" ]]; do
+      if bash_scan_spent; then BASH_OVER=1; break 2; fi
       tok="${toks[$i]}"; i=$((i + 1))
       case "$tok" in
         cd|pushd)
@@ -814,6 +837,7 @@ collect_candidates() {
       CANDIDATES+="${cdir}${US}${clause}"$'\n'
       # Walk on: a second git in this clause is its own command.
     done
+    if bash_scan_spent; then BASH_OVER=1; break; fi
   done <<<"$CLAUSES"
   return 0
 }
@@ -821,6 +845,14 @@ collect_candidates() {
 # ── A. The disable list ──────────────────────────────────────────────────
 floor_deny() {
   deny "Refusing '$1': it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Commit on a feature branch and open a PR."
+}
+# A command too long to check in time (#157). Called only once the repo is
+# known to be adopted: the timeout would let the call through unchecked.
+bash_too_large_deny() {
+  deny "Refusing this Bash command: it is too long to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), so this hook cannot tell whether it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the command into smaller calls."
+}
+bash_budget_check() {
+  if bash_scan_spent; then bash_too_large_deny; fi
 }
 # Read clause by clause over the WHOLE command. Every entry is a literal: no
 # shape-guessing, nothing an abbreviation or a rename quietly widens. This list
@@ -866,6 +898,7 @@ disable_scan() {
     [[ "$config_bad" -eq 0 && "$config_eq" -eq 0 ]] || config_read_ok=0
   fi
   for ((i = 0; i < n; i++)); do
+    bash_budget_check
     tok="${toks[$i]}"
     next_tok=''
     [[ $((i + 1)) -lt "$n" ]] && next_tok="${toks[$((i + 1))]}"
@@ -990,6 +1023,7 @@ dir_target_scan() {
   IFS=$' \t\n' read -r -a toks <<<"$clause"
   n="${#toks[@]}"; i=0
   while [[ "$i" -lt "$n" ]]; do
+    bash_budget_check
     tok="${toks[$i]}"; i=$((i + 1))
     case "$tok" in
       GIT_DIR=*|GIT_WORK_TREE=*|GIT_COMMON_DIR=*) targets+="env${US}${tok%%=*}"$'\n'; continue ;;
@@ -1229,6 +1263,7 @@ alias_body_scans() {
   local clause
   split_clauses "$CAND_TEXT"
   while IFS= read -r clause; do
+    bash_budget_check
     git_split "$clause" || continue
     while :; do
       verb_is_known "$GV_VERB" || alias_scan "$GV_VERB"
@@ -1388,6 +1423,7 @@ e_worktree_shape() {
   fi
   split_clauses "$rest"
   while IFS= read -r clause; do
+    bash_budget_check
     IFS=$' \t\n' read -r -a toks <<<"$clause"
     n="${#toks[@]}"
     [[ "$n" -gt 0 ]] || continue
@@ -1410,6 +1446,7 @@ e_worktree_shape() {
       case "${toks[$i]:-}" in checkout|switch) ;; *) return 1 ;; esac
     fi
     for ((k = i; k < n; k++)); do
+      bash_budget_check
       case "${toks[$k]}" in
         # --ignore-other-worktrees (or any prefix git accepts for it) can
         # reset the branch the main checkout has out from under it.
@@ -1423,6 +1460,7 @@ e_worktree_shape() {
   E_CREATES=0
   split_clauses "$raw"
   while IFS= read -r clause; do
+    bash_budget_check
     git_split "$clause" || continue
     while :; do
       case "$GV_VERB" in
@@ -1449,6 +1487,7 @@ run_early_scans() {
   local clause
   split_clauses "$cmd_safe"
   while IFS= read -r clause; do
+    bash_budget_check
     disable_scan "$clause"
     plumbing_scan "$clause" all
     dir_target_scan "$clause"
@@ -1456,6 +1495,7 @@ run_early_scans() {
   # The second plumbing pass: `git branch -m <protected>` only.
   split_clauses "$cmd_plumb"
   while IFS= read -r clause; do
+    bash_budget_check
     case "$clause" in *branch*) plumbing_scan "$clause" branch ;; esac
   done <<<"$CLAUSES"
   return 0
@@ -1480,6 +1520,7 @@ run_branch_scans() {
   if ! e_worktree_shape; then
     split_clauses "$cmd_safe"
     while IFS= read -r clause; do
+      bash_budget_check
       git_split "$clause" || continue
       while :; do
         case "$GV_VERB" in
@@ -1500,6 +1541,7 @@ run_branch_scans() {
   BRANCH_CREATED_AT=''
   split_clauses "$CAND_TEXT"
   while IFS= read -r clause; do
+    bash_budget_check
     n=$((n + 1))
     git_split "$clause" || continue
     case "$GV_VERB" in
@@ -1512,6 +1554,7 @@ run_branch_scans() {
   done <<<"$CLAUSES"
   CLAUSE_IDX=0
   while IFS= read -r clause; do
+    bash_budget_check
     CLAUSE_IDX=$((CLAUSE_IDX + 1))
     if ! git_split "$clause"; then
       if [[ "$armed" -eq 0 && "$GV_BAD" -eq 1 ]]; then unreadable_deny ''; fi
@@ -1829,6 +1872,10 @@ decide_for_target() {
   trap crashed ERR
   trap crashed_on_exit EXIT
 
+  # The Bash scans ran out of time before this target was reached: it is
+  # adopted, so the command is refused unchecked rather than let through.
+  if [[ "$MODE" == bash && "$BASH_OVER" -eq 1 ]]; then bash_too_large_deny; fi
+
   # carveOuts: glob patterns, shell `case` semantics (`*` crosses `/`); schema
   # in plugins/house/schema/house.schema.json.
   carve_out_reason_suffix=""
@@ -2053,8 +2100,12 @@ while IFS= read -r line; do
   done
   if [[ -n "$found" ]]; then texts[found]+=$'\n'"$clause"
   else keys+=("$key"); texts+=("$clause"); fi
+  if bash_scan_spent; then BASH_OVER=1; break; fi
 done <<<"$CANDIDATES"
+# Past the budget, every target grouped so far is still tested for adoption,
+# the payload cwd first, and the first adopted one refuses the command.
 for ((k = 0; k < ${#keys[@]}; k++)); do
+  if bash_scan_spent; then BASH_OVER=1; fi
   decide_for_target "${keys[$k]}" "${texts[$k]}"
 done
 
