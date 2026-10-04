@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+- **Checker: the unreferenced-script twin needs evidence for JavaScript (#178).** A same-named `.mjs`, `.js`, `.cjs`, or `.ts` file is a twin of the vendored script only when it shares at least one exported name with it, so an unrelated program that happens to share a basename no longer draws the warning. Other file types keep the basename rule.
+
 ## [0.19.0] - 2026-10-04
 
 Six checks that warned now fail (five workflow and agent-config checks, each clearable with a recorded waiver, and a docs opt-out marker with no reason), and the branch guard refuses a command glued to a message value; the security module splits into agent and server-code rule files, the deploy guards lose friction with a pull-request CI fallback, the dependabot.yml scaffold splits its cooldowns, rules are trimmed, the checker raises fewer unactionable warnings, and release tags are no longer signed. Minor under ADR 0012: the checks and the guard's deny set tighten (the breaking class); rule content also changes (ADR 0011).

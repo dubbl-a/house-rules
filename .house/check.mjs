@@ -2104,6 +2104,23 @@ function detectPathHit(repoRoot, p) {
   } catch { return false; }
 }
 
+const JS_EXPORT_EXTS = new Set(['.mjs', '.js', '.cjs', '.ts']);
+function exportedNames(text) {
+  const names = new Set();
+  const add = (re, fn) => { for (const m of text.matchAll(re)) fn(m); };
+  add(/\bexport\s+(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/g, (m) => names.add(m[1]));
+  add(/\bexport\s+(?:const|let|var|class)\s+([A-Za-z_$][\w$]*)/g, (m) => names.add(m[1]));
+  add(/\bexport\s*\{([^}]*)\}/g, (m) => {
+    for (const part of m[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop().trim();
+      if (name) names.add(name);
+    }
+  });
+  if (/\bexport\s+default\b/.test(text)) names.add('default');
+  add(/\b(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=/g, (m) => names.add(m[1]));
+  return names;
+}
+
 // A vendored script counts as referenced when its repo path appears in a
 // tracked file the house did not write (package.json, a workflow, a doc), or
 // its basename appears in another vendored script (an import). Rule files and
@@ -2123,7 +2140,12 @@ function unreferencedVendoredScripts(ctx, lockEntries) {
   for (const script of scripts) {
     // No twin, no warning: an unwired vendored script alone is the adopter's
     // module choice, and warning on it would be permanent noise.
-    const twins = ctx.allTracked.filter((f) => !f.startsWith('scripts/house/') && basename(f) === basename(script));
+    // A JavaScript twin must also share an exported name: a same-named file
+    // with different exports is a different program.
+    const jsScript = JS_EXPORT_EXTS.has(extOf(script));
+    const scriptExports = jsScript ? exportedNames(textOf(script)) : null;
+    const twins = ctx.allTracked.filter((f) => !f.startsWith('scripts/house/') && basename(f) === basename(script)
+      && (!jsScript || [...exportedNames(textOf(f))].some((n) => scriptExports.has(n))));
     if (!twins.length) continue;
     const referenced = readers.some((f) => f !== script && !managedPaths.has(f) && textOf(f).includes(script))
       || scripts.some((f) => f !== script && textOf(f).includes(basename(script)));

@@ -504,3 +504,43 @@ test('#178: an unreferenced vendored script with no same-named twin elsewhere is
   assert.equal(code, 0, out);
   assert.doesNotMatch(out, /unreferenced script/);
 });
+
+test('#178: a same-named .mjs sharing no export with the vendored script is not a twin', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/retro.mjs']),
+    'scripts/house/retro.mjs': 'export function runRetro() {}\n',
+    'scripts/lib/retro.mjs': 'export async function runDomains() {}\n',
+    'package.json': '{"scripts":{}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unreferenced script/);
+});
+
+test('#178: a same-named .mjs sharing an export names both', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/retro.mjs']),
+    'scripts/house/retro.mjs': 'export function runRetro() {}\nexport const x = 1;\n',
+    'scripts/lib/retro.mjs': 'const y = 2;\nexport { y as x };\n',
+    'package.json': '{"scripts":{}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.match(out, /scripts\/house\/retro\.mjs \[unreferenced script\]/);
+  assert.match(out, /sits at scripts\/lib\/retro\.mjs/);
+});
+
+test('#178: a same-named .sh twin still warns by basename', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/hook.sh']),
+    'scripts/house/hook.sh': 'echo a\n',
+    'scripts/hook.sh': 'echo b\n',
+    'package.json': '{"scripts":{}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.match(out, /scripts\/house\/hook\.sh \[unreferenced script\]/);
+});
