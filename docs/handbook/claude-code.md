@@ -35,8 +35,8 @@ the routing call in this module's rules still decides where a trimmed fact goes.
 
 Native floor, as of 2026-09-28: the harness's own checkup proposes trims to a checked-in
 instruction file and warns at startup and in status when a file passes its recommended length,
-both advisory and neither blocking a long file (https://code.claude.com/docs/en/memory). The `lengths` family is what turns that advice into a
-gate.
+both advisory and neither blocking a long file (https://code.claude.com/docs/en/memory). The `lengths` family adds a warning against the
+line limit a repo sets for the file, and does not block it either.
 
 ## Keep the auto-memory index to hooks, and hold it under its cap
 

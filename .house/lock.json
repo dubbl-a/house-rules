@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "9e80892477075c7534387f9dd9e2fcf09b58517f4416e4883656bddebb582cfa"
+      "bodySha256": "e99f673c0ecddc7c6b3cc4faa9399d345becdcaf48926b16eccf1ae0e6ed6345"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -16,7 +16,7 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "a312730b493925dd26f2267dfcf25cd8d229bb9f8d6c2033737e3daa03e89f0c"
+      "bodySha256": "e4b221d24a9cce7ece34cd11f7ff4ee134782a4f3cd7fa98d02b6f26f3901d2e"
     },
     {
       "path": ".claude/rules/house/engineering.md",
@@ -40,7 +40,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "870c61a5fe94568ea5dc26166522dc52cb245c728b60b55ebbb3af021cf1f3b3"
+      "bodySha256": "35ec2cb67c89a8a3f7222a568f7627ac303cdc6d345f4c801090039f35cd900f"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -106,7 +106,7 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "f37b70bb327c7bf8635014b9a20e241680a809abaaa0f37e999f7de59cc1e72d"
+      "bodySha256": "781584a661218bbfd713851efd6d510de314ef45f0a16e880fc10f01e77aa8c6"
     },
     {
       "path": ".house/check.mjs",
