@@ -21,7 +21,7 @@ const modules = readdirSync(MODULES_DIR, { withFileTypes: true })
   .map((e) => {
     const dir = join(MODULES_DIR, e.name);
     const json = JSON.parse(readFileSync(join(dir, 'module.json'), 'utf8'));
-    const ruleText = (json.rules || []).map((r) => readFileSync(join(dir, r), 'utf8')).join('\n');
+    const ruleText = (json.rules || []).map((r) => readFileSync(join(dir, typeof r === 'string' ? r : r.file), 'utf8')).join('\n');
     return { name: e.name, json, ruleText };
   });
 

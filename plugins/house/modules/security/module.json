@@ -2,7 +2,8 @@
   "name": "security",
   "default": "off",
   "rules": [
-    "rules/security.md"
+    {"file": "rules/security.md", "paths": ["$securityAgentRoots", "$securityGlobs"]},
+    "rules/security-server.md"
   ],
   "files": [],
   "configSlots": [
@@ -12,11 +13,17 @@
       "default": [
         "src/**",
         "lib/**",
-        "scripts/**",
+        "scripts/**"
+      ]
+    },
+    {
+      "name": "securityAgentRoots",
+      "default": [
         ".claude/settings.json",
         ".claude/hooks/**",
         ".mcp.json",
-        "package.json"
+        "package.json",
+        ".github/workflows/**"
       ]
     }
   ],

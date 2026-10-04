@@ -445,8 +445,9 @@ test('#126: a FILE named like a detect directory matches nothing at init, render
   assert.doesNotMatch(r.stdout + r.stderr, /module `(evals|database)` is not in house\.json/, 'nor with the plugin source present');
 });
 
-// The security module is opt-in (default off), rooted where code, agent
-// config, and the dependency manifest live, with a securityGlobs slot; its
+// The security module is opt-in (default off), its agent half rooted where
+// agent config and the dependency manifest live and its server-code half on the
+// code roots (#177), with a securityGlobs slot both read; its
 // lockfile rule anchors on the cooldown the dependabot template carries in
 // every entry. Its agent-config roots name the settings file and hooks rather
 // than all of .claude/**, since claude-code.md and docs.md already load on
@@ -467,17 +468,21 @@ test('security: off at init, renders its roots once enabled, narrows by slot, an
   writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'enable security');
   house(repo, 'render', '--apply');
-  const front = () => readFileSync(join(repo, '.claude/rules/house/security.md'), 'utf8').split('\n---\n')[0];
-  for (const p of [/^ {2}- src\/\*\*$/m, /^ {2}- \.claude\/settings\.json$/m, /^ {2}- \.claude\/hooks\/\*\*$/m, /^ {2}- \.mcp\.json$/m, /^ {2}- package\.json$/m]) assert.match(front(), p);
+  const front = (f = 'security.md') => readFileSync(join(repo, '.claude/rules/house', f), 'utf8').split('\n---\n')[0];
+  for (const p of [/^ {2}- \.claude\/settings\.json$/m, /^ {2}- \.claude\/hooks\/\*\*$/m, /^ {2}- \.mcp\.json$/m, /^ {2}- package\.json$/m]) assert.match(front(), p);
   assert.doesNotMatch(front(), /^ {2}- \.claude\/\*\*$/m, 'not all of .claude/**, which would co-load with claude-code and docs');
-  assert.doesNotMatch(front(), /^ {2}- lib\/\*\*$/m, 'a default root matching nothing is dropped');
+  assert.doesNotMatch(front(), /^ {2}- src\/\*\*$/m, 'the code roots load the server-code half, not this one');
+  assert.match(front('security-server.md'), /^ {2}- src\/\*\*$/m);
+  assert.doesNotMatch(front('security-server.md'), /^ {2}- lib\/\*\*$/m, 'a default root matching nothing is dropped');
 
-  hj.modules.security.config = { securityRoots: [], securityGlobs: ['src/**'] };
+  hj.modules.security.config = { securityRoots: [], securityAgentRoots: [], securityGlobs: ['src/**'] };
   writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'narrow security');
   house(repo, 'render', '--apply');
-  assert.match(front(), /^ {2}- src\/\*\*$/m);
-  assert.doesNotMatch(front(), /\.claude|\.mcp\.json|package\.json/);
+  for (const f of ['security.md', 'security-server.md']) {
+    assert.match(front(f), /^ {2}- src\/\*\*$/m);
+    assert.doesNotMatch(front(f), /\.claude|\.mcp\.json|package\.json/);
+  }
 
   const dependabot = templateBody('dependabot.yml');
   const entries = dependabot.split(/^ {2}- package-ecosystem:/m).slice(1);
@@ -514,6 +519,43 @@ test('security: a house.json written before the module existed gets nothing abou
   writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: join(ROOT, 'plugins/house') }] } }));
   const r = spawnSync('node', ['.house/check.mjs'], { cwd: repo, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
   assert.doesNotMatch(r.stdout + r.stderr, /security/i, `nor with the plugin source present:\n${r.stdout}`);
+});
+
+// #177: security's rules loaded on every code file beside engineering's, so
+// with data-pipelines on the same scripts the house rules alone passed the
+// co-load ceiling. The module now ships two rule files, each with its own
+// paths: the agent and supply-chain half on agent config, the manifest, and
+// workflows, the server-code half on securityRoots. data-pipelines has no
+// default path, so it is pointed at scripts/**, the collision the issue measured.
+// The house rules there summed under the ceiling but left room for only a
+// short repo rule, so the fixture carries a 60-line one on the same path: the
+// single security file failed with it, and the split must pass with it.
+test('#177: security at defaults beside engineering, github, and data-pipelines adds no co-load finding', () => {
+  const repo = fixtureRepo({
+    'package.json': '{"name":"x"}', 'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'CHANGELOG.md': '# c\n',
+    'scripts/a.mjs': '// a\n', 'src/a.mjs': '// a\n', 'lib/a.mjs': '// a\n', 'tests/a.test.mjs': '// a\n',
+    '.github/workflows/x.yml': 'name: x\n', '.githooks/pre-commit': '#!/bin/sh\n', '.env.example': 'A=1\n',
+    '.claude/settings.json': '{}\n', '.claude/hooks/h.sh': '#!/bin/sh\n', '.mcp.json': '{}\n', 'docs/note.md': '# note\n',
+    '.claude/rules/scripts.md': ruleFixture(['scripts/**'], 60),
+  });
+  house(repo, 'init', '--apply');
+  const hj = readHouseJson(repo);
+  for (const m of ['engineering', 'github', 'data-pipelines', 'security']) hj.modules[m].enabled = true;
+  hj.modules['data-pipelines'].config = { pipelineGlobs: ['scripts/**'] };
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'enable modules');
+  house(repo, 'render', '--apply');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'render');
+
+  const res = spawnSync('node', [join(repo, '.house/check.mjs'), '--repo', repo, '--only=coload'], { encoding: 'utf8' });
+  assert.equal(res.status, 0, `expected no co-load finding:\n${res.stdout}${res.stderr}`);
+  assert.doesNotMatch(res.stdout, /\[coload\]/);
+
+  const front = (f) => readFileSync(join(repo, '.claude/rules/house', f), 'utf8').split('\n---\n')[0];
+  assert.match(front('security.md'), /^ {2}- \.github\/workflows\/\*\*$/m, 'the agent and supply-chain half loads on workflows');
+  assert.doesNotMatch(front('security.md'), /^ {2}- (src|lib|scripts)\/\*\*$/m, 'and not on the code roots');
+  assert.match(front('security-server.md'), /^ {2}- scripts\/\*\*$/m, 'the server-code half loads on the code roots');
+  assert.doesNotMatch(front('security-server.md'), /\.claude|package\.json/, 'and not on agent config');
 });
 
 // #23: the CLAUDE.md skeleton exists to be merged into CLAUDE.md by hand and

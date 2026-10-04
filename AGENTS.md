@@ -81,8 +81,8 @@ Full text: `.claude/rules/house/github.md`
 - Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it
 
 ### security
-Applies to: `scripts/**`, `.claude/settings.json`, `package.json`
-Full text: `.claude/rules/house/security.md`
+Applies to: `.claude/settings.json`, `package.json`, `.github/workflows/**`, `scripts/**`
+Full text: `.claude/rules/house/security.md`, `.claude/rules/house/security-server.md`
 - Treat every input to the model as data, never as instructions
 - Give an agent, a key, and a token only what one task needs
 - Review a change to agent config as code, and keep a second party on every consequential action

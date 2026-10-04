@@ -24,8 +24,8 @@
 //
 // Module SOURCES always resolve relative to *this script's own location*,
 // never to the target --repo: <scriptdir>/../modules/*/module.json, each
-// shaped { name, default: "on"|"detect"|"off", rules: [...], files: [...],
-// configSlots: [...], defaultPaths: [...], detectPaths?: [...],
+// shaped { name, default: "on"|"detect"|"off", rules: [path | {file, paths}],
+// files: [...], configSlots: [...], defaultPaths: [...], detectPaths?: [...],
 // atAdoption?: [{ id, step }] }. The plugin version comes from
 // <scriptdir>/../.claude-plugin/plugin.json.
 //
@@ -672,6 +672,21 @@ function expandPaths(defaultPaths, config) {
   return out;
 }
 
+// #177: a rules[] entry is a path, which loads on the module's defaultPaths, or
+// {file, paths} for a rule file with its own paths list (security's agent and
+// server halves load on different roots). null file: the entry names nothing.
+function ruleEntryFile(entry) {
+  if (typeof entry === 'string') return entry;
+  return isPlainObject(entry) && isNonEmptyString(entry.file) ? entry.file : null;
+}
+function ruleEntryPaths(json, entry) {
+  return isPlainObject(entry) && Array.isArray(entry.paths) ? entry.paths : json.defaultPaths;
+}
+// Every path entry a module's rules read, for a whole-module view (enable's plan).
+function modulePathEntries(json) {
+  return arr(json.rules).length ? arr(json.rules).flatMap((r) => arr(ruleEntryPaths(json, r))) : arr(json.defaultPaths);
+}
+
 // One reader for .house/lock.json as a whole. null when the lock is absent or
 // unparseable, which every caller reads as "this repo has never completed a
 // render": everything classifies as create/refuse-on-conflict, and #23's
@@ -1289,7 +1304,7 @@ function plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceSca
     if (m.error) continue;
     const name = moduleName(m);
     if (!moduleEnabled(houseData, name)) continue;
-    for (const rulePath of arr(m.json.rules)) {
+    for (const rulePath of arr(m.json.rules).map(ruleEntryFile).filter(Boolean)) {
       dests.push(posixJoin('.claude/rules/house', path.basename(rulePath)));
     }
     for (const fEntry of arr(m.json.files)) {
@@ -1374,11 +1389,13 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     const moduleCfg = { ...slotDefaults(m.json), ...(isPlainObject(cfg.config) ? cfg.config : {}) };
     const moduleDefaultPaths = defaultPathSet(m.json);
 
-    for (const rulePath of arr(m.json.rules)) {
+    for (const ruleEntry of arr(m.json.rules)) {
+      const rulePath = ruleEntryFile(ruleEntry);
+      if (!rulePath) { moduleWarnings.push(`modules/${m.dirName}/module.json: rules[] entry ${JSON.stringify(ruleEntry)} has no file; skipped`); continue; }
       const sourceAbs = path.join(m.dir, rulePath);
       if (!existsSync(sourceAbs)) { moduleWarnings.push(`modules/${m.dirName}/${rulePath}: rule source is missing`); continue; }
       const sourceBody = readFileSync(sourceAbs, 'utf8');
-      const rawExpanded = expandPaths(m.json.defaultPaths, moduleCfg);
+      const rawExpanded = expandPaths(ruleEntryPaths(m.json, ruleEntry), moduleCfg);
       const destPath = posixJoin('.claude/rules/house', path.basename(rulePath));
       // F1(b): drop any paths: glob that matches zero tracked files in THIS
       // repo. A trigger for a directory the consumer does not have is dead
@@ -1507,7 +1524,7 @@ function managedDestOwners(modules, houseData, alsoExpected = []) {
   const owners = new Map([['.house/check.mjs', [null]]]);
   const add = (dest, name) => owners.set(dest, [...(owners.get(dest) || []), name]);
   for (const m of modules.filter((x) => !x.error)) {
-    for (const r of arr(m.json.rules)) add(posixJoin(VENDORED_RULE_PREFIX, path.basename(r)), moduleName(m));
+    for (const r of arr(m.json.rules).map(ruleEntryFile).filter(Boolean)) add(posixJoin(VENDORED_RULE_PREFIX, path.basename(r)), moduleName(m));
     if (!moduleEnabled(houseData, moduleName(m)) && !arr(alsoExpected).includes(moduleName(m))) continue;
     for (const f of arr(m.json.files)) if (isPlainObject(f) && typeof f.dest === 'string') add(normalizeRepoPath(f.dest), moduleName(m));
   }
@@ -2306,12 +2323,12 @@ function cmdEnable(args) {
   for (const n of toEnable) {
     const m = byName.get(n);
     const cfg = { ...slotDefaults(m.json), ...proposed.modules[n].config };
-    const raw = expandPaths(m.json.defaultPaths, cfg);
+    const raw = expandPaths(modulePathEntries(m.json), cfg);
     const kept = [...new Set(after.plan.filter((p) => p.target.kind === 'rule' && p.target.module === n).flatMap((p) => p.target.globs))];
     const dropped = raw.filter((g) => !kept.includes(g));
     console.log(`  ${n}: ${kept.length ? kept.join(', ') : '(none)'}${dropped.length ? `; dropped, matching nothing here: ${dropped.join(', ')}` : ''}`);
     if (!kept.length && arr(m.json.rules).length) {
-      const slots = arr(m.json.defaultPaths).filter((p) => typeof p === 'string' && p.startsWith('$')).map((p) => `modules.${n}.config.${p.slice(1)}`);
+      const slots = [...new Set(modulePathEntries(m.json).filter((p) => typeof p === 'string' && p.startsWith('$')))].map((p) => `modules.${n}.config.${p.slice(1)}`);
       console.log(`  warning: ${n} would vendor zero rules here, so after --apply the checker reports \`module ${n} is enabled but vendored zero rules\`. ${slots.length ? `Set ${slots.join(' or ')} in house.json to a path this repo has` : 'Its paths are fixed and none exists here, so leave it off'}.`);
     }
   }
@@ -2801,7 +2818,7 @@ function unrecordedManagedPaths(repoRoot, modules, houseData) {
     return [...managedDestOwners(modules, houseData).keys(), '.house/INDEX.md']
       .filter((rel) => { try { lstatSync(path.join(repoRoot, rel)); return true; } catch { return false; } }).sort();
   }
-  const ruleDests = modules.filter((m) => !m.error).flatMap((m) => arr(m.json.rules).map((r) => posixJoin('.claude/rules/house', path.basename(r))));
+  const ruleDests = modules.filter((m) => !m.error).flatMap((m) => arr(m.json.rules).map(ruleEntryFile).filter(Boolean).map((r) => posixJoin('.claude/rules/house', path.basename(r))));
   let scriptsHouse = [];
   try { scriptsHouse = readdirSync(path.join(repoRoot, 'scripts', 'house'), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => `scripts/house/${e.name}`); } catch { /* none */ }
   return [...new Set(['.house/check.mjs', '.house/INDEX.md', ...moduleFileDests(modules).map(normalizeRepoPath), ...ruleDests, ...scriptsHouse])]
