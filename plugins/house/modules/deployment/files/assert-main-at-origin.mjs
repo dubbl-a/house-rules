@@ -18,8 +18,9 @@
  *   import { assertMainAtOrigin } from './assert-main-at-origin.mjs';
  *   assertMainAtOrigin('deploy', { allowUntracked: true });
  *
- * Skip (rare; only when you know the state is right — requires a reason,
- * printed so the bypass is auditable after the fact):
+ * Skip (rare; only when you know the state is right — a reason is
+ * printed when given, a plain notice when not, so the bypass is visible after
+ * the fact):
  *   DEPLOY_FROM=any DEPLOY_FROM_REASON="<why>" npm run deploy
  */
 
@@ -95,24 +96,17 @@ function escapeHatchLines(scriptName) {
  * true (and prints the bypass + its reason to stderr, so it's auditable
  * after the fact) when the caller should skip its check entirely; returns
  * false when DEPLOY_FROM isn't 'any' and the caller should run its check
- * normally. Refuses — same as any other guard failure — when DEPLOY_FROM=any
- * is set but no reason was given: an unexplained bypass defeats the point of
- * the guard existing (same pattern as this project family's
- * EQUAL_TREATMENT_WAIVER="<reason>").
+ * normally. A reason is printed when given; when it is empty a plain notice
+ * says the override is in use, so the bypass is still visible after the fact.
  */
 export function requireEscapeHatchReason(scriptName) {
   if (process.env.DEPLOY_FROM !== 'any') return false;
   const reason = (process.env.DEPLOY_FROM_REASON || '').trim();
-  if (!reason) {
-    fail(scriptName, [
-      `DEPLOY_FROM=any is set but DEPLOY_FROM_REASON is empty.`,
-      ``,
-      `The escape hatch requires a reason so a bypass is auditable after`,
-      `the fact, not just silent:`,
-      `  DEPLOY_FROM=any DEPLOY_FROM_REASON="<why>" npm run ${scriptName}`,
-    ]);
-  }
-  process.stderr.write(`\n⚠ ${scriptName}: guard bypassed (DEPLOY_FROM=any) — ${reason}\n\n`);
+  process.stderr.write(
+    reason
+      ? `\n⚠ ${scriptName}: guard bypassed (DEPLOY_FROM=any) — ${reason}\n\n`
+      : `\n⚠ ${scriptName}: guard bypassed (DEPLOY_FROM=any), no reason given\n\n`,
+  );
   return true;
 }
 

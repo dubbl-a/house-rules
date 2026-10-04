@@ -341,15 +341,16 @@ test('assert-main-at-origin: the wrong-branch refusal names the npm script, not 
   assert.doesNotMatch(res.stderr, /scripts\/house\//);
 });
 
-test('assert-main-at-origin: DEPLOY_FROM=any without DEPLOY_FROM_REASON refuses (reason is required, not just a bare bypass)', () => {
+test('assert-main-at-origin: DEPLOY_FROM=any without DEPLOY_FROM_REASON proceeds and prints a plain notice', () => {
   const { work } = makeRepoWithOrigin('main');
   execFileSync('git', ['-C', work, 'checkout', '-q', '-b', 'feature/x']);
   const res = runNode(
-    `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('t'); });`,
-    { env: { DEPLOY_FROM: 'any' } },
+    `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('t'); console.log('OK'); });`,
+    { env: { DEPLOY_FROM: 'any', DEPLOY_FROM_REASON: '' } },
   );
-  assert.equal(res.status, 1);
-  assert.match(res.stderr, /DEPLOY_FROM_REASON is empty/);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /OK/);
+  assert.match(res.stderr, /guard bypassed \(DEPLOY_FROM=any\), no reason given/);
 });
 
 test('assert-main-at-origin: DEPLOY_FROM=any with a reason bypasses the check and prints the reason', () => {
@@ -362,6 +363,59 @@ test('assert-main-at-origin: DEPLOY_FROM=any with a reason bypasses the check an
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stdout, /OK/);
   assert.match(res.stderr, /testing the escape hatch/);
+});
+
+/** A fake `gh` on PATH: `answers` maps an api path suffix to a JSON body; any other path exits 1. */
+function fakeGhEnv(answers) {
+  const dir = mktemp('house-fake-gh-');
+  const script = `#!/usr/bin/env node
+const answers = ${JSON.stringify(answers)};
+const p = process.argv[3];
+for (const [suffix, body] of Object.entries(answers)) {
+  if (p.endsWith(suffix)) { process.stdout.write(JSON.stringify(body)); process.exit(0); }
+}
+process.stderr.write('HTTP 403: Upgrade to GitHub Pro');
+process.exit(1);
+`;
+  writeFileSync(join(dir, 'gh'), script, { mode: 0o755 });
+  return { PATH: `${dir}:${process.env.PATH}` };
+}
+
+function runProvenance(answers) {
+  return runNode(
+    `import(${JSON.stringify(DEPLOY_GUARDS_URL)}).then((m) => { m.assertPrProvenance('t', { sha: 'abcdef1234567890', branch: 'main', repo: 'o/r' }); console.log('OK'); });`,
+    { env: fakeGhEnv(answers) },
+  );
+}
+
+test('deploy-guards: evaluateBranchProtection reads protection or a ruleset, and any failure as unprotected', async () => {
+  const { evaluateBranchProtection } = await import(DEPLOY_GUARDS_URL);
+  assert.deepEqual(evaluateBranchProtection({ url: 'x' }, null), { protected: true, via: 'branch protection' });
+  assert.deepEqual(evaluateBranchProtection(null, [{ type: 'pull_request' }]), { protected: true, via: 'ruleset' });
+  assert.equal(evaluateBranchProtection(null, null).protected, false);
+  assert.equal(evaluateBranchProtection({ message: 'Upgrade to GitHub Pro' }, []).protected, false);
+});
+
+test('deploy-guards: assertPrProvenance skips the PR check when the branch is protected at the remote', () => {
+  // No /pulls answer: if the guard asked for provenance, the fake gh would fail and the guard would refuse.
+  const res = runProvenance({ '/branches/main/protection': { url: 'x' } });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /PR provenance skipped, main is protected at the remote \(branch protection\)/);
+});
+
+test('deploy-guards: assertPrProvenance skips the PR check when a ruleset covers the branch', () => {
+  const res = runProvenance({ '/rules/branches/main': [{ type: 'pull_request' }] });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /\(ruleset\)/);
+});
+
+test('deploy-guards: assertPrProvenance still runs the PR check when protection is unavailable', () => {
+  const refused = runProvenance({ '/pulls': [] });
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /checking PR provenance/);
+  assert.match(refused.stderr, /does not belong to a merged pull request/);
+  const passed = runProvenance({ '/pulls': [{ number: 7, merged_at: '2026-01-01T00:00:00Z' }] });
+  assert.equal(passed.status, 0, passed.stderr);
 });
 
 // ===========================================================================

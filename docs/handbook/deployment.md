@@ -18,6 +18,8 @@ repo-a pre-flights its own build the same way, with `assertMasterAtOrigin('deplo
 
 The chain checks the repo's own git state, not what else has written to the shared infrastructure the build reads. repo-a's laptop Postgres is shared across every worktree; a deploy publishes whatever the database holds at that moment, not the state the merged pull requests imply (MEM-069, `project_shared_laptop_db_deploy_hazard.md`). A parallel session's unfinished pipeline run ships anyway if nobody asks what else has touched the store first, because none of the four guards above can see it.
 
+The packaged rule departs from repo-b in three ways. It does not claim an account pin, because the packaged guards have no check for one. It skips the merged-pull-request check when the default branch is protected at the remote (branch protection or a ruleset), since the platform already enforces that provenance, and it prints which path ran; where the protection query fails or is unavailable, as on a free private repository, the check still runs. And `DEPLOY_FROM=any` no longer refuses for lack of `DEPLOY_FROM_REASON`: a reason is printed when given and a plain notice when not, trading the forced reason for less friction while keeping the override visible.
+
 Native floor, as of 2026-09-02: GitHub does not trigger workflows on commits pushed with the default GITHUB_TOKEN, which is why an empty list of check runs has to read as unchecked rather than as a pass (https://code.claude.com/docs/en/github-actions.md#ci-not-running-on-claudes-commits).
 
 ## Migrate before deploying the code that reads the schema
