@@ -143,8 +143,8 @@
   Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it.
 - Make the PR template force a docs-check answer
   Ask every PR for a summary, a test plan, and a docs check.
-- Never put a closing keyword beside an issue number you do not mean to close
-  A closing keyword closes the issue at merge whatever words sit in front of it, since the negation is never parsed.
+- Close an issue only on purpose, and only on claims you checked
+  A closed issue reads as done to every later reader, so an accidental close or a closing comment the repo does not bear out hides open work.
 - Ship phased work as commits on one PR
   Ship a multi-phase change as commits on one PR with one reviewer, since a PR per step buys review nobody performs.
 - Stage explicit paths, never everything at once

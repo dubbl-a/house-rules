@@ -273,7 +273,7 @@
         "Turn on push protection, head-branch deletion, and grouped dependency updates",
         "Protect the default branch at the remote, and name an owner for what runs with privilege",
         "Make the PR template force a docs-check answer",
-        "Never put a closing keyword beside an issue number you do not mean to close",
+        "Close an issue only on purpose, and only on claims you checked",
         "Ship phased work as commits on one PR",
         "Stage explicit paths, never everything at once",
         "Classify a merged branch by its PR state, not by merge detection",

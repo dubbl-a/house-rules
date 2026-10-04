@@ -62,13 +62,14 @@ Keep the template in the platform's own directory, the first place it is looked 
 Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit where it runs, so the template makes the answer mandatory.
 Receipts: `docs/handbook/github.md#make-the-pr-template-force-a-docs-check-answer`
 
-## Never put a closing keyword beside an issue number you do not mean to close
+## Close an issue only on purpose, and only on claims you checked
 
-A closing keyword closes the issue at merge whatever words sit in front of it, since the negation is never parsed.
-Write "does not address" with no keyword when the issue should stay open.
-Check the issue's state after merging any PR that mentions one you meant to keep.
-Anchor: none (because the platform parses the body at merge time and no pre-merge check reads it).
-Receipts: `docs/handbook/github.md#never-put-a-closing-keyword-beside-an-issue-number-you-do-not-mean-to-close`
+A closed issue reads as done to every later reader, so an accidental close or a closing comment the repo does not bear out hides open work.
+Never put a closing keyword beside an issue number you mean to keep open: the platform closes it at merge whatever words sit in front, since negation is never parsed. Write "does not address" instead, and check the issue's state after merging any PR that mentions one.
+Before closing by hand, check each claim in the closing comment against the repo: the doc that records it, the commit that shipped it.
+Cut an issue list by finishing work, narrowing scope with a stated reason, or merging duplicates, never by closing to lower the count; a defect against the repo's own rules stays open.
+Anchor: none (because the platform parses the body at merge time, and no check can tell whether a closing comment's claims are true).
+Receipts: `docs/handbook/github.md#close-an-issue-only-on-purpose-and-only-on-claims-you-checked`
 
 ## Ship phased work as commits on one PR
 
