@@ -749,12 +749,37 @@ function classify(repoRoot, target, priorLock, forceManagedPath, treatAsAbsent =
 }
 
 function writeIfChanged(absPath, content) {
+  // #152: never read a FIFO or device; callers refuse these up front, so
+  // reaching here with one is a bug, and it fails loudly instead of blocking.
+  const notRegular = notRegularReason(absPath);
+  if (notRegular) throw new Error(`${absPath} is ${notRegular}`);
   let current = null;
   try { current = readFileSync(absPath, 'utf8'); } catch { /* not present yet */ }
   if (current === content) return false;
   mkdirSync(path.dirname(absPath), { recursive: true });
   writeFileSync(absPath, content, 'utf8');
   return true;
+}
+
+// #152: the files render rewrites outside its plan. writeIfChanged reads each
+// before writing, so a special file there is refused before any write, by
+// render and by the enable and disable that hand off to it.
+function renderSideFileBlockers(repoRoot) {
+  return ['.house/lock.json', '.house/INDEX.md']
+    .map((rel) => ({ path: rel, reason: notRegularReason(path.join(repoRoot, rel)) }))
+    .filter((b) => b.reason);
+}
+
+// Paths the vendored checker opens by name with no lstat first, so a FIFO at
+// one blocks it forever: AGENTS.md in its lengths family (the Codex size cap),
+// GEMINI.md in its guard family, and the lock. The checker is not the CLI's
+// to change, so enable and disable do not hand it such a path.
+function checkerHandOffBlocker(repoRoot) {
+  for (const rel of ['AGENTS.md', 'GEMINI.md', '.house/lock.json']) {
+    const reason = notRegularReason(path.join(repoRoot, rel));
+    if (reason) return `checker not run: ${rel} is ${reason}. The vendored checker reads it by name with no lstat first (payload/check.mjs), so it would block forever; replace it with a regular file, then run \`node .house/check.mjs\`.`;
+  }
+  return null;
 }
 
 // #58: everything render writes under .githooks/ is a git hook or a file a
@@ -1431,12 +1456,12 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
 // it is returned as `differing` and left. One computation for render's sweep
 // and disable's and uninstall's plans, so the files they promise to remove are
 // the ones render removes.
-function orphanedManagedPaths(repoRoot, planDests, modules, houseData) {
+function orphanedManagedPaths(repoRoot, planDests, modules, houseData, alsoExpected = []) {
   const orphans = new Set();
   const unmanaged = [];
   const differing = [];
   const priorLock = loadPriorLock(repoRoot);
-  const owners = managedDestOwners(modules, houseData);
+  const owners = managedDestOwners(modules, houseData, alsoExpected);
   const judge = (rel) => {
     if (matchesRender(repoRoot, rel, owners.get(rel), houseData, modules)) orphans.add(rel);
     else differing.push(rel);
@@ -1475,12 +1500,15 @@ function orphanedManagedPaths(repoRoot, planDests, modules, houseData) {
 // judged. Rule dests are the exception, for every module on or off:
 // .claude/rules/house/ is house's directory outright (#151), so a rule file
 // there that render would write is render's whether or not the lock says so.
-function managedDestOwners(modules, houseData) {
+// `alsoExpected` names modules that count as on for this run though
+// house.json no longer says so: the render a disable runs to apply its plan
+// reads house.json after the change, and must judge what the plan judged.
+function managedDestOwners(modules, houseData, alsoExpected = []) {
   const owners = new Map([['.house/check.mjs', [null]]]);
   const add = (dest, name) => owners.set(dest, [...(owners.get(dest) || []), name]);
   for (const m of modules.filter((x) => !x.error)) {
     for (const r of arr(m.json.rules)) add(posixJoin(VENDORED_RULE_PREFIX, path.basename(r)), moduleName(m));
-    if (!moduleEnabled(houseData, moduleName(m))) continue;
+    if (!moduleEnabled(houseData, moduleName(m)) && !arr(alsoExpected).includes(moduleName(m))) continue;
     for (const f of arr(m.json.files)) if (isPlainObject(f) && typeof f.dest === 'string') add(normalizeRepoPath(f.dest), moduleName(m));
   }
   return owners;
@@ -1528,6 +1556,27 @@ const UNRECORDED_DIFFERS = 'not recorded in the lock and differs from the render
 // The checker's drift family reads a `house-managed` marker on a doc the lock
 // does not record as a forgery (payload/check.mjs, "forged managed header"),
 // so a left file that carries one is named with the two ways out.
+// The paths the package's own floor uses: every module's files[] dest under
+// .githooks/, on or off, since these names are house's whatever is enabled.
+function floorDests(modules) {
+  return modules.filter((m) => !m.error)
+    .flatMap((m) => arr(m.json.files).filter((f) => isPlainObject(f) && typeof f.dest === 'string').map((f) => normalizeRepoPath(f.dest)))
+    .filter((d) => isGitHookDest(d));
+}
+
+// #152: a file at a house floor path that this run neither removes nor keeps
+// in the plan stays because nothing says it is house's (unrecorded, its
+// module off). Named once, so the user knows; any other file in .githooks/ is
+// theirs and is not mentioned.
+function floorPathsLeftLines(repoRoot, modules, handled) {
+  const left = [...new Set(floorDests(modules))].filter((rel) => {
+    if (handled.has(rel)) return false;
+    try { lstatSync(path.join(repoRoot, rel)); return true; } catch { return false; }
+  }).sort();
+  if (!left.length) return [];
+  return ['  at house floor paths, not removed (the lock does not record them and their module is off here; yours to keep or delete):', ...left.map((rel) => `    ${rel}`)];
+}
+
 function forgedHeaderNote(repoRoot, rel) {
   if (!rel.endsWith('.md')) return null;
   try { if (!readFileSync(path.join(repoRoot, rel), 'utf8').includes('<!-- house-managed')) return null; } catch { return null; }
@@ -1746,7 +1795,7 @@ function cmdRender(args) {
   // file render writes gets, so a module turned off by hand cannot take an
   // edited file with it unseen. --force-managed naming it removes it anyway.
   const planDests = new Set(plan.map((p) => p.target.path));
-  const sweep = orphanedManagedPaths(repoRoot, planDests, modules, houseData);
+  const sweep = orphanedManagedPaths(repoRoot, planDests, modules, houseData, args.expectModules);
   const sweepable = [...sweep.orphans].filter((rel) => existsSync(path.join(repoRoot, rel))).sort();
   const unsafeOrphans = sweepable.map((rel) => ({ path: rel, reason: unsafeRemovalReason(repoRoot, rel) })).filter((u) => u.reason);
   // #152: an orphan that is not a regular file is not read, and not removed.
@@ -1765,6 +1814,9 @@ function cmdRender(args) {
   const sweepRemovals = sweepable.filter((rel) => !unsafeOrphans.some((u) => u.path === rel) && !editedOrphans.includes(rel));
   printRenderPlan({ repoRoot, plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans: sweepRemovals, unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
 
+  const sideBlockers = renderSideFileBlockers(repoRoot);
+  if (!args.json) for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
+  if (sideBlockers.length) process.exit(1);
   const refusals = plan.filter((p) => p.status === 'refuse');
   // Marker lines render cannot attribute to one block are unreadable input,
   // not drift, so they exit 2 like an unusable house.json.
@@ -2288,7 +2340,9 @@ function cmdEnable(args) {
   for (const line of loadCostLines(repoRoot, before.plan, after.plan, toEnable, coloadCeiling(proposed))) console.log(line);
 
   const refused = after.plan.some((p) => p.status === 'refuse') || (after.blockRemoval && after.blockRemoval.status === 'refuse');
-  if (refused) {
+  const sideBlockers = renderSideFileBlockers(repoRoot);
+  for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
+  if (refused || sideBlockers.length) {
     console.error('\nhouse enable: render would refuse a managed file above (REFUSE), so nothing was written. Run `house render` to read why, resolve it, then re-run enable.');
     process.exit(1);
   }
@@ -2309,6 +2363,8 @@ function cmdEnable(args) {
     console.error(`house enable: render exited ${render.status}, after house.json was written. Fix what it printed, then \`house render --apply\`.`);
     process.exit(render.status === null ? 1 : render.status);
   }
+  const handOff = checkerHandOffBlocker(repoRoot);
+  if (handOff) { console.error(`\nhouse enable: ${handOff}`); process.exit(1); }
   console.log('\nChecker (.house/check.mjs, as CI runs it):');
   const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
   relay(check);
@@ -2501,6 +2557,10 @@ function cmdDisable(args) {
       console.log(`${'left'.padEnd(15)} ${dest}  (one-time scaffold from ${s.module}; yours, not managed, so it stays; delete it by hand if unwanted)`);
     }
   }
+  const afterDests = new Set(after.plan.map((p) => p.target.path));
+  for (const line of floorPathsLeftLines(repoRoot, modules, new Set([...removed.map((r) => r.path), ...afterDests]))) console.log(line);
+  const sideBlockers = renderSideFileBlockers(repoRoot);
+  for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
   console.log('  and .house/lock.json and .house/INDEX.md, rewritten from the plan');
 
   console.log('\nWhat stops:');
@@ -2514,7 +2574,7 @@ function cmdDisable(args) {
   console.log('');
   for (const line of loadCostLines(repoRoot, before.plan, after.plan, toDisable, coloadCeiling(proposed), true)) console.log(line);
 
-  const refused = removed.some((r) => r.edited || r.unsafe) || after.plan.some((p) => p.status === 'refuse') || (after.blockRemoval && after.blockRemoval.status === 'refuse');
+  const refused = removed.some((r) => r.edited || r.unsafe) || after.plan.some((p) => p.status === 'refuse') || (after.blockRemoval && after.blockRemoval.status === 'refuse') || sideBlockers.length > 0;
   if (refused) {
     console.error('\nhouse disable: render would refuse a file above (REFUSE), so nothing was written. Resolve it as that line says, then re-run disable.');
     process.exit(1);
@@ -2532,12 +2592,17 @@ function cmdDisable(args) {
   console.log(`\nWrote ${housePath}`);
   const relay = (res) => { process.stdout.write(res.stdout || ''); process.stderr.write(res.stderr || ''); };
   console.log(`Rendering once for ${toDisable.join(', ')}:`);
-  const render = spawnSync(process.execPath, [__filename, 'render', '--repo', repoRoot, '--apply'], { encoding: 'utf8' });
+  // The plan above judged unrecorded files with these modules still on; the
+  // render reads house.json after the change, so it is told the same view.
+  const expect = toDisable.flatMap((n) => ['--expect-module', n]);
+  const render = spawnSync(process.execPath, [__filename, 'render', '--repo', repoRoot, '--apply', ...expect], { encoding: 'utf8' });
   relay(render);
   if (render.status !== 0) {
     console.error(`house disable: render exited ${render.status}, after house.json was written. Fix what it printed, then \`house render --apply\`.`);
     process.exit(render.status === null ? 1 : render.status);
   }
+  const handOff = checkerHandOffBlocker(repoRoot);
+  if (handOff) { console.error(`\nhouse disable: ${handOff}`); process.exit(1); }
   console.log('\nChecker (.house/check.mjs, as CI runs it):');
   const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
   relay(check);
@@ -2627,7 +2692,13 @@ function hooksPathAt(repoRoot, flag) {
 // value in the same scope stays. A linked worktree's local config is the one
 // it shares with the main checkout, which arm-git-hooks.sh never writes from a
 // worktree; neither does this.
-function hooksPathPlan(repoRoot) {
+//
+// `floorIsHouses` says whether such a value is house's to undo at all. The
+// arming hook sets it only for a rendered floor, so the caller passes true
+// only when a module that ships the floor is on before the command, or the
+// lock records floor files; otherwise a repo pointing git at its own
+// .githooks for its own hooks is left alone, and the line says why.
+function hooksPathPlan(repoRoot, floorIsHouses = true) {
   const ask = (args) => { try { return git(repoRoot, args).trim(); } catch { return ''; } };
   const gitDir = canonicalPath(path.resolve(repoRoot, ask(['rev-parse', '--absolute-git-dir']) || '.git'));
   const common = canonicalPath(path.resolve(repoRoot, ask(['rev-parse', '--git-common-dir']) || '.git'));
@@ -2646,8 +2717,10 @@ function hooksPathPlan(repoRoot) {
       return { value, isFloor: floors.includes(canonicalPath(abs)) };
     });
     let action = 'leave';
-    if (values.some((v) => v.isFloor) && scope === 'local') action = linked ? 'shared' : 'unset';
-    if (values.some((v) => v.isFloor) && scope === 'worktree') action = 'unset';
+    const local = scope === 'local' || scope === 'worktree';
+    if (values.some((v) => v.isFloor) && local && !floorIsHouses) action = 'not-houses';
+    else if (values.some((v) => v.isFloor) && scope === 'local') action = linked ? 'shared' : 'unset';
+    else if (values.some((v) => v.isFloor) && scope === 'worktree') action = 'unset';
     return { scope, flag, origin: got.origin, values, action, mainRoot };
   });
 }
@@ -2679,11 +2752,14 @@ function hooksPathLine(h, done) {
   const each = h.values.map((v) => {
     if (!v.isFloor) return `${v.value}, not this repo's floor: left`;
     if (h.action === 'unset') return `${v.value}, this repo's floor: will be unset`;
+    if (h.action === 'not-houses') return `${v.value}, this repo's .githooks, but the floor is not house's here (no module that ships it is on, and the lock records no floor file), so it is yours: left`;
     if (h.action === 'shared') return `${v.value}, this repo's floor, but that config is shared with the main checkout, so it is not written from a linked worktree`;
     return `${v.value}, this repo's floor, but uninstall writes only the local config: left; unset it yourself if you set it`;
   }).join('; ');
+  // After the merge nothing in the main checkout records the floor as house's,
+  // so a later uninstall there would rightly leave the value: the user unsets it.
   const shared = h.action === 'shared'
-    ? `. Once this is merged, run \`house uninstall --apply\` again from the main checkout (${h.mainRoot || 'the main checkout'}), which finds the files gone and undoes only this, or \`git config --unset core.hooksPath\` there yourself.`
+    ? `. Once this is merged, run \`git config --unset core.hooksPath\` yourself in the main checkout (${h.mainRoot || 'the main checkout'}); uninstall will not do it there, since nothing then records the floor as house's.`
     : '';
   return `  ${where}: ${each}${shared}`;
 }
@@ -2851,7 +2927,13 @@ function cmdUninstall(args) {
   const blockUnsafe = blockRemoval && blockRemoval.deleteFile ? unsafeRemovalReason(repoRoot, blockRemoval.path) : null;
   const removing = new Set([...removals.map((r) => r.path), ...(blockRemoval && blockRemoval.deleteFile ? [blockRemoval.path] : []), ...(removeConfig ? ['house.json'] : [])]);
   const emptied = dirsLeftEmpty(repoRoot, removing);
-  const hooks = hooksPathPlan(repoRoot);
+  // The floor is house's when a module that ships it is on before this run,
+  // or the lock records one of its files: only then did arming set the path.
+  const floorSet = new Set(floorDests(modules));
+  const floorIsHouses = modules.some((m) => !m.error && moduleEnabled(houseData, moduleName(m))
+    && arr(m.json.files).some((f) => isPlainObject(f) && typeof f.dest === 'string' && floorSet.has(normalizeRepoPath(f.dest))))
+    || [...priorLock.keys()].some((k) => floorSet.has(k));
+  const hooks = hooksPathPlan(repoRoot, floorIsHouses);
 
   // Preflight: everything that could stop a write once writing has begun is
   // checked now, so a refusal changes nothing. A path to remove must be a
@@ -2864,6 +2946,10 @@ function cmdUninstall(args) {
     let st;
     try { st = lstatSync(abs); } catch { return null; }
     if (st.isDirectory()) return 'a directory, not a file';
+    // The same reading render and disable make: a link to a device or FIFO
+    // is refused, so the three commands decide one path one way.
+    const special = notRegularReason(abs);
+    if (special) return special;
     if (!st.isFile() && !st.isSymbolicLink()) return 'not a regular file or a symlink';
     try { accessSync(inPlace ? abs : path.dirname(abs), inPlace ? fsConstants.W_OK : fsConstants.W_OK | fsConstants.X_OK); }
     catch { return inPlace ? 'it cannot be written, so its block cannot be taken out' : 'its directory cannot be written, so it cannot be removed'; }
@@ -2946,6 +3032,7 @@ function cmdUninstall(args) {
   if (houseExists && !removeConfig) console.log('  house.json: left (--keep-config); while it stays, the branch guard keeps treating this repo as adopted and session start reports the floor missing (see below). Delete it yourself, or re-run without --keep-config, to finish leaving.');
   for (const d of scaffolds) console.log(`  scaffold ${d}  (one-time, yours, never managed)`);
   for (const rel of [...unmanaged].sort()) console.log(`  not managed ${rel}  (yours, in a directory house wrote to)`);
+  for (const line of floorPathsLeftLines(repoRoot, modules, new Set([...removing, ...sweep.differing]))) console.log(line);
   if (callers.length) {
     console.log('  still calling the checker, which is gone after this (remove each in the same change):');
     for (const c of callers) console.log(`  ${c}`);
@@ -2971,7 +3058,7 @@ function cmdUninstall(args) {
   // plugins/house/hooks/arm-git-hooks.sh reads house.json from the working
   // tree, never HEAD, and is silent when there is none or the github module is off.
   if (!configLeft) {
-    console.log('  session start: the arming hook reads house.json from the working tree, so with it gone it prints nothing here, committed or not. A session started on a branch that still has house.json and the floor (the protected branch until this merges) arms core.hooksPath again; re-run uninstall there after the merge to undo it.');
+    console.log('  session start: the arming hook reads house.json from the working tree, so with it gone it prints nothing here, committed or not. A session started on a branch that still has house.json and the floor (the protected branch until this merges) arms core.hooksPath again; after the merge nothing there records the floor as house\'s, so unset it yourself in that checkout (`git config --unset core.hooksPath`).');
   } else if (policy === 'pr' && !githubOff) {
     console.log('  session start: while the plugin is installed and house.json says "pr", its arming hook prints "house: git-hook floor not rendered here" with a render command at each session start here; running it re-adopts');
   } else {
@@ -3338,7 +3425,7 @@ function cmdCheck(rawArgs) {
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, names: [] };
+  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
@@ -3350,6 +3437,9 @@ function parseArgs(argv) {
     else if (a === '--scaffold') out.scaffold = true;
     else if (a === '--keep-config') out.keepConfig = true;
     else if (a === '--discard-untracked-config') out.discardUntrackedConfig = true;
+    // Internal to disable's hand-off to render (#152): a module this run still
+    // counts as on, so the render applies the plan disable printed.
+    else if (a === '--expect-module') out.expectModules.push(argv[++i]);
     // A flag where the reason should be is not the reason: `--why --apply`
     // used to record "--apply" and drop the apply.
     else if (a === '--why') out.why = (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) ? '' : argv[++i];

@@ -17,7 +17,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync, readdirSync,
   chmodSync, existsSync, statSync, rmSync, realpathSync, lstatSync,
 } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -3152,11 +3152,14 @@ test('#152 uninstall --apply: a rerun after an interrupted run completes it', ()
   assert.match(r.out, /^already gone\s+\.githooks\/pre-push/m);
   for (const rel of MANAGED) assert.ok(!existsSync(join(repo, rel)), `${rel} removed`);
   assert.equal(localHooksPath(repo, env), '');
-  // Interrupted after the lock went but before the hooks path was undone.
+  // The hooks path goes first, so no interruption leaves it behind a removed
+  // lock. A value set after house.json and the lock are both gone is not
+  // house's to undo: nothing records the floor as house's any more.
   assert.equal(gitIn(repo, ['config', '--local', 'core.hooksPath', floorDir(repo)], env).status, 0);
   const rest = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
   assert.equal(rest.code, 0, rest.out + rest.err);
-  assert.equal(localHooksPath(repo, env), '', 'the rerun undoes what was left');
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'left: the floor is not house\'s here');
+  assert.match(rest.out, /the floor is not house's here/);
 });
 
 test('#152 uninstall in a linked worktree: the shared hooks path is not written from there, and the main-checkout command is named', () => {
@@ -3171,7 +3174,7 @@ test('#152 uninstall in a linked worktree: the shared hooks path is not written 
   assert.equal(r.code, 0, r.out + r.err);
   assert.equal(localHooksPath(main, env), floorDir(main), 'the shared config is not written from a worktree');
   assert.match(r.out, /shared with the main checkout/);
-  assert.match(r.out, new RegExp(`run \`house uninstall --apply\` again from the main checkout \\(${realpathSync(main).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`));
+  assert.match(r.out, new RegExp(`run \`git config --unset core\\.hooksPath\` yourself in the main checkout \\(${realpathSync(main).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`));
   assert.doesNotMatch(r.out, /node \S+\/scripts\/house uninstall/, 'no plugin path that goes stale after an update');
   for (const rel of MANAGED) assert.ok(!existsSync(join(wt, rel)), `${rel} removed in the worktree`);
 });
@@ -3199,7 +3202,10 @@ function githubOffRepo(cliPath, env) {
 function ownFilesUntouched(repo, out, label) {
   assert.equal(readFileSync(join(repo, '.githooks', 'house-lib.sh'), 'utf8'), OWN_LIB, `${label}: house-lib.sh byte for byte`);
   assert.equal(readFileSync(join(repo, '.githooks', 'pre-commit'), 'utf8'), OWN_HOOK, `${label}: pre-commit byte for byte`);
-  assert.doesNotMatch(out, /\.githooks\/(house-lib\.sh|pre-commit)(?![\w./-])/, `${label}: not mentioned`);
+  // The one mention allowed: uninstall's short group naming files at house
+  // floor paths that it left because their module is off (round 4, note a).
+  const rest = out.replace(/^ {2}at house floor paths[^\n]*\n(?: {4}\S+\n)*/gm, '');
+  assert.doesNotMatch(rest, /\.githooks\/(house-lib\.sh|pre-commit)(?![\w./-])/, `${label}: not mentioned`);
 }
 
 test('#152 with github off, the repo\'s own .githooks files survive render, disable, and uninstall, unmentioned', () => {
@@ -3235,7 +3241,11 @@ test('#152 a module turned off by hand: with lock entries its files go; without 
     const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
     assert.equal(r.code, 0, r.out + r.err);
     for (const f of FLOOR_FILES) assert.equal(existsSync(join(repo, '.githooks', f)), !recorded, `${f}: ${recorded ? 'recorded, removed' : 'unrecorded and off, left'}`);
-    if (!recorded) assert.doesNotMatch(r.out, /REFUSE|\.githooks\/pre-push\b/);
+    if (!recorded) {
+      assert.doesNotMatch(r.out, /REFUSE|^remove\s+\.githooks/m);
+      assert.match(r.out, FLOOR_LEFT_GROUP, 'named once, as files at house floor paths left to the user');
+      assert.match(r.out, /^ {4}\.githooks\/pre-push$/m);
+    }
   }
 });
 
@@ -3303,4 +3313,128 @@ test('#152 uninstall: a dangling symlink at a recorded path is removed, the link
   assert.doesNotMatch(r.out, /^already gone\s+\.githooks\/pre-push/m);
   assert.throws(() => lstatSync(pre), 'the link is gone');
   assert.ok(!existsSync(join(repo, 'nowhere')), 'nothing was created at its target');
+});
+
+// ── #152 round 4 ──────────────────────────────────────────────────────────
+
+const FLOOR_LEFT_GROUP = /^ {2}at house floor paths, not removed \(the lock does not record them and their module is off here; yours to keep or delete\):$/m;
+
+// Every file under the repo, .git aside, by lstat, so a link counts as itself.
+function filesIn(repo) {
+  const out = new Set();
+  const walk = (rel) => {
+    for (const ent of readdirSync(join(repo, rel), { withFileTypes: true })) {
+      const p = rel ? `${rel}/${ent.name}` : ent.name;
+      if (p === '.git') continue;
+      if (ent.isDirectory()) walk(p); else out.add(p);
+    }
+  };
+  walk('');
+  return out;
+}
+const planned = (out) => [...out.matchAll(/^remove +(\S+)/gm)].map((m) => m[1]).sort();
+function removedBy(repo, run) {
+  const before = filesIn(repo);
+  const r = run();
+  const after = filesIn(repo);
+  return { r, removed: [...before].filter((p) => !after.has(p)).sort() };
+}
+
+// The plan is the contract: what it lists as removed is gone after --apply,
+// and nothing else is, for render, disable, and uninstall alike.
+test('#152 the plan lists exactly what --apply removes, for disable, render, and uninstall', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const scenarios = [
+    ['disable github, floor entries missing from the lock', (repo) => unrecordInLock(repo, (p) => p.startsWith('.githooks/')), ['disable', 'github', '--why', 'x'], (removed) => assert.ok(removed.includes('.githooks/house-lib.sh'))],
+    ['disable github, lock complete', () => {}, ['disable', 'github', '--why', 'x'], (removed) => assert.ok(removed.includes('.githooks/house-lib.sh'))],
+    ['render after github was turned off by hand', (repo) => { const h = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')); h.modules.github.enabled = false; writeHouseJson(repo, h); }, ['render'], (removed) => assert.ok(removed.includes('.githooks/pre-push'))],
+    ['uninstall, lock complete', () => {}, ['uninstall'], (removed) => assert.ok(removed.includes('house.json'))],
+    ['uninstall, floor entries missing from the lock', (repo) => unrecordInLock(repo, (p) => p.startsWith('.githooks/')), ['uninstall'], (removed) => assert.ok(removed.includes('.githooks/house-lib.sh'))],
+  ];
+  for (const [name, setup, cmd, positive] of scenarios) {
+    const repo = uninstallRepo(cliPath, env);
+    setup(repo);
+    const plan = runCli(cliPath, [...cmd, '--repo', repo], env);
+    assert.equal(plan.code, 0, `${name}: ${plan.out}${plan.err}`);
+    const { r, removed } = removedBy(repo, () => runCli(cliPath, [...cmd, '--repo', repo, '--apply'], env));
+    assert.equal(r.code, 0, `${name}: ${r.out}${r.err}`);
+    assert.deepEqual(removed, planned(plan.out), `${name}: removed on --apply equals the plan's list`);
+    positive(removed);
+  }
+});
+
+test('#152 disable github with the floor missing from the lock removes it and unarms nothing it did not say', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  unrecordInLock(repo, (p) => p.startsWith('.githooks/'));
+  const r = runCli(cliPath, ['disable', 'github', '--why', 'x', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const f of FLOOR_FILES) assert.ok(!existsSync(join(repo, '.githooks', f)), `${f} removed, as the plan said`);
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'disable writes no git config, as its plan says');
+});
+
+// The hooks path is house's to unset only when the floor is: the github module
+// is on before the command, or the lock records floor files.
+test('#152 uninstall leaves a hooks path the repo set for its own hooks when the floor is not house\'s', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = githubOffRepo(cliPath, env);
+  writeFileSync(join(repo, '.githooks', 'pre-commit'), '#!/bin/sh\ntouch "$(git rev-parse --show-toplevel)/.own-hook-ran"\n');
+  chmodSync(join(repo, '.githooks', 'pre-commit'), 0o755);
+  commitAll(repo, 'own hook');
+  assert.equal(gitIn(repo, ['config', '--local', 'core.hooksPath', floorDir(repo)], env).status, 0);
+  rmSync(join(repo, '.own-hook-ran'), { force: true });
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(localHooksPath(repo, env), floorDir(repo), 'the repo\'s own setting is unchanged');
+  assert.match(r.out, /the floor is not house's here/);
+  commitAll(repo, 'after uninstall');
+  assert.ok(existsSync(join(repo, '.own-hook-ran')), 'the repo\'s own hook still runs on a real commit');
+});
+
+test('#152 a FIFO at .house/lock.json is refused, not read, before render or disable writes anything', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const lock = join(repo, '.house', 'lock.json');
+  rmSync(lock);
+  execFileSync('mkfifo', [lock]);
+  const house = readFileSync(join(repo, 'house.json'), 'utf8');
+  for (const args of [['render', '--repo', repo, '--apply'], ['disable', 'alpha', '--why', 'x', '--repo', repo, '--apply']]) {
+    const r = runCliTimed(cliPath, args, env);
+    assert.equal(r.signal, null, `${args[0]} hung on the FIFO`);
+    assert.equal(r.code, 1, `${args[0]}: ${r.out}${r.err}`);
+    assert.match(`${r.out}${r.err}`, /\.house\/lock\.json\s+\(not a regular file/);
+    assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), house, `${args[0]}: house.json not written`);
+  }
+  assert.ok(lstatSync(lock).isFIFO());
+});
+
+test('#152 disable does not hand the checker a FIFO at AGENTS.md, which the vendored checker reads by name', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  execFileSync('mkfifo', [join(repo, 'AGENTS.md')]);
+  const r = runCliTimed(cliPath, ['disable', 'gamma', '--repo', repo, '--apply'], {});
+  assert.equal(r.signal, null, 'hung');
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /checker not run: AGENTS\.md is not a regular file/);
+  assert.match(r.err, /payload\/check\.mjs/);
+});
+
+test('#152 a symlink to a device at a recorded path is refused by uninstall as by render', () => {
+  const { cliPath } = buildFloorFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const pre = join(repo, '.githooks', 'pre-push');
+  rmSync(pre);
+  symlinkSync('/dev/null', pre);
+  for (const args of [['render', '--repo', repo, '--apply'], ['uninstall', '--repo', repo, '--apply']]) {
+    const r = runCliTimed(cliPath, args, env);
+    assert.equal(r.code, 1, `${args[0]}: ${r.out}${r.err}`);
+    assert.match(r.out, /\.githooks\/pre-push\s+\(not a regular file/, args[0]);
+  }
+  assert.ok(lstatSync(pre).isSymbolicLink(), 'the link is still there');
+  assert.equal(localHooksPath(repo, env), floorDir(repo));
 });
