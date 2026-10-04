@@ -2125,7 +2125,8 @@ function unreferencedVendoredScripts(ctx, lockEntries) {
     // module choice, and warning on it would be permanent noise.
     const twins = ctx.allTracked.filter((f) => !f.startsWith('scripts/house/') && basename(f) === basename(script));
     if (!twins.length) continue;
-    const referenced = readers.some((f) => f !== script && !managedPaths.has(f) && textOf(f).includes(script));
+    const referenced = readers.some((f) => f !== script && !managedPaths.has(f) && textOf(f).includes(script))
+      || scripts.some((f) => f !== script && textOf(f).includes(basename(script)));
     if (referenced) continue;
     warnings.push(mk('manifest', script, null, 'unreferenced script', `vendored script is referenced by no package.json script, workflow, or other tracked file, so nothing runs it, while a tracked file with the same name sits at ${twins.join(', ')}; if that is the copy this repo runs, it will drift from the house one. Wire the house copy in, or delete it and drop the module that vendors it.`));
   }

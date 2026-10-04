@@ -470,7 +470,22 @@ test('#178: wiring the vendored script into package.json clears the warning', ()
     'house.json': houseJson(),
     '.house/lock.json': lockFor(['scripts/house/foo-guard.mjs']),
     'scripts/house/foo-guard.mjs': 'export const a = 1;\n',
+    'scripts/foo-guard.mjs': 'export const a = 1;\n',
     'package.json': '{"scripts":{"guard":"node scripts/house/foo-guard.mjs"}}\n',
+  });
+  const { code, out } = run(dir, ['--only=manifest']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /unreferenced script/);
+});
+
+test('#178: a vendored script imported by another vendored script counts as referenced', () => {
+  const dir = sandbox({
+    'house.json': houseJson(),
+    '.house/lock.json': lockFor(['scripts/house/deploy-guards.mjs', 'scripts/house/assert-main-at-origin.mjs']),
+    'scripts/house/deploy-guards.mjs': "import { a } from './assert-main-at-origin.mjs';\n",
+    'scripts/house/assert-main-at-origin.mjs': 'export const a = 1;\n',
+    'scripts/assert-main-at-origin.mjs': 'export const a = 1;\n',
+    'package.json': '{"scripts":{"deploy":"node scripts/house/deploy-guards.mjs"}}\n',
   });
   const { code, out } = run(dir, ['--only=manifest']);
   assert.equal(code, 0, out);
