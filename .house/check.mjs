@@ -1164,9 +1164,8 @@ function checkDrift(ctx) {
 
     // P13: a whole-file opt-out must record WHY, mirroring a deviations entry.
     // Capture the reason after the colon; a marker with no non-empty reason
-    // suppresses ALL of a file's drift with no justification, so warn. The file
-    // is still exempted (this does not block); it just refuses to let a blanket
-    // opt-out stay silent about its reason.
+    // suppresses ALL of a file's drift with no justification, so it is a finding.
+    // The file is still exempted from drift; the missing reason is what fails.
     let fileIgnored = false;
     let fileIgnoreReason = null;
     for (const l of headWindow(lines)) {
