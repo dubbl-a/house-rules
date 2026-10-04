@@ -1446,15 +1446,19 @@ function orphanedManagedPaths(repoRoot, planDests, modules) {
 // a nested repo's, or a linked worktree's pointer file), is refused. null when
 // the removal is safe.
 //
-// Compared case-insensitively, always: on a case-insensitive filesystem (the
-// macOS and Windows defaults) `.GIT/config` IS .git/config, and realpath keeps
-// the case it was given, so a byte comparison let a forged entry delete git's
-// own config. On a case-sensitive one this refuses a `.GIT` directory nobody
-// has; a false refusal costs a message, a false pass costs the repo.
+// Two comparisons, folded differently on purpose. A `.git` segment is matched
+// case-insensitively, always: on a case-insensitive filesystem (the macOS and
+// Windows defaults) `.GIT/config` IS .git/config, and on a case-sensitive one
+// the fold only refuses a `.GIT` directory nobody has, so its worst outcome is
+// a false refusal. Inside-the-repo is NOT folded: it compares the resolved
+// target with the resolved root exactly (see resolvedIsInside), because on a
+// case-sensitive filesystem `Proj` and `proj` are different directories and a
+// fold there is a false pass that deletes a sibling's file. realpathSync.native
+// returns the on-disk case on a case-insensitive filesystem, so the exact
+// comparison holds there too, including for a --repo typed in another case.
 function unsafeRemovalReason(repoRoot, rel) {
   if (!isInsideRoot(repoRoot, rel)) return 'lock entry path escapes this repo';
-  const fold = (p) => p.toLowerCase();
-  const isGit = (p) => p.split(/[\\/]/).some((seg) => fold(seg) === '.git');
+  const isGit = (p) => p.split(/[\\/]/).some((seg) => seg.toLowerCase() === '.git');
   if (isGit(rel)) return 'lock entry resolves inside .git (repository metadata)';
   let realRoot;
   try { realRoot = realpathSync.native(repoRoot); } catch { return 'the repo root cannot be resolved'; }
@@ -1469,10 +1473,18 @@ function unsafeRemovalReason(repoRoot, rel) {
     parent = up;
   }
   const real = path.join(parent, ...tail);
-  const inRepo = path.relative(fold(realRoot), fold(real));
-  if (inRepo === '' || inRepo === '..' || inRepo.startsWith(`..${path.sep}`) || path.isAbsolute(inRepo)) return `lock entry resolves outside this repo, to ${real}`;
-  if (isGit(inRepo)) return 'lock entry resolves inside .git (repository metadata)';
+  if (!resolvedIsInside(realRoot, real)) return `lock entry resolves outside this repo, to ${real}`;
+  if (isGit(path.relative(realRoot, real))) return 'lock entry resolves inside .git (repository metadata)';
   return null;
+}
+
+// Whether resolved path `real` lies strictly under resolved root `realRoot`,
+// compared exactly and by path segment: the root itself is not inside, and
+// neither is a sibling sharing its prefix (`repo-x`) or differing only by case.
+// Pure, so tests/cli-house.test.mjs runs this exact text with no filesystem.
+function resolvedIsInside(realRoot, real) {
+  const root = realRoot.endsWith(path.sep) ? realRoot : `${realRoot}${path.sep}`;
+  return real.startsWith(root) && real.length > root.length;
 }
 const UNSAFE_REMOVAL_EXIT = 'render never deletes there, so nothing was written. A lock entry like this did not come from render: remove it from .house/lock.json by hand, read the commit that added it, and re-run.';
 
@@ -2258,7 +2270,7 @@ function hooksPathLines(repoRoot) {
 // text rules for as long as the policy stands. tests/hooks/run.sh pins this.
 function guardFloorLines() {
   return [
-    '  branch guard: the vendored git hooks are removed, and the PreToolUse branch guard does not read module state: it follows `branchPolicy` (and `protectedBranches`) in house.json at HEAD, which this disable does not change. While that says "pr" it keeps enforcing it with the text rules it applies to a repo with no hook floor, which are stricter, and its refusals will tell you to arm the floor.',
+    '  branch guard: the vendored git hooks are removed, and the PreToolUse branch guard does not read module state: it follows `branchPolicy` (and `protectedBranches`) in house.json at HEAD, which this disable does not change. While that says "pr" it keeps enforcing it by its text rules, which are stricter with no hook floor, and its refusals will give floor advice (to arm the floor, or to restore it with a render) that does not apply while the github module is off.',
   ];
 }
 

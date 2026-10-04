@@ -80,7 +80,8 @@ and pass their words, never one of your own. A hand-edited managed file is refus
 resolving it to the person. Do this on a branch and open a pull request. The branch guard does
 not read module state: it follows `branchPolicy` in `house.json` at HEAD, so turning github off
 leaves it enforcing that policy by its stricter rules for a repo with no hook floor, and its
-refusals will say to arm the floor; say so rather than suggest arming. If `--apply` is denied by a
+refusals give floor advice (arm it, or restore it with a render) that does not apply while the
+module is off; say so rather than follow that advice. If `--apply` is denied by a
 permission check, do not retry or route around it; give the person the exact command and the
 directory to run it from. The plan names a `git config --unset` the person runs themselves: the
 guard refuses it to a session, and leaving the setting in place is harmless.

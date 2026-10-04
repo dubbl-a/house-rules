@@ -2527,7 +2527,8 @@ test('#151 disable github: the plan states what the guard follows and who unsets
   for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(plan.out, re);
   assert.match(plan.out, /the PreToolUse branch guard does not read module state/);
   assert.match(plan.out, /it follows `branchPolicy` \(and `protectedBranches`\) in house\.json at HEAD/);
-  assert.match(plan.out, /While that says "pr" it keeps enforcing it with the text rules it applies to a repo with no hook floor, which are stricter, and its refusals will tell you to arm the floor/);
+  assert.match(plan.out, /While that says "pr" it keeps enforcing it by its text rules, which are stricter with no hook floor, and its refusals will give floor advice \(to arm the floor, or to restore it with a render\) that does not apply while the github module is off/);
+  assert.doesNotMatch(plan.out, /will tell you to arm the floor/, 'the advice varies with core.hooksPath, so it is not quoted');
   assert.match(plan.out, new RegExp(`you run \`git config --unset core\\.hooksPath\` yourself, from ${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   assert.match(plan.out, /an agent cannot: the branch guard refuses it/);
   assert.match(plan.out, /leaving it set is harmless/);
@@ -2571,6 +2572,37 @@ test('#151 forged lock entries naming .git in another case, or a nested repo\'s 
     for (const [rel] of forged) assert.match(r.out, new RegExp(`^REFUSE\\s+${rel.replace(/\./g, '\\.')}\\s+\\(lock entry resolves inside \\.git`, 'm'), `${args[0]} names ${rel}`);
     for (const [abs, b] of bytes) assert.ok(readFileSync(abs).equals(b), `${args[0]}: ${abs} unchanged`);
   }
+});
+
+// The outside-the-repo test is a pure function of two resolved paths, so it is
+// lifted out of the real CLI source and run here, with no filesystem: a
+// case-sensitive mount, where `Proj` and `proj` are different directories,
+// cannot be made inside `npm test` on a case-insensitive machine.
+function loadResolvedIsInside() {
+  const src = readFileSync(REAL_CLI_SRC, 'utf8').match(/^function resolvedIsInside\([^)]*\) \{\n[^]*?\n\}$/m);
+  assert.ok(src, 'resolvedIsInside is not a top-level function in the CLI any more');
+  return new Function('path', `${src[0]}\nreturn resolvedIsInside;`)({ sep: '/' });
+}
+
+test('#151 resolvedIsInside: exact on resolved paths, so a sibling differing only by case is outside', () => {
+  const inside = loadResolvedIsInside();
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/repo/a/b.md'), true, 'positive control');
+  assert.equal(inside('/m/Proj/repo', '/m/proj/repo/victim.txt'), false, 'case-different sibling');
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/REPO/x'), false);
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/repo-x/x'), false, 'a prefix that is not a path segment');
+  assert.equal(inside('/m/Proj/repo', '/m/Proj/repo'), false, 'the root itself is never a removal');
+  assert.equal(inside('/', '/etc/x'), true, 'a root ending in the separator');
+});
+
+test('#151 disable: a --repo spelled in another case still resolves to the same repo', (t) => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const other = repo.replace(/house-repo-/, 'HOUSE-REPO-');
+  if (!existsSync(other)) { t.skip('case-sensitive filesystem: the other spelling is a different path'); return; }
+  const r = runCli(cliPath, ['disable', 'gamma', '--repo', other, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(r.out, /REFUSE/);
+  assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma.md')));
 });
 
 test('#151 disable: the --why error names --why=<reason> for a reason that starts with dashes', () => {
