@@ -387,7 +387,7 @@ rule's text without its own heading. `handbook-only` is context or a receipt, no
 | AS-016 | repo-c:.claude/rules/stripe.md | Give a restricted key exactly one writable scope, read the scopes on a dated day, and cross-check with a live probe of every resource | port | rule:github.md#give-a-restricted-key-exactly-one-writable-scope |
 | AS-017 | same | Derive fees from the authoritative object, never from arithmetic | fold | rule:database.md#store-money-as-integer-cents-and-reconcile-against-the-books |
 | AS-018 | same | Make the sync idempotent and resumable | cross-ref | xref:rule:data-pipelines.md -> TW-101 |
-| AS-019 | same, repo-c:docs/DATA-POLICY.md | Never log a customer, charge, or row object, because the leak path is observability | port | rule:github.md#never-log-a-vendor-object |
+| AS-019 | same, repo-c:docs/DATA-POLICY.md | Never log a customer, charge, or row object, because the leak path is observability | handbook-only | chapter:github |
 | AS-020 | repo-c:.claude/rules/finance.md | Make unmapped input loud: fail a build gate when input lands in no bucket above a threshold | port | rule:data-pipelines.md#make-unmapped-input-loud |
 | AS-021 | same | Reconcile against an external ground truth as the correctness gate, and do not trust the sync until the figures tie out | fold | rule:database.md#store-money-as-integer-cents-and-reconcile-against-the-books |
 | AS-022 | repo-c:.claude/rules/sheets.md | Parse an external tabular source by header, never by position | fold | rule:data-pipelines.md#make-unmapped-input-loud |

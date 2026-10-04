@@ -74,7 +74,6 @@ Full text: `.claude/rules/house/github.md`
 - Keep credentials out of the repo, the commit, and the chat
 - Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
 - Give a restricted key exactly one writable scope
-- Never log a vendor object
 - Treat a preview URL as production for exposure
 - Label a non-secret as a non-secret
 - Ship the community files the platform looks for, and keep issue intake as forms

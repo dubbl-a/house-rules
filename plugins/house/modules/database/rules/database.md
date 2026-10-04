@@ -42,9 +42,7 @@ Receipts: `docs/handbook/database.md#add-the-table-registry-line-in-the-same-pr-
 
 ## Store money as integer cents and reconcile against the books
 
-Store every money column as integer cents and ban the floating-point type at the schema level, because a rounding error in a stored amount is unrecoverable once it has been summed.
-Read a fee from the provider's own record of that transaction, never from arithmetic on the gross amount, because the provider's number is the one the bank actually moved.
-Treat reconciliation against an external statement as the correctness gate, and do not trust a sync until the figures tie out. A total that agrees only with itself proves nothing.
+Store money as integer cents with the floating-point type banned at the schema, read a fee from the provider's record of that transaction rather than arithmetic on the gross, and do not trust a sync until its totals tie out against an external statement.
 Anchor: the column type in the schema, plus a reconciliation check that compares the summed rows against the external statement and fails on any difference.
 Receipts: `docs/handbook/database.md#store-money-as-integer-cents-and-reconcile-against-the-books`
 

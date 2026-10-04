@@ -143,6 +143,8 @@ Native floor, as of 2026-09-02: the sandbox, which isolates Bash subprocesses on
 
 ## Never log a vendor object
 
+This section is reference, not a loaded rule; its logging directive now lives in `security-server.md`, under "Fail closed, and tell an outside caller little".
+
 **repo-c, `.claude/rules/stripe.md`, `database.md`, and `docs/DATA-POLICY.md`.** Logs carry ids, amounts, and outcomes, never a customer, charge, or spreadsheet-row object, and the same discipline extends to error messages and URLs. The rule is stated as being entirely about the exit path: "observability is how personal data leaves a database sideways," not through the schema or the API, through a log line nobody thought to treat as an egress point.
 
 ## Treat a preview URL as production for exposure

@@ -2,7 +2,7 @@
 paths:
   - plugins/house/evals/**
 ---
-<!-- house-managed v0.18.0 module=evals source=modules/evals/rules/evals.md body-sha256=46d280af880be3620173693f12ecb433a765cd3c34d27c79e5619e1d24c4646b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.18.0 module=evals source=modules/evals/rules/evals.md body-sha256=88b6c7efec6a223a4dd0fd85bb14537b52d5128cf5cb064684f21bda4c82d5b6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Evals
 
@@ -10,9 +10,7 @@ How this repo measures: the eval tier and its graders, the answer key, the verdi
 
 ## Split deterministic tests from model-behavior evals, and give each its own budget and cadence
 
-Run two tiers and never merge them: the deterministic harness tests, which are free, fast, and identical every run, and the model-behavior evals, which cost money and answer differently each time you ask.
-Keep the deterministic tier in the gate and run the eval tier nightly or on demand, because a paid, nondeterministic tier that can block a merge gets switched off the first week it is wrong for a reason nobody can reproduce.
-Give the eval tier its own budget using the runner's own controls rather than a promise: set the cost ceiling, which stops new runs once spent and exits with partial results while in-flight runs finish, and the threshold that exits non-zero when a case scores below it, then keep that tier out of the merge gate and on a cadence a person can pause by hand. Writing that ceiling as an invariant is engineering.md's rule, and account-wide CI minutes are github.md's.
+Keep the free, deterministic tests in the merge gate and run the paid, nondeterministic eval tier nightly or on demand under the runner's own cost ceiling and score threshold, on a cadence a person can pause, because a paid tier that can block a merge gets switched off the first week it is wrong; account-wide CI minutes are github.md's.
 Anchor: `plugins/house/evals/`, whose cases run on demand under their own ceiling, beside `npm test` and `tests/hooks/run.sh`, which are the tiers the gate runs on every pull request.
 Receipts: `docs/handbook/evals.md#split-deterministic-tests-from-model-behavior-evals-and-give-each-its-own-budget-and-cadence`
 
@@ -21,7 +19,6 @@ Receipts: `docs/handbook/evals.md#split-deterministic-tests-from-model-behavior-
 The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge.
 Write the cases from failures you actually watched happen, before the prose, then write only enough rule text to pass them; building a few evaluations before documenting a procedure is claude-code.md's rule.
 Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded, and llm-output.md's deterministic backbone is the same rule one level up.
-Report the spread with the ratio and its sample, as the ratio rule below requires.
 Grade the grader too: have it flag an assertion too easy to satisfy, and read the transcripts before you trust the number, because an assertion nobody has read is not evidence that the eval can discriminate at all.
 Anchor: `plugins/house/evals/`, whose cases carry their own graders and thresholds, with the ablation pair at `plugins/house/evals/explicit-model-tier/` whose arms differ in one thing only.
 Receipts: `docs/handbook/evals.md#prove-an-eval-can-fail-then-grade-it-with-the-cheapest-grader-that-can`
@@ -53,7 +50,7 @@ Receipts: `docs/handbook/evals.md#show-the-ratio-and-the-sample-because-one-numb
 ## Make a measuring instrument reproducible
 
 Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
-Regenerate a fixture from its source under a seed instead of curating it, treat a holdout as spent once validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with its re-pull command, move the baseline in the change that moves the numbers with the why in the PR, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
+Regenerate a sampled fixture from its source under a seed instead of curating it, and commit a hand-authored case set with a header saying how its cases were chosen and from what sources, since nothing in it is sampled and a generated key would grade the system against itself; treat a holdout as spent once validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with its re-pull command, move the baseline in the change that moves the numbers with the why in the PR, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
 When the instrument drives an agent, pin the bare non-interactive invocation that skips ambient discovery, or where bare mode cannot authenticate the leanest invocation the login allows (the strict server-config flag, project-only setting sources, an explicit tool list, and the deny-by-default permission mode with an allowlist), and record the pricing basis beside any reported cost, since a rate or residency multiplier can move that figure without moving the bill.
 Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness advises pinning the model, can replay mock answers copied into its replay directory, and reports cost at list price, but leaves fixture sampling and the pricing basis free to move, so seeding the fixture and recording the pricing basis are this repo's addition
 Receipts: `docs/handbook/evals.md#make-a-measuring-instrument-reproducible`

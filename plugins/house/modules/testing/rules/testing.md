@@ -5,9 +5,7 @@ These rules cover the checks a repo runs on itself: the suite, the gates that gu
 
 ## Give the agent a check it can run before you walk away
 
-The harness's own guidance already says to give the agent a check that produces a pass or fail; treat that as the floor and ship it as one command that answers "did this work" with nobody watching, because without it you are the verification loop and every change waits on your attention.
-Make it exit non-zero on failure, and chain the suite, the guard tests, and the repo checker behind it.
-Name it in the root instruction file, which the harness loads at the start of every session as advisory context and nothing stronger, so an agent finds the command without being told; escalating it from advice to something the harness enforces is a hook, and that ladder is claude-code.md's.
+Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; making it enforced rather than advised is claude-code.md's hook ladder.
 Anchor: a single `verify` script that runs the suite, the hook harness, and the checker in one pass, so one command covers the tree.
 Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you-walk-away`
 
@@ -71,7 +69,7 @@ Receipts: `docs/handbook/testing.md#treat-coverage-as-a-search-light-never-as-a-
 
 Name each test file after the module it mirrors and keep the tree flat enough to scan, because a reader who cannot find the test for a file assumes there is none and writes a second one.
 Keep each fixture beside the test that consumes it, and let a test build its own throwaway workspace instead of sharing one, so a case cannot inherit state from the case before it.
-Regenerate a fixture from its source under a seed rather than curating it by hand; the rule for making a measuring instrument reproducible lives in evals.md.
+Regenerate a sampled fixture from its source under a seed rather than curating it by hand, and commit a hand-authored fixture with a header saying how its cases were chosen and from what sources; the rule for making a measuring instrument reproducible lives in evals.md.
 Anchor: `tests/` mirroring the checker one file per family, with the shared sandbox helper beside them and every case building its own throwaway repo.
 Receipts: `docs/handbook/testing.md#mirror-the-module-layout-in-the-test-tree-and-keep-each-fixture-beside-its-test`
 

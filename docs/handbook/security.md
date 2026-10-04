@@ -134,7 +134,7 @@ Rule key (S1 to S7 are headings in `plugins/house/modules/security/rules/securit
 - G-branch: github.md "Protect the default branch at the remote, and name an owner for what runs with privilege"
 - G-cred: github.md "Keep credentials out of the repo, the commit, and the chat"
 - G-push: github.md "Turn on push protection, head-branch deletion, and grouped dependency updates"
-- G-log: github.md "Never log a vendor object"
+- G-log: security-server.md "Fail closed, and tell an outside caller little" (the named-field logging clause)
 - G-community: github.md "Ship the community files the platform looks for, and keep issue intake as forms"
 - G-gate: github.md "Gate every PR on checks that need no credential, and name what is not gated"
 - L: llm-output.md (the quarantine, citation, and approval rules)
