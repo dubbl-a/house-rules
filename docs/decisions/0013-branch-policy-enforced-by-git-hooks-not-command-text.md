@@ -107,6 +107,18 @@ never defers); and a floor that `house render --apply` has written but nobody ha
 as not intact, because the integrity test requires a clean `.githooks/`, so the floor counts once
 it is committed, not once it is rendered.
 
+Six more were recorded after that round and closed as known limits, each with the remote ruleset
+as the ceiling. The strip that feeds target resolution removes a bare message value up to the next
+whitespace, so a command glued to it, as in `git status -mx|git commit -m x`, goes unseen by the
+text scan, with the floor behind it in an armed repo (#154). A command long enough to outlast the
+guard's 5 second hook timeout is not denied, because Claude Code does not block on a timed-out
+hook (#157). The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,
+written by `git fetch origin f:refs/remotes/origin/main` or `git remote set-head`, lets it accept
+a local protected branch moved to an unmerged commit (#161). An inline `git -c alias.x='!...'`
+body is not read in any state, and an alias that calls another alias is read one level deep (#161).
+The CLI removes the floor from inside `house render --apply` or `house disable`, which the text
+guard does not see (#161).
+
 ### Confirmation
 
 `tests/githooks/run.sh` runs real commits and real pushes against a bare remote and fixture repos,
