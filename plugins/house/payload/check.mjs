@@ -155,7 +155,42 @@ const NEEDS_HOUSE_JSON = new Set(['tamper', 'manifest', 'coload', 'guard']);
 // ── generic helpers ─────────────────────────────────────────────────────
 
 function arr(x) { return Array.isArray(x) ? x : []; }
-function safeRead(p) { try { return readFileSync(p, 'utf8'); } catch { return ''; } }
+// A FIFO, socket, or device blocks or never ends when opened for reading, so no
+// path the checker reads may be opened before this says it is safe (#165).
+// Follows symlinks: a link to a FIFO is as dangerous as the FIFO.
+function specialFileKind(p) {
+  try {
+    const st = statSync(p);
+    if (st.isFile() || st.isDirectory()) return null;
+    return st.isFIFO() ? 'a FIFO' : st.isSocket() ? 'a socket' : 'a device';
+  } catch { return null; }
+}
+function safeRead(p) {
+  if (specialFileKind(p)) return '';
+  try { return readFileSync(p, 'utf8'); } catch { return ''; }
+}
+
+// #165: the docs-drift-ignore markers, matched without a regex whose
+// `(?:(?!-->)[\s\S])*` tail rescans the line from every unclosed `<!--`
+// head (quadratic). A head qualifies with `:` plus any later `-->`, or with
+// only whitespace before `-->`; a marker with no closing `-->` matches nothing.
+// Returns null, or {reason} (reason null for the colonless form).
+function docsMarker(line, kind) {
+  const head = kind === 'file' ? /<!--\s*docs-drift-ignore-file/g : /<!--\s*docs-drift-ignore(?!-file)\b/g;
+  const lastClose = line.lastIndexOf('-->');
+  const bare = /\s*-->/y;
+  let h;
+  while ((h = head.exec(line)) !== null) {
+    const e = head.lastIndex;
+    if (line[e] === ':') {
+      if (lastClose >= e + 1) return { reason: line.slice(e + 1, line.indexOf('-->', e + 1)) };
+    } else {
+      bare.lastIndex = e;
+      if (bare.test(line)) return { reason: null };
+    }
+  }
+  return null;
+}
 function mk(family, path, line, kind, message) { return { family, path, line: line ?? null, kind, message }; }
 function isPlainObject(x) { return x !== null && typeof x === 'object' && !Array.isArray(x); }
 function isNonEmptyString(x) { return typeof x === 'string' && x.trim().length > 0; }
@@ -492,7 +527,7 @@ function unsafeLockPathReason(repoRoot, rel, { rootOk = false, real = realpathSy
 // unparseable case, every other caller treats null as "nothing recorded".
 function readLockEntries(repoRoot) {
   const p = join(repoRoot, '.house', 'lock.json');
-  if (!existsSync(p)) return null;
+  if (!existsSync(p) || specialFileKind(p)) return null;
   try {
     const j = JSON.parse(readFileSync(p, 'utf8'));
     return Array.isArray(j) ? j : (Array.isArray(j.files) ? j.files : []);
@@ -950,7 +985,7 @@ function checkDrift(ctx) {
     for (const f of allMd) {
       if (scannedSet.has(f)) continue;
       const head = headWindow(safeRead(join(ctx.repoRoot, f)).split('\n'));
-      const optedOut = head.some((l) => /<!--\s*docs-drift-ignore-file(?::(?:(?!-->)[\s\S])*|\s*)-->/.test(l));
+      const optedOut = head.some((l) => docsMarker(l, 'file') !== null);
       // ADR 0009: an exclusion whose config entry carries a `why` opted out in
       // house.json, which is the right home when the file is a living doc the
       // checker cannot scan rather than a point-in-time record (the marker's
@@ -1078,7 +1113,7 @@ function checkDrift(ctx) {
 
   for (const docPath of scanned) {
     const abs = join(ctx.repoRoot, docPath);
-    if (!existsSync(abs)) continue;
+    if (!existsSync(abs) || specialFileKind(abs)) continue;
     const raw = readFileSync(abs, 'utf8');
     const lines = raw.split('\n');
 
@@ -1135,8 +1170,8 @@ function checkDrift(ctx) {
     let fileIgnored = false;
     let fileIgnoreReason = null;
     for (const l of headWindow(lines)) {
-      const m = l.match(/<!--\s*docs-drift-ignore-file(?::((?:(?!-->)[\s\S])*)|\s*)-->/);
-      if (m) { fileIgnored = true; fileIgnoreReason = m[1] ?? null; break; }
+      const m = docsMarker(l, 'file');
+      if (m) { fileIgnored = true; fileIgnoreReason = m.reason; break; }
     }
     if (fileIgnored) {
       if (!isNonEmptyString(fileIgnoreReason)) {
@@ -1196,7 +1231,7 @@ function checkDrift(ctx) {
       // one lets one stray or orphaned marker cover a claim written later
       // and somewhere else, which is the opposite of what a deliberate,
       // narrow suppression is for.
-      const ignoreMatch = line.match(/<!--\s*docs-drift-ignore(?!-file)\b(?::(?:(?!-->)[\s\S])*|\s*)-->/);
+      const ignoreMatch = docsMarker(line, 'ignore');
       if (ignoreMatch) { pendingIgnore = true; return; }
       if (pendingIgnore) { pendingIgnore = false; return; }
 
@@ -1222,7 +1257,7 @@ function checkDrift(ctx) {
 function checkTodo(ctx) {
   const findings = [];
   const abs = join(ctx.repoRoot, 'CLAUDE.md');
-  if (!existsSync(abs)) return { findings, warnings: [] };
+  if (!existsSync(abs) || specialFileKind(abs)) return { findings, warnings: [] };
   const lines = readFileSync(abs, 'utf8').split('\n');
   lines.forEach((line, idx) => {
     if (line.includes('TODO:')) findings.push(mk('todo', 'CLAUDE.md', idx + 1, 'todo', line.trim()));
@@ -1248,6 +1283,11 @@ function checkTamper(ctx) {
     if (renderLooksComplete(ctx.repoRoot, ctx.house)) {
       findings.push(mk('tamper', '.house/lock.json', null, 'lock', 'a rendered house repo has no .house/lock.json, so managed-file integrity checking (tamper and deletion detection) is off. Run `house render --apply` to restore it.'));
     }
+    return { findings, warnings };
+  }
+  const lockSpecial = specialFileKind(lockPath);
+  if (lockSpecial) {
+    findings.push(mk('tamper', '.house/lock.json', null, 'lock', `the lock is ${lockSpecial}, not a regular file; refusing to open it. Replace it with a file (\`house render --apply\` rewrites it).`));
     return { findings, warnings };
   }
   let lock;
@@ -1305,6 +1345,11 @@ function checkTamper(ctx) {
     try { isDir = statSync(abs).isDirectory(); } catch { /* unreadable: the read below reports it */ }
     if (isDir) {
       findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path \`${relPath}\` is a directory, not a file; refusing to read it`));
+      continue;
+    }
+    const entrySpecial = specialFileKind(abs);
+    if (entrySpecial) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock entry path \`${relPath}\` is ${entrySpecial}, not a regular file; refusing to open it`));
       continue;
     }
     const localRaw = readFileSync(abs, 'utf8');
@@ -1653,7 +1698,10 @@ function checkLengths(ctx) {
   // config would silently disable the check (the repo-d v0.1.0 gap), so a
   // missing CLAUDE.md limit is itself a warning naming the house default.
   const HOUSE_CLAUDE_MD_TARGET = 100;
-  if (existsSync(join(ctx.repoRoot, 'CLAUDE.md'))) {
+  const claudeSpecial = specialFileKind(join(ctx.repoRoot, 'CLAUDE.md'));
+  if (claudeSpecial) {
+    findings.push(mk('lengths', 'CLAUDE.md', null, 'length', `CLAUDE.md is ${claudeSpecial}, not a regular file; refusing to open it, so its length is not measured`));
+  } else if (existsSync(join(ctx.repoRoot, 'CLAUDE.md'))) {
     const claudeLimit = limits['CLAUDE.md'];
     const configuredLines = typeof claudeLimit === 'number' ? claudeLimit
       : (isPlainObject(claudeLimit) && typeof claudeLimit.lines === 'number' ? claudeLimit.lines : null);
@@ -1695,7 +1743,10 @@ function checkLengths(ctx) {
   // saying so. A warning, not a finding: the cap is a Codex setting a repo can
   // raise, and most of the file is usually the adopter's own text.
   const agentsAbs = join(ctx.repoRoot, 'AGENTS.md');
-  if (existsSync(agentsAbs)) {
+  const agentsSpecial = specialFileKind(agentsAbs);
+  if (agentsSpecial) {
+    findings.push(mk('lengths', 'AGENTS.md', null, 'length', `AGENTS.md is ${agentsSpecial}, not a regular file; refusing to open it, so its size is not measured`));
+  } else if (existsSync(agentsAbs)) {
     const bytes = Buffer.byteLength(safeRead(agentsAbs), 'utf8');
     if (bytes > CODEX_PROJECT_DOC_MAX_BYTES) {
       warnings.push(mk('lengths', 'AGENTS.md', null, 'length', `${bytes} bytes, over ${CODEX_PROJECT_DOC_MAX_BYTES}, which is Codex's default cap (project_doc_max_bytes) on the AGENTS.md text it reads; past it Codex silently drops the rest, the house-managed block included when it sits below the cut. Trim the file, or move the block nearer the top.`));
@@ -1743,7 +1794,7 @@ function checkLengths(ctx) {
   const tighten = [];
   for (const [file, { limitLines, limitBytes }] of perFile) {
     const abs = join(ctx.repoRoot, file);
-    if (!existsSync(abs)) continue;
+    if (!existsSync(abs) || specialFileKind(abs)) continue;
     const raw = readFileSync(abs, 'utf8');
     const count = countLinesExcludingFrontmatter(raw);
     const ceilingFromRatchet = Object.prototype.hasOwnProperty.call(ratchet, file) ? ratchet[file] : null;
@@ -1958,7 +2009,7 @@ function readModuleDetectPathsFrom(modulesDir) {
 // repo root is dropped here and named in `refused`, never probed.
 function readLockDetectPaths(repoRoot, refused = []) {
   const p = join(repoRoot, '.house', 'lock.json');
-  if (!existsSync(p)) return null;
+  if (!existsSync(p) || specialFileKind(p)) return null;
   let j;
   try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
   if (!isPlainObject(j) || !isPlainObject(j.detectPaths)) return null;
@@ -3189,7 +3240,9 @@ function main() {
   let exitCode = 0;
   if (houseUnusable && needsHouse) exitCode = 2;
   else if (allFindings.length > 0) exitCode = 1;
-  process.exit(exitCode);
+  // Not process.exit: a piped stdout is async and an exit here cuts the report
+  // off at the pipe buffer (#165).
+  process.exitCode = exitCode;
 }
 
 main();
