@@ -100,7 +100,13 @@
       "path": ".claude/rules/house/security.md",
       "module": "security",
       "source": "modules/security/rules/security.md",
-      "bodySha256": "a481a9b28452ed30b41f8316fa36e57c27578664eef3fe5d4b1384678fba9414"
+      "bodySha256": "dc616f862b027e44fd340f6cc0335573e1fe1d367cd3e7f05d072fbcaa8b79ba"
+    },
+    {
+      "path": ".claude/rules/house/security-server.md",
+      "module": "security",
+      "source": "modules/security/rules/security-server.md",
+      "bodySha256": "5277464e2fe90437b1b6fc383b21d6fcc1984a2b11ef6516d1112ae8529d3e2e"
     },
     {
       "path": ".claude/rules/house/testing.md",
@@ -120,7 +126,7 @@
       "source": "targets",
       "kind": "block",
       "sep": "",
-      "bodySha256": "4ab17ef74643ae5340596444221bbcce6f8fb9100b801cb342cc928eb56ea40a"
+      "bodySha256": "8bc7e9fbbd99591eeff0647daf5364277b5357b80adc5d5e9a781e8081bf77bb"
     }
   ],
   "scaffolds": [

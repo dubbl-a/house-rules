@@ -26,7 +26,7 @@ const spec = (name) => JSON.parse(read(`${MODULES_DIR}/${name}/module.json`));
 // heading in a module's rule files except the closing `## Don't` section.
 function ruleCount(name) {
   let n = 0;
-  for (const rel of spec(name).rules) {
+  for (const rel of spec(name).rules.map((r) => (typeof r === 'string' ? r : r.file))) {
     for (const line of read(`${MODULES_DIR}/${name}/${rel}`).split('\n')) {
       const h = line.match(/^##\s+(.*)/);
       if (h && h[1].trim() !== "Don't") n++;

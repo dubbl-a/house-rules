@@ -743,7 +743,7 @@
       "path": "plugins/house/modules/security/rules/security.md",
       "kind": "rule",
       "module": "security",
-      "budgetLines": 140,
+      "budgetLines": 90,
       "owns": [
         "EXT-100",
         "EXT-101",
@@ -751,14 +751,8 @@
         "EXT-103",
         "EXT-104",
         "EXT-105",
-        "EXT-106",
-        "EXT-107",
         "EXT-109",
-        "EXT-110",
-        "EXT-111",
-        "EXT-112",
-        "EXT-113",
-        "EXT-114"
+        "EXT-110"
       ],
       "crossRefs": [],
       "headings": [
@@ -768,7 +762,25 @@
         "Bound an agent's loops, spend, and reach from outside it, and keep a record it cannot rewrite",
         "Install only what was reviewed, and let a new release age first",
         "Release with a short-lived identity, and attest what you ship",
-        "Scan code and dependencies for known flaws, and give every finding an end",
+        "Scan code and dependencies for known flaws, and give every finding an end"
+      ],
+      "notes": "7 headings and 8 owned rows against 90 lines is 12.9 lines per rule including blanks. Split from the 13-rule file by issue #177 so the half that loads on every code file is short: this file holds the agent and supply-chain rules and loads on agent config, the dependency manifest, and workflows; the server-code rules are plugins/house/modules/security/rules/security-server.md. Rules moved verbatim; only each file's intro is new. Built from one deep-research run on incidents and the published standards read the same day (2026-10-03), not a source catalog; each rule states a principle, and the chapter carries the dated evidence, votes, caveats, refuted claims, and the coverage map. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/security.md, and the file ends with ## Don't. Ships with plugins/house/modules/security/module.json: name security, default off (opt-in: init leaves it off and a resync of an older house.json never adds it), rules [{file \"rules/security.md\", paths [\"$securityAgentRoots\", \"$securityGlobs\"]}, \"rules/security-server.md\"], no managed files, configSlots [\"securityGlobs\", {name securityRoots, default [\"src/**\", \"lib/**\", \"scripts/**\"]}, {name securityAgentRoots, movedFrom securityRoots (render warns on an agent-config entry left in securityRoots that securityAgentRoots does not hold), default [\".claude/settings.json\", \".claude/hooks/**\", \".mcp.json\", \"package.json\", \".github/workflows/**\"]}], defaultPaths [\"$securityRoots\", \"$securityGlobs\"], which the plain-string server entry renders. Cross-ref, never restate: workflow permissions, action pins, event interpolation in run: blocks, and where credentials live stay github.md's; the committed allowlist stays claude-code.md's; what the code a session writes must never do stays security-server.md's."
+    },
+    {
+      "path": "plugins/house/modules/security/rules/security-server.md",
+      "kind": "rule",
+      "module": "security",
+      "budgetLines": 75,
+      "owns": [
+        "EXT-106",
+        "EXT-107",
+        "EXT-111",
+        "EXT-112",
+        "EXT-113",
+        "EXT-114"
+      ],
+      "crossRefs": [],
+      "headings": [
         "Supply untrusted input as a parameter, never by building a string",
         "Never let a request choose what the server fetches, opens, loads, or runs",
         "Authenticate every non-public function, and authorize every object on the server",
@@ -776,7 +788,7 @@
         "Fail closed, and tell an outside caller little",
         "Ship secure defaults, and bound what one caller can consume"
       ],
-      "notes": "13 headings and 14 owned rows against 140 lines is 10.8 lines per rule including blanks; raised from 120 when the rule file went from 8 principles to 13 at 129 lines. Built from one deep-research run on incidents and the published standards read the same day (2026-10-03), not a source catalog; each rule states a principle, and the chapter carries the dated evidence, votes, caveats, refuted claims, and the coverage map. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/security.md, and the file ends with ## Don't. Ships with plugins/house/modules/security/module.json: name security, default off (opt-in: init leaves it off and a resync of an older house.json never adds it), rules [\"rules/security.md\"], no managed files, configSlots [\"securityGlobs\", {name securityRoots, default [\"src/**\", \"lib/**\", \"scripts/**\", \".claude/settings.json\", \".claude/hooks/**\", \".mcp.json\", \"package.json\"]}], defaultPaths [\"$securityRoots\", \"$securityGlobs\"]. Cross-ref, never restate: workflow permissions, action pins, event interpolation in run: blocks, and where credentials live stay github.md's; the committed allowlist stays claude-code.md's; the preview-URL request the authorization anchor reuses stays github.md#treat-a-preview-url-as-production-for-exposure."
+      "notes": "6 headings and 6 owned rows against 75 lines is 12.5 lines per rule including blanks. Split from security.md by issue #177; it loads on securityRoots, the code roots, so it is the half that co-loads with engineering.md. Rules moved verbatim; only the intro is new and the crypto anchor names security.md's scan rule instead of saying above. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/security.md, and the file ends with ## Don't. Its module.json entry is the plain string \"rules/security-server.md\", so it renders the module's defaultPaths; see the security.md artifact for the module shape. Cross-ref, never restate: what a session may trust, install, and release stays security.md's; the vendor-object logging half stays github.md's; the preview-URL request the authorization anchor reuses stays github.md#treat-a-preview-url-as-production-for-exposure."
     },
     {
       "path": "plugins/house/modules/retrieval/rules/retrieval.md",
@@ -989,7 +1001,7 @@
         "EXT-118"
       ],
       "crossRefs": [],
-      "notes": "Chapter for plugins/house/modules/security/rules/security.md. Write from the rows this chapter owns PLUS the rows owned by that rule file, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Every factual claim comes from the 2026-10-03 research run with its URL and, where split, its vote, or from a standard in the coverage map with its control number and URL; a section resting on a standard rather than a verified incident says so; the coverage map sits after the per-rule sections, and the three refuted claims are recorded so nobody re-adds them. Budget raised from 400 to 500 lines, decided 2026-10-03, because the coverage map alone is about 320 lines once the verification standard is mapped requirement by requirement."
+      "notes": "Chapter for plugins/house/modules/security/rules/security.md and plugins/house/modules/security/rules/security-server.md. Write from the rows this chapter owns PLUS the rows owned by those two rule files, and cite nothing outside that set. Mandatory sections: \"Why this exists\" and \"Sources\". Every factual claim comes from the 2026-10-03 research run with its URL and, where split, its vote, or from a standard in the coverage map with its control number and URL; a section resting on a standard rather than a verified incident says so; the coverage map sits after the per-rule sections, and the three refuted claims are recorded so nobody re-adds them. Budget raised from 400 to 500 lines, decided 2026-10-03, because the coverage map alone is about 320 lines once the verification standard is mapped requirement by requirement."
     },
     {
       "path": "docs/handbook/retrieval.md",
