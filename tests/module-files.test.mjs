@@ -430,6 +430,66 @@ test('deploy-guards: assertPrProvenance still runs the PR check when protection 
   assert.equal(passed.status, 0, passed.stderr);
 });
 
+const TIP = 'abcdef1234567890';
+const HEAD = '1234567890abcdef';
+const mergedPr = { number: 7, merged_at: '2026-01-01T00:00:00Z', merge_commit_sha: TIP, head: { sha: HEAD } };
+const okRun = { name: 'ci', conclusion: 'success' };
+
+function runCiGreen(answers) {
+  return runNode(
+    `import(${JSON.stringify(DEPLOY_GUARDS_URL)}).then((m) => { m.assertCiGreen('t', { sha: ${JSON.stringify(TIP)}, branch: 'main', repo: 'o/r' }); console.log('OK'); });`,
+    { env: fakeGhEnv(answers) },
+  );
+}
+
+function ciAnswers({ tipRuns = [], pulls = [mergedPr], headRuns = [okRun], headTree = 'tree1', tipTree = 'tree1' } = {}) {
+  return {
+    [`/commits/${TIP}/check-runs`]: { check_runs: tipRuns },
+    [`/commits/${TIP}/pulls`]: pulls,
+    [`/commits/${HEAD}/check-runs`]: { check_runs: headRuns },
+    [`/git/commits/${TIP}`]: { tree: { sha: tipTree } },
+    [`/git/commits/${HEAD}`]: { tree: { sha: headTree } },
+  };
+}
+
+test('deploy-guards: assertCiGreen certifies a zero-run tip by the merged PR head when the trees match', () => {
+  const res = runCiGreen(ciAnswers());
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /tip has no check runs; certified by PR #7 head 12345678, same tree/);
+});
+
+test('deploy-guards: assertCiGreen refuses a zero-run tip whose tree differs from the PR head, naming both shas', () => {
+  const res = runCiGreen(ciAnswers({ headTree: 'tree2' }));
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /abcdef12/);
+  assert.match(res.stderr, /12345678/);
+  assert.match(res.stderr, /tree/);
+});
+
+test('deploy-guards: assertCiGreen refuses a zero-run tip when the PR head has zero runs or a failure', () => {
+  const none = runCiGreen(ciAnswers({ headRuns: [] }));
+  assert.equal(none.status, 1);
+  assert.match(none.stderr, /zero CI check runs/);
+  const failed = runCiGreen(ciAnswers({ headRuns: [okRun, { name: 'test', conclusion: 'failure' }] }));
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /test: failure/);
+});
+
+test('deploy-guards: assertCiGreen refuses a zero-run tip with no merged PR whose merge commit is the tip', () => {
+  const noPulls = runCiGreen(ciAnswers({ pulls: [] }));
+  assert.equal(noPulls.status, 1);
+  assert.match(noPulls.stderr, /zero CI check runs/);
+  const otherMerge = runCiGreen(ciAnswers({ pulls: [{ ...mergedPr, merge_commit_sha: 'ffffffff' }] }));
+  assert.equal(otherMerge.status, 1);
+  const unmerged = runCiGreen(ciAnswers({ pulls: [{ ...mergedPr, merged_at: null }] }));
+  assert.equal(unmerged.status, 1);
+});
+
+test('deploy-guards: assertCiGreen still passes on a green tip without asking for the PR', () => {
+  const res = runCiGreen({ [`/commits/${TIP}/check-runs`]: { check_runs: [okRun] } });
+  assert.equal(res.status, 0, res.stderr);
+});
+
 // ===========================================================================
 // github/scan-dist-secrets.mjs
 // ===========================================================================
