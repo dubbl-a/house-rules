@@ -506,7 +506,10 @@ test('security: a house.json written before the module existed gets nothing abou
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'an older manifest that also targets codex');
 
   const out = house(repo, 'render', '--apply').toString();
-  assert.doesNotMatch(out, /security/i, `render says nothing about security:\n${out}`);
+  // #176: the one line render may say is the `available` notice that the module exists.
+  assert.match(out, /^available {3}not enabled here: .*\bsecurity\b.* \(enable with: house enable <name>\)$/m);
+  const rest = out.split('\n').filter((l) => !l.startsWith('available ')).join('\n');
+  assert.doesNotMatch(rest, /security/i, `render says nothing else about security:\n${out}`);
   assert.ok(!existsSync(join(repo, '.claude/rules/house/security.md')), 'no security rule is vendored');
   assert.doesNotMatch(readFileSync(join(repo, '.house/INDEX.md'), 'utf8'), /security\.md/, 'the index names no security rule');
   assert.ok(existsSync(join(repo, 'AGENTS.md')), 'the codex target renders an AGENTS.md block');
