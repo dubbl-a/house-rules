@@ -241,7 +241,10 @@
 # or `pushd` is a candidate target, and the command is decided once per
 # candidate against THAT repo's toplevel, house.json and branch, over the
 # clauses whose git command runs there. Any candidate that refuses, refuses
-# the call. A linked worktree reads core.hooksPath from the main checkout's
+# the call. A message or `-c` value never names a candidate: its whole shell
+# word goes first, up to unquoted whitespace or an unquoted separator or
+# redirect, so a command glued behind it is still decided (#154, see
+# _strip_flag_args_blind). A linked worktree reads core.hooksPath from the main checkout's
 # config, so the arming advice names the main checkout. Quote-aware: a
 # message-bearing flag's value goes, then the quote characters, so
 # `git commit -m "fix master bug"` on a feature branch cannot false-positive on
@@ -599,10 +602,26 @@ _strip_flag_args() {
 # whitespace) and it goes whole. Used only for target resolution, which fails
 # in the opposite direction: a `cd <repo> &&` surviving inside a message value
 # is parsed as the target, and a sibling repo on a feature branch is a
-# fail-open (#1, review round 1).
+# fail-open (#1, review round 1). A word with no substitution also ends at
+# an unquoted shell separator or redirect (`&`, `;`, `|`, `<`, `>`), bare or
+# after a quoted span, which is where the shell ends it too: `-mx|git commit`
+# and `-m "x"|git commit` used to lose the `|git` with the value, so the
+# commit behind it was never decided (#154). A word holding an unquoted `$(`,
+# backtick, `<(` or `>(`, or a double-quoted span holding `$(` or a backtick,
+# keeps the old whitespace end from that point on: the `$( )` alternative
+# stops at the first `)`, so a separator inside a nested substitution
+# (`$(echo $(pwd);cd ../sib)`) would otherwise surface the `cd` behind it as a
+# target. A separator BEFORE that point still ends the word. A glued `&>`
+# after a word with no substitution loses only its `&`, as in
+# _strip_flag_args.
 _strip_flag_args_blind() {
+  local q="'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`"
+  local word="([^[:space:]'\"]|$q)" bare="([^[:space:]'\"&;|<>]|$q)"
+  local subst="(\\\$\([^)]*\)|\`[^\`]*\`|\\\$\(|\`|[<>]\(|\"[^\"]*(\\\$\(|\`)[^\"]*\")"
   printf '%s' "$2" | sed -E "
-    s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"]|'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`)+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare*$subst$word*/\1/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare*&>/\1>/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare+/\1/g"
 }
 # Quote characters go, but not the tokens: a blind strip of every quoted span
 # turns `git 'commit'` into `git `, which is a bypass. Trailing comments go.
