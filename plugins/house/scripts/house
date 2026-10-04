@@ -1442,19 +1442,36 @@ function orphanedManagedPaths(repoRoot, planDests, modules) {
 // #151: where a removal would land once every symlink in its parents is
 // followed. A lock entry is data a commit can forge, and its path text can
 // stay inside the repo while a symlinked directory takes it elsewhere, so a
-// deletion outside the real repo root, or into .git/, is refused. null when
+// deletion outside the real repo root, or at or under any `.git` (this repo's,
+// a nested repo's, or a linked worktree's pointer file), is refused. null when
 // the removal is safe.
+//
+// Compared case-insensitively, always: on a case-insensitive filesystem (the
+// macOS and Windows defaults) `.GIT/config` IS .git/config, and realpath keeps
+// the case it was given, so a byte comparison let a forged entry delete git's
+// own config. On a case-sensitive one this refuses a `.GIT` directory nobody
+// has; a false refusal costs a message, a false pass costs the repo.
 function unsafeRemovalReason(repoRoot, rel) {
   if (!isInsideRoot(repoRoot, rel)) return 'lock entry path escapes this repo';
+  const fold = (p) => p.toLowerCase();
+  const isGit = (p) => p.split(/[\\/]/).some((seg) => fold(seg) === '.git');
+  if (isGit(rel)) return 'lock entry resolves inside .git (repository metadata)';
   let realRoot;
-  let realParent;
-  try {
-    realRoot = realpathSync(repoRoot);
-    realParent = realpathSync(path.dirname(path.join(repoRoot, rel)));
-  } catch { return null; } // no parent directory: nothing there to remove
-  const real = path.relative(realRoot, path.join(realParent, path.basename(rel)));
-  if (real === '' || real === '..' || real.startsWith(`..${path.sep}`) || path.isAbsolute(real)) return `lock entry resolves outside this repo, to ${path.join(realParent, path.basename(rel))}`;
-  if (real === '.git' || real.startsWith(`.git${path.sep}`)) return 'lock entry resolves inside .git/';
+  try { realRoot = realpathSync.native(repoRoot); } catch { return 'the repo root cannot be resolved'; }
+  // The deepest parent that exists, resolved; the missing rest is appended.
+  let parent = path.dirname(path.join(repoRoot, rel));
+  const tail = [path.basename(rel)];
+  for (;;) {
+    try { parent = realpathSync.native(parent); break; } catch { /* not there yet: step up */ }
+    const up = path.dirname(parent);
+    if (up === parent) return 'lock entry cannot be resolved';
+    tail.unshift(path.basename(parent));
+    parent = up;
+  }
+  const real = path.join(parent, ...tail);
+  const inRepo = path.relative(fold(realRoot), fold(real));
+  if (inRepo === '' || inRepo === '..' || inRepo.startsWith(`..${path.sep}`) || path.isAbsolute(inRepo)) return `lock entry resolves outside this repo, to ${real}`;
+  if (isGit(inRepo)) return 'lock entry resolves inside .git (repository metadata)';
   return null;
 }
 const UNSAFE_REMOVAL_EXIT = 'render never deletes there, so nothing was written. A lock entry like this did not come from render: remove it from .house/lock.json by hand, read the commit that added it, and re-run.';
@@ -1598,6 +1615,12 @@ function cmdRender(args) {
   const sweep = orphanedManagedPaths(repoRoot, planDests, modules);
   const sweepable = [...sweep.orphans].filter((rel) => existsSync(path.join(repoRoot, rel))).sort();
   const unsafeOrphans = sweepable.map((rel) => ({ path: rel, reason: unsafeRemovalReason(repoRoot, rel) })).filter((u) => u.reason);
+  // The block removal deletes a whole file too when nothing else is in it, so
+  // it is refused on the same terms rather than written somewhere else.
+  if (blockRemoval && blockRemoval.deleteFile) {
+    const reason = unsafeRemovalReason(repoRoot, blockRemoval.path);
+    if (reason) unsafeOrphans.push({ path: blockRemoval.path, reason });
+  }
   const editedOrphans = sweepable
     .filter((rel) => rel !== forceManagedPath && !unsafeOrphans.some((u) => u.path === rel) && orphanIsHandEdited(repoRoot, rel, loadPriorLock(repoRoot)));
   printRenderPlan({ plan, skips, moduleWarnings, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, unmanaged: sweep.unmanaged, json: args.json, apply: args.apply });
@@ -1661,7 +1684,7 @@ function cmdRender(args) {
   }
   if (blockRemoval) {
     const abs = path.join(repoRoot, blockRemoval.path);
-    if (blockRemoval.deleteFile && !unsafeRemovalReason(repoRoot, blockRemoval.path)) unlinkSync(abs);
+    if (blockRemoval.deleteFile) unlinkSync(abs); // an unsafe path was refused above, before any write
     else writeIfChanged(abs, blockRemoval.content);
     removed.push(blockRemoval.deleteFile ? blockRemoval.path : `${blockRemoval.path} (house-managed block only; your text stays)`);
   }
@@ -2119,8 +2142,6 @@ function cmdEnable(args) {
   for (const s of after.skips.filter((x) => toEnable.includes(x.module))) console.log(`${'skip'.padEnd(15)} ${s.path}  (module: ${s.module}) -- ${s.reason}`);
   console.log('  and .house/lock.json and .house/INDEX.md, rewritten from the plan');
 
-  for (const line of guardTimingLines(false)) console.log(line);
-
   console.log('\nAt-adoption checklist (repository or account settings no checker can read; confirm each by hand):');
   for (const n of toEnable) {
     const steps = atAdoptionSteps(byName.get(n).json);
@@ -2229,13 +2250,16 @@ function hooksPathLines(repoRoot) {
   ];
 }
 
-// #151: the PreToolUse branch guard reads the policy from HEAD:house.json (the
-// working tree only when HEAD has none), and treats a checkout whose vendored
-// floor is incomplete as unarmed, with its stricter text rules.
-function guardTimingLines(floorGoes) {
-  const lines = ['  branch guard: it reads house.json from HEAD, so this takes effect for the branch guard when this change is merged (in this checkout, once it is committed). Make the change on a branch and open a pull request.'];
-  if (floorGoes) lines.push('  branch guard: until then the guard applies its stricter rules for a repo without the hook floor, since the floor files leave this checkout at once.');
-  return lines;
+// #151: what plugins/house/hooks/no-direct-master.sh does once the floor is
+// gone. It reads `branchPolicy` and `protectedBranches` from HEAD:house.json
+// (the working tree only when HEAD has none) and never reads `modules`; it
+// decides "armed" from the floor files on disk. So the github module being
+// off changes nothing it follows, and with no floor it applies its unarmed
+// text rules for as long as the policy stands. tests/hooks/run.sh pins this.
+function guardFloorLines() {
+  return [
+    '  branch guard: the vendored git hooks are removed, and the PreToolUse branch guard does not read module state: it follows `branchPolicy` (and `protectedBranches`) in house.json at HEAD, which this disable does not change. While that says "pr" it keeps enforcing it with the text rules it applies to a repo with no hook floor, which are stricter, and its refusals will tell you to arm the floor.',
+  ];
 }
 
 function cmdDisable(args) {
@@ -2260,7 +2284,7 @@ function cmdDisable(args) {
     process.exit(2);
   }
   if (args.why !== null && !isNonEmptyString(args.why)) {
-    console.error('house disable: --why needs a reason in your own words, and it was empty, or followed by another flag or by nothing, so nothing was planned or written. Quote it: --why "<reason>".');
+    console.error('house disable: --why needs a reason in your own words, and it was empty, or followed by another flag or by nothing, so nothing was planned or written. Quote it: --why "<reason>", or --why=<reason> for a reason that starts with dashes.');
     process.exit(2);
   }
   const modules = findModules();
@@ -2340,8 +2364,8 @@ function cmdDisable(args) {
   console.log('\nWhat stops:');
   for (const line of disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed, why)) console.log(line);
   const floorGone = removed.some((r) => !r.unsafe && isGitHookDest(r.path) && toDisable.includes(r.module));
-  for (const line of guardTimingLines(floorGone)) console.log(line);
   if (floorGone) {
+    for (const line of guardFloorLines()) console.log(line);
     for (const line of hooksPathLines(repoRoot)) console.log(line);
   }
 
@@ -2375,7 +2399,7 @@ function cmdDisable(args) {
   console.log('\nChecker (.house/check.mjs, as CI runs it):');
   const check = spawnSync(process.execPath, [path.join(repoRoot, '.house', 'check.mjs'), '--repo', repoRoot], { encoding: 'utf8' });
   relay(check);
-  console.log(`\nNext: commit the change on a branch, the removed files included, and open a pull request; the branch guard sees it once it is merged.${floorGone ? ' Unset core.hooksPath yourself in each clone that was armed, as the plan above says.' : ''}`);
+  console.log(`\nNext: commit the change on a branch, the removed files included, and open a pull request.${floorGone ? ' Unset core.hooksPath yourself in each clone that was armed, as the plan above says.' : ''}`);
   process.exit(check.status === null ? 1 : check.status);
 }
 

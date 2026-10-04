@@ -393,6 +393,17 @@ git -C "$r" checkout -q -b feat/x
 expect_allow "unarmed: push origin feat/x from feat/x" \
   "$(mk_payload "git push origin feat/x" "$r")"
 
+# --- #151: the guard never reads `modules`. With the github module off at
+#     HEAD and no floor on disk, branchPolicy "pr" still decides, by the
+#     unarmed rules, and the refusal still says to arm the floor. This is the
+#     sentence `house disable github` prints about the guard. ---
+r="$TMP_ROOT/case151off"; new_repo "$r"
+adopt "$r" '{"branchPolicy":"pr","modules":{"github":{"enabled":false,"config":{}}}}'
+expect_deny "github module off at HEAD, no floor: push origin master is still denied" \
+  "$(mk_payload "git push origin master" "$r")" "feature branch"
+expect_deny "github module off at HEAD, no floor: the deny still says to arm the floor" \
+  "$(mk_payload "git push origin master" "$r")" "floor is not armed in this checkout"
+
 # --- 9. UNARMED: push refspec targeting master from feat/x: DENY ---
 r="$TMP_ROOT/case09"; new_repo "$r"; adopt "$r"
 git -C "$r" checkout -q -b feat/x

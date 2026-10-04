@@ -2513,27 +2513,69 @@ test('#151 with github off, doctor says the floor is off because the module is, 
   assert.equal(arm.stdout, '', 'nothing at session start for a module that is off');
 });
 
-test('#151 disable github: the plan says when the guard sees the change and who unsets core.hooksPath; a commit still works', () => {
+// What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh):
+// branchPolicy and protectedBranches from HEAD:house.json, never `modules`, and
+// "armed" from the floor files on disk. tests/hooks/run.sh pins the guard side.
+const FALSE_GUARD_CLAIMS = [/takes effect for the branch guard when/, /until then the guard/, /guard sees it once it is merged/];
+
+test('#151 disable github: the plan states what the guard follows and who unsets core.hooksPath; a commit still works', () => {
   const { cliPath } = buildFloorFixture();
   const repo = buildFloorRepo();
   assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
   commitAll(repo, 'adopt with the floor');
   const plan = runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture']);
-  assert.match(plan.out, /takes effect for the branch guard when this change is merged/);
-  assert.match(plan.out, /until then the guard applies its stricter rules for a repo without the hook floor/);
+  for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(plan.out, re);
+  assert.match(plan.out, /the PreToolUse branch guard does not read module state/);
+  assert.match(plan.out, /it follows `branchPolicy` \(and `protectedBranches`\) in house\.json at HEAD/);
+  assert.match(plan.out, /While that says "pr" it keeps enforcing it with the text rules it applies to a repo with no hook floor, which are stricter, and its refusals will tell you to arm the floor/);
   assert.match(plan.out, new RegExp(`you run \`git config --unset core\\.hooksPath\` yourself, from ${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   assert.match(plan.out, /an agent cannot: the branch guard refuses it/);
   assert.match(plan.out, /leaving it set is harmless/);
-  const on = runCli(cliPath, ['enable', 'gamma', '--repo', enabledGammaRepo(buildEnableFixture().cliPath)]);
-  assert.doesNotMatch(on.out, /stricter rules/, 'only a github disable mentions the floor');
+  const other = runCli(cliPath, ['disable', 'gamma', '--repo', enabledGammaRepo(buildEnableFixture().cliPath)]);
+  for (const re of [...FALSE_GUARD_CLAIMS, /branch guard/]) assert.doesNotMatch(other.out, re, 'a module that ships no floor says nothing about the guard');
   assert.equal(runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture', '--apply']).code, 0);
   assert.notEqual(gitConfigGet(repo, 'core.hooksPath'), '', 'still set');
   commitAll(repo, 'a commit with core.hooksPath naming a floor that is gone');
   assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' }), /floor that is gone/);
 });
 
-test('#151 enable: the plan says when the branch guard sees the change', () => {
+test('#151 enable: the plan makes no claim about when the branch guard sees the change', () => {
   const { cliPath } = buildEnableFixture();
   const r = runCli(cliPath, ['enable', 'gamma', '--repo', adoptedRepo(cliPath)]);
-  assert.match(r.out, /takes effect for the branch guard when this change is merged/);
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(r.out, re);
+});
+
+// The reviewer's sequence: on a case-insensitive filesystem `.GIT/description`
+// names .git/description, and a byte comparison against ".git" let it through.
+test('#151 forged lock entries naming .git in another case, or a nested repo\'s .git, are refused and every file survives byte for byte', (t) => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  mkdirSync(join(repo, 'sub', '.git'), { recursive: true });
+  writeFileSync(join(repo, 'sub', '.git', 'x'), 'nested\n');
+  const caseInsensitive = existsSync(join(repo, '.GIT', 'config'));
+  const forged = [['sub/.git/x', join(repo, 'sub', '.git', 'x')]];
+  if (caseInsensitive) forged.push(['.GIT/description', join(repo, '.git', 'description')], ['.Git/config', join(repo, '.git', 'config')]);
+  else t.diagnostic('case-sensitive filesystem here: `.GIT` is not `.git`, so the case variants have nothing to reach and are not planted');
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  const bytes = new Map();
+  for (const [rel, abs] of forged) {
+    bytes.set(abs, readFileSync(abs));
+    lock.files.push({ path: rel, module: 'docs', source: 'x', bodySha256: sha256Hex(readFileSync(abs, 'utf8')) });
+  }
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  for (const args of [['render', '--repo', repo, '--apply'], ['disable', 'gamma', '--repo', repo, '--apply']]) {
+    const r = runCli(cliPath, args);
+    assert.equal(r.code, 1, `${args[0]}: ${r.out}${r.err}`);
+    for (const [rel] of forged) assert.match(r.out, new RegExp(`^REFUSE\\s+${rel.replace(/\./g, '\\.')}\\s+\\(lock entry resolves inside \\.git`, 'm'), `${args[0]} names ${rel}`);
+    for (const [abs, b] of bytes) assert.ok(readFileSync(abs).equals(b), `${args[0]}: ${abs} unchanged`);
+  }
+});
+
+test('#151 disable: the --why error names --why=<reason> for a reason that starts with dashes', () => {
+  const { cliPath } = buildEnableFixture();
+  const r = runCli(cliPath, ['disable', 'alpha', '--repo', enabledGammaRepo(cliPath), '--why', '--no-ci-here']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--why=<reason>/);
 });
