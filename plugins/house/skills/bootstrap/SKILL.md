@@ -77,7 +77,11 @@ module, and the load each path sheds. Show all of it and wait for the person to 
 approval, re-run with `--apply` and report the checker's summary as printed. A module that is on
 by default needs `--why "<reason>"`, recorded as a dated deviation: ask the person for the reason
 and pass their words, never one of your own. A hand-edited managed file is refused by name: leave
-resolving it to the person. Never set `core.hooksPath` yourself.
+resolving it to the person. Do this on a branch and open a pull request: the branch guard reads
+`house.json` from HEAD, so it sees the change once it is merged. If `--apply` is denied by a
+permission check, do not retry or route around it; give the person the exact command and the
+directory to run it from. The plan names a `git config --unset` the person runs themselves: the
+guard refuses it to a session, and leaving the setting in place is harmless.
 
 ## Probe the repo
 

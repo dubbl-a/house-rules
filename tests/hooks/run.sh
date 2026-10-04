@@ -368,6 +368,17 @@ git -C "$r" checkout -q -b feat/x
 expect_allow "house.json pr policy, commit on feat/x" \
   "$(mk_payload "git commit -m x" "$r")"
 
+# --- #151: the house CLI's module commands, run the way the bootstrap skill
+#     runs them (an absolute plugin path under ~/.claude/plugins/), are not a
+#     git verb and not a floor mutation, so the guard lets them through ---
+HOUSE_CLI="/Users/dev/.claude/plugins/cache/house-rules/house/0.9.0/scripts/house"
+for _cmd in \
+  "node \"$HOUSE_CLI\" disable github --why \"x\" --apply --repo \"$r\"" \
+  "node \"$HOUSE_CLI\" enable github --apply --repo \"$r\"" \
+  "node \"$HOUSE_CLI\" confirm github branch-protection --repo \"$r\""; do
+  expect_allow "unarmed, feat/x: $_cmd" "$(mk_payload "$_cmd" "$r")"
+done
+
 # --- 7/8. UNARMED: push naming master DENY (and names the arming command),
 #          push origin feat/x from feat/x ALLOW ---
 r="$TMP_ROOT/case07"; new_repo "$r"; adopt "$r"
@@ -1206,6 +1217,18 @@ else
     "$(mk_payload "git push" "$a")"
   expect_allow "armed: git merge on master is the floor's business" \
     "$(mk_payload "git merge feat/a" "$a")"
+  # #151: the house CLI's module commands on a feature branch of an armed repo.
+  _armed151="$TMP_ROOT/armed151"; mk_broken_floor "$_armed151"
+  for _cmd in \
+    "node \"$HOUSE_CLI\" disable github --why \"x\" --apply --repo \"$_armed151\"" \
+    "node \"$HOUSE_CLI\" enable github --apply --repo \"$_armed151\"" \
+    "node \"$HOUSE_CLI\" confirm github branch-protection --repo \"$_armed151\""; do
+    expect_allow "armed, feat/b: $_cmd" "$(mk_payload "$_cmd" "$_armed151")"
+  done
+  # What disable's plan says only the user can run, because the guard refuses it.
+  _unset="git config --unset core.hooks""Path"
+  expect_deny "armed, feat/b: the hooksPath unset disable's plan hands to the user is refused to a session" \
+    "$(mk_payload "$_unset" "$_armed151")"
   expect_allow "armed: a computed verb is the floor's business" \
     "$(mk_payload 'git ${v} -m x' "$a")"
   git -C "$a" checkout -q feat/a
