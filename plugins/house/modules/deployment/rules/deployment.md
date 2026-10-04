@@ -13,11 +13,13 @@ Receipts: `docs/handbook/deployment.md#deploy-manually-after-the-merge-because-a
 
 ## Chain the deploy guards before building anything, and give them one named escape hatch
 
-Run every guard before the build starts, so a refusal costs seconds instead of a whole build: checkout clean and level with the remote, target account pinned, CI green on the tip, and the tip commit belonging to a merged pull request.
+Run every guard before the build starts, so a refusal costs seconds instead of a whole build: checkout clean and level with the remote, CI green on the tip, and the tip commit belonging to a merged pull request unless the remote requires a pull request on the default branch, in which case the platform already enforces that and the guard says it skipped the check.
+Protection that only requires status checks, or a ruleset that only blocks deletion or force-push, still allows a direct push, so it does not skip the check.
+Where the protection query fails or is unavailable, or shows no pull-request requirement, run the pull request check anyway, so the fallback still applies on a plan with no branch protection.
 Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because the platform starts no workflow run at all for a commit pushed with the default workflow token and leaves the tip genuinely unchecked.
 Ask what else has written to the shared state the build reads, because a deploy publishes the state that store is in right now, not the state the merged pull requests imply.
-Give the chain exactly one escape hatch, set through a named environment variable and described at every call site as rare and deliberate.
-Anchor: `scripts/house/deploy-guards.mjs`, called as the deploy script's first step; the one escape is the `DEPLOY_FROM=any` environment variable.
+Give the chain exactly one escape hatch, set through a named environment variable and described at every call site as rare and deliberate; it prints its reason when one is given and a plain notice when not, so the override is never silent.
+Anchor: `scripts/house/deploy-guards.mjs`, called as the deploy script's first step; the one escape is the `DEPLOY_FROM=any` environment variable, with `DEPLOY_FROM_REASON` optional.
 Receipts: `docs/handbook/deployment.md#chain-the-deploy-guards-before-building-anything-and-give-them-one-named-escape-hatch`
 
 ## Migrate before deploying the code that reads the schema

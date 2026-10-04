@@ -341,15 +341,16 @@ test('assert-main-at-origin: the wrong-branch refusal names the npm script, not 
   assert.doesNotMatch(res.stderr, /scripts\/house\//);
 });
 
-test('assert-main-at-origin: DEPLOY_FROM=any without DEPLOY_FROM_REASON refuses (reason is required, not just a bare bypass)', () => {
+test('assert-main-at-origin: DEPLOY_FROM=any without DEPLOY_FROM_REASON proceeds and prints a plain notice', () => {
   const { work } = makeRepoWithOrigin('main');
   execFileSync('git', ['-C', work, 'checkout', '-q', '-b', 'feature/x']);
   const res = runNode(
-    `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('t'); });`,
-    { env: { DEPLOY_FROM: 'any' } },
+    `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('t'); console.log('OK'); });`,
+    { env: { DEPLOY_FROM: 'any', DEPLOY_FROM_REASON: '' } },
   );
-  assert.equal(res.status, 1);
-  assert.match(res.stderr, /DEPLOY_FROM_REASON is empty/);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /OK/);
+  assert.match(res.stderr, /guard bypassed \(DEPLOY_FROM=any\), no reason given/);
 });
 
 test('assert-main-at-origin: DEPLOY_FROM=any with a reason bypasses the check and prints the reason', () => {
@@ -362,6 +363,71 @@ test('assert-main-at-origin: DEPLOY_FROM=any with a reason bypasses the check an
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stdout, /OK/);
   assert.match(res.stderr, /testing the escape hatch/);
+});
+
+/** A fake `gh` on PATH: `answers` maps an api path suffix to a JSON body; any other path exits 1. */
+function fakeGhEnv(answers) {
+  const dir = mktemp('house-fake-gh-');
+  const script = `#!/usr/bin/env node
+const answers = ${JSON.stringify(answers)};
+const p = process.argv[3];
+for (const [suffix, body] of Object.entries(answers)) {
+  if (p.endsWith(suffix)) { process.stdout.write(JSON.stringify(body)); process.exit(0); }
+}
+process.stderr.write('HTTP 403: Upgrade to GitHub Pro');
+process.exit(1);
+`;
+  writeFileSync(join(dir, 'gh'), script, { mode: 0o755 });
+  return { PATH: `${dir}:${process.env.PATH}` };
+}
+
+function runProvenance(answers) {
+  return runNode(
+    `import(${JSON.stringify(DEPLOY_GUARDS_URL)}).then((m) => { m.assertPrProvenance('t', { sha: 'abcdef1234567890', branch: 'main', repo: 'o/r' }); console.log('OK'); });`,
+    { env: fakeGhEnv(answers) },
+  );
+}
+
+test('deploy-guards: evaluateBranchProtection counts only a pull-request requirement, and any failure as none', async () => {
+  const { evaluateBranchProtection } = await import(DEPLOY_GUARDS_URL);
+  const pr = { required_pull_request_reviews: { required_approving_review_count: 1 } };
+  assert.deepEqual(evaluateBranchProtection(pr, null), { requiresPr: true, via: 'branch protection' });
+  assert.deepEqual(evaluateBranchProtection(null, [{ type: 'pull_request' }]), { requiresPr: true, via: 'ruleset' });
+  assert.equal(evaluateBranchProtection({ required_status_checks: {} }, null).requiresPr, false);
+  assert.equal(evaluateBranchProtection(null, [{ type: 'deletion' }, { type: 'non_fast_forward' }]).requiresPr, false);
+  assert.equal(evaluateBranchProtection(null, null).requiresPr, false);
+  assert.equal(evaluateBranchProtection({ message: 'Upgrade to GitHub Pro' }, []).requiresPr, false);
+});
+
+test('deploy-guards: assertPrProvenance skips the PR check when branch protection requires a pull request', () => {
+  // No /pulls answer: if the guard asked for provenance, the fake gh would fail and the guard would refuse.
+  const res = runProvenance({ '/branches/main/protection': { required_pull_request_reviews: {} } });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /PR provenance skipped, main requires a pull request at the remote \(branch protection\)/);
+});
+
+test('deploy-guards: assertPrProvenance skips the PR check when a ruleset has a pull_request rule', () => {
+  const res = runProvenance({ '/rules/branches/main': [{ type: 'pull_request' }] });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /\(ruleset\)/);
+});
+
+test('deploy-guards: assertPrProvenance runs the PR check when protection or rules do not require a pull request', () => {
+  const statusOnly = runProvenance({ '/branches/main/protection': { required_status_checks: {} }, '/pulls': [] });
+  assert.equal(statusOnly.status, 1);
+  assert.match(statusOnly.stderr, /does not belong to a merged pull request/);
+  const deletionOnly = runProvenance({ '/rules/branches/main': [{ type: 'deletion' }], '/pulls': [] });
+  assert.equal(deletionOnly.status, 1);
+  assert.match(deletionOnly.stderr, /does not belong to a merged pull request/);
+});
+
+test('deploy-guards: assertPrProvenance still runs the PR check when protection is unavailable', () => {
+  const refused = runProvenance({ '/pulls': [] });
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /checking PR provenance/);
+  assert.match(refused.stderr, /does not belong to a merged pull request/);
+  const passed = runProvenance({ '/pulls': [{ number: 7, merged_at: '2026-01-01T00:00:00Z' }] });
+  assert.equal(passed.status, 0, passed.stderr);
 });
 
 // ===========================================================================

@@ -5,8 +5,8 @@
  * system (a site deploy, a console/admin deploy, a broadcast send). Re-
  * exports assertMainAtOrigin (assert-main-at-origin.mjs) so callers have one
  * import, and adds two checks. Every one honors the shared DEPLOY_FROM=any
- * escape hatch (see assert-main-at-origin.mjs) — a bypass requires and
- * prints a reason, so it's auditable after the fact instead of silent:
+ * escape hatch (see assert-main-at-origin.mjs) — a bypass prints its reason
+ * (or a notice when none was given), so it's visible after the fact:
  *
  *   assertCiGreen — origin/<branch>'s tip commit must have at least one CI
  *     check run and every one must have concluded 'success' or 'neutral'
@@ -14,7 +14,9 @@
  *     neutral). Fails CLOSED on zero runs — a commit nothing has checked yet
  *     is not "passing".
  *   assertPrProvenance — origin/<branch>'s tip commit must belong to a
- *     merged pull request.
+ *     merged pull request. Skipped, with a line saying so, when the branch is
+ *     requires a pull request at the remote (branch protection or a ruleset); when that
+ *     query fails or is unavailable the check runs.
  *
  * assertPrProvenance exists as application code, not server-side branch
  * protection, because a private repo on a free GitHub plan cannot enforce
@@ -144,6 +146,39 @@ export function evaluatePrProvenance(pulls = []) {
 }
 
 /**
+ * evaluateBranchProtection — decide whether the remote requires a pull
+ * request on a branch, from the two API answers. `protection` is the parsed
+ * body of branches/<branch>/protection (null when the call failed or 404'd)
+ * and `rules` the parsed array from rules/branches/<branch> (null on failure).
+ * Only a pull-request requirement counts: protection that requires status
+ * checks alone, or a ruleset that only blocks deletion or force-push, still
+ * allows a direct push. Anything else, failures included, reads as "not
+ * required", so the provenance fallback still runs. Pure, like the others.
+ *
+ * @param {object|null} protection
+ * @param {Array|null} rules
+ * @returns {{ requiresPr: boolean, via: 'branch protection'|'ruleset'|null }}
+ */
+export function evaluateBranchProtection(protection, rules) {
+  if (protection && typeof protection === 'object' && !Array.isArray(protection) && protection.required_pull_request_reviews) {
+    return { requiresPr: true, via: 'branch protection' };
+  }
+  if (Array.isArray(rules) && rules.some((r) => r && r.type === 'pull_request')) {
+    return { requiresPr: true, via: 'ruleset' };
+  }
+  return { requiresPr: false, via: null };
+}
+
+/** Run `gh api <path>`, JSON-parsed; null on any failure (never exits). */
+function ghApiJsonOrNull(apiPath) {
+  try {
+    return JSON.parse(execFileSync('gh', ['api', apiPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * assertCiGreen — require every CI check run on a commit (origin/<branch>'s
  * tip by default) to have concluded 'success' or 'neutral'. Fails closed on
  * zero runs.
@@ -186,8 +221,9 @@ export function assertCiGreen(scriptName, opts = {}) {
 
 /**
  * assertPrProvenance — require a commit (origin/<branch>'s tip by default) to
- * belong to a merged pull request. See this module's header for when this
- * substitutes for server-side branch protection vs. duplicates it.
+ * belong to a merged pull request, unless the remote requires a pull request on the
+ * remote. See this module's header for when this substitutes for server-side
+ * branch protection.
  *
  * @param {string} scriptName
  * @param {{ sha?: string, branch?: string, repo?: string }} [opts]
@@ -198,6 +234,15 @@ export function assertPrProvenance(scriptName, opts = {}) {
   const branch = opts.branch ?? resolveDefaultBranch();
   const sha = opts.sha ?? originRefSha(branch);
   const repo = opts.repo ?? resolveRepoSlug(scriptName);
+  const prot = evaluateBranchProtection(
+    ghApiJsonOrNull(`repos/${repo}/branches/${branch}/protection`),
+    ghApiJsonOrNull(`repos/${repo}/rules/branches/${branch}`),
+  );
+  if (prot.requiresPr) {
+    process.stderr.write(`${scriptName}: PR provenance skipped, ${branch} requires a pull request at the remote (${prot.via})\n`);
+    return;
+  }
+  process.stderr.write(`${scriptName}: ${branch} pull request requirement not found or unavailable at the remote, checking PR provenance\n`);
   const pulls = ghApiJson(scriptName, `repos/${repo}/commits/${sha}/pulls`, 'PR provenance');
   const result = evaluatePrProvenance(pulls);
 
