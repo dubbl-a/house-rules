@@ -758,6 +758,13 @@ function fakeNativeBody(overrides = {}) {
     '        return false',
     '      }',
   ];
+  // The native global top-N verify selection the fork replaces with a
+  // round-robin across search angles. `selection: false` drops it.
+  const selectionLines = overrides.selection === false ? [] : [
+    'const rankedClaims = [...allClaims]',
+    '  .sort((a, b) => (impRank[a.importance] - impRank[b.importance]) || (qualRank[a.sourceQuality] - qualRank[b.sourceQuality]))',
+    '  .slice(0, MAX_VERIFY_CLAIMS)',
+  ];
   const lines = [
     '// deep-research: Scope \\u2192 pipeline(Search)',
     ...budgetLines,
@@ -779,8 +786,19 @@ function fakeNativeBody(overrides = {}) {
     'agent(VERIFY_PROMPT(claim, v), {',
     '          schema: VERDICT_SCHEMA,',
     '        })',
+    ...selectionLines,
     'const report = await agent("s", { label: "synthesize", schema: REPORT_SCHEMA })',
+    ...(overrides.selection === false ? [] : [
+      'if (killed.length > 0) return {',
+      '    stats: { angles: scope.angles.length, sources: allSources.length, claims: allClaims.length, verified: voted.length, confirmed: 0 },',
+      '  }',
+      'if (!report) return {',
+      '    stats: { angles: scope.angles.length, sources: allSources.length, claims: allClaims.length, verified: voted.length, confirmed: 1 },',
+      '  }',
+    ]),
     'return {',
+    '  question: QUESTION,',
+    '  ...report,',
     '    agentCalls: 1 + scope.angles.length,',
     '  },',
     '}',
@@ -958,6 +976,152 @@ test('deep-research check: the rebuilt budget block resolves depth, overrides, a
   assert.match(run({ question: 'q', budget: { votes: 1, refutationsRequired: 2 } }).error, /refutationsRequired <= votes/);
   assert.match(run({ question: 'q', budget: { maxFetch: -1 } }).error, /maxFetch/);
   assert.match(run({ question: 'q', budget: { votes: '3' } }).error, /votes/);
+});
+
+test('deep-research check: pickRoundRobin takes one claim per angle in turn, each angle in its own order, up to the cap', async () => {
+  const { pickRoundRobin } = await import(pathToFileURL(DR_CHECK).href);
+  const claims = [
+    { id: 'a1', angle: 'A' }, { id: 'a2', angle: 'A' }, { id: 'b1', angle: 'B' },
+    { id: 'a3', angle: 'A' }, { id: 'c1', angle: 'C' }, { id: 'a4', angle: 'A' },
+    { id: 'c2', angle: 'C' }, { id: 'c3', angle: 'C' },
+  ];
+  const pick = (cap) => pickRoundRobin(claims, (c) => c.angle, cap).map((c) => c.id);
+  assert.deepEqual(pick(5), ['a1', 'b1', 'c1', 'a2', 'c2']);
+  assert.deepEqual(pick(100), ['a1', 'b1', 'c1', 'a2', 'c2', 'a3', 'c3', 'a4'], 'no cap: every claim, none twice');
+  assert.deepEqual(pick(0), []);
+});
+
+test('deep-research check: pickRoundRobin with cap K is a prefix of the selection with a larger cap, so an extended run keeps its verify calls', async () => {
+  const { pickRoundRobin } = await import(pathToFileURL(DR_CHECK).href);
+  const claims = Array.from({ length: 40 }, (_, i) => ({ id: i, angle: 'abcde'[(i * 7) % 5] + (i % 3 ? '' : 'x') }));
+  const full = pickRoundRobin(claims, (c) => c.angle, 40).map((c) => c.id);
+  for (let k = 0; k <= 40; k++) {
+    for (const n of [1, 5, 15]) {
+      const small = pickRoundRobin(claims, (c) => c.angle, k).map((c) => c.id);
+      const big = pickRoundRobin(claims, (c) => c.angle, k + n).map((c) => c.id);
+      assert.deepEqual(big.slice(0, small.length), small, `cap ${k} is a prefix of cap ${k + n}`);
+    }
+  }
+  assert.equal(new Set(full).size, 40);
+});
+
+test('deep-research check: verifyCap lets the preset win for few angles, the per-angle floor win for many, and the ceiling clamp both', async () => {
+  const { verifyCap } = await import(pathToFileURL(DR_CHECK).href);
+  const standard = { maxVerifyClaims: 15, minPerAngle: 3, maxVerifyCeiling: 25 };
+  assert.equal(verifyCap(standard, 2), 15, 'few angles: 3 x 2 = 6 is under the preset 15');
+  assert.equal(verifyCap(standard, 6), 18, 'many angles: 3 x 6 = 18 beats the preset');
+  assert.equal(verifyCap({ ...standard, minPerAngle: 5 }, 6), 25, 'the ceiling clamps the floor');
+  assert.equal(verifyCap({ ...standard, maxVerifyClaims: 40 }, 2), 25, 'the ceiling clamps the preset');
+  assert.equal(verifyCap({ ...standard, maxVerifyClaims: 40, maxVerifyCeiling: 40 }, 2), 40, 'a budget override raises the ceiling');
+  assert.equal(verifyCap(standard, 0), 15);
+});
+
+test('deep-research check: verifyNote names the dropped claims and how to extend the same run', async () => {
+  const { verifyNote } = await import(pathToFileURL(DR_CHECK).href);
+  const note = verifyNote({ verified: 25, total: 77, angles: 5, votes: 3, deepCeiling: 40 });
+  assert.match(note, /^Verified 25 of 77 claims \(5 angles\)\./);
+  assert.match(note, /resumeFromRunId set to this run's id/);
+  assert.match(note, /maxVerifyClaims: 40, maxVerifyCeiling: 40/);
+  assert.match(note, /about 46 more agents/, '(40 - 25) x 3 votes + 1 synthesis');
+  assert.match(verifyNote({ verified: 40, total: 77, angles: 5, votes: 3, deepCeiling: 40 }), /maxVerifyClaims: 77, .*about 112 more agents/, 'past the deep ceiling, offer every claim');
+  assert.match(verifyNote({ verified: 25, total: 30, angles: 5, votes: 2, deepCeiling: 40 }), /maxVerifyClaims: 30, .*about 11 more agents/, 'never more than the claims found');
+  assert.equal(verifyNote({ verified: 30, total: 30, angles: 5, votes: 3, deepCeiling: 40 }), '', 'nothing dropped, no note');
+});
+
+test('deep-research check: the rebuilt depth presets carry the per-angle floor and ceiling, and the estimate uses the ceiling', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  const start = fork.indexOf('const ARGS_OBJ');
+  const block = fork.slice(start, fork.indexOf('\n', fork.indexOf('log("Depth: ')));
+  const run = (args) => {
+    const logs = [];
+    const r = new Function('args', 'log', `${block}\nreturn { BUDGET }`)(args, (m) => logs.push(m));
+    return { ...r, logs };
+  };
+  const expect = { light: [2, 12], standard: [3, 25], deep: [4, 40] };
+  for (const [depth, [floor, ceiling]] of Object.entries(expect)) {
+    const r = run({ question: 'q', depth });
+    assert.equal(r.BUDGET.minPerAngle, floor, depth);
+    assert.equal(r.BUDGET.maxVerifyCeiling, ceiling, depth);
+    assert.match(r.logs[0], new RegExp(`ceiling ${ceiling}\\b`), depth);
+  }
+  // standard: 7 + (15 + 5) fetched + 25 x 3 votes = 102 at the ceiling.
+  assert.match(run('q').logs[0], /at most ~102 agents/);
+  assert.equal(run({ question: 'q', budget: { maxVerifyCeiling: 50 } }).BUDGET.maxVerifyCeiling, 50);
+  assert.match(run({ question: 'q', budget: { minPerAngle: -1 } }).error, /minPerAngle/);
+  assert.match(fork, /verifyNote: VERIFY_NOTE/);
+  assert.equal((fork.match(/VERIFY_NOTE \? \{ verifyNote: VERIFY_NOTE \}/g) || []).length, 3, 'every result after verify carries the note');
+});
+
+test('deep-research check: --rebuild selects verify claims round-robin across angles, not the global top-N', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  assert.ok(!fork.includes('.slice(0, MAX_VERIFY_CLAIMS)'), 'global top-N slice still present');
+  assert.match(fork, /function pickRoundRobin\(/);
+  // Run the rebuilt selection block on synthetic sources: angle A holds
+  // every central claim, so a global top-N would give it all three slots.
+  const start = fork.indexOf('function pickRoundRobin(');
+  const end = fork.indexOf('\n', fork.indexOf('log(VERIFY_NOTE)'));
+  const block = fork.slice(start, end);
+  const allSources = [
+    { angle: 'A', claims: [{ id: 'a1', importance: 'central', sourceQuality: 'primary' }, { id: 'a2', importance: 'central', sourceQuality: 'primary' }] },
+    { angle: 'A', claims: [{ id: 'a3', importance: 'central', sourceQuality: 'secondary' }] },
+    { angle: 'B', claims: [{ id: 'b1', importance: 'tangential', sourceQuality: 'blog' }, { id: 'b2', importance: 'supporting', sourceQuality: 'blog' }] },
+    { angle: 'C', claims: [{ id: 'c1', importance: 'supporting', sourceQuality: 'forum' }] },
+  ];
+  const select = (budget) => {
+    const logs = [];
+    const r = new Function('allSources', 'BUDGET', 'MAX_VERIFY_CLAIMS', 'VOTES_PER_CLAIM', 'DEPTH_PRESETS', 'log', `
+      const allClaims = allSources.flatMap(s => s.claims)
+      const impRank = { central: 0, supporting: 1, tangential: 2 }
+      const qualRank = { primary: 0, secondary: 1, blog: 2, forum: 3, unreliable: 4 }
+      ${block}
+      return { rankedClaims, VERIFY_NOTE }`)(allSources, budget, budget.maxVerifyClaims, 3, { deep: { maxVerifyCeiling: 40 } }, (m) => logs.push(m));
+    return { ids: r.rankedClaims.map((c) => c.id), note: r.VERIFY_NOTE, logs };
+  };
+  // minPerAngle 1 x 3 angles is below maxVerifyClaims 4, so the cap is 4.
+  const four = select({ maxVerifyClaims: 4, minPerAngle: 1, maxVerifyCeiling: 10 });
+  assert.deepEqual(four.ids, ['a1', 'b2', 'c1', 'a2']);
+  assert.match(four.note, /^Verified 4 of 6 claims \(3 angles\)\./);
+  assert.ok(four.logs.includes(four.note), 'the dropped-claims note is logged');
+  // minPerAngle 2 x 3 angles lifts the cap to 6: every claim, no note.
+  const all = select({ maxVerifyClaims: 4, minPerAngle: 2, maxVerifyCeiling: 10 });
+  assert.equal(all.ids.length, 6);
+  assert.equal(all.note, '');
+});
+
+test('deep-research check: --rebuild refuses when the verify selection no longer matches exactly once', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ selection: false }));
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /rebuild refused/);
+  assert.match(res.stdout, /rankedClaims/);
+  assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: the fork and the --install message say to copy the fork into the scratchpad first', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'fork.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--install=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(res.stdout, /scratchpad/);
+  const whenToUse = readFileSync(out, 'utf8').match(/whenToUse: '([^']*)'/)[1];
+  assert.match(whenToUse, /scratchpad/);
+  assert.ok(!/Run by scriptPath\./.test(whenToUse), 'whenToUse still says to run the stable path directly');
 });
 
 test('deep-research check: a binary without the bundled script exits 1, not 0', () => {

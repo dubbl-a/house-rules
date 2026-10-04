@@ -255,6 +255,24 @@ lists it as `deep-research-pinned`), the session-start text says to run it by `s
 state the depth, and the harness-triage routine runs the checker and reinstalls on drift. The
 baseline is 2.1.288.
 
+The fork could not run from its stable path, 2026-10-04 (#139): the Workflow tool refused
+`scriptPath` at `~/.claude/workflows/deep-research-tiered.js` ("scriptPath must be a script path
+this tool returned, or a file you can already read (the working directory or a directory you have
+added)"), and the run worked only from an unchanged copy in the session scratchpad. The
+session-start text, the claude-code rule, the `--install` message, and the fork's `whenToUse` now
+say to copy the fork into the scratchpad and run the copy. The same run spent all 15 standard
+verify slots on two of five angles, because the native selection sorts every claim globally by
+importance and source quality and takes the top N. The fork keeps that sort as the order within
+each angle (a claim's angle is the search angle that found its source) and deals the slots
+round-robin across angles. The cap also scales with the question: `minPerAngle` slots per angle
+that produced claims, clamped to `maxVerifyCeiling`, so the depth log states the ceiling-based
+worst case. A run that still drops claims returns a `verifyNote` naming how many it verified and
+how to extend the same run with `resumeFromRunId` and a larger `budget.maxVerifyClaims`: the
+Workflow tool returns completed calls with unchanged prompt and options from cache, and the
+selection is deterministic, so a larger cap keeps every verify call already made and appends the
+rest. The script cannot read its own run id, so the note says "this run's id" and the session
+supplies the id the tool returned.
+
 The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,
 and the way of working was being retyped into prompts ("subagents on lower models, and here is
 how to use them"). The plugin now ships it. Five agents under `plugins/house/agents/` (scout on
