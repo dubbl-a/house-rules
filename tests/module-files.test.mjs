@@ -330,6 +330,17 @@ test('assert-main-at-origin: assertMainAtOrigin refuses on a feature branch', ()
   assert.match(res.stderr, /must run from main at origin\/main/);
 });
 
+test('assert-main-at-origin: the wrong-branch refusal names the npm script, not a scripts/house path (#179)', () => {
+  const { work } = makeRepoWithOrigin('main');
+  execFileSync('git', ['-C', work, 'checkout', '-q', '-b', 'feature/x']);
+  const res = runNode(
+    `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('deploy'); });`,
+  );
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /^ +npm run deploy \.\.\.$/m);
+  assert.doesNotMatch(res.stderr, /scripts\/house\//);
+});
+
 test('assert-main-at-origin: DEPLOY_FROM=any without DEPLOY_FROM_REASON refuses (reason is required, not just a bare bypass)', () => {
   const { work } = makeRepoWithOrigin('main');
   execFileSync('git', ['-C', work, 'checkout', '-q', '-b', 'feature/x']);

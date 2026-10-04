@@ -159,7 +159,7 @@ export function assertMainAtOrigin(scriptName, opts = {}) {
       `      git worktree add ../${repoName}-deploy ${branch}`,
       `      cd ../${repoName}-deploy`,
       `      ln -s ../${repoName}/node_modules node_modules`,
-      `      node scripts/house/${scriptName} ...`,
+      `      npm run ${scriptName} ...`,
       `      cd .. && git -C ${repoName} worktree remove ${repoName}-deploy`,
       ...escapeHatchLines(scriptName),
     ]);
