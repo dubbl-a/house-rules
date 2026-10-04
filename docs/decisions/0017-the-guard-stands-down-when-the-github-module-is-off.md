@@ -43,22 +43,33 @@ names while keeping the off switch for the floor itself where ADR 0013 put it.
 
 The switch is `modules.github.enabled` in the `house.json` the hook already reads its policy from:
 `git --no-replace-objects show HEAD:house.json`, or the working-tree file only when HEAD carries
-none. It is read in the same jq pass as the policy. Only the JSON literal `false` turns the module
-off. A missing `modules`, a missing `github`, a missing `enabled`, the string `"false"`, `0`,
-`null`, or a `modules` of the wrong shape leave it on, and a `house.json` that does not parse is
-refused exactly as before. jq is already required: without it the hook refuses every call before
-reading anything, so the switch is never read.
+none. It is read in the same jq pass as the policy, as that pass's first field and a fixed token,
+so no value in the file can set it. Only the JSON literal `false` turns the module off. A missing
+`modules`, a missing `github`, a missing `enabled`, the string `"false"`, `0`, `null`, or a
+`modules` of the wrong shape leave it on. A `house.json` that does not parse is refused as before,
+and so, now, is one holding more than one JSON document, or a policy, protected-branch or carve-out
+string holding a control character: the pass separates its fields with a record-separator line, and
+a string carrying that separator or a newline used to move a value into a later field (a
+`protectedBranches` entry of `"\u001e"` followed by `"*"` made every path a carve-out, and a
+`branchPolicy` of `"pr\ndirect"` read as `direct`, both before this record). jq is already required:
+without it the hook refuses every call before reading anything, so the switch is never read.
 
 Rule by rule, with the module off:
 
 * **Stands down**: the commit refusal on a protected branch; the push and `send-pack` refusals;
   the unarmed history refusals (merge, rebase, cherry-pick, revert, am, commit-tree) and the
   unreadable-verb refusal; the floor's integrity check for this candidate and every piece of
-  arming advice. The hook is quiet: no advice and no notice per call.
+  arming advice. The hook is quiet: no advice and no notice per call. An alias whose body is a
+  plain push stands down like a typed push. A `send-pack` from a feature branch that has the
+  module committed off is allowed and lands even with the floor armed, since no git hook runs for
+  it.
 * **Keeps running (section A, the disable list)**: `--no-verify` and `-n` on a commit,
   `core.hooksPath`, `include.path` and `includeIf`, git config through the environment,
   `HUSKY=0` and `LEFTHOOK=0`, a mutation of `.githooks/`, the ref-writing plumbing, `git replace`
-  and any `refs/replace/` write. None of these refusals carries arming advice.
+  and any `refs/replace/` write, each typed in the command or in the body of an alias it runs
+  (one level), and a `!shell` alias, refused outright because its body is a script. The alias
+  read is part of A and runs before the policy gate, in every floor state. None of these
+  refusals carries arming advice.
 * **Keeps running (the file-tool rule)**: an Edit or Write under `.githooks/`, under the git
   directory, or to git's per-user config.
 * **Keeps running (section D)**: a branch-moving command aimed at a repository it names rather
@@ -73,18 +84,29 @@ This is the same stand-down `branchPolicy: direct` gets, made in the same functi
 difference: `direct` returns at the policy gate and so also stands section E down, while the
 github switch is taken after section E so that E keeps running.
 
+The first version of this change took the stand-down before the alias read, which until then ran
+only inside the branch refusals of an armed checkout, so with the module off an alias carrying
+`--no-verify`, a hooks-path change, a protected-ref delete or a shell script ran unread: a review
+replayed `git pn origin feat:master` (`pn = push --no-verify`) and the push landed. `direct` had
+the same gap since the alias read sat behind its gate too. Moving the alias read into A, before the
+policy gate, closed both; the cost is that a `!shell` alias is now refused in a `direct` or
+deferring repo as well.
+
 ### Consequences
 
 * Good, because a repo that turns the github module off no longer gets refusals for the policy it
   turned off, nor advice to arm a floor it removed.
 * Good, because the disable list still runs before the policy gate, so the ordering ADR 0013 fixed
-  holds. An armed repo whose feature branch commits the module off still cannot unset
-  `core.hooksPath` or touch `.githooks/`, and its floor's `pre-push` still reads the target
-  branch's own `house.json` when the session pushes.
+  holds. In an armed repo whose feature branch commits the module off, every spelling the
+  disable list reads, typed or in an alias body, is still refused, so `core.hooksPath` and
+  `.githooks/` stay as they are by those routes, and the floor's `pre-push` still reads the target
+  branch's own `house.json` when the session pushes. ADR 0013's residue (a wildcard that never
+  spells `.githooks`, a git command inside a script) is unchanged.
 * Bad, because the switch is read from HEAD like the policy, so it counts as soon as it is
-  committed on whatever branch is checked out, a feature branch included, not only once it is
-  merged. That is why A, B, D and E stay; the remote's branch protection is the ceiling, as ADR
-  0013 says.
+  committed on whatever commit is checked out, a feature branch or a detached HEAD included, not
+  only once it is merged; and an unborn HEAD, or one with no `house.json`, reads the working-tree
+  file, the same fallback `direct` has. That is why A, B, D and E stay; the remote's branch
+  protection is the ceiling, as ADR 0013 says.
 * Bad, because a repo with the module off still has `--no-verify` and `core.hooksPath` writes
   refused, and the file-tool refusals still suggest `house render --apply`, which restores
   nothing while the module is off.
@@ -101,7 +123,11 @@ an armed repo whose feature branch commits the module off, unsetting the hooks p
 The string `"false"`, `null`, `0`, a missing `enabled`, a missing `github`, a `modules` that is not
 an object, `true`, and a malformed `house.json` all still refuse a commit and a push, and so does a
 module turned off only in the working tree, including a staged commit that would carry that edit
-onto the protected branch.
+onto the protected branch. Alias bodies carrying a hooks-path change, a protected-branch delete, a
+protected-ref write, `--no-verify`, or a shell script are refused with the module off (no floor,
+and armed) and under `direct` (armed); a plain-push alias is allowed with the module off. A
+separator in `carveOuts` or `protectedBranches`, a string with embedded newlines, a second JSON
+document, and a multi-line `branchPolicy` each leave a commit on the protected branch refused.
 
 ## Pros and cons of the options
 
@@ -128,8 +154,8 @@ onto the protected branch.
 
 * Good, because it is one more condition on a path that already exists, so the two switches
   cannot drift apart.
-* Good, because it keeps every way of turning the floor off refused, which is the part a
-  feature-branch commit could otherwise exploit.
+* Good, because it keeps every way of turning the floor off that the disable list reads refused,
+  alias bodies included, which is the part a feature-branch commit could otherwise exploit.
 * Bad, because it does not wait for a merge, which is stated above rather than hidden.
 
 ## More information

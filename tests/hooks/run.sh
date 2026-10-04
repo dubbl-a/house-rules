@@ -714,6 +714,54 @@ expect_deny "github off only in the working tree: a push to the protected branch
   "$(mk_payload "$_ps origin master" "$g5")" "protected branch"
 expect_deny "github on at HEAD: section E refuses a branch in the main checkout" \
   "$(mk_payload "$_co topic" "$g5")" "Branch in a worktree"
+# An alias body is text the floor never sees, so the disable list and the
+# plumbing scan read it with the module off too, in every floor state, and in
+# a `direct` repo. Only the commit, push and history refusals stand down: an
+# alias whose body is a plain push is allowed like a typed one.
+_alias_cases() { # <repo> <label>
+  git -C "$1" config alias.hp "-c core.hooks""Path=/dev/null push"
+  git -C "$1" config alias.pd "push --delete origin master"
+  git -C "$1" config alias.ur "update-ref refs/heads/master HEAD"
+  git -C "$1" config alias.nuke '!rm -rf .githooks && git push'
+  git -C "$1" config alias.pn "push $_nv"
+  git -C "$1" config alias.pp "push"
+  expect_deny "$2: an alias body carrying core.hooksPath is refused" \
+    "$(mk_payload "git hp origin master" "$1")" "disables or moves"
+  expect_deny "$2: an alias body deleting a protected branch is refused" \
+    "$(mk_payload "git pd" "$1")" "disables or moves"
+  expect_deny "$2: an alias body writing a protected ref is refused" \
+    "$(mk_payload "git ur" "$1")" "disables or moves"
+  expect_deny "$2: a shell alias that removes the floor is refused" \
+    "$(mk_payload "git nuke" "$1")" "shell alias"
+  expect_deny "$2: an alias body skipping the hooks is refused" \
+    "$(mk_payload "git pn origin feat:master" "$1")" "disables or moves"
+}
+_alias_cases "$g" "github off at HEAD, no floor"
+expect_allow "github off at HEAD, no floor: an alias whose body is a plain push" \
+  "$(mk_payload "git pp origin feat:master" "$g")"
+_alias_cases "$g2" "github off on a feature-branch commit, floor armed"
+expect_allow "github off on a feature-branch commit, floor armed: an alias whose body is a plain push" \
+  "$(mk_payload "git pp origin feat:master" "$g2")"
+g6="$TMP_ROOT/direct-armed"; new_repo "$g6"; adopt "$g6"; install_floor "$g6"
+git -C "$g6" checkout -q -b feat; adopt "$g6" '{"branchPolicy":"direct"}'; arm_hookspath "$g6"
+_alias_cases "$g6" "direct on a feature-branch commit, floor armed"
+# The switch cannot be set from a string: no value in house.json can shift
+# the jq pass's fields, and a second JSON document is not read.
+g7="$TMP_ROOT/gh-sep"; new_repo "$g7"
+echo staged >"$g7/staged.txt"
+for _j in '{"branchPolicy":"pr","carveOuts":["\u001e","off"]}' \
+          '{"branchPolicy":"pr","protectedBranches":["master","\u001e","off"]}' \
+          '{"branchPolicy":"pr","carveOuts":["a\n\u001e\noff"]}' \
+          '{"branchPolicy":"pr"}{"modules":{"github":{"enabled":false}}}' \
+          '{"branchPolicy":"pr","protectedBranches":["master","\u001e","*"]}' \
+          '{"branchPolicy":"pr\ndirect"}'; do
+  printf '%s' "$_j" >"$g7/house.json"
+  git -C "$g7" add house.json && git -C "$g7" commit -q -m house
+  git -C "$g7" add staged.txt
+  expect_deny "house.json $_j at HEAD: a commit on the protected branch is refused" \
+    "$(mk_payload "$_gcm -m x" "$g7")"
+  git -C "$g7" reset -q staged.txt
+done
 
 # ── the deference matrix: only a PreToolUse entry that can SEE the call ───
 repo_d="$TMP_ROOT/defer"; new_repo "$repo_d"; adopt "$repo_d"
