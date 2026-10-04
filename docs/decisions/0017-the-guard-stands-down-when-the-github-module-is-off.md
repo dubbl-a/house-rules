@@ -66,10 +66,13 @@ Rule by rule, with the module off:
 * **Keeps running (section A, the disable list)**: `--no-verify` and `-n` on a commit,
   `core.hooksPath`, `include.path` and `includeIf`, git config through the environment,
   `HUSKY=0` and `LEFTHOOK=0`, a mutation of `.githooks/`, the ref-writing plumbing, `git replace`
-  and any `refs/replace/` write, each typed in the command or in the body of an alias it runs
-  (one level), and a `!shell` alias, refused outright because its body is a script. The alias
-  read is part of A and runs before the policy gate, in every floor state. None of these
-  refusals carries arming advice.
+  and any `refs/replace/` write, each typed in the command, in the body of a configured alias the
+  command runs, or in the body of an alias the command defines with `-c alias.<name>=<body>`
+  (read whether or not it is invoked, any case of the key); and a `!shell` alias, configured or
+  inline, refused outright because its body is a script. An inline body the shell computes is
+  refused as unreadable. The alias read goes one level only: a body that calls another alias is
+  not followed. It is part of A and runs before the policy gate, in every floor state. None of
+  these refusals carries arming advice.
 * **Keeps running (the file-tool rule)**: an Edit or Write under `.githooks/`, under the git
   directory, or to git's per-user config.
 * **Keeps running (section D)**: a branch-moving command aimed at a repository it names rather
@@ -89,10 +92,33 @@ only inside the branch refusals of an armed checkout, so with the module off an 
 `--no-verify`, a hooks-path change, a protected-ref delete or a shell script ran unread: a review
 replayed `git pn origin feat:master` (`pn = push --no-verify`) and the push landed. `direct` had
 the same gap since the alias read sat behind its gate too. Moving the alias read into A, before the
-policy gate, closed both; the cost is that a `!shell` alias is now refused in a `direct` or
-deferring repo as well.
+policy gate, closed both. A second review found the read covered only configured aliases: `git -c
+alias.z='update-ref refs/heads/master HEAD' z` defined and ran its own, which `main` refused with
+the module off and no floor and the first rework allowed. The inline definition is now read from
+the command as typed, before any strip removes the `-c` value.
 
 ### Consequences
+
+What loosens, for a repo whose committed `house.json` turns the github module off: the commit,
+push, `send-pack`, history and unreadable-verb refusals, and every piece of arming advice.
+
+What tightens, and for whom:
+
+* A repo on `branchPolicy: direct`, or one deferring to its own guard: a configured alias whose
+  body carries a disable literal or protected-ref plumbing, and any `!shell` alias, are now
+  refused, where `main` let both through. A `direct` adopter's ordinary shell alias, such as
+  `up = !git fetch && git rebase`, now meets a false deny; the hook's message names the way out,
+  "Run the commands it stands for directly."
+* Every adopted repo: an alias defined inline with `-c alias.<name>=<body>` whose body carries a
+  disable literal or protected-ref plumbing, an inline `!shell` alias, and an inline body the shell
+  computes are refused, whether or not the command invokes the alias. `main` refused these only
+  where an unarmed floor refused every unknown verb.
+* Every adopted repo: a `house.json` holding a control character in `branchPolicy`,
+  `protectedBranches` or `carveOuts`, one holding two concatenated JSON documents, and one that is
+  whitespace only are refused as unreadable, where `main` read each as adopted and enforcing.
+
+Class under ADR 0012: tightening what the branch guard denies is the breaking class, so this change
+takes the minor below 1.0, though most of it loosens.
 
 * Good, because a repo that turns the github module off no longer gets refusals for the policy it
   turned off, nor advice to arm a floor it removed.
@@ -110,8 +136,9 @@ deferring repo as well.
 * Bad, because a repo with the module off still has `--no-verify` and `core.hooksPath` writes
   refused, and the file-tool refusals still suggest `house render --apply`, which restores
   nothing while the module is off.
-* Neutral, because this loosens the deny set rather than tightening it, so under ADR 0012 it is
-  not the breaking class.
+* Bad, because the alias read stays one level deep: a body that calls another alias, and an
+  inline `-c` whose KEY the shell computes (`-c "$k=$v"`), are not read, since refusing a computed
+  `-c` would also refuse `git switch -c "$branch"`. The floor covers what it can see of both.
 
 ### Confirmation
 
@@ -127,7 +154,10 @@ onto the protected branch. Alias bodies carrying a hooks-path change, a protecte
 protected-ref write, `--no-verify`, or a shell script are refused with the module off (no floor,
 and armed) and under `direct` (armed); a plain-push alias is allowed with the module off. A
 separator in `carveOuts` or `protectedBranches`, a string with embedded newlines, a second JSON
-document, and a multi-line `branchPolicy` each leave a commit on the protected branch refused.
+document, and a multi-line `branchPolicy` each leave a commit on the protected branch refused. An
+inline alias (`-c alias.z=...`, quoted whole, an upper-case or mixed-case key, a shell body,
+defined but not invoked, a computed body) is refused with the module off in all three floor states,
+under `direct`, and in a deferring repo, and `git -c alias.s=status s` is allowed in each.
 
 ## Pros and cons of the options
 

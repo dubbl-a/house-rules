@@ -745,6 +745,44 @@ expect_allow "github off on a feature-branch commit, floor armed: an alias whose
 g6="$TMP_ROOT/direct-armed"; new_repo "$g6"; adopt "$g6"; install_floor "$g6"
 git -C "$g6" checkout -q -b feat; adopt "$g6" '{"branchPolicy":"direct"}'; arm_hookspath "$g6"
 _alias_cases "$g6" "direct on a feature-branch commit, floor armed"
+# An alias defined in the command itself (`git -c alias.z=<body> z`) is read
+# the way a configured one is, whether or not the command invokes it, with
+# the module off in every floor state, under `direct`, and in a deferring
+# repo. One level only: a body that calls another alias is not followed.
+g8="$TMP_ROOT/gh-off-broken"; new_repo "$g8"; adopt "$g8" "$_gh_on"; install_floor "$g8"
+git -C "$g8" checkout -q -b feat; adopt "$g8" "$_gh_off"; arm_hookspath "$g8"
+echo '# edited' >>"$g8/.githooks/pre-push"
+g9="$TMP_ROOT/defer-inline"; new_repo "$g9"; mkdir -p "$g9/.claude"
+echo '{"branchPolicy":"pr"}' >"$g9/house.json"
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}]}}' >"$g9/.claude/settings.json"
+git -C "$g9" add house.json .claude/settings.json && git -C "$g9" commit -q -m house
+_ur="update-ref refs/heads/master HEAD"
+_inline_cases() { # <repo> <label>
+  expect_deny "$2: an inline alias body writing a protected ref is refused" \
+    "$(mk_payload "git -c alias.z='$_ur' z" "$1")" "disables or moves"
+  expect_deny "$2: an inline alias quoted whole is refused" \
+    "$(mk_payload "git -c \"alias.z=$_ur\" z" "$1")" "disables or moves"
+  expect_deny "$2: an inline alias with an upper-case key is refused" \
+    "$(mk_payload "git -c ALIAS.z='$_ur' z" "$1")" "disables or moves"
+  expect_deny "$2: an inline alias with a mixed-case key and name is refused" \
+    "$(mk_payload "git -c Alias.Z='$_ur' Z" "$1")" "disables or moves"
+  expect_deny "$2: an inline shell alias is refused" \
+    "$(mk_payload "git -c alias.z='!rm -rf .githooks' z" "$1")" "shell alias"
+  expect_deny "$2: an inline alias defined but not invoked is still read" \
+    "$(mk_payload "git -c alias.s=status -c alias.z='$_ur' s" "$1")" "disables or moves"
+  expect_deny "$2: an inline alias whose body the shell computes is refused" \
+    "$(mk_payload 'git -c alias.z="$b" z' "$1")" "inline alias"
+  expect_allow "$2: an inline alias with a harmless body is allowed" \
+    "$(mk_payload "git -c alias.s=status s" "$1")"
+}
+_inline_cases "$g" "github off at HEAD, no floor"
+_inline_cases "$g2" "github off on a feature-branch commit, floor armed"
+_inline_cases "$g8" "github off on a feature-branch commit, floor broken"
+_inline_cases "$g6" "direct on a feature-branch commit, floor armed"
+_inline_cases "$g9" "a repo deferring to its own guard"
+# The switch is the jq pass's FIRST field, a fixed token, but nothing pins
+# that order: the control-character refusal below already keeps every value
+# on its own line, so no string can reach another field whatever the order.
 # The switch cannot be set from a string: no value in house.json can shift
 # the jq pass's fields, and a second JSON document is not read.
 g7="$TMP_ROOT/gh-sep"; new_repo "$g7"
