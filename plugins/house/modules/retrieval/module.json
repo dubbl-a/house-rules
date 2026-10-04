@@ -1,0 +1,25 @@
+{
+  "name": "retrieval",
+  "default": "off",
+  "rules": [
+    "rules/retrieval.md"
+  ],
+  "files": [],
+  "configSlots": [
+    "retrievalGlobs",
+    {
+      "name": "retrievalRoots",
+      "default": [
+        "retrieval/**",
+        "rag/**",
+        "corpus/**",
+        "evals/**",
+        "eval/**"
+      ]
+    }
+  ],
+  "defaultPaths": [
+    "$retrievalRoots",
+    "$retrievalGlobs"
+  ]
+}

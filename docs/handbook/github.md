@@ -185,6 +185,39 @@ The guard family reports what is recorded, not what is enforced. On the plugin-o
 
 Native floor, as of 2026-09-20: git's own `pre-commit`, `pre-push`, and `reference-transaction` hooks, `reference-transaction` only on git 2.28 and later, armed by `core.hooksPath` and reported by `house doctor` (https://git-scm.com/docs/githooks).
 
+## What the workflows and agent-config checks read
+
+Issue #134 added two checker families that read repo files only, with no network and no credential. The `workflows` family runs when the github module is enabled and the repo has workflow files under `.github/workflows/`; with none, it reports nothing. The `agent-config` family runs when the claude-code module is enabled.
+
+1. A `uses:` to an action or reusable workflow not pinned to a 40-character commit SHA. A local `./` path and a `docker://` image pinned by `@sha256:` digest are exempt.
+2. A workflow with no top-level `permissions:` key.
+3. `${{ github.event.* }}` or `${{ github.head_ref }}` inside a `run:` script or a prompt input. The same expression in `env:`, `if:`, or any other input is the safe route and passes.
+4. A `pull_request_target` workflow whose checkout sets `ref:` to the pull request head.
+5. A committed `.claude/settings.json` that overrides `ANTHROPIC_BASE_URL`, sets `enableAllProjectMcpServers: true`, or sets `permissions.defaultMode` to `bypassPermissions` (the `agent-config` family).
+6. A `.github/dependabot.yml` update entry with no `cooldown`.
+7. No CODEOWNERS entry (in `.github/`, the root, or `docs/`) covering the workflow files.
+8. A publish command (`npm publish`, `pnpm publish`, `yarn npm publish`, `twine upload`, `cargo publish`) in a workflow that reads a stored registry token and does not request `id-token: write`.
+9. An install that is not the frozen-lockfile form, checked only where that installer's lockfile is committed.
+10. A committed binary, by extension or a NUL byte in its first 8000 bytes. Images, fonts, and other media are skipped.
+11. No `SECURITY.md` at the root, in `.github/`, or in `docs/`.
+
+Every one is a warning today and none fails a gate. Checks 1 to 5 are due to become failures in a later release, and their messages say so.
+
+A repo that cannot act on a warning records why, as ADR 0009 asks, in `modules.github.config.waivers` (or `modules.claude-code.config.waivers` for check 5): `{"check": "codeowners", "why": "solo repo, nobody to route a review to"}`, with an optional `path` narrowing it to a file or directory. A `binary` waiver's path is the allowlist for committed binaries. An entry with no reason clears nothing and is itself a warning.
+
+Check 9 examines only lockfiles at the repo root. It passes a plain install only in a step whose own one-line `if:` is, character for character, one of a few forms the checker generates from the root lockfiles it finds tracked: `hashFiles('<name>') == ''` for every such lockfile (optionally also the installer's other lockfile names), in any order, joined by ` && ` with single spaces and single quotes, bare or wrapped once as `${{ ... }}`. Nothing else is parsed, so a quoted value, a comment, an extra space, double quotes, an `||`, or a second `${{` warns even where it would be safe, and so does a fallback after a frozen install (`npm ci || npm install`), because that fallback is the unfrozen install. The skip is honoured only in a plainly written workflow file: one where every line outside a block scalar's body is blank, a comment, or a `key:` or `- ` entry whose value is empty, a block scalar header, a plain scalar, or a quoted scalar or one-level flow collection that closes on the same line, with no anchors, aliases, or tags, and with every one of those lines (comments included) written in printable ASCII, spaces, and tabs, and no byte order mark. A file that uses a multi-line quoted value, an anchor, or a nested flow collection anywhere will see the warning on a truly gated step (and every one-line `run:` in it is judged, even one the reader could not place in a step); clear it with an `unfrozen-install` waiver for that file. The form to copy is the shipped `pr-checks.yml` template's pair:
+
+```yaml
+      - if: hashFiles('package-lock.json') != '' || hashFiles('npm-shrinkwrap.json') != ''
+        run: npm ci --ignore-scripts
+      - if: hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''
+        run: npm install --ignore-scripts
+```
+
+A repo scaffolded before this change has `npm ci --ignore-scripts || npm install --ignore-scripts` in its `pr-checks.yml`, and once it commits a lockfile that line draws an `unfrozen-install` warning: when the lockfile and `package.json` disagree, the fallback installs past the lockfile instead of failing. Replace the line with the template's two steps, `npm ci --ignore-scripts` under `if: hashFiles('package-lock.json') != '' || hashFiles('npm-shrinkwrap.json') != ''` and `npm install --ignore-scripts` under `if: hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''`, or keep it and record why with an `unfrozen-install` waiver for that file.
+
+The known gaps, most failing toward silence: the reader is line-based, so YAML anchors and aliases (a `run: *name` alias is not read as the anchored text; check 9 never skips in such a file, so the anchored install itself warns), a flow-style step (`- { run: ... }`), a `run:` whose command sits on the following line or is folded across lines as a plain scalar, and a ref set through a variable go unseen; check 4 matches only the head sha, head ref, and `github.head_ref`, so `ref: refs/pull/<n>/merge` passes; an install with a flag that takes a value can read as a named package; a binary with a media extension, one encoded as text, or one that opens with a UTF-16 byte order mark (skipped so UTF-16 text does not warn) passes. Check 9 does not examine nested lockfiles or steps run through `working-directory`: a repo whose only lockfile sits in a sub-directory is not judged at all, and in a repo with a root lockfile an install in a package directory is judged against the root one. It reads the tracked tree, not the runner's: a gated step that runs before checkout, or after a step that clones or writes its own tree, sees files the check cannot. Checks 3, 8, and 9 read a `run:` as shell text and do not follow it further, so an install or an expression behind `sh -c '...'`, inside a double-quoted `run:` that spells its line breaks as `\n`, or split by a backslash line continuation goes unseen, as does an anchor on any key but `run:` (including `steps: &name`). One more gap fails toward noise: an update entry with `open-pull-requests-limit: 0` still warns for a missing cooldown, since nothing here confirms that setting turns version updates off; record a waiver for it. Check 3 flags every `github.event` field, including numeric ones such as a pull request number, which are safe; route them through `env:` anyway or record a waiver. For deeper workflow analysis (template injection across composite actions, cache poisoning, excessive permissions per job), run [zizmor](https://github.com/zizmorcore/zizmor).
+
 ## Sources
 
 - GitHub: repository rulesets over classic branch protection, https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets

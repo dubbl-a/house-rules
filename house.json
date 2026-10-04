@@ -129,7 +129,13 @@
       "enabled": true,
       "config": {
         "actionsBudgetMinutes": null,
-        "secretGlobs": []
+        "secretGlobs": [],
+        "waivers": [
+          {
+            "check": "codeowners",
+            "why": "solo repo: github.md asks for code owners once there is a second maintainer, and until then there is nobody to route a review to"
+          }
+        ]
       }
     },
     "llm-output": {
@@ -137,6 +143,10 @@
       "config": {
         "llmGlobs": []
       }
+    },
+    "retrieval": {
+      "enabled": false,
+      "config": {}
     },
     "security": {
       "enabled": true,

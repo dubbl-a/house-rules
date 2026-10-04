@@ -52,6 +52,9 @@ Full text: `.claude/rules/house/evals.md`
 - Make a measuring instrument reproducible
 - Evaluate the path a session actually takes
 - Deny the eval session what the project allows, and fail a run whose results contain the key
+- Count what the agent did, not only whether it passed
+- Split a score gap into its causes from the transcripts before building to close it
+- Fingerprint what two arms compare, and print every field that differs
 
 ### github
 Applies to: `.github/**`, `.githooks/**`, `.env.example`

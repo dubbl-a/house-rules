@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.17.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9cb43409bc3cc1c324fa9419c2116885dcf9e011a0d88a1322ff7afd9465777b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=dd6c0e6327210be920b3af3e0d053a99efc0797164169acda5b63c815cdc0487 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -15,7 +15,7 @@ Ask of every line whether removing it would cause a mistake, and cut the line wh
 A file layout, a dependency list, or generic craft advice is derivable from the code; a non-guessable command, a differing convention, and an environment quirk are not.
 Open the file by naming what to read first and which file wins a conflict, and leave learnings to auto-memory so the file holds rules only.
 The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file.
-Anchor: `node .house/check.mjs --only=lengths` turns that advice into a gate, holding the root file to a line ceiling and a byte ceiling, and refuses to ratchet it.
+Anchor: `node .house/check.mjs --only=lengths` warns, without failing, when the root file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such entry; a glob entry that matches the root file fails it on lines or bytes, and so does listing the root file in `ratchet`.
 Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-without-it-in-the-root-file`
 
 ## Keep the auto-memory index to hooks, and hold it under its cap
@@ -25,7 +25,7 @@ Move any fact the index is the only copy of into its topic file before shortenin
 The harness reminds Claude to shorten the index after a write that nears its load ceiling and returns an error on one that passes it; treat that as the floor and add what it cannot see.
 Keep the newer cue when a later memory supersedes an earlier one, and let the older topic file record the hand-off so the index never carries two answers.
 Treat the documented load ceiling as a cliff rather than a budget, because everything past it is dropped on the next load and no session says so.
-Anchor: `node .house/check.mjs --only=lengths` warns when the index nears either load ceiling or carries a line too long to be a cue, and stays silent where no memory directory exists.
+Anchor: `node .house/check.mjs --only=lengths` warns, and never fails, when the index nears either load ceiling or carries a line too long to be a cue, and stays silent where no memory index exists.
 Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-hold-it-under-its-cap`
 
 ## Give a domain rule a paths list, and never leave a rule file unscoped
@@ -94,7 +94,7 @@ Fail its text handling closed too: where a guard rewrites the command before mat
 Keep the decision in the script rather than a hook's fine-grained filter, which the harness itself documents as best-effort, unfit for a hard allow or deny.
 Escalate as autonomy rises, from a prompt, to a check the agent runs before you walk away, to a hook, to a verification subagent.
 Read a permission block as evidence of a wrong step earlier, not as an obstacle to route around.
-Anchor: `bash tests/hooks/run.sh` drives real payloads through the real hook wiring, with a denied case, an allowed case, and a planted internal failure.
+Anchor: `bash tests/hooks/run.sh` pipes real payloads straight into this package's own hook script, with a denied case, an allowed case, and a planted internal failure; it runs only in this package, so an adopter writes the equivalent for their own hook, and the pr-checks template at `plugins/house/templates/pr-checks.yml` runs a hooks test only if the adopter defines one.
 Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-closed-and-test-it-with-real-payloads`
 
 ## Run adversarial review in a fresh subagent with a named lens
@@ -143,7 +143,7 @@ Write each deny in both the leading and the interior form, and run it against th
 Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, auto mode suspends a broad allow in favor of its classifier, and only the sandbox or a hook enforces independent of command text; never grow the deny list chasing completeness.
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
 Expect a path deny to miss a search that names no path, and a search tool the client treats as read-only to run with no allow naming it; keep a path out of a search with a hook or the sandbox, and read tool results for it as the fallback.
-Anchor: `plugins/house/templates/settings.json` ships the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags, and `/house-rules:sync` refuses a managed file that was edited locally.
+Anchor: `plugins/house/templates/settings.json` is a reference copy of the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags; render never writes it into a repo and sync does not manage the committed settings file, so the adopter copies it by hand and nothing checks the copy against the template. `node .house/check.mjs --only=agent-config` warns, and does not fail, on a committed API base URL override, approval of every project server, or a bypass permission mode.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 
 ## Read a resume file as a harness artifact, not a handoff

@@ -3,7 +3,7 @@ paths:
   - tests/**
   - .github/workflows/**
 ---
-<!-- house-managed v0.17.0 module=testing source=modules/testing/rules/testing.md body-sha256=5fc4b71f603a1a6bebbc219caa6a57662493393848083871bbfea1359db3ed24 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=testing source=modules/testing/rules/testing.md body-sha256=12c99ef2b2c13d5c4811c312983c832353af43ade2e52e17efeef0987d1c2bf0 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -22,7 +22,7 @@ Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you
 Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 Route what the gate cannot afford, the tests wanting a database, a network, or a secret, to a scheduled run or to a pipeline retro, so the slow tier still runs somewhere on a stated cadence. What the gate itself may hold, and what it must name as ungated, is github.md's rule.
 Keep the pre-commit hook faster still and push everything else to CI, because a slow hook gets bypassed and then disabled.
-Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated.
+Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated; `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold, and nothing checks the tiering or the routing afterwards.
 Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-route-what-the-pr-gate-cannot-afford`
 
 ## Test the guard itself, as its own CI step
@@ -31,7 +31,7 @@ Test the hook, the gate, and the guard script that protect the workflow, because
 The harness makes a hook the thing that actually blocks, and the eval runner will load a plugin's own hooks inside an isolated run, yet nothing native asserts that a hook still returns its blocking decision, so the guard's own test is the only standing proof that it still fires.
 Run the guard's own test as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red; the gate's step list is github.md's.
 Ship a guard with its own test in the change that introduces it, and build the guard's literal trigger tokens inside the test instead of writing them out, so the test cannot trip the guard it is exercising.
-Anchor: `tests/hooks/run.sh`, wired as its own step beside the suite in the pr-checks template, plus the main-module guard that ships with its own test.
+Anchor: `tests/hooks/run.sh`, this package's guard test, run as its own step beside the suite; it and the main-module guard's test run only in this package, so an adopter writes the equivalent for their own guard, and the pr-checks template runs a hooks test as its own step only if the adopter defines one.
 Receipts: `docs/handbook/testing.md#test-the-guard-itself-as-its-own-ci-step`
 
 ## Feed a real payload through the real wiring, and never re-implement the logic under test
@@ -39,7 +39,7 @@ Receipts: `docs/handbook/testing.md#test-the-guard-itself-as-its-own-ci-step`
 Drive the test through the real entry point with a real payload, never through a helper that restates the rule, because two copies of one rule pass together whenever both are wrong.
 Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning the hooks reference fixes per event, and stdout that decides only when it parses as JSON passing the hook output schema, since a malformed decision is a non-blocking error that lets the action through. A test that reaches past the entry point proves only that the internals agree with themselves.
 Never assert against a value the test computed the way the code computes it, and run a shipped script as a subprocess rather than importing its internals when the shipped script is what you mean to test. Authoring the hook this drives, and failing it closed, are claude-code.md's.
-Anchor: `tests/hooks/run.sh`, which pipes a real event payload into the real script and asserts its stdout and exit code without restating any of its matching logic.
+Anchor: `tests/hooks/run.sh`, which pipes a real event payload into this package's real hook script and asserts its stdout and exit code without restating any of its matching logic; it runs only in this package, so an adopter writes the equivalent for their own hook.
 Receipts: `docs/handbook/testing.md#feed-a-real-payload-through-the-real-wiring-and-never-re-implement-the-logic-under-test`
 
 ## Ship every gate with a positive control and a negative control
@@ -47,7 +47,7 @@ Receipts: `docs/handbook/testing.md#feed-a-real-payload-through-the-real-wiring-
 Commit the case the gate must fail beside the case it must pass, and run both in the same job, because a suite of passing cases cannot tell a working check from one that always passes.
 Plant the violation the gate is meant to catch instead of describing it, and have the run clean up after itself, so the proof lives in the suite rather than in a memory of having once tried it.
 Proving a check can fail before trusting that it passed is the general form, and it lives in engineering.md; this rule is the suite-level obligation to carry both controls as committed cases.
-Anchor: `node --test tests/`, where each checker family pairs a well-formed fixture with a planted-violation fixture, plus the canary self-test github.md names for the secret scanner, with the eval case `positive-and-negative-control`.
+Anchor: in this package, `tests/check/` gives every checker family a well-formed case and a planted-violation case, agent-config's among the workflows tests, and the eval case `positive-and-negative-control` covers the rule; neither runs in an adopter, who commits the paired cases for their own gates. The canary self-test github.md names for the secret scanner is the one control that ships.
 Receipts: `docs/handbook/testing.md#ship-every-gate-with-a-positive-control-and-a-negative-control`
 
 ## Read the snapshot diff before accepting it, because a snapshot is a drift gate
@@ -93,7 +93,7 @@ Receipts: `docs/handbook/testing.md#explain-a-test-runner-config-quirk-in-the-co
 Keep a check that has been demoted inside the suite rather than deleting it, and print its false-positive tally in the run output, because a red that is usually wrong trains the reader to skip every red, the true ones included.
 Count advisory results separately from failures in the run summary, so a growing advisory tier stays visible instead of quietly ignored.
 When a check earns demotion, how a checker carries its own tally, and why the gate and the report must read one implementation of it are all engineering.md's; this rule is only the obligation to keep the demoted check running and counted.
-Anchor: the run summary, which counts findings and warnings separately, so an advisory check still prints and still counts without failing the run.
+Anchor: the checker's run summary counts findings and warnings separately, so its own advisory checks still print and still count without failing the run; nothing checks that an adopter's suite keeps a demoted check or prints its tally.
 Receipts: `docs/handbook/testing.md#keep-a-demoted-check-running-reported-and-counted`
 
 ## Don't

@@ -604,10 +604,33 @@ payload="$(mk_payload "git status" "$r")"
 HOOK_OUT=$(printf '%s' "$payload" | HOUSE_TEST_CRASH=1 bash "$HOOK")
 HOOK_CODE=$?
 reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
-if [[ "$HOOK_CODE" -eq 0 && "$reason" == "house guard crashed; refusing rather than guessing" ]]; then
+CRASHED_REASON="house guard internal error in plugins/house/hooks/no-direct-master.sh; refusing rather than guessing. This is a bug in the guard, not a policy refusal: report the command that hit it."
+if [[ "$HOOK_CODE" -eq 0 && "$reason" == "$CRASHED_REASON" ]]; then
   pass "planted internal failure denies with the crashed message"
 else
   fail "planted internal failure denies with the crashed message" "exit=$HOOK_CODE reason=[$reason] out=[$HOOK_OUT]"
+fi
+
+# --- 20b. planted FATAL error (an unset variable under set -u) after the manifest read ---
+# A fatal shell error exits non-zero without firing the ERR trap, and the
+# harness reads that exit as an allow (#147). The fault is planted in a scratch
+# copy of the hook, in place of the HOUSE_TEST_CRASH seam's `false`, so the
+# tracked hook carries no second seam.
+r="$TMP_ROOT/case20b"; new_repo "$r"; adopt "$r"
+planted="$TMP_ROOT/case20b-hook.sh"
+sed 's/^    false$/    : "$house_test_planted_unset"/' "$HOOK" >"$planted"
+if ! grep -q 'house_test_planted_unset' "$planted"; then
+  fail "planted fatal error denies with the crashed message" "could not plant the fault: the seam line moved"
+else
+  payload="$(mk_payload "git status" "$r")"
+  HOOK_OUT=$(printf '%s' "$payload" | HOUSE_TEST_CRASH=1 bash "$planted" 2>/dev/null)
+  HOOK_CODE=$?
+  reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
+  if [[ "$HOOK_CODE" -eq 0 && "$reason" == "$CRASHED_REASON" ]]; then
+    pass "planted fatal error denies with the crashed message"
+  else
+    fail "planted fatal error denies with the crashed message" "exit=$HOOK_CODE reason=[$reason] out=[$HOOK_OUT]"
+  fi
 fi
 
 # --- 21. non-git command (ls), and a tool this hook does not handle: ALLOW ---
@@ -1064,6 +1087,17 @@ expect_allow "a >out.log glued to a bare -m value on a feature branch" \
   "$(mk_payload "git $_cm -mfix>out.log" "$d")"
 expect_deny "a & after a glued >&2 still ends the command" \
   "$(mk_payload "cd $d-wt && git status -mx>&2&git switch -c f" "$d")" "worktree add"
+# #147: `|&` is a pipe (stderr along with stdout), one clause break, and a
+# clause left empty by a separator is skipped rather than crashing the hook,
+# whose non-zero exit the harness reads as an allow.
+expect_allow "|& on a feature branch is a pipe, not a crash" \
+  "$(mk_payload "git status |&cat" "$d-wt")"
+expect_allow "a separator followed by a space leaves an empty clause, not a crash" \
+  "$(mk_payload "git status & " "$d-wt")"
+expect_deny "a branch create behind |& is still the main checkout's" \
+  "$(mk_payload "cd $d-wt && git status |&git switch -c f" "$d")" "worktree add"
+expect_deny "a commit behind |& on a protected branch is refused" \
+  "$(mk_payload "echo x |&git $_cm -m x" "$r")" "feature branch"
 git -C "$d" worktree remove --force "$d-wt" >/dev/null 2>&1
 git -C "$d" branch -D wt-base >/dev/null 2>&1
 

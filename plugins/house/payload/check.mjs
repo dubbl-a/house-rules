@@ -11,7 +11,7 @@
 //   node check.mjs [--only=fam,fam,...] [--json] [--accept-lengths] [--repo <path>]
 //
 // Families (default: all): drift, todo, tamper, behind, shape, lengths,
-// coload, manifest, minutes, guard.
+// coload, manifest, minutes, guard, workflows, agent-config.
 //
 // Repo root: `git rev-parse --show-toplevel` from cwd, or the literal path
 // given to --repo (used as-is, not re-resolved through git).
@@ -96,6 +96,13 @@
 //                                                family then prints why it is not gated instead
 //                                                of estimating against a budget. Absent stays
 //                                                the default 2000, never treated as null.)
+//   modules.github.config.waivers            array<{check,path?,why}>, default []   workflows family
+//                                              ADR 0009 recorded reasons: each clears one check id,
+//                                              narrowed to a file or directory prefix by `path`;
+//                                              a `binary` entry's path is the binary allowlist.
+//                                              A malformed entry clears nothing and warns.
+//   modules.claude-code.config.waivers       array<{check,path?,why}>, default []   agent-config family
+//                                              (check "agent-settings"), same shape and rules
 //
 // Plus the schema's own top-level keys as already defined: version,
 // defaultBranch, branchPolicy, protectedBranches, carveOuts, guard, modules,
@@ -136,13 +143,13 @@
 // to a glob that matches nothing in THIS repo loads nowhere, which is a
 // defect of this repo's house.json and is fixed by re-rendering.
 
-import { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join, resolve, relative, sep, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 
-const ALL_FAMILIES = ['drift', 'todo', 'tamper', 'behind', 'shape', 'lengths', 'coload', 'manifest', 'minutes', 'guard'];
+const ALL_FAMILIES = ['drift', 'todo', 'tamper', 'behind', 'shape', 'lengths', 'coload', 'manifest', 'minutes', 'guard', 'workflows', 'agent-config'];
 const NEEDS_HOUSE_JSON = new Set(['tamper', 'manifest', 'coload', 'guard']);
 
 // ── generic helpers ─────────────────────────────────────────────────────
@@ -2253,6 +2260,481 @@ function checkMinutes(ctx) {
   return { findings: [], warnings };
 }
 
+// ── workflows ────────────────────────────────────────────────────────────
+
+// #134: security checks that read repo files only, no network and no
+// credential. Every one is a WARNING in this release. The ids in
+// FAIL_LATER_CHECKS (and agent-config's `agent-settings`) are due to become
+// findings in a later release; their messages say so, so an adopter sees the
+// change coming before it fails a gate. zizmor covers the workflow checks in
+// more depth; this family is the floor every adopter gets without installing it.
+const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy'];
+const FAIL_LATER_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'agent-settings']);
+const FAIL_LATER_NOTE = ' Warning today; due to become a failure in a later release.';
+const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+
+// ADR 0009: a warning the repo cannot act on is cleared by a recorded reason,
+// never a flag. `modules.<module>.config.waivers` holds {check, path?, why}:
+// `check` names one id above, `path` (optional) narrows it to a file or a
+// directory prefix the way every other config path slot matches, and `why`
+// is required. A malformed entry clears nothing and is itself a warning, so
+// a suppression missing its reason buys silence nowhere.
+function readWaivers(cfg, moduleName, known, family, warnings) {
+  const out = [];
+  if (cfg.waivers !== undefined && !Array.isArray(cfg.waivers)) {
+    warnings.push(mk(family, 'house.json', null, 'waiver', `modules.${moduleName}.config.waivers must be an array of {"check", "why"} entries with an optional "path"; it clears nothing until it is`));
+  }
+  arr(cfg.waivers).forEach((w, i) => {
+    if (isPlainObject(w) && known.includes(w.check) && isNonEmptyString(w.why)
+        && (w.path === undefined || isNonEmptyString(w.path))
+        && Object.keys(w).every((k) => ['check', 'path', 'why'].includes(k))) { out.push(w); return; }
+    warnings.push(mk(family, 'house.json', null, 'waiver', `modules.${moduleName}.config.waivers[${i}] must be {"check", "why"} with an optional "path", non-empty values, no other keys, and \`check\` one of ${known.join(', ')}; it clears nothing until it is`));
+  });
+  return out;
+}
+function isWaived(waivers, check, path) {
+  return waivers.some((w) => w.check === check && (w.path === undefined || matchesConfigPath(path, w.path)));
+}
+
+// YAML's whitespace is space and tab only. JavaScript's `\s` and trim() also
+// take characters such as U+00A0 and U+FEFF that YAML keeps as content, so
+// the reader never uses them on a workflow line.
+function yamlTrim(s) { return s.replace(/^[ \t]+|[ \t]+$/g, ''); }
+function yamlTrimEnd(s) { return s.replace(/[ \t]+$/, ''); }
+function yamlIndent(s) { return s.match(/^[ \t]*/)[0].length; }
+function stripYamlComment(v) {
+  let q = null;
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i];
+    if (q) { if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    if (c === '#' && (i === 0 || v[i - 1] === ' ' || v[i - 1] === '\t')) return yamlTrimEnd(v.slice(0, i));
+  }
+  return yamlTrimEnd(v);
+}
+function unquoteYaml(v) {
+  const m = v.match(/^"(.*)"$/) || v.match(/^'(.*)'$/);
+  return m ? m[1] : v;
+}
+
+// Line-based YAML reading, no dependency. Each `key: value` line becomes an
+// entry carrying its key column, the chain of keys and sequence items above
+// it, and the raw lines of its value when the value is a block scalar or runs
+// onto deeper-indented lines. A value's lines are never read as keys, so a
+// `run:` script that prints `uses: x` is not a step. Anchors, aliases,
+// multi-line flow collections, and multi-document files are not modelled;
+// such a value is read as text, which fails toward under-reporting.
+// The line breaks YAML parsers honour: CRLF, LF, a bare CR, and (as libyaml
+// and go-yaml do) NEL, LS, and PS. Splitting on less hides whatever follows
+// one of them inside the line before it. Every split in the workflows family
+// uses this, so line numbers agree across checks; in a file using the last
+// four they differ from what an editor shows.
+const YAML_LINE_BREAK_RE = /\r\n|\n|\r|\u0085|\u2028|\u2029/;
+function yamlEntries(raw) {
+  const lines = raw.split(YAML_LINE_BREAK_RE);
+  const entries = [];
+  const stack = [];
+  let items = 0;
+  let i = 0;
+  while (i < lines.length) {
+    const text = lines[i];
+    const trimmed = yamlTrim(text);
+    if (!trimmed || trimmed.startsWith('#') || trimmed === '---') { i++; continue; }
+    let col = yamlIndent(text);
+    let rest = text.slice(col);
+    while (/^-([ \t]|$)/.test(rest)) {
+      while (stack.length && (stack[stack.length - 1].col > col || (stack[stack.length - 1].col === col && stack[stack.length - 1].item))) stack.pop();
+      stack.push({ col, key: null, item: ++items });
+      const m = rest.match(/^-[ \t]*/);
+      col += m[0].length;
+      rest = rest.slice(m[0].length);
+    }
+    if (!rest || rest.startsWith('#')) { i++; continue; }
+    while (stack.length && stack[stack.length - 1].col >= col) stack.pop();
+    const km = rest.match(/^("[^"]*"|'[^']*'|[\w$][\w.$/-]*)[ \t]*:(?:[ \t]+(.*))?$/);
+    const key = km ? unquoteYaml(km[1]) : null;
+    const rawValue = km ? (km[2] || '') : rest;
+    const value = yamlTrim(stripYamlComment(rawValue));
+    // `raw` is the text after the separator as written, less only the
+    // trailing spaces and tabs YAML drops from an unquoted value.
+    const raw = /^["']/.test(rawValue) ? rawValue : yamlTrimEnd(rawValue);
+    const e = { line: i + 1, col, key, value, raw, parents: stack.slice(), block: /^[|>][-+0-9]*$/.test(value), body: [] };
+    entries.push(e);
+    i++;
+    if (value) {
+      while (i < lines.length && (!yamlTrim(lines[i]) || yamlIndent(lines[i]) > col)) {
+        if (yamlTrim(lines[i])) e.body.push({ line: i + 1, text: lines[i] });
+        i++;
+      }
+    } else if (key !== null) {
+      stack.push({ col, key, item: null });
+    }
+  }
+  return entries;
+}
+// The text of a scalar entry as {line, text} pairs: the inline value unless
+// it is only a block indicator, then every body line.
+function entryLines(e) {
+  const out = e.block || !e.value ? [] : [{ line: e.line, text: e.value }];
+  return out.concat(e.body);
+}
+function parentKey(e) {
+  const p = e.parents[e.parents.length - 1];
+  return p ? p.key : undefined;
+}
+function nearestItem(e) {
+  for (let i = e.parents.length - 1; i >= 0; i--) if (e.parents[i].item) return e.parents[i].item;
+  return null;
+}
+function isTopLevel(e) { return e.col === 0 && e.parents.length === 0; }
+
+// Shell commands in a `run:` scalar, split on newlines and the shell's
+// command separators. Good enough to find an install or a publish verb; it
+// does not parse quoting, so a separator inside a string splits there too.
+function runCommands(lines) {
+  const out = [];
+  for (const { line, text } of lines) {
+    for (const seg of text.split(/&&|\|\||;|\|/)) if (seg.trim()) out.push({ line, cmd: seg.trim() });
+  }
+  return out;
+}
+
+const EVENT_EXPR_RE = /\$\{\{([^}]*)\}\}/g;
+function untrustedExprs(text) {
+  const out = [];
+  let m;
+  EVENT_EXPR_RE.lastIndex = 0;
+  while ((m = EVENT_EXPR_RE.exec(text))) if (/\bgithub\s*\.\s*(event\b|head_ref\b)/.test(m[1])) out.push(m[0]);
+  return out;
+}
+const PR_HEAD_REF_RE = /github\.event\.pull_request\.head\.(sha|ref)\b|github\.head_ref\b/;
+
+// A stored registry token, by the secret's name or by the variable a
+// publisher reads it from. GITHUB_TOKEN is never one.
+const REGISTRY_SECRET_NAME_RE = /NPM|PYPI|TWINE|CARGO|CRATES|REGISTRY|YARN|PNPM|PUBLISH/i;
+const REGISTRY_TOKEN_VAR_RE = /\b(NODE_AUTH_TOKEN|NPM_TOKEN|TWINE_PASSWORD|CARGO_REGISTRY_TOKEN|UV_PUBLISH_TOKEN)\s*:\s*\$\{\{\s*secrets\./;
+const PUBLISH_CMD_RE = /(^|\s)(npm publish|pnpm publish|yarn npm publish|twine upload|cargo publish)\b/;
+
+// The frozen form of each installer, and the lockfile that makes it apply.
+// An install is checked only where its lockfile is tracked: without one the
+// frozen form has nothing to hold the install to. A global install or one
+// that names a package is adding a tool, not installing the project.
+const INSTALLERS = [
+  { re: /(?:^|\s)npm\s+(?:install|i)(?=\s|$)(.*)$/, frozen: null, fix: '`npm ci`', locks: ['package-lock.json', 'npm-shrinkwrap.json'] },
+  { re: /(?:^|\s)pnpm\s+(?:install|i)(?=\s|$)(.*)$/, frozen: /--frozen-lockfile\b/, fix: '`pnpm install --frozen-lockfile`', locks: ['pnpm-lock.yaml'] },
+  { re: /(?:^|\s)yarn(?:\s+install)?(?=\s|$)((?:\s+-\S+)*)\s*$/, frozen: /--frozen-lockfile\b|--immutable\b/, fix: '`yarn install --immutable` (or `--frozen-lockfile` on Yarn 1)', locks: ['yarn.lock'] },
+  { re: /(?:^|\s)bun\s+(?:install|i)(?=\s|$)(.*)$/, frozen: /--frozen-lockfile\b/, fix: '`bun install --frozen-lockfile`', locks: ['bun.lock', 'bun.lockb'] },
+];
+// The `if:` texts that gate a step to "every tracked root lockfile is
+// absent". Generated, never parsed: every ordering of `hashFiles('<name>') == ''`
+// over a set holding all of `tracked` and any of the installer's other
+// names, joined by ` && `, bare or wrapped as `${{ <that> }}`. The names come
+// from INSTALLERS, not the workflow, so a raw `if:` that differs by a space,
+// a quote, a comment, or a stray `${{` matches none of them and warns.
+function lockfileAbsentForms(locks, tracked) {
+  const optional = locks.filter((l) => !tracked.includes(l));
+  const perms = (xs) => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p])));
+  const forms = new Set();
+  for (let mask = 0; mask < 1 << optional.length; mask++) {
+    for (const p of perms([...tracked, ...optional.filter((_, i) => mask & (1 << i))])) {
+      const c = p.map((l) => `hashFiles('${l}') == ''`).join(' && ');
+      forms.add(c);
+      forms.add(`\${{ ${c} }}`);
+    }
+  }
+  return forms;
+}
+
+// Whether the line reader can vouch for which key belongs to which step in
+// this file, which the lockfile-absent skip depends on. A YAML parser reads a
+// multi-line quoted scalar or flow collection, an anchor, an alias, or a tag
+// in ways a line reader does not, so any of them anywhere means no. Every
+// line outside a block scalar's body must be blank, a comment, or `key:`,
+// `- `, or `- key:` with a value that is empty, a block scalar header, a
+// plain scalar, or a quoted scalar or one-level flow collection closed on
+// that line. When unsure it says no, which costs only a warning.
+const PLAIN_VALUE_FORMS = [
+  /^$/,
+  /^[^"'{[&*!|>%@`]/,
+  /^"(?:[^"\\]|\\.)*"[ \t]*(?:#.*)?$/,
+  /^'(?:[^']|'')*'[ \t]*(?:#.*)?$/,
+  /^[[{][^"'[\]{}#]*[\]}][ \t]*(?:#.*)?$/,
+];
+// Every line it inspects, comments included, must be printable ASCII, space,
+// and tab: anything else may be whitespace to JavaScript and content to
+// YAML, or a line break to YAML and not to the reader. Block-scalar bodies
+// are exempt, since shell text there may hold anything. A byte order mark
+// makes the file not plain, which costs only a warning.
+function plainlyWritten(raw) {
+  const lines = raw.split(YAML_LINE_BREAK_RE);
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i];
+    if (/[^\x20-\x7e\t]/.test(text)) return false;
+    const trimmed = yamlTrim(text);
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    let col = yamlIndent(text);
+    let rest = text.slice(col);
+    let dashed = false;
+    while (/^-([ \t]|$)/.test(rest)) {
+      const m = rest.match(/^-[ \t]*/);
+      col += m[0].length;
+      rest = rest.slice(m[0].length);
+      dashed = true;
+    }
+    const km = rest.match(/^([\w$][\w.$/-]*|"[^"\\]*"|'[^']*')[ \t]*:(?:[ \t]+(.*))?$/);
+    if (!km && !dashed) return false;
+    const value = yamlTrimEnd(km ? (km[2] || '') : rest);
+    if (/^[|>][-+0-9]*[ \t]*(?:#.*)?$/.test(value)) {
+      while (i + 1 < lines.length && (!yamlTrim(lines[i + 1]) || yamlIndent(lines[i + 1]) > col)) i++;
+      continue;
+    }
+    if (!PLAIN_VALUE_FORMS.some((re) => re.test(value))) return false;
+  }
+  return true;
+}
+
+// Binary by extension; anything else gets a NUL-byte sniff of its first
+// 8000 bytes (git's own test), and stops reading there. Media and fonts are
+// skipped: binary, but not what this is for. It does not catch a binary
+// with a media extension, a payload encoded as text (base64, a minified
+// blob), or one whose first 8000 bytes hold no NUL; a Git LFS pointer is text.
+// A file opening with a UTF-16 byte order mark is text full of NULs, so it
+// is skipped, which also lets a binary that forges that mark through.
+const BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.a', '.o', '.obj', '.lib', '.bin', '.jar', '.war', '.class', '.pyc', '.pyo', '.whl', '.egg', '.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar', '.zst', '.deb', '.rpm', '.msi', '.dmg', '.pkg', '.iso', '.apk', '.wasm', '.node']);
+const MEDIA_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.ico', '.bmp', '.tif', '.tiff', '.svg', '.pdf', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp3', '.mp4', '.wav', '.ogg', '.webm', '.mov']);
+function extOf(p) {
+  const base = p.slice(p.lastIndexOf('/') + 1);
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.slice(dot).toLowerCase() : '';
+}
+function hasNulByte(abs) {
+  let fd;
+  try {
+    fd = openSync(abs, 'r');
+    const buf = Buffer.alloc(8000);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    if (n >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))) return false;
+    return buf.subarray(0, n).includes(0);
+  } catch { return false; } finally { if (fd !== undefined) closeSync(fd); }
+}
+
+// CODEOWNERS patterns follow gitignore: a leading `/` or a `/` mid-pattern
+// anchors to the root, a bare name matches at any depth, and a pattern also
+// covers everything under a directory it names.
+function codeownersPatternRe(pattern) {
+  let p = pattern;
+  const anchored = p.startsWith('/') || p.replace(/\/+$/, '').includes('/');
+  p = p.replace(/^\/+/, '').replace(/\/+$/, '');
+  let re = '';
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === '*' && p[i + 1] === '*') { re += '.*'; i++; continue; }
+    if (c === '*') { re += '[^/]*'; continue; }
+    if (c === '?') { re += '[^/]'; continue; }
+    re += escapeRegExp(c);
+  }
+  return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${re}(?:/.*)?$`);
+}
+
+function checkWorkflows(ctx) {
+  const warnings = [];
+  const github = ctx.house?.data?.modules?.github;
+  if (isPlainObject(github) && github.enabled === false) return { findings: [], warnings };
+  const workflowFiles = ctx.allTracked.filter((f) => WORKFLOW_FILE_RE.test(f));
+  if (workflowFiles.length === 0) return { findings: [], warnings };
+  const waivers = readWaivers(moduleConfig(ctx.house, 'github'), 'github', WORKFLOW_CHECKS, 'workflows', warnings);
+  const warn = (check, path, line, message) => {
+    if (isWaived(waivers, check, path)) return;
+    warnings.push(mk('workflows', path, line, check, `${message}${FAIL_LATER_CHECKS.has(check) ? FAIL_LATER_NOTE : ''} Or record why with a {"check": "${check}", "path": "${path}", "why": "..."} entry in modules.github.config.waivers.`));
+  };
+
+  for (const f of workflowFiles) {
+    const raw = safeRead(join(ctx.repoRoot, f));
+    const entries = yamlEntries(raw);
+
+    // 1. Every remote action or reusable workflow pinned to a commit SHA.
+    for (const e of entries.filter((x) => x.key === 'uses')) {
+      const ref = unquoteYaml(e.value);
+      if (!ref || ref.startsWith('./')) continue;
+      if (ref.startsWith('docker://')) {
+        if (!/@sha256:[0-9a-f]{64}$/.test(ref)) warn('unpinned-uses', f, e.line, `uses \`${ref}\`, a container not pinned by \`@sha256:\` digest, so the tag can be repointed at a new image.`);
+        continue;
+      }
+      if (!/@[0-9a-fA-F]{40}$/.test(ref)) warn('unpinned-uses', f, e.line, `uses \`${ref}\`, which is not pinned to a full 40-character commit SHA; a tag or branch can be moved to new code under the same name. Pin the SHA and keep the version as a trailing comment (\`@<sha> # v4.2.0\`).`);
+    }
+
+    // 2. A top-level permissions key, so no job inherits the default token.
+    if (!entries.some((e) => isTopLevel(e) && e.key === 'permissions')) {
+      warn('no-permissions', f, 1, 'has no top-level `permissions:` key, so every job gets the repository default token, which may be read-write. Declare `permissions: contents: read` at the top and grant write per job.');
+    }
+
+    // 3. Event data pasted into a script or an agent prompt. `env:`, `if:`,
+    // and every other input are not read here, which is the safe route.
+    for (const e of entries) {
+      const isRun = e.key === 'run';
+      const isPrompt = e.key !== null && /prompt/i.test(e.key) && parentKey(e) === 'with';
+      if (!isRun && !isPrompt) continue;
+      for (const { line, text } of entryLines(e)) {
+        for (const expr of untrustedExprs(text)) {
+          warn('event-in-run', f, line, `interpolates \`${expr}\` into a ${isRun ? '`run:` script' : `\`${e.key}:\` prompt input`}; Actions pastes the value in before it runs, so a crafted branch name or title runs as code or as instructions. Pass it through \`env:\` and read the variable instead.`);
+        }
+      }
+    }
+
+    // 4. pull_request_target checking out the pull request's own code.
+    const on = entries.find((e) => isTopLevel(e) && ['on', 'true'].includes(e.key));
+    if (on) {
+      const next = entries.find((e) => e.line > on.line && isTopLevel(e));
+      const onText = raw.split(YAML_LINE_BREAK_RE).slice(on.line - 1, next ? next.line - 1 : undefined).map(stripYamlComment).join('\n');
+      if (/\bpull_request_target\b/.test(onText)) {
+        const checkouts = new Set(entries.filter((e) => e.key === 'uses' && /^actions\/checkout@/i.test(unquoteYaml(e.value))).map(nearestItem).filter(Boolean));
+        for (const e of entries) {
+          if (!checkouts.has(nearestItem(e))) continue;
+          const headRef = (e.key === 'ref' && parentKey(e) === 'with' && PR_HEAD_REF_RE.test(e.value))
+            || (e.key === 'with' && /\bref\s*:/.test(e.value) && PR_HEAD_REF_RE.test(e.value));
+          if (headRef) warn('pr-target-checkout', f, e.line, 'runs on `pull_request_target`, which carries a write token and the repository\'s secrets, and checks out the pull request head, so the contributor\'s code runs with both. Use `pull_request` for anything that runs the PR\'s code, or keep this checkout on the base ref.');
+        }
+      }
+    }
+
+    const runLines = entries.filter((e) => e.key === 'run').flatMap(entryLines);
+
+    // 8. A publish that reads a stored token where it could use OIDC.
+    const lines = raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment);
+    const readsToken = lines.some((l) => REGISTRY_TOKEN_VAR_RE.test(l)
+      || [...l.matchAll(/\$\{\{\s*secrets\.([A-Za-z0-9_]+)/g)].some((m) => m[1] !== 'GITHUB_TOKEN' && REGISTRY_SECRET_NAME_RE.test(m[1])));
+    const oidc = lines.some((l) => /\bid-token\s*:\s*write\b|\bpermissions\s*:\s*write-all\b/.test(l));
+    if (readsToken && !oidc) {
+      for (const { line, cmd } of runCommands(runLines)) {
+        const m = cmd.match(PUBLISH_CMD_RE);
+        if (m && !/--dry-run\b/.test(cmd)) warn('publish-token', f, line, `runs \`${m[2]}\` with a stored registry token and does not request \`id-token: write\`. A long-lived token in secrets publishes from anywhere it leaks to; trusted publishing (OIDC) mints a short one per run. Grant \`id-token: write\` on the publishing job and drop the stored token.`);
+      }
+    }
+
+    // 9. A CI install that can rewrite the lockfile instead of honouring it.
+    // A step whose own `if:` runs it only when the lockfile is absent has
+    // nothing to be frozen against, so its plain install passes. A fallback
+    // after a failed frozen install (`npm ci || npm install`) does not. The
+    // skip is honoured only in a file the line reader can vouch for.
+    const plain = plainlyWritten(raw);
+    const runs = entries.filter((x) => x.key === 'run').map((e) => {
+      const item = nearestItem(e);
+      const cond = entries.find((x) => x.key === 'if' && item && nearestItem(x) === item && x.parents.length === e.parents.length);
+      // A condition that runs onto a second line never skips.
+      return { lines: entryLines(e), gate: plain && cond && entryLines(cond).length === 1 ? cond.raw : null };
+    });
+    // Where the reader cannot vouch for the file it may also have folded a
+    // `run:` line into another value, so every one-line `run:` it did not
+    // read as a step is judged too, ungated.
+    if (!plain) {
+      const seen = new Set(runs.flatMap((r) => r.lines.map((l) => l.line)));
+      raw.split(YAML_LINE_BREAK_RE).forEach((t, i) => {
+        const m = t.match(/^[ \t]*(?:-[ \t]+)?run:[ \t]+(.+)$/);
+        if (m && !seen.has(i + 1)) runs.push({ lines: [{ line: i + 1, text: m[1] }], gate: null });
+      });
+    }
+    for (const { lines: runText, gate } of runs) {
+      for (const { line, cmd } of runCommands(runText)) {
+        for (const inst of INSTALLERS) {
+          const m = cmd.match(inst.re);
+          // Root lockfiles only: a nested lockfile, and a step run through
+          // `working-directory`, are not examined.
+          const tracked = inst.locks.filter((l) => ctx.allTracked.includes(l));
+          if (!m || !tracked.length) continue;
+          if (gate !== null && lockfileAbsentForms(inst.locks, tracked).has(gate)) continue;
+          const args = m[1].trim().split(/\s+/).filter(Boolean);
+          if (args.some((a) => !a.startsWith('-')) || args.some((a) => ['-g', '--global', '-v', '--version', '-h', '--help'].includes(a))) continue;
+          if (inst.frozen && inst.frozen.test(m[1])) continue;
+          warn('unfrozen-install', f, line, `installs with \`${cmd}\`, which can resolve past the committed lockfile instead of failing when the two disagree. Use ${inst.fix}, or run a plain install only in a step gated on \`if: hashFiles('<lockfile>') == ''\`.`);
+        }
+      }
+    }
+  }
+
+  // 6. Dependabot version updates with no cooldown.
+  const dependabot = ['.github/dependabot.yml', '.github/dependabot.yaml'].find((p) => ctx.allTracked.includes(p));
+  if (dependabot) {
+    const entries = yamlEntries(safeRead(join(ctx.repoRoot, dependabot)));
+    const updates = entries.find((e) => isTopLevel(e) && e.key === 'updates');
+    const seen = new Map();
+    for (const e of entries) {
+      if (!updates || !e.parents.length || e.parents[0].key !== 'updates' || e.parents.length < 2 || !e.parents[1].item) continue;
+      const id = e.parents[1].item;
+      if (!seen.has(id)) seen.set(id, { line: e.line, cooldown: false });
+      if (e.key === 'cooldown' && e.parents.length === 2) seen.get(id).cooldown = true;
+    }
+    for (const u of seen.values()) {
+      if (!u.cooldown) warn('dependabot-cooldown', dependabot, u.line, 'has an update entry with no `cooldown`, so a release is proposed the day it ships, before a compromised one is usually caught and pulled. Add `cooldown: default-days: 7` (security updates ignore it by design).');
+    }
+  }
+
+  // 7. Code owners for the workflow directory. GitHub reads the first of
+  // these it finds, and the last matching line wins; a line with no owners
+  // un-owns what it matches.
+  const ownersFile = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'].find((p) => ctx.allTracked.includes(p));
+  const ownerRules = ownersFile ? safeRead(join(ctx.repoRoot, ownersFile)).split(YAML_LINE_BREAK_RE)
+    .map((l) => l.replace(/(^|\s)#.*$/, '').trim()).filter(Boolean).map((l) => l.split(/\s+/)) : [];
+  const uncovered = workflowFiles.filter((wf) => {
+    const last = ownerRules.filter(([pat]) => codeownersPatternRe(pat).test(wf)).pop();
+    return !last || last.length < 2;
+  });
+  if (uncovered.length) {
+    warn('codeowners', ownersFile || '.github/CODEOWNERS', null, `${ownersFile ? 'names no owner for' : 'is missing, so nobody owns'} ${uncovered.map((p) => `\`${p}\``).join(', ')}. A change to what runs with privilege should reach a named reviewer: add \`/.github/workflows/ @owner\`. On a solo repo there is nobody to route to; record that as the reason.`);
+  }
+
+  // 10. A committed binary outside an allowlisted path. The allowlist is the
+  // `binary` waivers' paths.
+  for (const p of ctx.allTracked) {
+    const ext = extOf(p);
+    if (MEDIA_EXTS.has(ext) || isWaived(waivers, 'binary', p)) continue;
+    if (BINARY_EXTS.has(ext) || hasNulByte(join(ctx.repoRoot, p))) {
+      warn('binary', p, null, 'is a committed binary. Nobody reviews a binary in a diff, which is where a build-time payload hides. Build it in CI, or allowlist its directory.');
+    }
+  }
+
+  // 11. A security policy where the platform looks for one.
+  if (!ctx.allTracked.some((p) => /^(?:\.github\/|docs\/)?security\.md$/i.test(p))) {
+    warn('security-policy', 'SECURITY.md', null, 'is missing (also looked for in `.github/` and `docs/`), so a reporter finds no private route and files a public issue. Add one naming the private reporting route and a response time.');
+  }
+
+  return { findings: [], warnings };
+}
+
+// ── agent-config ─────────────────────────────────────────────────────────
+
+// #134 check 5: committed agent settings that hand the session to someone
+// else. `.claude/settings.json` only: settings.local.json is per-machine and
+// never committed. THE HARNESS-WATCH ROUTINE OWNS THIS LIST: when a Claude
+// Code release adds a settings key that redirects the API endpoint, approves
+// every project server, or skips the permission prompt, add it here.
+const RISKY_AGENT_SETTINGS = [
+  { keys: ['env', 'ANTHROPIC_BASE_URL'], hit: (v) => isNonEmptyString(v), why: 'sends every request, with its credential, to an endpoint this repo chose' },
+  { keys: ['enableAllProjectMcpServers'], hit: (v) => v === true, why: 'approves every server in `.mcp.json`, including one a pull request adds' },
+  { keys: ['permissions', 'defaultMode'], hit: (v) => v === 'bypassPermissions', why: 'opens every session in this repo with no permission prompt' },
+];
+
+function checkAgentConfig(ctx) {
+  const warnings = [];
+  const cc = ctx.house?.data?.modules?.['claude-code'];
+  if (isPlainObject(cc) && cc.enabled === false) return { findings: [], warnings };
+  const p = '.claude/settings.json';
+  if (!ctx.allTracked.includes(p)) return { findings: [], warnings };
+  const waivers = readWaivers(moduleConfig(ctx.house, 'claude-code'), 'claude-code', ['agent-settings'], 'agent-config', warnings);
+  if (isWaived(waivers, 'agent-settings', p)) return { findings: [], warnings };
+  const raw = safeRead(join(ctx.repoRoot, p));
+  let j;
+  try { j = JSON.parse(raw); } catch { return { findings: [], warnings }; }
+  const lines = raw.split(/\r?\n/);
+  for (const s of RISKY_AGENT_SETTINGS) {
+    const v = s.keys.reduce((o, k) => (isPlainObject(o) ? o[k] : undefined), j);
+    if (!s.hit(v)) continue;
+    const last = s.keys[s.keys.length - 1];
+    const idx = lines.findIndex((l) => l.includes(`"${last}"`));
+    warnings.push(mk('agent-config', p, idx >= 0 ? idx + 1 : null, 'agent-settings', `commits \`${s.keys.join('.')}: ${JSON.stringify(v)}\`, which ${s.why}, for everyone who opens this repo. Move it to \`.claude/settings.local.json\` on the machine that needs it.${FAIL_LATER_NOTE} Or record why with a {"check": "agent-settings", "why": "..."} entry in modules.claude-code.config.waivers.`));
+  }
+  return { findings: [], warnings };
+}
+
 // ── guard ────────────────────────────────────────────────────────────────
 
 // branchPolicy "pr" is only a promise if something actually stops a commit on
@@ -2602,6 +3084,8 @@ function main() {
       case 'manifest': r = checkManifest(ctx); break;
       case 'minutes': r = checkMinutes(ctx); break;
       case 'guard': r = checkGuard(ctx); break;
+      case 'workflows': r = checkWorkflows(ctx); break;
+      case 'agent-config': r = checkAgentConfig(ctx); break;
       default: r = { findings: [], warnings: [] };
     }
     results[fam] = r;

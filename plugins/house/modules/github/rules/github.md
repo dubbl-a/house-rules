@@ -10,7 +10,7 @@ Each rule names what enforces it, or says plainly that nothing does.
 Gate on file-only checks, so the gate runs with no database, network, or secret to leak. Push stateful checks to a retro or a local pre-deploy step.
 Name what is deliberately not gated, and why, inside the workflow that gates: an unstated gap reads as coverage.
 Run the same set locally before opening the PR, and fail loudly on a missing secret before any lane starts.
-Anchor: the rendered `.github/workflows/pr-checks.yml`, wall-time target and concurrency shipped with the template; `npm run check:house` runs it locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
+Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then warns on what it reads there, such as unpinned actions or missing permissions, but nothing checks that the gate stays credential-free, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
 Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated`
 
 ## Give a workflow read-only permissions and pin every action by SHA
@@ -18,7 +18,7 @@ Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credenti
 Declare read-only `permissions:` on every workflow and grant write per job, since repo write access can read every configured secret. Write the reason beside the block.
 Pin every third-party action to a full-length commit SHA, the only reference a tag cannot fake.
 Never interpolate event data into a `run:` block or an agent's prompt input; route it through a variable, and never check out untrusted code, or expose a secret to it, in a privileged trigger.
-Anchor: the rendered `.github/workflows/pr-checks.yml` ships the read-only default and SHA pins; copy it for a new workflow. A workflow the agent platform's setup installs counts too: same permissions, same pins.
+Anchor: `node .house/check.mjs --only=workflows` warns on a `uses:` not pinned by SHA, a workflow with no top-level `permissions:`, event data in a `run:` block or an agent's prompt input, and a `pull_request_target` checkout of the pull request head; the rendered `.github/workflows/pr-checks.yml` ships the read-only default and SHA pins to copy. A workflow the agent platform's setup installs counts too: same permissions, same pins.
 Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin-every-action-by-sha`
 
 ## Budget Actions minutes as account-wide money
@@ -27,7 +27,7 @@ Treat CI minutes as one pool shared by every repo on the account, billed per job
 Pause an expensive cron by hand, then ship a one-shot job to re-enable it, since a token cannot re-enable another repo's workflow.
 Read the check-run annotation when a run dies at startup: a billing failure carries no logs and looks nothing like code failure.
 Set the slot to null on a public repo, since its minutes are unmetered, and let the check say so instead of estimating against a stale budget.
-Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's spending budget is the hard stop. An agent workflow caps nothing; its minutes draw from the same pool.
+Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow caps nothing; its minutes draw from the same pool.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
@@ -43,7 +43,7 @@ Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-
 Turn on secret scanning push protection, blocking a credential before it enters history.
 Turn on automatic head-branch deletion so a merged branch stops accumulating.
 Configure grouped dependency updates and leave security updates on, since grouping cuts PR volume without muting updates that matter.
-Anchor: the rendered `.github/dependabot.yml` carries the grouping; the other two are repository settings, confirmed at adoption.
+Anchor: the rendered `.github/dependabot.yml` carries the grouping and a cooldown, and `node .house/check.mjs --only=workflows` warns on an update entry with no cooldown; the other two are repository settings, confirmed at adoption.
 Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-and-grouped-dependency-updates`
 
 ## Protect the default branch at the remote, and name an owner for what runs with privilege
@@ -51,7 +51,7 @@ Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-
 Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it.
 Once the repo has a second maintainer, require a review from someone other than the author and name code owners for workflow, release, and agent config files, so a change to what runs with privilege reaches a named reviewer; a solo repo has nobody to route to, and its required checks are the gate.
 Turn on multi-factor sign-in for every account with write access, enforced by the organization where there is one, and give each collaborator the least role that works.
-Anchor: where there is a second maintainer, a code-owners file covering the workflow directory is the part a repo file carries; the branch rule and the required checks are repository settings and the sign-in requirement an organization or account one, each confirmed at adoption like push protection.
+Anchor: where there is a second maintainer, a code-owners file covering the workflow directory is the part a repo file carries, and `node .house/check.mjs --only=workflows` warns when none covers it (a solo repo records why as a waiver); the branch rule and the required checks are repository settings and the sign-in requirement an organization or account one, each confirmed at adoption like push protection.
 Receipts: `docs/handbook/github.md#protect-the-default-branch-at-the-remote-and-name-an-owner-for-what-runs-with-privilege`
 
 ## Make the PR template force a docs-check answer
@@ -148,7 +148,7 @@ Receipts: `docs/handbook/github.md#label-a-non-secret-as-a-non-secret`
 Ship a code of conduct, a security policy naming a private reporting route and a response time, and a contributing guide: the platform's community-profile check reads a missing one as a gap, and a newcomer reads neglect.
 Take issue intake through YAML forms with blank issues disabled, so a report starts structured, not free-text.
 The pull-request template already has its own rule above; point here rather than repeating it.
-Anchor: confirm the community-profile endpoint at adoption, like confirming push protection; a checker family here is a later cycle if it earns one.
+Anchor: `node .house/check.mjs --only=workflows` warns when no security policy sits at the root, in `.github/`, or in `docs/`; confirm the rest of the community profile at adoption, like confirming push protection.
 Receipts: `docs/handbook/github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms`
 
 ## Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it

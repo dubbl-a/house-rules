@@ -25,6 +25,7 @@ body:
         - evals
         - github
         - llm-output
+        - retrieval
         - security
         - testing
         - new module (describe below)
