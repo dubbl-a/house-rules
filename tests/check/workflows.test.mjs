@@ -55,6 +55,9 @@ function warns(dir, fam = 'workflows') {
   const r = run(dir, [`--only=${fam}`, '--json']);
   const fails = r.json.findings.filter((w) => w.family === fam);
   assert.equal(r.code, fails.length ? 1 : 0, r.out);
+  const promoted = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'agent-settings']);
+  for (const f of fails) assert.ok(promoted.has(f.kind), `${f.kind} must not be a finding: ${r.out}`);
+  for (const w of r.json.warnings.filter((x) => x.family === fam)) assert.ok(!promoted.has(w.kind), `${w.kind} must be a finding, not a warning: ${r.out}`);
   return [...fails, ...r.json.warnings.filter((w) => w.family === fam)];
 }
 const kinds = (ws) => ws.map((w) => w.kind).sort();
@@ -520,6 +523,13 @@ test('agent-settings: a base URL override, all project servers, and bypass mode 
   assert.deepEqual(kinds(ws), ['agent-settings', 'agent-settings', 'agent-settings']);
   assert.deepEqual(ws.map((w) => w.line).sort((a, b) => a - b), [3, 5, 7]);
   assert.doesNotMatch(ws[0].message, /later release/);
+});
+
+test('agent-settings: a planted violation exits 1 as a finding, never a warning', () => {
+  const r = run(settingsRepo({ enableAllProjectMcpServers: true }), ['--only=agent-config', '--json']);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(r.json.findings.some((f) => f.kind === 'agent-settings'), r.out);
+  assert.ok(!r.json.warnings.some((f) => f.kind === 'agent-settings'), r.out);
 });
 
 // A global excludesFile often ignores settings.local.json, so the fixture

@@ -625,7 +625,7 @@ test('P9: excluding a tracked .md with no opt-out marker warns; with the marker 
 // P13: the whole-file `docs-drift-ignore-file` opt-out suppresses ALL drift for
 // a file, so it must record why -- mirroring a deviations entry.
 test('P13: a reasonless whole-file opt-out fails; the same opt-out with a reason does not', () => {
-  // positive control: marker with no reason still exempts the file, but warns.
+  // positive control: marker with no reason still exempts the file, but fails.
   const dirNoReason = sandbox({
     'README.md': '<!-- docs-drift-ignore-file -->\n\nSee `src/missing.ts`.\n',
   });
