@@ -2287,15 +2287,21 @@ function isWaived(waivers, check, path) {
   return waivers.some((w) => w.check === check && (w.path === undefined || matchesConfigPath(path, w.path)));
 }
 
+// YAML's whitespace is space and tab only. JavaScript's `\s` and trim() also
+// take characters such as U+00A0 and U+FEFF that YAML keeps as content, so
+// the reader never uses them on a workflow line.
+function yamlTrim(s) { return s.replace(/^[ \t]+|[ \t]+$/g, ''); }
+function yamlTrimEnd(s) { return s.replace(/[ \t]+$/, ''); }
+function yamlIndent(s) { return s.match(/^[ \t]*/)[0].length; }
 function stripYamlComment(v) {
   let q = null;
   for (let i = 0; i < v.length; i++) {
     const c = v[i];
     if (q) { if (c === q) q = null; continue; }
     if (c === '"' || c === "'") { q = c; continue; }
-    if (c === '#' && (i === 0 || /\s/.test(v[i - 1]))) return v.slice(0, i).trimEnd();
+    if (c === '#' && (i === 0 || v[i - 1] === ' ' || v[i - 1] === '\t')) return yamlTrimEnd(v.slice(0, i));
   }
-  return v.trimEnd();
+  return yamlTrimEnd(v);
 }
 function unquoteYaml(v) {
   const m = v.match(/^"(.*)"$/) || v.match(/^'(.*)'$/);
@@ -2323,32 +2329,32 @@ function yamlEntries(raw) {
   let i = 0;
   while (i < lines.length) {
     const text = lines[i];
-    const trimmed = text.trim();
+    const trimmed = yamlTrim(text);
     if (!trimmed || trimmed.startsWith('#') || trimmed === '---') { i++; continue; }
-    let col = text.length - text.trimStart().length;
+    let col = yamlIndent(text);
     let rest = text.slice(col);
-    while (/^-(\s|$)/.test(rest)) {
+    while (/^-([ \t]|$)/.test(rest)) {
       while (stack.length && (stack[stack.length - 1].col > col || (stack[stack.length - 1].col === col && stack[stack.length - 1].item))) stack.pop();
       stack.push({ col, key: null, item: ++items });
-      const m = rest.match(/^-\s*/);
+      const m = rest.match(/^-[ \t]*/);
       col += m[0].length;
       rest = rest.slice(m[0].length);
     }
     if (!rest || rest.startsWith('#')) { i++; continue; }
     while (stack.length && stack[stack.length - 1].col >= col) stack.pop();
-    const km = rest.match(/^("[^"]*"|'[^']*'|[\w$][\w.$/-]*)\s*:(?:\s+(.*))?$/);
+    const km = rest.match(/^("[^"]*"|'[^']*'|[\w$][\w.$/-]*)[ \t]*:(?:[ \t]+(.*))?$/);
     const key = km ? unquoteYaml(km[1]) : null;
     const rawValue = km ? (km[2] || '') : rest;
-    const value = stripYamlComment(rawValue).trim();
+    const value = yamlTrim(stripYamlComment(rawValue));
     // `raw` is the text after the separator as written, less only the
-    // trailing whitespace YAML drops from an unquoted value.
-    const raw = /^["']/.test(rawValue) ? rawValue : rawValue.trimEnd();
+    // trailing spaces and tabs YAML drops from an unquoted value.
+    const raw = /^["']/.test(rawValue) ? rawValue : yamlTrimEnd(rawValue);
     const e = { line: i + 1, col, key, value, raw, parents: stack.slice(), block: /^[|>][-+0-9]*$/.test(value), body: [] };
     entries.push(e);
     i++;
     if (value) {
-      while (i < lines.length && (!lines[i].trim() || lines[i].length - lines[i].trimStart().length > col)) {
-        if (lines[i].trim()) e.body.push({ line: i + 1, text: lines[i] });
+      while (i < lines.length && (!yamlTrim(lines[i]) || yamlIndent(lines[i]) > col)) {
+        if (yamlTrim(lines[i])) e.body.push({ line: i + 1, text: lines[i] });
         i++;
       }
     } else if (key !== null) {
@@ -2441,30 +2447,36 @@ function lockfileAbsentForms(locks, tracked) {
 const PLAIN_VALUE_FORMS = [
   /^$/,
   /^[^"'{[&*!|>%@`]/,
-  /^"(?:[^"\\]|\\.)*"\s*(?:#.*)?$/,
-  /^'(?:[^']|'')*'\s*(?:#.*)?$/,
-  /^[[{][^"'[\]{}#]*[\]}]\s*(?:#.*)?$/,
+  /^"(?:[^"\\]|\\.)*"[ \t]*(?:#.*)?$/,
+  /^'(?:[^']|'')*'[ \t]*(?:#.*)?$/,
+  /^[[{][^"'[\]{}#]*[\]}][ \t]*(?:#.*)?$/,
 ];
+// Every line it inspects, comments included, must be printable ASCII, space,
+// and tab: anything else may be whitespace to JavaScript and content to
+// YAML, or a line break to YAML and not to the reader. Block-scalar bodies
+// are exempt, since shell text there may hold anything. A byte order mark
+// makes the file not plain, which costs only a warning.
 function plainlyWritten(raw) {
   const lines = raw.split(YAML_LINE_BREAK_RE);
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i];
-    const trimmed = text.trim();
+    if (/[^\x20-\x7e\t]/.test(text)) return false;
+    const trimmed = yamlTrim(text);
     if (!trimmed || trimmed.startsWith('#')) continue;
-    let col = text.length - text.trimStart().length;
+    let col = yamlIndent(text);
     let rest = text.slice(col);
     let dashed = false;
-    while (/^-(\s|$)/.test(rest)) {
-      const m = rest.match(/^-\s*/);
+    while (/^-([ \t]|$)/.test(rest)) {
+      const m = rest.match(/^-[ \t]*/);
       col += m[0].length;
       rest = rest.slice(m[0].length);
       dashed = true;
     }
-    const km = rest.match(/^([\w$][\w.$/-]*|"[^"\\]*"|'[^']*')\s*:(?:\s+(.*))?$/);
+    const km = rest.match(/^([\w$][\w.$/-]*|"[^"\\]*"|'[^']*')[ \t]*:(?:[ \t]+(.*))?$/);
     if (!km && !dashed) return false;
-    const value = (km ? (km[2] || '') : rest).trimEnd();
-    if (/^[|>][-+0-9]*\s*(?:#.*)?$/.test(value)) {
-      while (i + 1 < lines.length && (!lines[i + 1].trim() || lines[i + 1].length - lines[i + 1].trimStart().length > col)) i++;
+    const value = yamlTrimEnd(km ? (km[2] || '') : rest);
+    if (/^[|>][-+0-9]*[ \t]*(?:#.*)?$/.test(value)) {
+      while (i + 1 < lines.length && (!yamlTrim(lines[i + 1]) || yamlIndent(lines[i + 1]) > col)) i++;
       continue;
     }
     if (!PLAIN_VALUE_FORMS.some((re) => re.test(value))) return false;
@@ -2608,7 +2620,7 @@ function checkWorkflows(ctx) {
     if (!plain) {
       const seen = new Set(runs.flatMap((r) => r.lines.map((l) => l.line)));
       raw.split(YAML_LINE_BREAK_RE).forEach((t, i) => {
-        const m = t.match(/^\s*(?:-\s+)?run:\s+(.+)$/);
+        const m = t.match(/^[ \t]*(?:-[ \t]+)?run:[ \t]+(.+)$/);
         if (m && !seen.has(i + 1)) runs.push({ lines: [{ line: i + 1, text: m[1] }], gate: null });
       });
     }

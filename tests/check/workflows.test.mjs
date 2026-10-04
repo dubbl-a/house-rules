@@ -382,6 +382,38 @@ test('unfrozen-install: one multi-line quoted value anywhere stops the skip for 
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install']);
 });
 
+// Round 7: JavaScript's whitespace is wider than YAML's (space and tab), so
+// a character YAML keeps as content must never be trimmed into a match.
+const NBSP = String.fromCharCode(0xa0);
+for (const [label, cond] of [
+  ['a trailing no-break space on the wrapped form', `\${{ hashFiles('package-lock.json') == '' }}${NBSP}`],
+  ['a leading no-break space', `${NBSP}\${{ hashFiles('package-lock.json') == '' }}`],
+  ['a trailing ideographic space', `hashFiles('package-lock.json') == ''${String.fromCharCode(0x3000)}`],
+  ['a trailing zero-width no-break space', `hashFiles('package-lock.json') == ''${String.fromCharCode(0xfeff)}`],
+  ['a continuation line holding only a no-break space', `hashFiles('package-lock.json') == ''\n${NBSP}`],
+]) {
+  test(`unfrozen-install: ${label} after if: never lets the skip apply`, () => {
+    assert.deepEqual(kinds(warns(gatedInstall(cond))), ['unfrozen-install']);
+  });
+}
+
+test('unfrozen-install: a non-ASCII character inside a run: | body still lets a truly gated step skip', () => {
+  const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      - if: hashFiles('package-lock.json') == ''\n        run: |\n          echo "caf${String.fromCharCode(0xe9)}"\n          npm install\n`);
+  assert.deepEqual(warns(withWorkflow(body)), []);
+});
+
+test('unfrozen-install: a non-ASCII character in a name: value or a comment stops the skip (documented false positive)', () => {
+  for (const extra of [`      - name: caf${String.fromCharCode(0xe9)}\n        run: echo hi\n`, `      # caf${String.fromCharCode(0xe9)}\n`]) {
+    const body = CLEAN_WORKFLOW.replace('      - run: npm ci\n', `${extra}      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n`);
+    assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install'], extra);
+  }
+});
+
+test('unfrozen-install: a byte order mark at the start makes the file not plainly written', () => {
+  const body = String.fromCharCode(0xfeff) + CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n        run: npm install\n");
+  assert.deepEqual(kinds(warns(withWorkflow(body))), ['unfrozen-install']);
+});
+
 test('unfrozen-install: a one-line quoted name and a one-line flow sequence still let a truly gated step skip', () => {
   const body = CLEAN_WORKFLOW.replace('  pull_request:\n', '  pull_request:\n    branches: [main]\n')
     .replace('      - run: npm ci\n', "      - name: \"build\"\n        if: hashFiles('package-lock.json') == ''\n        run: npm install\n");
