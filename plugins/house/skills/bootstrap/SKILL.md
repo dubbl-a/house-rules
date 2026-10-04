@@ -102,10 +102,12 @@ it leaves (scaffolds, files not managed, and each line still calling the checker
 what the branch guard and session start do afterwards. Show all of it and wait for the person to
 say apply it; on approval, run the same command with `--apply`. If the person wants to keep
 `house.json`, pass `--keep-config`: the guard then keeps enforcing its `branchPolicy` and session
-start keeps reporting the floor missing, as the plan says. A `house.json` not in HEAD is not
-recoverable from git, so `--apply` needs `--keep-config` or `--discard-untracked-config`: ask which,
-never choose for them. A hand-edited managed file is refused by name and nothing is deleted: leave
-resolving it to the person. If the apply is denied by a permission check, do not retry or route
+start keeps reporting the floor missing, as the plan says. A `house.json` that is not in HEAD, or
+differs from it, is not recoverable from git as it is, so `--apply` needs `--keep-config` or
+`--discard-untracked-config`: ask which, never choose for them. A hand-edited managed file is
+refused by name and nothing is deleted: leave resolving it to the person. With `.house/lock.json`
+missing or unreadable nothing proves which files render wrote, so uninstall deletes nothing and
+lists them: offer `house render --apply` to rebuild the lock, then uninstall again. If the apply is denied by a permission check, do not retry or route
 around it: tell the person that a blocked action can be retried with manual approval from
 `/permissions`, and give them the exact command and the directory to run it in. A rerun finishes a
 run that stopped part way, with or without `house.json`.
