@@ -64,3 +64,21 @@ test('robust: a FIFO at AGENTS.md is a named finding, not a hang', () => {
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /AGENTS\.md.*not a regular file/s);
 });
+
+test('robust: a FIFO at house.json is a named finding, not a hang', () => {
+  const dir = sandbox({ 'README.md': '# r\n' });
+  execFileSync('mkfifo', [join(dir, 'house.json')]);
+  const r = spawnSync('node', [CHECK_SRC, '--repo', dir], { encoding: 'utf8', timeout: 10_000 });
+  assert.equal(r.error, undefined, 'checker hung');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stdout, /house\.json.*not a regular file/s);
+});
+
+test('robust: a FIFO at GEMINI.md is named, not read as empty', () => {
+  const dir = sandbox({ 'house.json': houseJson({ targets: ['claude-code', 'gemini'] }), 'README.md': '# r\n' });
+  execFileSync('mkfifo', [join(dir, 'GEMINI.md')]);
+  const r = spawnSync('node', [CHECK_SRC, '--repo', dir, '--only=guard'], { encoding: 'utf8', timeout: 10_000 });
+  assert.equal(r.error, undefined, 'checker hung');
+  assert.match(r.stdout, /GEMINI\.md.*not a regular file/s);
+  assert.doesNotMatch(r.stdout, /nothing here points it at AGENTS\.md/);
+});
