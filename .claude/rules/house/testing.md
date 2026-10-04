@@ -3,7 +3,7 @@ paths:
   - tests/**
   - .github/workflows/**
 ---
-<!-- house-managed v0.17.0 module=testing source=modules/testing/rules/testing.md body-sha256=d9384f5c26d7729263543eafc50b0bb390803d19ab8b9b72a40571d6d110aa71 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=testing source=modules/testing/rules/testing.md body-sha256=4ac5d649daf9179c3cb8e5655c7fffdc1ad9e7c87b71c548e12f3a95c09da3c6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -22,7 +22,7 @@ Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you
 Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 Route what the gate cannot afford, the tests wanting a database, a network, or a secret, to a scheduled run or to a pipeline retro, so the slow tier still runs somewhere on a stated cadence. What the gate itself may hold, and what it must name as ungated, is github.md's rule.
 Keep the pre-commit hook faster still and push everything else to CI, because a slow hook gets bypassed and then disabled.
-Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated; it is a scaffold the first render writes once, and nothing checks the tiering or the routing afterwards.
+Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated; `house render --apply` writes it only where it is absent and not offered before, or with --scaffold, and nothing checks the tiering or the routing afterwards.
 Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-route-what-the-pr-gate-cannot-afford`
 
 ## Test the guard itself, as its own CI step
@@ -47,7 +47,7 @@ Receipts: `docs/handbook/testing.md#feed-a-real-payload-through-the-real-wiring-
 Commit the case the gate must fail beside the case it must pass, and run both in the same job, because a suite of passing cases cannot tell a working check from one that always passes.
 Plant the violation the gate is meant to catch instead of describing it, and have the run clean up after itself, so the proof lives in the suite rather than in a memory of having once tried it.
 Proving a check can fail before trusting that it passed is the general form, and it lives in engineering.md; this rule is the suite-level obligation to carry both controls as committed cases.
-Anchor: in this package, `node --test tests/` pairs each checker family's well-formed fixture with a planted-violation fixture and the eval case `positive-and-negative-control` covers the rule; neither runs in an adopter, who commits the paired cases for their own gates. The canary self-test github.md names for the secret scanner is the one control that ships.
+Anchor: in this package, `tests/check/` gives every checker family a well-formed case and a planted-violation case, agent-config's among the workflows tests, and the eval case `positive-and-negative-control` covers the rule; neither runs in an adopter, who commits the paired cases for their own gates. The canary self-test github.md names for the secret scanner is the one control that ships.
 Receipts: `docs/handbook/testing.md#ship-every-gate-with-a-positive-control-and-a-negative-control`
 
 ## Read the snapshot diff before accepting it, because a snapshot is a drift gate

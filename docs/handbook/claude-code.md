@@ -35,8 +35,10 @@ the routing call in this module's rules still decides where a trimmed fact goes.
 
 Native floor, as of 2026-09-28: the harness's own checkup proposes trims to a checked-in
 instruction file and warns at startup and in status when a file passes its recommended length,
-both advisory and neither blocking a long file (https://code.claude.com/docs/en/memory). The `lengths` family adds a warning against the
-line limit a repo sets for the file, and does not block it either.
+both advisory and neither blocking a long file (https://code.claude.com/docs/en/memory). The `lengths` family warns, without blocking,
+when the file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such
+entry, and reads no byte figure there; a glob entry that also matches the file blocks it on lines
+or bytes, and so does listing it in `ratchet`.
 
 ## Keep the auto-memory index to hooks, and hold it under its cap
 

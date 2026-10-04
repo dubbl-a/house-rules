@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.17.0 module=docs source=modules/docs/rules/docs.md body-sha256=ffe39af0109f4fba2419cfb065d316bcf4fb4b2432df0a2470f330fb877f5f9b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.17.0 module=docs source=modules/docs/rules/docs.md body-sha256=0ece4f9aced9d3e2a393ae54df7b9fc65a6ed437880fd6e96deb16ca35af8cd4 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -26,7 +26,7 @@ Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 Run the docs gate locally before pushing any branch that touches documents, and wire it into the build and the pull-request check: local is the loop, the build and the check are the net.
 A gate you only meet through a red badge after review costs a round trip per typo, and that round trip is what makes people stop running it.
-Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and is written once, by the first render. Nothing checks either wiring afterwards.
+Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent and not offered before, or with --scaffold. Nothing checks that either still runs the gate.
 Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-build`
 
 ## Give every rule file a paths list whose first segment resolves
@@ -96,7 +96,7 @@ Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what happened instead of deleting it, and state the supersession inside the new doc.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
 Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in block-level HTML comments, which the harness strips from a CLAUDE.md file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader.
-Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, reads the reason text after the colon up to the closing marker, and warns, without failing, on a file-level opt-out with no reason or an excluded doc that never opted out.
+Anchor: `npm run check:docs` honors the `scanArchive` flag and the file-level and per-line ignore markers, reads a marker's reason after the colon, and warns, without failing, on a file-level opt-out with no reason or an excluded doc that never opted out; a reason containing a closing angle bracket breaks the marker, which then opts nothing out.
 Receipts: `docs/handbook/docs.md#opt-a-point-in-time-doc-out-with-a-file-level-reason`
 
 ## Don't document a command that does not exist
