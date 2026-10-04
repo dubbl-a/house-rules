@@ -602,17 +602,26 @@ _strip_flag_args() {
 # whitespace) and it goes whole. Used only for target resolution, which fails
 # in the opposite direction: a `cd <repo> &&` surviving inside a message value
 # is parsed as the target, and a sibling repo on a feature branch is a
-# fail-open (#1, review round 1). The word also ends at an unquoted shell
-# separator or redirect (`&`, `;`, `|`, `<`, `>`), bare or after a quoted
-# span, which is where the shell ends it too: `-mx|git commit` and
-# `-m "x"|git commit` used to lose the `|git` with the value, so the commit
-# behind it was never decided (#154). A separator or `cd` inside a quoted span
-# or a substitution still goes with the value. A glued `&>` loses only its
-# `&`, as in _strip_flag_args.
+# fail-open (#1, review round 1). A word with no substitution also ends at
+# an unquoted shell separator or redirect (`&`, `;`, `|`, `<`, `>`), bare or
+# after a quoted span, which is where the shell ends it too: `-mx|git commit`
+# and `-m "x"|git commit` used to lose the `|git` with the value, so the
+# commit behind it was never decided (#154). A word holding an unquoted `$(`,
+# backtick, `<(` or `>(`, or a double-quoted span holding `$(` or a backtick,
+# keeps the old whitespace end from that point on: the `$( )` alternative
+# stops at the first `)`, so a separator inside a nested substitution
+# (`$(echo $(pwd);cd ../sib)`) would otherwise surface the `cd` behind it as a
+# target. A separator BEFORE that point still ends the word. A glued `&>`
+# after a word with no substitution loses only its `&`, as in
+# _strip_flag_args.
 _strip_flag_args_blind() {
+  local q="'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`"
+  local word="([^[:space:]'\"]|$q)" bare="([^[:space:]'\"&;|<>]|$q)"
+  local subst="(\\\$\([^)]*\)|\`[^\`]*\`|\\\$\(|\`|[<>]\(|\"[^\"]*(\\\$\(|\`)[^\"]*\")"
   printf '%s' "$2" | sed -E "
-    s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"&;|<>]|'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`)*&>/\1>/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*([^[:space:]'\"&;|<>]|'[^']*'|\"[^\"]*\"|\\\$\([^)]*\)|\\\$\{[^}]*\}|\`[^\`]*\`)+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare*$subst$word*/\1/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare*&>/\1>/g;
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare+/\1/g"
 }
 # Quote characters go, but not the tokens: a blind strip of every quoted span
 # turns `git 'commit'` into `git `, which is a bypass. Trailing comments go.

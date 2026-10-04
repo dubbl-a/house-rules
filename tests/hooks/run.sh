@@ -1388,6 +1388,30 @@ expect_allow "a glued &> after a bare -m value on a feature branch" \
   "$(mk_payload "git $_cm -mx&>/dev/null" "$o")"
 expect_allow "a real cd to a feature-branch repo still resolves to it" \
   "$(mk_payload "cd $o && git $_cm -mx|cat" "$r")"
+# A value holding a substitution keeps the whitespace end: `$( )` stops at
+# the first `)`, so a separator in a nested one must not surface the cd
+# behind it as the target. Unarmed, then armed.
+_s154_1="echo -m \$(echo \$(pwd);cd ../case154-sib); git $_cm -m x"
+_s154_2="git -c a=\$(true \$(true);cd ../case154-sib) status; git $_cm -m x"
+_s154_3="echo -m <(cd ../case154-sib); git $_cm -m x"
+_s154_4="echo -m \"\$(echo \"a;cd ../case154-sib)\"; git $_cm -m x"
+for _cmd in "$_s154_1" "$_s154_2" "$_s154_3" "$_s154_4"; do
+  expect_deny "unarmed: a cd in a nested substitution cannot steer: $_cmd" \
+    "$(mk_payload "$_cmd" "$r")"
+done
+ra="$TMP_ROOT/case154armed"; new_repo "$ra"; adopt "$ra"; arm_floor "$ra"
+if [[ -n "$GIT_NEW_DIR" ]]; then
+  HOOK_PATH_PREFIX="$GIT_NEW_DIR"
+  for _cmd in "$_s154_1" "$_s154_2" "$_s154_3" "$_s154_4"; do
+    expect_deny "armed: a cd in a nested substitution cannot steer: $_cmd" \
+      "$(mk_payload "$_cmd" "$ra")" "needs a PR"
+  done
+  expect_deny "armed: a commit behind | glued to a bare -m value is refused" \
+    "$(mk_payload "git status -mx|git $_cm -m x" "$ra")" "needs a PR"
+  HOOK_PATH_PREFIX=''
+else
+  skip "#154 armed steering cases" "no git >= 2.28 on this box, so the hook reads every floor as unarmed"
+fi
 git -C "$d" worktree remove --force "$d-wt" >/dev/null 2>&1
 git -C "$d" branch -D wt-base >/dev/null 2>&1
 
