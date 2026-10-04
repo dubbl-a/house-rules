@@ -167,7 +167,7 @@ never become incident logs, "that is how `entity-resolution.md` once reached 1,5
 ## Keep files under budget, and raise a ceiling only with a written reason
 
 repo-a's stated targets: `CLAUDE.md` at most 100 lines, each rule file at most 200,
-`README.md` at most 110, cited to the reasoning that shorter files get better adherence. As
+`README.md` at most 110, cited to the reasoning that shorter files get better adherence (a claim the evidence below does not carry for file length alone). As
 surveyed on 2026-08-23, the targets were documented but not machine-enforced: `CLAUDE.md` measured
 83 lines and `README.md` measured 107, both passing, but 11 of the repo's 21 rule files exceeded
 the 200-line target, including `election-results.md` at 444 lines, `database.md` at 398,
@@ -178,6 +178,19 @@ chapter, to its configured ceiling, and the ceiling tightens on its own whenever
 so a raise takes a written entry naming the path, the old and new limit, the reason, and the date
 decided, validated against the manifest schema, rather than landing as a quiet edit; the recorded
 raise takes effect only on a run with `--accept-lengths`.
+
+Where each limit comes from, as of 2026-10-04 (research on issue #160). The 200-line rule file
+matches Claude Code's memory docs, which say a longer file consumes more context and may reduce
+adherence. The 100-line `CLAUDE.md` target and the 110-line `README.md` target are house choices:
+both came from repo-a's stated targets and carried into the first release, and no source sets the
+numbers; the 100 is stricter than any vendor figure. The 400-line co-load ceiling has no outside
+source either. A 2026 study of 1,650 Claude Code sessions (arXiv 2605.10039) found no detectable
+effect of file size alone on compliance, and another (arXiv 2602.11988) found context files add
+about 20 to 23 percent cost for little gain, while a third (arXiv 2608.11095) measured instruction
+files growing 226 percent over their life. So the ceiling is a cost and growth budget, not an
+adherence threshold; no study sets a cross-file number. The ratchet is the part the growth
+evidence supports most directly. Figures were read through a summarizing tool; confirm against
+the full text before quoting one elsewhere.
 
 Native floor, as of 2026-09-28: the warning at startup and in status when an instruction file
 passes its recommended length or the loaded set passes a combined limit, and the hard

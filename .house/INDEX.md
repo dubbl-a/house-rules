@@ -50,7 +50,7 @@
 - Move dates, names, and measured numbers out of rule prose
   A rule that needs a date, a name, or a measured number to state itself is history wearing a rule's clothes. Move the evidence to the archive; leave the rule, the part that must survive the next change.
 - Keep files under budget, and raise a ceiling only with a written reason
-  The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. Shorter files get better adherence.
+  The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. The Claude Code docs say a file over 200 lines "may reduce adherence", and every loaded line costs context on each read.
 - Cut, don't append, and trim on a fixed cadence
   When you add to a document, trade something out; a file that only grows is one nobody reads to the end. Cut any paragraph that records something happened rather than changes what the next session does.
 - Split a file only when splitting narrows what loads
