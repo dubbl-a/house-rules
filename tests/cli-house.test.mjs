@@ -2210,6 +2210,35 @@ test('#167 confirm: a hand-edited vendored checker is told render refuses it, an
   assert.equal(runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]).code, 0);
 });
 
+test('#167 confirm: with no lock entry for the checker, a hand edit still gets the --force-managed advice', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files = lock.files.filter((f) => f.path !== '.house/check.mjs');
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  const checkFile = join(repo, '.house', 'check.mjs');
+  writeFileSync(checkFile, `${readFileSync(checkFile, 'utf8')}\n// hand edit\n`);
+  commitAll(repo, 'checker edited, no lock entry');
+
+  const r = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /house render --apply --force-managed \.house\/check\.mjs/);
+  const plain = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.notEqual(plain.code, 0, 'plain render refuses it');
+  assert.match(plain.out, /REFUSE/);
+});
+
+test('#167 render: --force-managed followed by a flag is refused, not read as the path', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  const r = runCli(cliPath, ['render', '--force-managed', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--force-managed needs a path, got --repo/);
+  assert.equal(existsSync(join(repo, '.house', 'lock.json')), false, 'nothing was rendered');
+});
+
 test('#167 render: --force-managed may be given more than once, and a single use behaves as before', () => {
   const { cliPath } = buildFixturePlugin();
   const repo = buildTargetRepo();

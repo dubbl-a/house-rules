@@ -2173,11 +2173,15 @@ function cmdConfirm(args) {
     process.exit(2);
   }
   if (!vendoredCheckerIsCurrent(repoRoot)) {
-    // A hand-edited vendored checker is refused by render (its body no longer
-    // matches the lock), so `house render --apply` alone would not get it synced.
-    const lockEntry = loadPriorLock(repoRoot).get('.house/check.mjs');
+    // A hand-edited vendored checker is refused by render, so `house render
+    // --apply` alone would not sync it. Asked of the same classify render uses
+    // (the lock's hash, or the plugin's own when the lock has no entry).
     let handEdited = false;
-    try { handEdited = !!lockEntry && sha256Hex(managedBody(readFileSync(path.join(repoRoot, '.house', 'check.mjs'), 'utf8'))) !== lockEntry.bodySha256; } catch { /* unreadable: the plain advice stands */ }
+    try {
+      const content = readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8');
+      const c = classify(repoRoot, { path: '.house/check.mjs', module: '_payload', source: 'payload/check.mjs', content, lockHash: sha256Hex(managedBody(content)), kind: 'payload' }, loadPriorLock(repoRoot), null);
+      handEdited = c.status === 'refuse' && !c.reason;
+    } catch { /* unreadable: the plain advice stands */ }
     console.error(handEdited
       ? `house confirm: nothing was written. .house/check.mjs was edited by hand, so \`house render --apply\` refuses it and would not sync it. First keep any change worth proposing upstream in house, then run \`house render --apply --force-managed .house/check.mjs\` so it is this plugin's (an older vendored checker reports \`confirmed\` as an unknown key and fails CI); then re-run this command.`
       : `house confirm: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
@@ -3513,7 +3517,11 @@ function parseArgs(argv) {
     if (a === '--repo') out.repo = argv[++i];
     else if (a.startsWith('--repo=')) out.repo = a.slice('--repo='.length);
     else if (a === '--apply') out.apply = true;
-    else if (a === '--force-managed') { if (argv[i + 1] !== undefined) out.forceManaged.push(argv[++i]); else i++; }
+    else if (a === '--force-managed') {
+      // A flag where the path should be is not the path: it would swallow --repo and aim render at cwd.
+      if (argv[i + 1] !== undefined && argv[i + 1].startsWith('--')) { console.error(`house: --force-managed needs a path, got ${argv[i + 1]}`); process.exit(2); }
+      if (argv[i + 1] !== undefined) out.forceManaged.push(argv[++i]); else i++;
+    }
     else if (a.startsWith('--force-managed=')) { const v = a.slice('--force-managed='.length); if (v) out.forceManaged.push(v); }
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
