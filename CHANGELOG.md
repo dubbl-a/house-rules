@@ -7,7 +7,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ## [Unreleased]
 
 ### Changed
-- **The package's own CI and development run on Node 26 via `.nvmrc`.** Workflows read it through `node-version-file`. The adopter floor stays Node 22 (`engines.node`).
+- **Breaking class (ADR 0012): the Node floor rises from 22 to 26.** `engines.node` is `>=26`, the README, CONTRIBUTING, and guide site state 26, and the `pr-checks.yml` scaffold sets `node-version: 26`. Adopters run `node --version` to check; scaffolds written earlier keep their `node-version` line and should change it. The package's own CI and development read Node from `.nvmrc` through `node-version-file`.
 
 ### Fixed
 - **Checker: the unreferenced-script twin needs evidence for JavaScript (#178).** A same-named `.mjs`, `.js`, `.cjs`, or `.ts` file is a twin of the vendored script only when it shares at least one exported name with it, so an unrelated program that happens to share a basename no longer draws the warning. Other file types keep the basename rule.
