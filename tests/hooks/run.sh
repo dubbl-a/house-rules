@@ -816,7 +816,7 @@ expect_deny_without "github off at HEAD on a feature branch: unsetting the hooks
 g2="$TMP_ROOT/gh-off-armed"; new_repo "$g2"; adopt "$g2" "$_gh_on"; install_floor "$g2"
 git -C "$g2" checkout -q -b feat; adopt "$g2" "$_gh_off"; arm_hookspath "$g2"
 expect_deny "github off on a feature-branch commit, floor armed: unsetting the hooks path is refused" \
-  "$(mk_payload "$_gu" "$g2")" "disables or moves the git-hook floor"
+  "$(mk_payload "$_gu" "$g2")" "give it to the user to run"
 # Default on and fail closed: anything but the literal false is on.
 for _j in '{"branchPolicy":"pr","modules":{"github":{"enabled":"false"}}}' \
           '{"branchPolicy":"pr","modules":{"github":{"enabled":null}}}' \

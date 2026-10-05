@@ -1332,6 +1332,54 @@ test('#58 render --apply leaves a core.hooksPath that points elsewhere alone, an
   assert.match(r.out, /chain it: add 'bash .*\/\.githooks\/pre-commit "\$@"'/);
 });
 
+// #208: a repo moved after arming (mv ~/Documents/x ~/code/x) keeps a local
+// core.hooksPath naming the old, now-missing .githooks, and the agent cannot
+// unset it. Only a dead, absolute, local, floor-shaped value is replaced.
+test('#208 render --apply re-arms a local core.hooksPath that names a .githooks that no longer exists', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  const dead = join(tmpdir(), 'house-moved-gone', 'repo', '.githooks');
+  execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', dead]);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), floorDir(repo));
+  assert.match(r.out, /core\.hooksPath pointed at .*house-moved-gone.*, which no longer exists \(a moved repo\?\); re-armed to /);
+});
+
+test('#208 a core.hooksPath that exists, is relative, or does not end in /.githooks is left alone', () => {
+  const { cliPath } = buildFloorFixture();
+  const live = buildFloorRepo();
+  const liveDir = join(mkdtempSync(join(tmpdir(), 'house-live-')), '.githooks');
+  CLEANUP_DIRS.push(dirname(liveDir));
+  mkdirSync(liveDir);
+  execFileSync('git', ['-C', live, 'config', 'core.hooksPath', liveDir]);
+  assert.match(runCli(cliPath, ['render', '--repo', live, '--apply']).out, /git-hook floor NOT armed/);
+  assert.equal(gitConfigGet(live, 'core.hooksPath'), liveDir, 'a live foreign value stays');
+
+  for (const odd of [join(tmpdir(), 'house-moved-gone', 'hooks'), '.gone/.githooks']) {
+    const repo = buildFloorRepo();
+    execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', odd]);
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(gitConfigGet(repo, 'core.hooksPath'), odd, `${odd} must stay`);
+    assert.match(r.out, /git-hook floor NOT armed/);
+  }
+});
+
+test('#208 a linked worktree with a dead floor-shaped core.hooksPath writes nothing and prints the main-checkout command', () => {
+  const { cliPath } = buildFloorFixture();
+  const main = buildFloorRepo();
+  const wt = join(mkdtempSync(join(tmpdir(), 'house-wt-')), 'wt');
+  CLEANUP_DIRS.push(dirname(wt));
+  execFileSync('git', ['-C', main, 'worktree', 'add', '-q', '-b', 'feat/y', wt], { stdio: 'pipe' });
+  const dead = join(tmpdir(), 'house-moved-gone', 'repo', '.githooks');
+  execFileSync('git', ['-C', main, 'config', 'core.hooksPath', dead]);
+  const r = runCli(cliPath, ['render', '--repo', wt, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(gitConfigGet(main, 'core.hooksPath'), dead, 'a worktree must not write the shared hooksPath');
+  assert.match(r.out, /which no longer exists/);
+  assert.match(r.out, /shared with the main checkout, so set it there: git config core\.hooksPath/);
+});
+
 // core.hooksPath lives in the config a linked worktree SHARES with its main
 // checkout. Arming from inside a worktree would therefore point the whole clone
 // at a directory that disappears when the worktree is removed, after which git

@@ -2493,6 +2493,12 @@ function disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed
   return lines;
 }
 
+// The arming script's dead-path rule (#208): an absolute value ending in
+// /.githooks that is not a directory, set in the repo's own config file.
+function isDeadFloorPath(value, scope) {
+  return /^\/.*\/\.githooks\/?$/.test(value) && /^file:.*\/\.git\/config$/.test(scope || '') && !existsSync(value);
+}
+
 // #58's floor is armed by core.hooksPath, machine state disable never writes.
 // The arming script only ever sets it, so the plan says what is left to undo.
 function hooksPathLines(repoRoot) {
@@ -3294,6 +3300,10 @@ function gitHookFloorLines(probe, houseData) {
     lines.push(`git-hook floor: not rendered here (missing: ${missing.length ? missing.map((m) => `.githooks/${m}`).join(', ') : '.githooks/'}; run \`house render --apply\`)`);
   } else if (probe.armed) {
     lines.push(`git-hook floor: armed (core.hooksPath=${probe.hooksPath}${probe.hooksPathScope ? `, ${probe.hooksPathScope}` : ''})`);
+  } else if (probe.hooksPath && isDeadFloorPath(probe.hooksPath, probe.hooksPathScope)) {
+    // A moved repo: the local value names a .githooks that is gone. The arming
+    // script replaces it; an agent cannot unset it, so say the thing it may run.
+    lines.push(`git-hook floor: NOT armed -- core.hooksPath is ${probe.hooksPath} (${probe.hooksPathScope}), a .githooks that no longer exists (a moved repo?); run \`house render --apply\` (or start a session here) and it is re-armed to this repo's .githooks`);
   } else if (probe.hooksPath) {
     lines.push(`git-hook floor: NOT armed -- core.hooksPath is ${probe.hooksPath}${probe.hooksPathScope ? ` (${probe.hooksPathScope})` : ''}, which is not this repo's .githooks; chain the floor from the hooks there, or unset it and re-run \`house render --apply\``);
   } else if (probe.linkedWorktree) {

@@ -386,6 +386,26 @@ if [ "$ARMED" = "1" ]; then
   exit 0
 fi
 
+# A repo moved after it was armed (mv ~/Documents/x ~/code/x) keeps a local
+# core.hooksPath naming the old .githooks, which is gone, so git runs no hooks
+# and the agent cannot unset the key itself. A value that is local, absolute,
+# floor-shaped (ends in /.githooks) and not a directory on disk is that case,
+# and is treated as unset below. Anything else is somebody else's and stays.
+DEAD_OLD=""
+if [ -n "$HOOKS_PATH" ]; then
+  case "$HOOKS_PATH" in
+    /*/.githooks|/*/.githooks/)
+      if [ ! -d "$HOOKS_PATH" ] \
+        && [ "$(git -C "$TOPLEVEL" config --local --get core.hooksPath 2>/dev/null)" = "$HOOKS_PATH" ]; then
+        DEAD_OLD="$HOOKS_PATH"
+        HOOKS_PATH=""
+      fi
+      ;;
+  esac
+fi
+DEAD_PREFIX=""
+[ -n "$DEAD_OLD" ] && DEAD_PREFIX="core.hooksPath pointed at $DEAD_OLD, which no longer exists (a moved repo?); "
+
 if [ -n "$HOOKS_PATH" ]; then
   # Somebody else (husky, lefthook, a monorepo convention) owns the one
   # hooksPath this repo has. Never overwrite it; say how to chain instead.
@@ -402,8 +422,8 @@ if [ "$LINKED" = "1" ]; then
   # and says nothing. Arm the main checkout once; every worktree inherits it,
   # and the hooks ask git for the toplevel themselves, so they still read this
   # worktree's house.json and branch.
-  printf 'house: git-hook floor NOT armed, and core.hooksPath is shared with the main checkout, so set it there: git config core.hooksPath "%s" (from %s)%s\n' \
-    "${MAIN_FLOOR_DIR:-<main-checkout>/.githooks}" "${MAIN_TOPLEVEL:-the main checkout}" "$FIXED_SUFFIX"
+  printf 'house: %sgit-hook floor NOT armed, and core.hooksPath is shared with the main checkout, so set it there: git config core.hooksPath "%s" (from %s)%s\n' \
+    "$DEAD_PREFIX" "${MAIN_FLOOR_DIR:-<main-checkout>/.githooks}" "${MAIN_TOPLEVEL:-the main checkout}" "$FIXED_SUFFIX"
   exit 0
 fi
 
@@ -446,7 +466,9 @@ while :; do
   sleep 0.05 2>/dev/null || true
 done
 
-if [ "$ARM_RESULT" = "self" ]; then
+if [ "$ARM_RESULT" = "self" ] && [ -n "$DEAD_OLD" ]; then
+  printf 'house: core.hooksPath pointed at %s, which no longer exists (a moved repo?); re-armed to %s%s\n' "$DEAD_OLD" "$FLOOR_DIR" "$FIXED_SUFFIX"
+elif [ "$ARM_RESULT" = "self" ]; then
   printf 'house: armed git hooks (core.hooksPath=%s)%s\n' "$FLOOR_DIR" "$FIXED_SUFFIX"
 elif [ "$ARM_RESULT" = "other" ]; then
   # Armed by a concurrent run: silent, except for a mode bit this one restored.
