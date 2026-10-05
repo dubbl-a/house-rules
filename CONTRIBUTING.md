@@ -9,7 +9,7 @@ binds a contributor here is exactly what the package ships to everyone else.
 A rule with the receipt that earned it, a bug in the checker, a hook, or a skill, and an adopter's
 report that a rule keeps getting ignored are what is welcome here. An issue labelled good first
 issue is the easiest place to start. Clone the repo (there are no npm packages to fetch) and run
-`npm run verify` once on `main` before you branch, so the first red you see is yours. Node 22 or
+`npm run verify` once on `main` before you branch, so the first red you see is yours. Node 26 or
 newer, `git`, bash, the GitHub CLI, and the `claude` CLI are the prerequisites; `README.md` lists them.
 
 ## Branch and PR for every change
