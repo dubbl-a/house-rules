@@ -266,11 +266,13 @@ importance and source quality and takes the top N. The fork keeps that sort as t
 each angle (a claim's angle is the search angle that found its source) and deals the slots
 round-robin across angles. The cap also scales with the question: `minPerAngle` slots per angle
 that produced claims, clamped to `maxVerifyCeiling`, so the depth log states the ceiling-based
-worst case. A run that still drops claims returns a `verifyNote` naming how many it verified and
-how to extend the same run with `resumeFromRunId` and a larger `budget.maxVerifyClaims`: the
-Workflow tool returns completed calls with unchanged prompt and options from cache, and the
-selection is deterministic, so a larger cap keeps every verify call already made and appends the
-rest. The script cannot read its own run id, so the note says "this run's id" and the session
+worst case; an explicit `budget.maxVerifyClaims` lifts the ceiling to match, so a request above
+it is honored rather than clamped. A run that still drops claims returns a `verifyNote` naming how
+many it verified and how to extend the same run: `resumeFromRunId`, the original args unchanged,
+plus a larger `budget.maxVerifyClaims`. The Workflow tool returns completed calls with unchanged
+prompt and options from cache, so a changed depth or budget field (votes, say) would rewrite every
+verify prompt; with the args held and a deterministic selection, a larger cap keeps every verify
+call already made and appends the rest. The script cannot read its own run id, so the note says "this run's id" and the session
 supplies the id the tool returned.
 
 The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,

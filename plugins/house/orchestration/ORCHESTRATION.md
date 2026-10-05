@@ -61,8 +61,8 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   standard, deep); Workflow runs only scripts in the working directory, an added directory, or the
   scratchpad. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
   --install` (`scripts/house/`, else the house plugin's claude-code module files). On a
-  `verifyNote` the question warrants, offer the user to extend that run (`resumeFromRunId`, a
-  larger `budget.maxVerifyClaims`, the extra agents); never start it unasked.
+  `verifyNote` the question warrants, offer the user to extend that run (`resumeFromRunId`, the
+  original args plus the note's `budget.maxVerifyClaims`, the extra agents); never start it unasked.
 - Subagents do not spawn subagents. They report back. Roster agents cannot, since none lists the
   Agent tool. The built-in general-purpose, Explore, and Plan agents cannot by default; a fork,
   or a custom off-roster agent with unrestricted tools, can, so its brief forbids it under DO NOT.

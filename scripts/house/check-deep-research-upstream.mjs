@@ -77,7 +77,8 @@ const BUDGET_REPLACEMENT = `const ARGS_OBJ = (args && typeof args === "object" &
 // lifts the verify cap to maxVerifyCeiling (native is ~110 on every
 // question). The verify cap is min(maxVerifyCeiling, max(maxVerifyClaims,
 // minPerAngle * angles that produced claims)). Pick via args.depth; override
-// any field via args.budget. fetchOverflow is how far past maxFetch a
+// any field via args.budget; an explicit maxVerifyClaims also lifts the
+// ceiling to match. fetchOverflow is how far past maxFetch a
 // high-relevance result may still be fetched; native lets it run unbounded.
 const DEPTH_PRESETS = {
   light: { maxFetch: 8, fetchOverflow: 2, maxVerifyClaims: 8, minPerAngle: 2, maxVerifyCeiling: 12, votes: 2, refutationsRequired: 2 },
@@ -91,6 +92,11 @@ for (const k of Object.keys(DEPTH_PRESETS.standard)) {
 }
 if (BUDGET.votes < 1 || BUDGET.refutationsRequired < 1 || BUDGET.refutationsRequired > BUDGET.votes) {
   return { error: "args.budget: need 1 <= refutationsRequired <= votes, got votes=" + BUDGET.votes + " refutationsRequired=" + BUDGET.refutationsRequired }
+}
+// An explicit maxVerifyClaims is a request, so it lifts the ceiling rather
+// than being clamped by it.
+if (ARGS_OBJ.budget && Object.prototype.hasOwnProperty.call(ARGS_OBJ.budget, "maxVerifyClaims")) {
+  BUDGET.maxVerifyCeiling = Math.max(BUDGET.maxVerifyCeiling, BUDGET.maxVerifyClaims)
 }
 const VOTES_PER_CLAIM = BUDGET.votes
 const REFUTATIONS_REQUIRED = BUDGET.refutationsRequired
@@ -147,13 +153,15 @@ export function verifyCap(budget, angles) {
 /**
  * What a run that dropped claims says about extending itself: up to the deep
  * ceiling, or every claim once past it. The script cannot read its own run
- * id, so the caller supplies the id the Workflow tool returned. Extra agents
- * are the added verify votes plus the one synthesis that reruns.
+ * id, so the caller supplies the id the Workflow tool returned. The rerun
+ * must repeat the original args, since a changed depth or budget field (votes,
+ * say) changes every verify prompt and misses the cache. Extra agents are the
+ * added verify votes plus the one synthesis that reruns.
  */
 export function verifyNote({ verified, total, angles, votes, deepCeiling }) {
   if (verified >= total) return '';
   const n = verified < deepCeiling ? Math.min(total, deepCeiling) : total;
-  return 'Verified ' + verified + ' of ' + total + ' claims (' + angles + ' angles). To verify more of these same claims, re-run with resumeFromRunId set to this run\'s id, the same script copy, question, and depth, and budget: {maxVerifyClaims: ' + n + ', maxVerifyCeiling: ' + n + '} (about ' + ((n - verified) * votes + 1) + ' more agents).';
+  return 'Verified ' + verified + ' of ' + total + ' claims (' + angles + ' angles). To verify more of these same claims, re-run the same script copy with resumeFromRunId set to this run\'s id and the same args as this call (its question, depth, and every budget field it passed), adding budget.maxVerifyClaims: ' + n + ' (about ' + ((n - verified) * votes + 1) + ' more agents).';
 }
 
 const SELECTION_REPLACEMENT = `${pickRoundRobin.toString()}

@@ -788,7 +788,7 @@ function fakeNativeBody(overrides = {}) {
     '        })',
     ...selectionLines,
     'const report = await agent("s", { label: "synthesize", schema: REPORT_SCHEMA })',
-    ...(overrides.selection === false ? [] : [
+    ...(overrides.selection === false || overrides.note === false ? [] : [
       'if (killed.length > 0) return {',
       '    stats: { angles: scope.angles.length, sources: allSources.length, claims: allClaims.length, verified: voted.length, confirmed: 0 },',
       '  }',
@@ -1021,10 +1021,13 @@ test('deep-research check: verifyNote names the dropped claims and how to extend
   const note = verifyNote({ verified: 25, total: 77, angles: 5, votes: 3, deepCeiling: 40 });
   assert.match(note, /^Verified 25 of 77 claims \(5 angles\)\./);
   assert.match(note, /resumeFromRunId set to this run's id/);
-  assert.match(note, /maxVerifyClaims: 40, maxVerifyCeiling: 40/);
+  assert.match(note, /the same args as this call/);
+  assert.match(note, /every budget field it passed/);
+  assert.match(note, /budget\.maxVerifyClaims: 40\b/);
+  assert.ok(!/maxVerifyCeiling/.test(note), 'an explicit maxVerifyClaims is enough on its own');
   assert.match(note, /about 46 more agents/, '(40 - 25) x 3 votes + 1 synthesis');
-  assert.match(verifyNote({ verified: 40, total: 77, angles: 5, votes: 3, deepCeiling: 40 }), /maxVerifyClaims: 77, .*about 112 more agents/, 'past the deep ceiling, offer every claim');
-  assert.match(verifyNote({ verified: 25, total: 30, angles: 5, votes: 2, deepCeiling: 40 }), /maxVerifyClaims: 30, .*about 11 more agents/, 'never more than the claims found');
+  assert.match(verifyNote({ verified: 40, total: 77, angles: 5, votes: 3, deepCeiling: 40 }), /maxVerifyClaims: 77\b.*about 112 more agents/, 'past the deep ceiling, offer every claim');
+  assert.match(verifyNote({ verified: 25, total: 30, angles: 5, votes: 2, deepCeiling: 40 }), /maxVerifyClaims: 30\b.*about 11 more agents/, 'never more than the claims found');
   assert.equal(verifyNote({ verified: 30, total: 30, angles: 5, votes: 3, deepCeiling: 40 }), '', 'nothing dropped, no note');
 });
 
@@ -1053,6 +1056,10 @@ test('deep-research check: the rebuilt depth presets carry the per-angle floor a
   // standard: 7 + (15 + 5) fetched + 25 x 3 votes = 102 at the ceiling.
   assert.match(run('q').logs[0], /at most ~102 agents/);
   assert.equal(run({ question: 'q', budget: { maxVerifyCeiling: 50 } }).BUDGET.maxVerifyCeiling, 50);
+  // An explicit maxVerifyClaims above the preset ceiling is honored, not clamped.
+  assert.equal(run({ question: 'q', budget: { maxVerifyClaims: 40 } }).BUDGET.maxVerifyCeiling, 40);
+  assert.equal(run({ question: 'q', budget: { maxVerifyClaims: 10 } }).BUDGET.maxVerifyCeiling, 25, 'a lower request leaves the ceiling');
+  assert.equal(run({ question: 'q', depth: 'deep' }).BUDGET.maxVerifyCeiling, 40, 'no request, no change');
   assert.match(run({ question: 'q', budget: { minPerAngle: -1 } }).error, /minPerAngle/);
   assert.match(fork, /verifyNote: VERIFY_NOTE/);
   assert.equal((fork.match(/VERIFY_NOTE \? \{ verifyNote: VERIFY_NOTE \}/g) || []).length, 3, 'every result after verify carries the note');
@@ -1108,6 +1115,17 @@ test('deep-research check: --rebuild refuses when the verify selection no longer
   assert.equal(res.status, 3, res.stdout + res.stderr);
   assert.match(res.stdout, /rebuild refused/);
   assert.match(res.stdout, /rankedClaims/);
+  assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: --rebuild refuses when the result anchors for the verify note no longer match', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ note: false }));
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /rebuild refused/);
+  assert.match(res.stdout, /stats: \{ angles/);
   assert.ok(!existsSync(out), 'no partial fork written');
 });
 
