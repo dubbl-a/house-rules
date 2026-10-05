@@ -786,7 +786,7 @@ Re-run against 2.1.278 with two multi-agent workflows: one over the nine module 
 
 ### Where the bank lives
 
-`/Users/DoubleA/Documents/house-rules-harness-research/2026-09-20/`: `facts/*.json` are the cited harness facts, `classifications/*.json` the per-module dispositions, `verifications/*.json` the two skeptic readings, `main-synthesize-report.md` the disposition report, `gap-addendum.md` the second run. `INDEX.tsv` maps each workflow step to its artifact.
+`research/harness/2026-09-20/` (in the maintainer's checkout, not committed): `facts/*.json` are the cited harness facts, `classifications/*.json` the per-module dispositions, `verifications/*.json` the two skeptic readings, `main-synthesize-report.md` the disposition report, `gap-addendum.md` the second run. `INDEX.tsv` maps each workflow step to its artifact.
 
 ### Corrected citation
 
@@ -847,7 +847,7 @@ Applied here: a model name and measured agent counts moved out of the claude-cod
 
 ### Where the bank lives
 
-`/Users/DoubleA/Documents/house-rules-harness-research/2026-09-28/`: `main-synthesize-report.md` (the disposition report, with the PR plan and the open questions in its sections 7 and 8), `main-completeness-critic.md`, `facts.json`, `classifications.json`, `verifications.json`, and the workflow scripts as run.
+`research/harness/2026-09-28/` (in the maintainer's checkout, not committed): `main-synthesize-report.md` (the disposition report, with the PR plan and the open questions in its sections 7 and 8), `main-completeness-critic.md`, `facts.json`, `classifications.json`, `verifications.json`, and the workflow scripts as run.
 
 ### Deferred by decision
 
@@ -870,7 +870,7 @@ The gap pass the re-survey above deferred: the `claude mcp` and `claude config` 
 
 ### Where the bank lives
 
-`/Users/DoubleA/Documents/house-rules-harness-research/2026-09-28/gap/`: `gap-addendum.md`, `facts.json`, `classifications.json`, `verifications.json`.
+`research/harness/2026-09-28/gap/` (in the maintainer's checkout, not committed): `gap-addendum.md`, `facts.json`, `classifications.json`, `verifications.json`.
 
 ### Deferred by decision
 
