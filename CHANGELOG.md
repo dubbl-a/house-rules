@@ -8,7 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
-- Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines.
+- Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines. When the user says merge, the session merges, each merge and its cleanup a separate plain call, and hands the user a command only for what it cannot run.
 
 ## [0.20.0] - 2026-10-04
 

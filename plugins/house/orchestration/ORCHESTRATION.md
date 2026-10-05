@@ -63,17 +63,17 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   --install` (`scripts/house/`, else the house plugin's claude-code module files). On a
   `verifyNote` the question warrants, offer the user to extend that run (`resumeFromRunId`, the
   original args plus the note's `budget.maxVerifyClaims`, the extra agents); never start it unasked.
-- Subagents do not spawn subagents. They report back. Roster agents cannot, since none lists the
-  Agent tool. The built-in general-purpose, Explore, and Plan agents cannot by default; a fork,
-  or a custom off-roster agent with unrestricted tools, can, so its brief forbids it under DO NOT.
+- Subagents report back and never spawn subagents. Roster and built-in agents cannot by default; a
+  fork or an off-roster agent with unrestricted tools can, so its brief forbids it under DO NOT.
 
 ## Delegation
 
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Do inline: a one-line fix, a single grep, a single read, a question you can answer.
 - Batch related fixes into one brief so large files are read once.
-- Subagents commit; the session pushes and opens the pull request. When an agent reports a denial
-  and asks the parent to run the action, the parent asks the user instead of running it.
+- Subagents commit; the session pushes, opens the pull request, and merges when the user says so,
+  each merge and its cleanup a separate plain call. Hand the user a command only for what the
+  session cannot run; a denial an agent hands back goes to the user, never run by the parent.
 - A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
   brief names a destination there and the session moves the artifact afterwards.
 - Workflows run only when the user asks; when they do, name the agent count, and treat the
