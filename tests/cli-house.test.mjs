@@ -1399,6 +1399,41 @@ test('#208 doctor advises render, not unset, for a dead floor-shaped core.hooksP
   assert.doesNotMatch(w, /unset it/);
 });
 
+// #208: doctor and the arming script share one verdict (the probe's hooksPathDead),
+// so the advice doctor prints is what render then does.
+test('#208 doctor and render agree: a regular file at a floor-shaped hooksPath is re-armed, an included foreign config\'s dead value is not', () => {
+  const { cliPath } = buildFloorFixture();
+
+  const fileRepo = buildFloorRepo();
+  const asFile = join(mkdtempSync(join(tmpdir(), 'house-file-')), '.githooks');
+  CLEANUP_DIRS.push(dirname(asFile));
+  writeFileSync(asFile, 'not a directory');
+  assert.equal(runCli(cliPath, ['render', '--repo', fileRepo, '--apply']).code, 0);
+  execFileSync('git', ['-C', fileRepo, 'config', 'core.hooksPath', asFile]);
+  const fd = runCli(cliPath, ['doctor', '--repo', fileRepo]).out;
+  assert.match(fd, /is not a directory \(a moved repo\?\); run `house render --apply`/);
+  assert.doesNotMatch(fd, /unset it/);
+  assert.equal(runCli(cliPath, ['render', '--repo', fileRepo, '--apply']).code, 0);
+  assert.equal(gitConfigGet(fileRepo, 'core.hooksPath'), floorDir(fileRepo), 'render re-arms what doctor said it would');
+
+  // The dead value lives in ANOTHER repo's config, pulled in by an include: not
+  // this repo's local value, so neither doctor nor render may treat it as dead.
+  const other = buildFloorRepo();
+  const dead = join(tmpdir(), 'house-moved-gone', 'repo', '.githooks');
+  execFileSync('git', ['-C', other, 'config', 'core.hooksPath', dead]);
+  const incRepo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', incRepo, '--apply']).code, 0);
+  execFileSync('git', ['-C', incRepo, 'config', '--unset', 'core.hooksPath']);
+  execFileSync('git', ['-C', incRepo, 'config', 'include.path', join(other, '.git', 'config')]);
+  assert.equal(gitConfigGet(incRepo, 'core.hooksPath'), dead, 'precondition: the include supplies the value');
+  const id = runCli(cliPath, ['doctor', '--repo', incRepo]).out;
+  assert.match(id, /which is not this repo's \.githooks/);
+  assert.doesNotMatch(id, /is not a directory \(a moved repo\?\)/);
+  const r = runCli(cliPath, ['render', '--repo', incRepo, '--apply']);
+  assert.match(r.out, /git-hook floor NOT armed; chain it/);
+  assert.equal(gitConfigGet(incRepo, 'core.hooksPath'), dead);
+});
+
 // core.hooksPath lives in the config a linked worktree SHARES with its main
 // checkout. Arming from inside a worktree would therefore point the whole clone
 // at a directory that disappears when the worktree is removed, after which git
