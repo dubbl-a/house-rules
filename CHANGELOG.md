@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-05
+
+A patch release under ADR 0012: two fixes that restore behavior the package already promised, a refusal message, and reworded orchestration defaults; nothing the guard denies changes.
+
 ### Changed
 
 - Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines. When the user says merge, the session merges and then cleans up (worktree, local branch, prune, default branch pulled), each a separate plain call; a merge is not a deploy, so a deploy is offered only where the repo names one; and the session hands the user a command only for what it cannot run.
@@ -13,6 +17,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Fixed
 
 - A moved repo re-arms itself: the arming script replaces a local `core.hooksPath` that names a `.githooks` which is not a directory, and doctor reads that verdict from the arming script's probe, so its advice matches what `house render --apply` does. The branch guard's disable-list refusal now says to hand a read-only or text-carrying command to the user instead of rephrasing it (#208).
+- Dated fields in `house.json` accept only real calendar dates: `2026-13-45` and `2026-02-30` passed the shape-only check and are now findings (#167).
 
 ## [0.20.0] - 2026-10-04
 
