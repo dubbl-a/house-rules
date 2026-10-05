@@ -8,7 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
-- Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines. When the user says merge, the session merges, each merge and its cleanup a separate plain call, and hands the user a command only for what it cannot run.
+- Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines. When the user says merge, the session merges and then cleans up (worktree, local branch, prune, default branch pulled), each a separate plain call; a merge is not a deploy, so a deploy is offered only where the repo names one; and the session hands the user a command only for what it cannot run.
 
 ### Fixed
 
