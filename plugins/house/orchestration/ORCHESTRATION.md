@@ -71,9 +71,10 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Do inline: a one-line fix, a single grep, a single read, a question you can answer.
 - Batch related fixes into one brief so large files are read once.
-- Subagents commit; the session pushes, opens the pull request, and merges when the user says so,
-  each merge and its cleanup a separate plain call. Hand the user a command only for what the
-  session cannot run; a denial an agent hands back goes to the user, never run by the parent.
+- Subagents commit; the session pushes and opens the pull request. On the user's "merge" it merges,
+  then cleans up (worktree, local branch, `git fetch --prune`, default branch pulled), each a plain
+  call. A merge is not a deploy: offer one only where the repo names a deploy. Hand the user a
+  command only for what the session cannot run; an agent's denial goes to the user, not the parent.
 - A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
   brief names a destination there and the session moves the artifact afterwards.
 - Workflows run only when the user asks; when they do, name the agent count, and treat the
@@ -101,8 +102,7 @@ diffs."):
 
 ## Parallelism
 
-- Read-only work parallelizes freely.
-- Never two agents editing the same files. Concurrent writers get `isolation: worktree`.
+- Read-only work parallelizes freely; never two agents on one file (writers: `isolation: worktree`).
 - Builders build, refuters verify. Never the same agent.
 
 ## Verification
