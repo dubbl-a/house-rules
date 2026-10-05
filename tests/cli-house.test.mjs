@@ -2192,6 +2192,107 @@ test('#135 confirm: refuses, writing nothing, while the vendored checker is not 
   assert.equal(runVendoredCheck(repo).status, 0, 'the synced checker accepts the record');
 });
 
+test('#167 confirm: a hand-edited vendored checker is told render refuses it, and the way through is --force-managed', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  // A hand edit: the lock still records the plugin's body, the disk differs.
+  writeFileSync(join(repo, '.house', 'check.mjs'), OLD_CHECK_MJS);
+  commitAll(repo, 'a hand-edited checker');
+
+  const r = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /edited by hand/);
+  assert.match(r.err, /refuses it/);
+  assert.match(r.err, /house render --apply --force-managed \.house\/check\.mjs/);
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 1, 'render does refuse it');
+
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', '.house/check.mjs']).code, 0);
+  assert.equal(runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]).code, 0);
+});
+
+test('#167 confirm: with no lock entry for the checker, a hand edit still gets the --force-managed advice', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files = lock.files.filter((f) => f.path !== '.house/check.mjs');
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  const checkFile = join(repo, '.house', 'check.mjs');
+  writeFileSync(checkFile, `${readFileSync(checkFile, 'utf8')}\n// hand edit\n`);
+  commitAll(repo, 'checker edited, no lock entry');
+
+  const r = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /house render --apply --force-managed \.house\/check\.mjs/);
+  const plain = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.notEqual(plain.code, 0, 'plain render refuses it');
+  assert.match(plain.out, /REFUSE/);
+});
+
+test('#167 render: --force-managed followed by a flag is refused, not read as the path', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  const r = runCli(cliPath, ['render', '--force-managed', '--repo', repo, '--apply']);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--force-managed needs a path, got --repo/);
+  assert.equal(existsSync(join(repo, '.house', 'lock.json')), false, 'nothing was rendered');
+});
+
+test('#167 render: --force-managed may be given more than once, and a single use behaves as before', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  const ruleFile = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  const checkFile = join(repo, '.house', 'check.mjs');
+  const ruleOrig = readFileSync(ruleFile, 'utf8');
+  const checkOrig = readFileSync(checkFile, 'utf8');
+  writeFileSync(ruleFile, `${ruleOrig}\nedit one\n`);
+  writeFileSync(checkFile, `${checkOrig}\n// edit two\n`);
+
+  const one = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', '.claude/rules/house/alpha.md']);
+  assert.notEqual(one.code, 0, 'the other hand edit is still refused');
+  assert.match(one.out, /\.house\/check\.mjs/);
+
+  const both = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', '.claude/rules/house/alpha.md', '--force-managed=.house/check.mjs']);
+  assert.equal(both.code, 0, both.out + both.err);
+  assert.equal(readFileSync(ruleFile, 'utf8'), ruleOrig);
+  assert.equal(readFileSync(checkFile, 'utf8'), checkOrig);
+});
+
+test('#167 enable --apply on a protected branch writes the working tree only: no commit, no branch change', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const git = (...a) => execFileSync('git', a, { cwd: repo, encoding: 'utf8' }).trim();
+  assert.equal(git('rev-parse', '--abbrev-ref', 'HEAD'), 'main', 'the fixture sits on a protected branch');
+  const head = git('rev-parse', 'HEAD');
+  const r = runCli(cliPath, ['enable', 'delta', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(git('rev-parse', 'HEAD'), head, 'enable never commits');
+  assert.equal(git('rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+  assert.equal(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.delta.enabled, true);
+  assert.match(gitStatusShort(repo), /house\.json/, 'the change is left uncommitted for a branch and PR');
+});
+
+test('#167 enable --apply on a dirty working tree keeps every uncommitted edit', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  writeFileSync(join(repo, 'src', 'a.js'), '//a, edited and uncommitted\n');
+  writeFileSync(join(repo, 'notes.txt'), 'untracked\n');
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.protectedBranches = ['main', 'release'];
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+
+  const r = runCli(cliPath, ['enable', 'delta', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(join(repo, 'src', 'a.js'), 'utf8'), '//a, edited and uncommitted\n');
+  assert.equal(readFileSync(join(repo, 'notes.txt'), 'utf8'), 'untracked\n');
+  const after = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.deepEqual(after.protectedBranches, ['main', 'release'], 'an uncommitted house.json edit survives');
+  assert.equal(after.modules.delta.enabled, true);
+});
+
 test('#135 confirm: refuses a confirmed value that is not an object, and never overwrites a malformed date', () => {
   const { cliPath } = buildEnableFixture();
   const repo = enabledGammaRepo(cliPath);
