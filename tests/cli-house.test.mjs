@@ -517,6 +517,8 @@ test('#32 doctor: the plugin guard line reports whether house.json records the c
   const malformed = [
     { by: 'repo', decided: '2026-08-31', why: 'x' },
     { by: 'plugin', decided: '31-08-2026', why: 'x' },
+    { by: 'plugin', decided: '2026-13-45', why: 'x' },
+    { by: 'plugin', decided: '2026-02-30', why: 'x' },
     { by: 'plugin', decided: '2026-08-31', why: '   ' },
     { by: 'plugin', why: 'x' },
     { by: 'plugin', decided: '2026-08-31' },
