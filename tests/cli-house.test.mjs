@@ -1343,7 +1343,7 @@ test('#208 render --apply re-arms a local core.hooksPath that names a .githooks 
   const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.equal(gitConfigGet(repo, 'core.hooksPath'), floorDir(repo));
-  assert.match(r.out, /core\.hooksPath pointed at .*house-moved-gone.*, which no longer exists \(a moved repo\?\); re-armed to /);
+  assert.match(r.out, /core\.hooksPath pointed at .*house-moved-gone.*, which is not a directory \(a moved repo\?\); re-armed to /);
 });
 
 test('#208 a core.hooksPath that exists, is relative, or does not end in /.githooks is left alone', () => {
@@ -1376,8 +1376,27 @@ test('#208 a linked worktree with a dead floor-shaped core.hooksPath writes noth
   const r = runCli(cliPath, ['render', '--repo', wt, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.equal(gitConfigGet(main, 'core.hooksPath'), dead, 'a worktree must not write the shared hooksPath');
-  assert.match(r.out, /which no longer exists/);
+  assert.match(r.out, /which is not a directory/);
   assert.match(r.out, /shared with the main checkout, so set it there: git config core\.hooksPath/);
+});
+
+test('#208 doctor advises render, not unset, for a dead floor-shaped core.hooksPath, in a main checkout and a linked worktree', () => {
+  const { cliPath } = buildFloorFixture();
+  const main = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', main, '--apply']).code, 0);
+  const wt = join(mkdtempSync(join(tmpdir(), 'house-wt-')), 'wt');
+  CLEANUP_DIRS.push(dirname(wt));
+  execFileSync('git', ['-C', main, 'worktree', 'add', '-q', '-b', 'feat/z', wt], { stdio: 'pipe' });
+  execFileSync('git', ['-C', main, 'config', 'core.hooksPath', join(tmpdir(), 'house-moved-gone', 'repo', '.githooks')]);
+  assert.equal(runCli(cliPath, ['render', '--repo', wt, '--apply']).code, 0);
+
+  const m = runCli(cliPath, ['doctor', '--repo', main]).out;
+  assert.match(m, /git-hook floor: NOT armed -- .*is not a directory \(a moved repo\?\); run `house render --apply`/);
+  assert.doesNotMatch(m, /unset it/);
+
+  const w = runCli(cliPath, ['doctor', '--repo', wt]).out;
+  assert.match(w, /the key lives in the main checkout's config, so run `house render --apply` \(or start a session\) in the main checkout/);
+  assert.doesNotMatch(w, /unset it/);
 });
 
 // core.hooksPath lives in the config a linked worktree SHARES with its main

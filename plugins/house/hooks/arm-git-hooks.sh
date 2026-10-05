@@ -389,7 +389,7 @@ fi
 # A repo moved after it was armed (mv ~/Documents/x ~/code/x) keeps a local
 # core.hooksPath naming the old .githooks, which is gone, so git runs no hooks
 # and the agent cannot unset the key itself. A value that is local, absolute,
-# floor-shaped (ends in /.githooks) and not a directory on disk is that case,
+# floor-shaped (ends in /.githooks) and not a directory is that case,
 # and is treated as unset below. Anything else is somebody else's and stays.
 DEAD_OLD=""
 if [ -n "$HOOKS_PATH" ]; then
@@ -404,7 +404,7 @@ if [ -n "$HOOKS_PATH" ]; then
   esac
 fi
 DEAD_PREFIX=""
-[ -n "$DEAD_OLD" ] && DEAD_PREFIX="core.hooksPath pointed at $DEAD_OLD, which no longer exists (a moved repo?); "
+[ -n "$DEAD_OLD" ] && DEAD_PREFIX="core.hooksPath pointed at $DEAD_OLD, which is not a directory (a moved repo?); "
 
 if [ -n "$HOOKS_PATH" ]; then
   # Somebody else (husky, lefthook, a monorepo convention) owns the one
@@ -467,7 +467,7 @@ while :; do
 done
 
 if [ "$ARM_RESULT" = "self" ] && [ -n "$DEAD_OLD" ]; then
-  printf 'house: core.hooksPath pointed at %s, which no longer exists (a moved repo?); re-armed to %s%s\n' "$DEAD_OLD" "$FLOOR_DIR" "$FIXED_SUFFIX"
+  printf 'house: core.hooksPath pointed at %s, which is not a directory (a moved repo?); re-armed to %s%s\n' "$DEAD_OLD" "$FLOOR_DIR" "$FIXED_SUFFIX"
 elif [ "$ARM_RESULT" = "self" ]; then
   printf 'house: armed git hooks (core.hooksPath=%s)%s\n' "$FLOOR_DIR" "$FIXED_SUFFIX"
 elif [ "$ARM_RESULT" = "other" ]; then

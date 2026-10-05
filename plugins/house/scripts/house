@@ -2494,9 +2494,10 @@ function disableConsequenceLines(repoRoot, houseData, byName, toDisable, removed
 }
 
 // The arming script's dead-path rule (#208): an absolute value ending in
-// /.githooks that is not a directory, set in the repo's own config file.
+// /.githooks that is not a directory, set in the repo's own config file (the
+// probe reports it as a relative `file:.git/config` in a main checkout).
 function isDeadFloorPath(value, scope) {
-  return /^\/.*\/\.githooks\/?$/.test(value) && /^file:.*\/\.git\/config$/.test(scope || '') && !existsSync(value);
+  return /^\/.*\/\.githooks\/?$/.test(value) && /^file:(.*\/)?\.git\/config$/.test(scope || '') && !existsSync(value);
 }
 
 // #58's floor is armed by core.hooksPath, machine state disable never writes.
@@ -3303,7 +3304,10 @@ function gitHookFloorLines(probe, houseData) {
   } else if (probe.hooksPath && isDeadFloorPath(probe.hooksPath, probe.hooksPathScope)) {
     // A moved repo: the local value names a .githooks that is gone. The arming
     // script replaces it; an agent cannot unset it, so say the thing it may run.
-    lines.push(`git-hook floor: NOT armed -- core.hooksPath is ${probe.hooksPath} (${probe.hooksPathScope}), a .githooks that no longer exists (a moved repo?); run \`house render --apply\` (or start a session here) and it is re-armed to this repo's .githooks`);
+    const deadWhat = `core.hooksPath is ${probe.hooksPath} (${probe.hooksPathScope}), a .githooks that is not a directory (a moved repo?)`;
+    lines.push(probe.linkedWorktree
+      ? `git-hook floor: NOT armed -- ${deadWhat}; the key lives in the main checkout's config, so run \`house render --apply\` (or start a session) in the main checkout, which re-arms it to that checkout's .githooks`
+      : `git-hook floor: NOT armed -- ${deadWhat}; run \`house render --apply\` (or start a session here) and it is re-armed to this repo's .githooks`);
   } else if (probe.hooksPath) {
     lines.push(`git-hook floor: NOT armed -- core.hooksPath is ${probe.hooksPath}${probe.hooksPathScope ? ` (${probe.hooksPathScope})` : ''}, which is not this repo's .githooks; chain the floor from the hooks there, or unset it and re-run \`house render --apply\``);
   } else if (probe.linkedWorktree) {
