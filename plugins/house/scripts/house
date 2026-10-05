@@ -3294,6 +3294,15 @@ function gitHookFloorLines(probe, houseData) {
     lines.push(`git-hook floor: not rendered here (missing: ${missing.length ? missing.map((m) => `.githooks/${m}`).join(', ') : '.githooks/'}; run \`house render --apply\`)`);
   } else if (probe.armed) {
     lines.push(`git-hook floor: armed (core.hooksPath=${probe.hooksPath}${probe.hooksPathScope ? `, ${probe.hooksPathScope}` : ''})`);
+  } else if (probe.hooksPath && probe.hooksPathDead) {
+    // A moved repo: the local value names a .githooks that is gone. The arming
+    // script replaces it; an agent cannot unset it, so say the thing it may run.
+    const deadWhat = `core.hooksPath is ${probe.hooksPath} (${probe.hooksPathScope}), a .githooks that is not a directory (a moved repo?)`;
+    lines.push(probe.linkedWorktree
+      ? `git-hook floor: NOT armed -- ${deadWhat}; the key lives in the main checkout's config, so run \`house render --apply\` (or start a session) in the main checkout, which re-arms it to that checkout's .githooks`
+      : arr(probe.foreignHooks).length
+        ? `git-hook floor: NOT armed -- ${deadWhat}; render refuses to re-arm while this clone's .git/hooks has its own executable hooks (listed below): chain them from .githooks or move them into its <hook>.d/ directories, then run \`house render --apply\` and it is re-armed`
+        : `git-hook floor: NOT armed -- ${deadWhat}; run \`house render --apply\` (or start a session here) and it is re-armed to this repo's .githooks`);
   } else if (probe.hooksPath) {
     lines.push(`git-hook floor: NOT armed -- core.hooksPath is ${probe.hooksPath}${probe.hooksPathScope ? ` (${probe.hooksPathScope})` : ''}, which is not this repo's .githooks; chain the floor from the hooks there, or unset it and re-run \`house render --apply\``);
   } else if (probe.linkedWorktree) {

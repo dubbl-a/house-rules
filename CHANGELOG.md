@@ -10,6 +10,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 - Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines. When the user says merge, the session merges, each merge and its cleanup a separate plain call, and hands the user a command only for what it cannot run.
 
+### Fixed
+
+- A moved repo re-arms itself: the arming script replaces a local `core.hooksPath` that names a `.githooks` which is not a directory, and doctor reads that verdict from the arming script's probe, so its advice matches what `house render --apply` does. The branch guard's disable-list refusal now says to hand a read-only or text-carrying command to the user instead of rephrasing it (#208).
+
 ## [0.20.0] - 2026-10-04
 
 The Node floor rises from 22 to 26, the breaking class, so this is a minor release under ADR 0012; the deep-research fork's launch, verify, and cap fixes and a stricter JavaScript twin check ride along.

@@ -839,7 +839,7 @@ collect_candidates() {
 
 # ── A. The disable list ──────────────────────────────────────────────────
 floor_deny() {
-  deny "Refusing '$1': it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Commit on a feature branch and open a PR."
+  deny "Refusing '$1': it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Commit on a feature branch and open a PR. This check reads the command's text and cannot tell data or a read from a write; if the command only reads or carries text (a clipboard copy, a printf label, a stderr redirect), do not rephrase it: give it to the user to run."
 }
 # Read clause by clause over the WHOLE command. Every entry is a literal: no
 # shape-guessing, nothing an abbreviation or a rename quietly widens. This list

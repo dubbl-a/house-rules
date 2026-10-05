@@ -207,7 +207,7 @@ TOPLEVEL=$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null)
 if [ -z "$TOPLEVEL" ]; then
   # Not a git repository (or a bare one): nothing to arm, nothing to report.
   if [ "$PROBE" = "1" ] && [ "$JSON" = "1" ]; then
-    printf '{"applicable": false, "rendered": false, "missing": [], "linkedWorktree": false, "hooksPath": null, "hooksPathScope": null, "armed": false, "foreignHooks": [], "nonExecutable": [], "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
+    printf '{"applicable": false, "rendered": false, "missing": [], "linkedWorktree": false, "hooksPath": null, "hooksPathScope": null, "hooksPathDead": false, "armed": false, "foreignHooks": [], "nonExecutable": [], "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
       "$(json_string_or_null "$GIT_VERSION")" "$(json_bool "$REF_TXN_SUPPORTED")"
   fi
   exit 0
@@ -304,6 +304,24 @@ path_is_floor() {
 ARMED=0
 path_is_floor "$HOOKS_PATH" && ARMED=1
 
+# A repo moved after it was armed (mv ~/Documents/x ~/code/x) keeps a local
+# core.hooksPath naming the old .githooks, which is gone, so git runs no hooks
+# and the agent cannot unset the key itself. A value that is local (--local
+# skips includes), absolute, floor-shaped (ends in /.githooks) and not a
+# directory is that case. Anything else is somebody else's and stays. One
+# predicate: the arm below and the probe (so doctor) both read this verdict.
+HOOKS_PATH_DEAD=0
+if [ -n "$HOOKS_PATH" ] && [ "$ARMED" != "1" ]; then
+  case "$HOOKS_PATH" in
+    /*/.githooks|/*/.githooks/)
+      if [ ! -d "$HOOKS_PATH" ] \
+        && [ "$(git -C "$TOPLEVEL" config --local --get core.hooksPath 2>/dev/null)" = "$HOOKS_PATH" ]; then
+        HOOKS_PATH_DEAD=1
+      fi
+      ;;
+  esac
+fi
+
 # ── foreign hooks in the repo's own hooks directory ──────────────────────
 
 FOREIGN=""
@@ -333,13 +351,14 @@ if [ "$PROBE" = "1" ]; then
     # MISSING, FOREIGN and NON_EXEC are space-separated lists; the splitting is
     # the point.
     # shellcheck disable=SC2086
-    printf '{"applicable": %s, "rendered": %s, "missing": %s, "linkedWorktree": %s, "hooksPath": %s, "hooksPathScope": %s, "armed": %s, "foreignHooks": %s, "nonExecutable": %s, "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
+    printf '{"applicable": %s, "rendered": %s, "missing": %s, "linkedWorktree": %s, "hooksPath": %s, "hooksPathScope": %s, "hooksPathDead": %s, "armed": %s, "foreignHooks": %s, "nonExecutable": %s, "gitVersion": %s, "referenceTransactionSupported": %s}\n' \
       "$(json_bool "$APPLICABLE")" \
       "$(json_bool "$RENDERED")" \
       "$(json_array $MISSING)" \
       "$(json_bool "$LINKED")" \
       "$(json_string_or_null "$HOOKS_PATH")" \
       "$(json_string_or_null "$HOOKS_PATH_SCOPE")" \
+      "$(json_bool "$HOOKS_PATH_DEAD")" \
       "$(json_bool "$ARMED")" \
       "$(json_array $FOREIGN)" \
       "$(json_array $NON_EXEC)" \
@@ -386,6 +405,15 @@ if [ "$ARMED" = "1" ]; then
   exit 0
 fi
 
+DEAD_OLD=""
+if [ "$HOOKS_PATH_DEAD" = "1" ]; then
+  # Treated as unset below.
+  DEAD_OLD="$HOOKS_PATH"
+  HOOKS_PATH=""
+fi
+DEAD_PREFIX=""
+[ -n "$DEAD_OLD" ] && DEAD_PREFIX="core.hooksPath pointed at $DEAD_OLD, which is not a directory (a moved repo?); "
+
 if [ -n "$HOOKS_PATH" ]; then
   # Somebody else (husky, lefthook, a monorepo convention) owns the one
   # hooksPath this repo has. Never overwrite it; say how to chain instead.
@@ -402,8 +430,8 @@ if [ "$LINKED" = "1" ]; then
   # and says nothing. Arm the main checkout once; every worktree inherits it,
   # and the hooks ask git for the toplevel themselves, so they still read this
   # worktree's house.json and branch.
-  printf 'house: git-hook floor NOT armed, and core.hooksPath is shared with the main checkout, so set it there: git config core.hooksPath "%s" (from %s)%s\n' \
-    "${MAIN_FLOOR_DIR:-<main-checkout>/.githooks}" "${MAIN_TOPLEVEL:-the main checkout}" "$FIXED_SUFFIX"
+  printf 'house: %sgit-hook floor NOT armed, and core.hooksPath is shared with the main checkout, so set it there: git config core.hooksPath "%s" (from %s)%s\n' \
+    "$DEAD_PREFIX" "${MAIN_FLOOR_DIR:-<main-checkout>/.githooks}" "${MAIN_TOPLEVEL:-the main checkout}" "$FIXED_SUFFIX"
   exit 0
 fi
 
@@ -446,7 +474,9 @@ while :; do
   sleep 0.05 2>/dev/null || true
 done
 
-if [ "$ARM_RESULT" = "self" ]; then
+if [ "$ARM_RESULT" = "self" ] && [ -n "$DEAD_OLD" ]; then
+  printf 'house: core.hooksPath pointed at %s, which is not a directory (a moved repo?); re-armed to %s%s\n' "$DEAD_OLD" "$FLOOR_DIR" "$FIXED_SUFFIX"
+elif [ "$ARM_RESULT" = "self" ]; then
   printf 'house: armed git hooks (core.hooksPath=%s)%s\n' "$FLOOR_DIR" "$FIXED_SUFFIX"
 elif [ "$ARM_RESULT" = "other" ]; then
   # Armed by a concurrent run: silent, except for a mode bit this one restored.
