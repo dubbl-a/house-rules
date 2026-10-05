@@ -313,6 +313,8 @@ test('manifest: a well-formed guard record passes; each malformed shape is a fin
   const cases = [
     [{ by: 'repo', decided: '2026-08-31', why: 'x' }, /`guard\.by` must be "plugin"/],
     [{ by: 'plugin', decided: 'yesterday', why: 'x' }, /`guard\.decided` must be YYYY-MM-DD/],
+    [{ by: 'plugin', decided: '2026-13-45', why: 'x' }, /`guard\.decided` must be YYYY-MM-DD/],
+    [{ by: 'plugin', decided: '2026-02-30', why: 'x' }, /`guard\.decided` must be YYYY-MM-DD/],
     [{ by: 'plugin', decided: '2026-08-31', why: ' ' }, /`guard\.why` must be a non-empty string/],
     [{ by: 'plugin', decided: '2026-08-31', why: 'x', extra: 1 }, /`guard` has unknown key `extra`/],
     [true, /`guard` must be an object/],
@@ -433,8 +435,15 @@ test('manifest: a well-formed modules.<name>.confirmed passes', () => {
   assert.doesNotMatch(out, /confirmed/);
 });
 
+test('manifest: a real leap day is a date, an impossible one is not', () => {
+  const guard = (decided) => run(sandbox({ 'house.json': houseJson({ guard: { by: 'plugin', decided, why: 'x' } }) }), ['--only=manifest'], NO_PLUGIN);
+  assert.equal(guard('2028-02-29').code, 0);
+  assert.equal(guard('2026-02-29').code, 1);
+});
+
 test('manifest: a malformed confirmed record is a finding', () => {
   for (const [confirmed, re] of [
+    [{ 'push-protection': '2026-13-45' }, /must be a date \(YYYY-MM-DD\)/],
     [{ 'push-protection': '3 Oct 2026' }, /modules\.github\.confirmed\["push-protection"\] must be a date \(YYYY-MM-DD\)/],
     [{ 'push-protection': true }, /must be a date/],
     [['push-protection'], /modules\.github\.confirmed must be an object/],

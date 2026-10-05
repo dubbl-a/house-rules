@@ -1871,7 +1871,7 @@ function checkLengths(ctx) {
     }
 
     if (linesOver || bytesOver) {
-      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && typeof r.decided === 'string' && DATE_RE.test(r.decided));
+      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided));
       if (raise) {
         tighten.push({ path: file, to: raise.to });
       } else {
@@ -1977,6 +1977,8 @@ const MANIFEST_TOP_KEYS = new Set(['version', 'defaultBranch', 'branchPolicy', '
 const TARGETS = ['claude-code', 'codex', 'gemini'];
 const DEVIATION_KINDS = new Set(['disabled-module', 'branch-policy', 'carve-out', 'unmanaged-file', 'coload-ceiling', 'other']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// A real calendar date: the shape, and it survives a round trip through Date.
+const isDate = (s) => typeof s === 'string' && DATE_RE.test(s) && new Date(`${s}T00:00:00Z`).toJSON()?.slice(0, 10) === s;
 
 function readModuleDefaultsFrom(modulesDir) {
   const out = {};
@@ -2194,7 +2196,7 @@ function checkManifest(ctx) {
         if ('confirmed' in entry) {
           if (!isPlainObject(entry.confirmed)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.${name}.confirmed must be an object of step id to date (YYYY-MM-DD); \`house confirm ${name} <step-id>\` writes it`));
           else for (const [id, date] of Object.entries(entry.confirmed)) {
-            if (typeof date !== 'string' || !DATE_RE.test(date)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.${name}.confirmed[${JSON.stringify(id)}] must be a date (YYYY-MM-DD), got ${JSON.stringify(date)}`));
+            if (!isDate(date)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.${name}.confirmed[${JSON.stringify(id)}] must be a date (YYYY-MM-DD), got ${JSON.stringify(date)}`));
           }
         }
       }
@@ -2213,7 +2215,7 @@ function checkManifest(ctx) {
       if ('kind' in dev && !DEVIATION_KINDS.has(dev.kind)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].kind \`${dev.kind}\` is not a valid kind`));
       if ('what' in dev && !isNonEmptyString(dev.what)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].what must be a non-empty string`));
       if ('why' in dev && !isNonEmptyString(dev.why)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].why must be a non-empty string`));
-      if ('decided' in dev && !DATE_RE.test(dev.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].decided must be YYYY-MM-DD`));
+      if ('decided' in dev && !isDate(dev.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].decided must be YYYY-MM-DD`));
       if (dev.kind === 'coload-ceiling' && !(Number.isInteger(dev.ceiling) && dev.ceiling > 0)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (coload-ceiling) must carry an integer \`ceiling\` equal to modules.docs.config.maxCoLoadLines; prose in \`what\` is not parsed`));
     });
   }
@@ -2238,7 +2240,7 @@ function checkManifest(ctx) {
           if (!(req in r)) findings.push(mk('manifest', 'house.json', null, 'manifest', `ratchetRaises[${i}] missing \`${req}\``));
         }
         if ('why' in r && !isNonEmptyString(r.why)) findings.push(mk('manifest', 'house.json', null, 'manifest', `ratchetRaises[${i}].why must be non-empty`));
-        if ('decided' in r && !DATE_RE.test(r.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', `ratchetRaises[${i}].decided must be YYYY-MM-DD`));
+        if ('decided' in r && !isDate(r.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', `ratchetRaises[${i}].decided must be YYYY-MM-DD`));
       });
     }
   }
@@ -2254,7 +2256,7 @@ function checkManifest(ctx) {
       findings.push(mk('manifest', 'house.json', null, 'manifest', '`guard` must be an object like {"by": "plugin", "decided": "YYYY-MM-DD", "why": "..."}'));
     } else {
       if (g.by !== 'plugin') findings.push(mk('manifest', 'house.json', null, 'manifest', '`guard.by` must be "plugin"'));
-      if (typeof g.decided !== 'string' || !DATE_RE.test(g.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', '`guard.decided` must be YYYY-MM-DD'));
+      if (!isDate(g.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', '`guard.decided` must be YYYY-MM-DD'));
       if (!isNonEmptyString(g.why)) findings.push(mk('manifest', 'house.json', null, 'manifest', '`guard.why` must be a non-empty string'));
       for (const k of Object.keys(g)) {
         if (!['by', 'decided', 'why'].includes(k)) findings.push(mk('manifest', 'house.json', null, 'manifest', `\`guard\` has unknown key \`${k}\``));
@@ -3046,7 +3048,7 @@ function preToolUseEntryCoversBash(e) {
 function pluginGuardRecord(d) {
   const g = isPlainObject(d) ? d.guard : null;
   if (!isPlainObject(g)) return null;
-  if (g.by !== 'plugin' || !isNonEmptyString(g.why) || typeof g.decided !== 'string' || !DATE_RE.test(g.decided)) return null;
+  if (g.by !== 'plugin' || !isNonEmptyString(g.why) || !isDate(g.decided)) return null;
   // An unknown key is malformed here too, or a record the manifest family
   // rejects would still buy guard-family silence and the two would disagree.
   if (!Object.keys(g).every((k) => ['by', 'decided', 'why'].includes(k))) return null;

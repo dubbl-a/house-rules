@@ -2075,10 +2075,12 @@ function atAdoptionSteps(json) {
 // the declared ids from; confirm refuses an undeclared id, and doctor names
 // one left behind after a module dropped a step.
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// A real calendar date: the shape, and it survives a round trip through Date.
+const isDate = (s) => typeof s === 'string' && DATE_RE.test(s) && new Date(`${s}T00:00:00Z`).toJSON()?.slice(0, 10) === s;
 function confirmedSteps(houseData, name) {
   const entry = isPlainObject(houseData) && isPlainObject(houseData.modules) ? houseData.modules[name] : null;
   const c = isPlainObject(entry) && isPlainObject(entry.confirmed) ? entry.confirmed : {};
-  return Object.fromEntries(Object.entries(c).filter(([, d]) => typeof d === 'string' && DATE_RE.test(d)));
+  return Object.fromEntries(Object.entries(c).filter(([, d]) => isDate(d)));
 }
 
 function unconfirmedAtAdoption(houseData, modules) {
@@ -2177,7 +2179,7 @@ function cmdConfirm(args) {
   writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
   console.log(`Wrote modules.${name}.confirmed[${JSON.stringify(id)}] = "${entry.confirmed[id]}" to ${housePath}`);
   for (const [other, v] of Object.entries(existing)) {
-    if (typeof v !== 'string' || !DATE_RE.test(v)) console.log(`  left \`${other}\` as it was (${JSON.stringify(v)}); the checker reports it until it is a date or removed`);
+    if (!isDate(v)) console.log(`  left \`${other}\` as it was (${JSON.stringify(v)}); the checker reports it until it is a date or removed`);
   }
   process.exit(0);
 }
@@ -3254,7 +3256,7 @@ function guardRecordIsWellFormed(houseData) {
   const g = isPlainObject(houseData) ? houseData.guard : null;
   return isPlainObject(g)
     && g.by === 'plugin'
-    && typeof g.decided === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.decided)
+    && isDate(g.decided)
     && isNonEmptyString(g.why)
     && Object.keys(g).every((k) => ['by', 'decided', 'why'].includes(k));
 }
