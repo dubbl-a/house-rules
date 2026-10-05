@@ -6,6 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-04
+
+The Node floor rises from 22 to 26, the breaking class, so this is a minor release under ADR 0012; the deep-research fork's launch, verify, and cap fixes and a stricter JavaScript twin check ride along.
+
+### Upgrading from 0.19.0
+Move to Node 26 (`node --version` shows what you run). Optionally add a `.nvmrc` and read it in workflows with `node-version-file: .nvmrc`. A `pr-checks.yml` scaffolded earlier keeps `node-version: 22`; change it to 26.
+
 ### Changed
 - **Breaking class (ADR 0012): the Node floor rises from 22 to 26.** `engines.node` is `>=26`, the README, CONTRIBUTING, and guide site state 26, and the `pr-checks.yml` scaffold sets `node-version: 26`. Adopters run `node --version` to check; scaffolds written earlier keep their `node-version` line and should change it. The package's own CI and development read Node from `.nvmrc` through `node-version-file`.
 
