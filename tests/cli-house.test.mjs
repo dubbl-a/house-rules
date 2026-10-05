@@ -1434,6 +1434,25 @@ test('#208 doctor and render agree: a regular file at a floor-shaped hooksPath i
   assert.equal(gitConfigGet(incRepo, 'core.hooksPath'), dead);
 });
 
+test('#208 doctor with a dead hooksPath and a foreign hook says what render will require, and render refuses', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const dead = join(tmpdir(), 'house-moved-gone', 'repo', '.githooks');
+  execFileSync('git', ['-C', repo, 'config', 'core.hooksPath', dead]);
+  const foreign = join(repo, '.git', 'hooks', 'pre-commit');
+  mkdirSync(dirname(foreign), { recursive: true });
+  writeFileSync(foreign, '#!/bin/sh\nexit 0\n');
+  chmodSync(foreign, 0o755);
+
+  const d = runCli(cliPath, ['doctor', '--repo', repo]).out;
+  assert.match(d, /render refuses to re-arm while this clone's \.git\/hooks has its own executable hooks/);
+  assert.doesNotMatch(d, /and it is re-armed to this repo/);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.match(r.out, /already has its own executable hook/);
+  assert.equal(gitConfigGet(repo, 'core.hooksPath'), dead, 'render leaves the dead value while a foreign hook blocks arming');
+});
+
 // core.hooksPath lives in the config a linked worktree SHARES with its main
 // checkout. Arming from inside a worktree would therefore point the whole clone
 // at a directory that disappears when the worktree is removed, after which git
