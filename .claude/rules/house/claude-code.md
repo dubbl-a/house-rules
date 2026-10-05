@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.20.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=2a6f2143d16245be90a830a193e94671d7c585fcc5c695e62a4a61172af7aadb DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.20.2 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=2a6f2143d16245be90a830a193e94671d7c585fcc5c695e62a4a61172af7aadb DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
