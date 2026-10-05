@@ -72,14 +72,18 @@ export const PINS = [
 export const BUDGET_LINE = 'const VOTES_PER_CLAIM = 3\nconst REFUTATIONS_REQUIRED = 2\nconst MAX_FETCH = 15\nconst MAX_VERIFY_CLAIMS = 25\n';
 const BUDGET_REPLACEMENT = `const ARGS_OBJ = (args && typeof args === "object" && !Array.isArray(args)) ? args : {}
 // Depth presets scale the fan-out to the question. Agents ~= 1 + angles +
-// fetched + votes * verified + 1: light ~35, standard ~70, deep ~130 (native
-// is ~110 on every question). Pick via args.depth; override any field via
-// args.budget. fetchOverflow is how far past maxFetch a high-relevance result
-// may still be fetched; native lets it run unbounded.
+// fetched + votes * verified + 1: light ~35, standard ~70, deep ~130 at
+// maxVerifyClaims, and at most ~41, ~102, ~160 when the per-angle floor
+// lifts the verify cap to maxVerifyCeiling (native is ~110 on every
+// question). The verify cap is min(maxVerifyCeiling, max(maxVerifyClaims,
+// minPerAngle * angles that produced claims)). Pick via args.depth; override
+// any field via args.budget; an explicit maxVerifyClaims also lifts the
+// ceiling to match. fetchOverflow is how far past maxFetch a
+// high-relevance result may still be fetched; native lets it run unbounded.
 const DEPTH_PRESETS = {
-  light: { maxFetch: 8, fetchOverflow: 2, maxVerifyClaims: 8, votes: 2, refutationsRequired: 2 },
-  standard: { maxFetch: 15, fetchOverflow: 5, maxVerifyClaims: 15, votes: 3, refutationsRequired: 2 },
-  deep: { maxFetch: 25, fetchOverflow: 8, maxVerifyClaims: 30, votes: 3, refutationsRequired: 2 },
+  light: { maxFetch: 8, fetchOverflow: 2, maxVerifyClaims: 8, minPerAngle: 2, maxVerifyCeiling: 12, votes: 2, refutationsRequired: 2 },
+  standard: { maxFetch: 15, fetchOverflow: 5, maxVerifyClaims: 15, minPerAngle: 3, maxVerifyCeiling: 25, votes: 3, refutationsRequired: 2 },
+  deep: { maxFetch: 25, fetchOverflow: 8, maxVerifyClaims: 30, minPerAngle: 4, maxVerifyCeiling: 40, votes: 3, refutationsRequired: 2 },
 }
 const DEPTH = Object.prototype.hasOwnProperty.call(DEPTH_PRESETS, ARGS_OBJ.depth) ? ARGS_OBJ.depth : "standard"
 const BUDGET = Object.assign({}, DEPTH_PRESETS[DEPTH], ARGS_OBJ.budget || {})
@@ -89,16 +93,100 @@ for (const k of Object.keys(DEPTH_PRESETS.standard)) {
 if (BUDGET.votes < 1 || BUDGET.refutationsRequired < 1 || BUDGET.refutationsRequired > BUDGET.votes) {
   return { error: "args.budget: need 1 <= refutationsRequired <= votes, got votes=" + BUDGET.votes + " refutationsRequired=" + BUDGET.refutationsRequired }
 }
+// An explicit maxVerifyClaims is a request, so it lifts the ceiling rather
+// than being clamped by it.
+if (ARGS_OBJ.budget && Object.prototype.hasOwnProperty.call(ARGS_OBJ.budget, "maxVerifyClaims")) {
+  BUDGET.maxVerifyCeiling = Math.max(BUDGET.maxVerifyCeiling, BUDGET.maxVerifyClaims)
+}
 const VOTES_PER_CLAIM = BUDGET.votes
 const REFUTATIONS_REQUIRED = BUDGET.refutationsRequired
 const MAX_FETCH = BUDGET.maxFetch
 const MAX_VERIFY_CLAIMS = BUDGET.maxVerifyClaims
-log("Depth: " + DEPTH + " (fetch<=" + (MAX_FETCH + BUDGET.fetchOverflow) + ", verify<=" + MAX_VERIFY_CLAIMS + " claims x " + VOTES_PER_CLAIM + " votes; at most ~" + (7 + MAX_FETCH + BUDGET.fetchOverflow + MAX_VERIFY_CLAIMS * VOTES_PER_CLAIM) + " agents)")
+log("Depth: " + DEPTH + " (fetch<=" + (MAX_FETCH + BUDGET.fetchOverflow) + ", verify " + MAX_VERIFY_CLAIMS + " claims or " + BUDGET.minPerAngle + " per angle, ceiling " + BUDGET.maxVerifyCeiling + ", x " + VOTES_PER_CLAIM + " votes; at most ~" + (7 + MAX_FETCH + BUDGET.fetchOverflow + BUDGET.maxVerifyCeiling * VOTES_PER_CLAIM) + " agents)")
 `;
 // The fetch budget's bypass: native lets any high-relevance result through
 // once the slots are spent, so the cap is soft. The fork bounds the overshoot.
 export const FETCH_BYPASS_LINE = '      if (fetchSlots <= 0 && relRank[r.relevance] >= 1) {\n';
 const FETCH_BYPASS_REPLACEMENT = '      if (fetchSlots <= 0 && (relRank[r.relevance] >= 1 || fetchSlots <= -BUDGET.fetchOverflow)) {\n';
+
+// The verify selection: native sorts every claim globally by importance and
+// source quality and verifies the top N, so a couple of angles with strong
+// sources can take every slot and the rest go unverified (issue #139: all 15
+// standard slots went to two angles). The fork keeps that sort as the order
+// within each angle, then deals the slots round-robin across angles. A claim's
+// angle is its source's, the search angle that found the URL. The agent-count
+// cap scales with the angles that produced claims (verifyCap), and when claims
+// are still dropped the run says how to extend itself (verifyNote).
+export const SELECTION_LINE = 'const rankedClaims = [...allClaims]\n  .sort((a, b) => (impRank[a.importance] - impRank[b.importance]) || (qualRank[a.sourceQuality] - qualRank[b.sourceQuality]))\n  .slice(0, MAX_VERIFY_CLAIMS)\n';
+
+/**
+ * Take items round-robin across the groups keyOf names, each group in the
+ * order given, groups in order of first appearance, up to cap. Deterministic,
+ * so the pick at cap K is a prefix of the pick at any larger cap: a run
+ * resumed with resumeFromRunId and a raised cap keeps every verify call it
+ * already made and appends the rest. The source of this and the two
+ * functions below is written into the fork, so each stays self-contained.
+ */
+export function pickRoundRobin(items, keyOf, cap) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  const queues = [...groups.values()];
+  const out = [];
+  for (let i = 0; out.length < cap && queues.some((q) => i < q.length); i++) {
+    for (const q of queues) {
+      if (out.length >= cap) break;
+      if (i < q.length) out.push(q[i]);
+    }
+  }
+  return out;
+}
+
+/** The verify cap: the preset, lifted to a per-angle floor, clamped to the ceiling. */
+export function verifyCap(budget, angles) {
+  return Math.min(budget.maxVerifyCeiling, Math.max(budget.maxVerifyClaims, budget.minPerAngle * angles));
+}
+
+/**
+ * What a run that dropped claims says about extending itself: up to the deep
+ * ceiling, or every claim once past it. The script cannot read its own run
+ * id, so the caller supplies the id the Workflow tool returned. The rerun
+ * must repeat the original args, since a changed depth or budget field (votes,
+ * say) changes every verify prompt and misses the cache. Extra agents are the
+ * added verify votes plus the one synthesis that reruns.
+ */
+export function verifyNote({ verified, total, angles, votes, deepCeiling }) {
+  if (verified >= total) return '';
+  const n = verified < deepCeiling ? Math.min(total, deepCeiling) : total;
+  return 'Verified ' + verified + ' of ' + total + ' claims (' + angles + ' angles). To verify more of these same claims, re-run the same script copy with resumeFromRunId set to this run\'s id and the same args as this call (its question, depth, and every budget field it passed), adding budget.maxVerifyClaims: ' + n + ' (about ' + ((n - verified) * votes + 1) + ' more agents).';
+}
+
+const SELECTION_REPLACEMENT = `${pickRoundRobin.toString()}
+${verifyCap.toString()}
+${verifyNote.toString()}
+const claimAngle = new Map(allSources.flatMap(s => s.claims.map(c => [c, s.angle])))
+const anglesWithClaims = new Set(allClaims.map(c => claimAngle.get(c))).size
+const rankedClaims = pickRoundRobin([...allClaims]
+  .sort((a, b) => (impRank[a.importance] - impRank[b.importance]) || (qualRank[a.sourceQuality] - qualRank[b.sourceQuality])),
+  c => claimAngle.get(c), verifyCap(BUDGET, anglesWithClaims))
+const VERIFY_NOTE = verifyNote({ verified: rankedClaims.length, total: allClaims.length, angles: anglesWithClaims, votes: VOTES_PER_CLAIM, deepCeiling: DEPTH_PRESETS.deep.maxVerifyCeiling })
+if (VERIFY_NOTE) log(VERIFY_NOTE)
+`;
+
+// Every result after verify carries the note: the two early returns (all
+// refuted or unverified, synthesis failed) and the final one.
+export const NOTE_EARLY_LINE = '    stats: { angles: scope.angles.length, sources: allSources.length, claims: allClaims.length, verified: voted.length,';
+const NOTE_EARLY_REPLACEMENT = '    ...(VERIFY_NOTE ? { verifyNote: VERIFY_NOTE } : {}),\n' + NOTE_EARLY_LINE;
+export const NOTE_FINAL_LINE = '  question: QUESTION,\n  ...report,\n';
+const NOTE_FINAL_REPLACEMENT = NOTE_FINAL_LINE + '  ...(VERIFY_NOTE ? { verifyNote: VERIFY_NOTE } : {}),\n';
+
+// How a session runs the fork. The Workflow tool runs a script only from the
+// working directory, an added directory, or the session scratchpad, so the
+// stable path under ~/.claude is refused (issue #139); copy it first.
+const RUN_HINT = 'copy it into the session scratchpad and run Workflow({scriptPath: <that copy>, args: {question, depth}}), stating the depth; the Workflow tool only runs a script inside the working directory, an added directory, or the scratchpad';
 
 const QUESTION_LINE = 'const QUESTION = (typeof args === "string" && args.trim()) || ""';
 const QUESTION_REPLACEMENT = `const QUESTION = (typeof args === "string" && args.trim()) || (typeof ARGS_OBJ.question === "string" && ARGS_OBJ.question.trim()) || ""
@@ -114,7 +202,7 @@ log("Models: scope=" + MODELS.scope + " search=" + MODELS.search + " fetch=" + M
 const META = (version, sha) => `export const meta = {
   name: 'deep-research-pinned',
   description: 'Deep research harness with per-stage model pins and a depth-scaled budget: fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.',
-  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). Run by scriptPath. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, votes, refutationsRequired}}. Retire when check-deep-research-upstream.mjs exits 2.',
+  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). To run it, ${RUN_HINT}. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, minPerAngle, maxVerifyCeiling, votes, refutationsRequired}}. A run that drops claims returns verifyNote; extend that same run only when the user agrees. Retire when check-deep-research-upstream.mjs exits 2.',
   phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle"},{"title":"Fetch","detail":"URL-dedup, fetch the top sources the depth allows, extract falsifiable claims"},{"title":"Verify","detail":"Adversarial vote per claim, count and quorum set by the depth"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
 
@@ -222,9 +310,9 @@ export function rebuild(body, version) {
   let s = body;
   // Order matters: the budget block defines ARGS_OBJ, which the question
   // replacement reads, and both sit above the first use in the native body.
-  for (const [from, to] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT]]) {
-    if (s.split(from).length !== 2) throw new Error(`anchor not found exactly once: ${from.trim().split('\n')[0]}`);
-    s = s.replace(from, to);
+  for (const [from, to, times = 1] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT], [SELECTION_LINE, SELECTION_REPLACEMENT], [NOTE_EARLY_LINE, NOTE_EARLY_REPLACEMENT, 2], [NOTE_FINAL_LINE, NOTE_FINAL_REPLACEMENT]]) {
+    if (s.split(from).length !== times + 1) throw new Error(`anchor not found ${times === 1 ? 'exactly once' : `exactly ${times} times`}: ${from.trim().split('\n')[0]}`);
+    s = s.split(from).join(to);
   }
   for (const [from, to] of PINS) {
     const n = s.split(from).length - 1;
@@ -292,7 +380,7 @@ function main() {
   if (report.sha256 !== report.baseline) {
     emit(1, `native script drifted since ${BASELINE.version}`, `installed ${report.version} sha256 ${report.sha256.slice(0, 12)}; ${opts.rebuild ? `fork rebuilt at ${opts.rebuild}; ` : 'rerun with --rebuild=<out.js>; '}then record the new sha in BASELINE`);
   }
-  emit(0, `native script unchanged since ${BASELINE.version}`, opts.rebuild ? `fork rebuilt at ${opts.rebuild}` : `installed ${report.version}`);
+  emit(0, `native script unchanged since ${BASELINE.version}`, opts.rebuild ? `fork rebuilt at ${opts.rebuild}${opts.install !== undefined ? `; to run it, ${RUN_HINT}` : ''}` : `installed ${report.version}`);
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main();

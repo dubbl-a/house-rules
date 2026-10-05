@@ -55,11 +55,14 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   builder call; routine and mechanical work stays on Sonnet or Haiku.
 - Match the tier to the task: locations and receipt checks on Haiku, code and prose on Sonnet,
   judgment on Opus.
-- On `/deep-research`, never `Workflow({name: "deep-research"})`, which pins no model. Run the fork
-  by `scriptPath` at `<home>/.claude/workflows/deep-research-tiered.js` with the home directory
-  written out absolute, args `{question, depth}`, and state the depth (light, standard, deep). If it
-  is missing or drifted, first run `check-deep-research-upstream.mjs --install` (`scripts/house/`,
-  else the house plugin's claude-code module files).
+- On `/deep-research`, never `Workflow({name: "deep-research"})`, which pins no model. Copy
+  `<home>/.claude/workflows/deep-research-tiered.js` into the session scratchpad and run
+  `Workflow({scriptPath: <that copy>, args: {question, depth}})`, stating the depth (light,
+  standard, deep); Workflow runs only scripts in the working directory, an added directory, or the
+  scratchpad. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
+  --install` (`scripts/house/`, else the house plugin's claude-code module files). On a
+  `verifyNote` the question warrants, offer the user to extend that run (`resumeFromRunId`, the
+  original args plus the note's `budget.maxVerifyClaims`, the extra agents); never start it unasked.
 - Subagents do not spawn subagents. They report back. Roster agents cannot, since none lists the
   Agent tool. The built-in general-purpose, Explore, and Plan agents cannot by default; a fork,
   or a custom off-roster agent with unrestricted tools, can, so its brief forbids it under DO NOT.
