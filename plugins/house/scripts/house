@@ -760,7 +760,7 @@ function classify(repoRoot, target, priorLock, forceManagedPath, treatAsAbsent =
   const onDiskHash = sha256Hex(managedBody(readFileSync(absPath, 'utf8')));
   const compareHash = priorEntry ? priorEntry.bodySha256 : target.lockHash;
   if (onDiskHash === compareHash) return { status: 'clean', target };
-  if (forceManagedPath && forceManagedPath === target.path) return { status: 'clean-forced', target };
+  if (forceManagedPath && forceManagedPath.has(target.path)) return { status: 'clean-forced', target };
   return { status: 'refuse', target, onDiskHash, expectedHash: compareHash };
 }
 
@@ -1065,7 +1065,7 @@ function planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedP
   if (notRegular) return { status: 'refuse', target: { ...target, content: '' }, reason: 'not-regular', detail: notRegular };
   const raw = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
   const blk = agentsBlock(raw);
-  const forced = forceManagedPath === AGENTS_MD;
+  const forced = !!forceManagedPath && forceManagedPath.has(AGENTS_MD);
   if (blk.status === 'absent') {
     const sep = blockSeparator(raw);
     return { status: priorEntry ? 'missing' : 'create', target: { ...target, sep, content: `${raw}${sep}${blockText(blockLines)}` } };
@@ -1108,7 +1108,7 @@ function planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath) {
   const blk = agentsBlock(raw);
   if (blk.status === 'absent') return null;
   const priorEntry = priorLock.get(AGENTS_MD);
-  const forced = forceManagedPath === AGENTS_MD;
+  const forced = !!forceManagedPath && forceManagedPath.has(AGENTS_MD);
   let regions;
   if (blk.status === 'ok') {
     regions = [[blk.begin, blk.end]];
@@ -1832,7 +1832,8 @@ function cmdRender(args) {
 
   const pluginVersion = readPluginVersion();
   const modules = findModules();
-  const forceManagedPath = args.forceManaged ? normalizeRepoPath(args.forceManaged) : null;
+  // --force-managed may repeat; render sees the set of paths it names (null when none).
+  const forceManagedPath = args.forceManaged.length ? new Set(args.forceManaged.map(normalizeRepoPath)) : null;
   // Read before anything below writes: the lock is rewritten at the end of an
   // --apply, and the scaffold gate needs what it said on the way in.
   const priorLockJson = loadPriorLockJson(repoRoot);
@@ -1873,7 +1874,7 @@ function cmdRender(args) {
     if (reason) unsafeOrphans.push({ path: blockRemoval.path, reason });
   }
   const editedOrphans = sweepable
-    .filter((rel) => rel !== forceManagedPath && !unsafeOrphans.some((u) => u.path === rel) && orphanIsHandEdited(repoRoot, rel, loadPriorLock(repoRoot)));
+    .filter((rel) => !(forceManagedPath && forceManagedPath.has(rel)) && !unsafeOrphans.some((u) => u.path === rel) && orphanIsHandEdited(repoRoot, rel, loadPriorLock(repoRoot)));
   const sweepRemovals = sweepable.filter((rel) => !unsafeOrphans.some((u) => u.path === rel) && !editedOrphans.includes(rel));
   printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans: sweepRemovals, unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
 
@@ -2172,7 +2173,14 @@ function cmdConfirm(args) {
     process.exit(2);
   }
   if (!vendoredCheckerIsCurrent(repoRoot)) {
-    console.error(`house confirm: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
+    // A hand-edited vendored checker is refused by render (its body no longer
+    // matches the lock), so `house render --apply` alone would not get it synced.
+    const lockEntry = loadPriorLock(repoRoot).get('.house/check.mjs');
+    let handEdited = false;
+    try { handEdited = !!lockEntry && sha256Hex(managedBody(readFileSync(path.join(repoRoot, '.house', 'check.mjs'), 'utf8'))) !== lockEntry.bodySha256; } catch { /* unreadable: the plain advice stands */ }
+    console.error(handEdited
+      ? `house confirm: nothing was written. .house/check.mjs was edited by hand, so \`house render --apply\` refuses it and would not sync it. First keep any change worth proposing upstream in house, then run \`house render --apply --force-managed .house/check.mjs\` so it is this plugin's (an older vendored checker reports \`confirmed\` as an unknown key and fails CI); then re-run this command.`
+      : `house confirm: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
     process.exit(2);
   }
   entry.confirmed = { ...existing, [id]: todayIso() };
@@ -3499,14 +3507,14 @@ function cmdCheck(rawArgs) {
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: null, json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [] };
+  const out = { repo: null, apply: false, forceManaged: [], json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
     else if (a.startsWith('--repo=')) out.repo = a.slice('--repo='.length);
     else if (a === '--apply') out.apply = true;
-    else if (a === '--force-managed') out.forceManaged = argv[++i];
-    else if (a.startsWith('--force-managed=')) out.forceManaged = a.slice('--force-managed='.length);
+    else if (a === '--force-managed') { if (argv[i + 1] !== undefined) out.forceManaged.push(argv[++i]); else i++; }
+    else if (a.startsWith('--force-managed=')) { const v = a.slice('--force-managed='.length); if (v) out.forceManaged.push(v); }
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
     else if (a === '--keep-config') out.keepConfig = true;

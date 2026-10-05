@@ -1597,14 +1597,14 @@ run_file_scan() {
       pre="${fp%%/.[gG][iI][tT]*}"; root="$pre"
       if { [[ -d "$root" ]] && [[ "$root" -ef "$toplevel" ]]; } \
          || { [[ -n "$COMMON_DIR" ]] && [[ "$fp" == "$COMMON_DIR"/* ]]; }; then
-        deny "Refusing to write '$fp': it is inside the git directory, where the git-hook floor that enforces this repo's branch policy is wired (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones and house doctor reports what is wrong."
+        deny "Refusing to write '$fp': it is inside the git directory, where the git-hook floor that enforces this repo's branch policy is wired (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones only while the github module is on (with it off, render restores nothing), and house doctor reports what is wrong."
       fi ;;
     */.[gG][iI][tT][hH][oO][oO][kK][sS]/*|*/.[gG][iI][tT][hH][oO][oO][kK][sS])
       pre="${fp%%/.[gG][iI][tT][hH][oO][oO][kK][sS]*}"; root="$pre"
       rel=".githooks${fp:$((${#pre} + 10))}"
       if [[ -d "$root" ]] \
          && { [[ "$root" -ef "$toplevel" ]] || { [[ -d "$MAIN_ROOT" ]] && [[ "$root" -ef "$MAIN_ROOT" ]]; }; }; then
-        deny "Refusing to write '$rel': it is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel), and an edited or added hook file makes the floor untrusted for every command after it. Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
+        deny "Refusing to write '$rel': it is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel), and an edited or added hook file makes the floor untrusted for every command after it. Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones only while the github module is on (with it off, render restores nothing)."
       fi ;;
   esac
   # A path that reaches the floor through a symlink spells neither .githooks
@@ -1644,7 +1644,7 @@ run_file_scan() {
       # Compared without regard to case, as the text tests above are.
       shopt -s nocasematch
       if [[ "$phys" == "$tphys" || "$phys" == "$tphys"/* ]]; then
-        deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones."
+        deny "Refusing to write '$fp': it resolves into $target, which is part of the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Change a hook through a PR from a checkout you do not commit from; house render --apply restores the vendored ones only while the github module is on (with it off, render restores nothing)."
       fi
       shopt -u nocasematch
     done

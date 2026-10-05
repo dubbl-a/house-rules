@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- Lifecycle follow-ups (#167): `house confirm` on a hand-edited vendored `.house/check.mjs` says render refuses it and names `house render --apply --force-managed .house/check.mjs`; `--force-managed` may be given more than once to force several hand-edited managed files in one run; the guard's refusals for `.githooks/` and the git directory say render restores the floor only while the github module is on (message text only, no allow or deny changes); `house enable --apply` on a protected branch or a dirty working tree is pinned by tests (it writes the working tree only and keeps uncommitted edits).
+
 ## [0.20.1] - 2026-10-05
 
 A patch release under ADR 0012: two fixes that restore behavior the package already promised, a refusal message, and reworded orchestration defaults; nothing the guard denies changes.

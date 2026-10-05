@@ -1791,6 +1791,12 @@ git -C "$a" checkout -q feat/a
 # ── Edit/Write/MultiEdit/NotebookEdit: nothing under .githooks/ or the git dir
 expect_deny "Edit on a vendored .githooks file" \
   "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "part of the git-hook floor"
+# #167: render restores the floor only while the github module is on (ADR 0017),
+# so the refusals do not promise a restore unconditionally.
+expect_deny "Edit on a vendored .githooks file: render's restore is conditional on the github module" \
+  "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "only while the github module is on"
+expect_deny "Write on .git/config: render's restore is conditional on the github module" \
+  "$(mk_file_payload Write "$a/.git/config" "$a")" "only while the github module is on"
 expect_deny "MultiEdit on a vendored .githooks file" \
   "$(mk_file_payload MultiEdit "$a/.githooks/pre-commit.d/10-house-branch" "$a")" "part of the git-hook floor"
 expect_deny "Write on .git/config" \
@@ -1858,6 +1864,8 @@ for _tool in Edit Write; do
     "$(mk_real_file_payload "$_tool" "$pg/gl/config" "$pg")" "git-hook floor"
   expect_deny "$_tool on a plainly named file symlink to a floor file" \
     "$(mk_real_file_payload "$_tool" "$pg/notes.txt" "$pg")" "git-hook floor"
+  expect_deny "$_tool through a symlink into the floor: render's restore is conditional on the github module" \
+    "$(mk_real_file_payload "$_tool" "$pg/notes.txt" "$pg")" "only while the github module is on"
 done
 expect_allow "Edit through a symlink that points somewhere harmless" \
   "$(mk_real_file_payload Edit "$pg/shortcut/guide.md" "$pg")"
