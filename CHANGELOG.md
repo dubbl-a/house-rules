@@ -6,9 +6,13 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-10-05
+
+A patch release under ADR 0012: lifecycle fixes that restore behavior the commands already promised; the guard changes message text only, nothing it denies.
+
 ### Fixed
 
-- Lifecycle follow-ups (#167): `house confirm` on a hand-edited vendored `.house/check.mjs` says render refuses it and names `house render --apply --force-managed .house/check.mjs`; `--force-managed` may be given more than once to force several hand-edited managed files in one run; the guard's refusals for `.githooks/` and the git directory say render restores the floor only while the github module is on (message text only, no allow or deny changes); `house enable --apply` on a protected branch or a dirty working tree is pinned by tests (it writes the working tree only and keeps uncommitted edits).
+- Lifecycle follow-ups (#167): `house confirm` on a hand-edited vendored `.house/check.mjs` says render refuses it and names `house render --apply --force-managed .house/check.mjs`, asking the same check render uses even when the lock has no entry; `--force-managed` may be given more than once to force several hand-edited managed files in one run, and a flag where its path should be is refused instead of aiming render at the current directory; the guard's refusals for `.githooks/` and the git directory say render restores the floor only while the github module is on (message text only, no allow or deny changes); `house enable --apply` on a protected branch or a dirty working tree is pinned by tests (it writes the working tree only and keeps uncommitted edits).
 
 ## [0.20.1] - 2026-10-05
 
