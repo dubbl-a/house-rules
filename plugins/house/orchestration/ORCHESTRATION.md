@@ -19,9 +19,9 @@ every important finding.
   checkout is for reading, merging, and cleanup.
 - Never `git checkout -b` or `git switch -c` in the main checkout, not even for one commit.
 - A plan's first step is the worktree.
-- Before giving the user a command to run, put the session where the command must run (leave the
-  worktree first) and say the directory in the same message as the command. A command that writes
-  shared state states what its output should look like when it worked.
+- Before handing the user a command, put the session where it must run (leave the worktree) and
+  name the directory; one that writes shared state names its expected output. Anything to copy
+  sits alone in a fenced block, so `/copy` lifts it whole; terminal selection breaks wraps.
 
 ## Roster
 

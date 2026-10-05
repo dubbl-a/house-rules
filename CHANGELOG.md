@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- Orchestration defaults: anything handed to the user to copy (a command, a reply, a config snippet) sits alone in a fenced block so `/copy` lifts it whole, since terminal selection breaks wrapped lines.
+
 ## [0.20.0] - 2026-10-04
 
 The Node floor rises from 22 to 26, the breaking class, so this is a minor release under ADR 0012; the deep-research fork's launch, verify, and cap fixes and a stricter JavaScript twin check ride along.
