@@ -74,6 +74,11 @@ across 20 rule files totalling 4,317 lines behind an 83-line always-loaded root 
 That quotation is from before Claude Code 2.1.288 (2026-10-02), which made a path-scoped rule
 load on a Write or Edit to a matching file as well as on a Read; the rule's compaction sentence
 names all three triggers since then, and the fact is recorded in the survey's 2.1.288 addendum.
+Claude Code 2.1.293 made a single-file `cat`, `head`, `tail`, `sed -n`, or `grep` through the
+Bash tool load a matching rule too, so viewing a file that way now counts as reading it (changelog
+at https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched
+2026-10-07); the memory page (https://code.claude.com/docs/en/memory, fetched 2026-10-07) still
+names only the Read, Write, and Edit tools, so the changelog is the source for that trigger.
 
 repo-b's `maintaining-docs.md` states the inverse just as plainly: a rule file with no
 `paths:` is not unscoped, it is always-on at root-file priority; if a rule belongs in every
@@ -348,6 +353,22 @@ at the effort their frontmatter names. An off-roster call that lands on Sonnet t
 subagent model variable runs at Sonnet 5.5's default of high until
 `modelSettings["claude-sonnet-5-5"].effortLevel` is set in user settings, which is the concrete
 case the effort line in the rule exists for.
+
+Haiku 5.5 as the default Haiku, 2026-10-07: Claude Code 2.1.293 added Claude Haiku 5.5
+(`claude-haiku-5-5`) as the default Haiku model on the Anthropic API, with 1M context at
+$0.10/$0.50 per Mtok, or $0.50/$2.50 for prompts over 100K (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md). The models overview
+lists it as "Fastest", with adaptive thinking, 128K output, and an API default effort of medium
+(https://platform.claude.com/docs/en/about-claude/models/overview, fetched 2026-10-07). The
+model-config page lists Haiku 5.5 among the models that take every effort level from low to max,
+says models it does not list take no effort (Haiku 4.5 is not listed), gives Haiku 5.5 a Claude
+Code default of medium, says the `haiku` alias resolves to Haiku 5.5 on the Anthropic API but
+still to Haiku 4.5 on Bedrock, Google Cloud, Foundry, and Claude Platform on AWS, and asks for
+v2.1.293 or later to use it (https://code.claude.com/docs/en/model-config, fetched 2026-10-07).
+Haiku stays the cheapest and fastest rung, so the ladder stands. The roster's scout pins the
+`haiku` alias and `effort: low`, so on the Anthropic API its effort pin now has a level to set,
+where on Haiku 4.5 it set none. An off-roster call that lands on Haiku runs at Haiku 5.5's
+default of medium until `modelSettings["claude-haiku-5-5"].effortLevel` is set in user settings.
 
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
