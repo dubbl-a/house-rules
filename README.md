@@ -105,7 +105,7 @@ Gemini CLI read an `AGENTS.md` block). `plugins/house/schema/house.schema.json` 
 To leave, uninstall each repo's adoption first, since removing the plugin removes the cleanup CLI:
 
 - `house uninstall` prints a plan. With `--apply`, it removes the managed files, the `AGENTS.md`
-  block, the `core.hooksPath` it set, and last `house.json` (`--keep-config` leaves it).
+  block, the `core.hooksPath` it set, and last `house.json` (`--keep-config` leaves it), then lists what is left.
 - Then run `claude plugin uninstall house-rules@house-rules` and
   `claude plugin marketplace remove house-rules`.
 

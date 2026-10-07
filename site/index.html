@@ -132,7 +132,7 @@
       <dl class="meta">
         <div><dt>Written by</dt><dd>Aaron Altamura, co-written with Claude Code</dd></div>
         <div><dt>Updated</dt><dd><time datetime="2026-10-07">7 October 2026</time></dd></div>
-        <div><dt>Covers</dt><dd>house-rules v0.20.3</dd></div>
+        <div><dt>Covers</dt><dd>house-rules v0.20.4</dd></div>
         <div><dt>Reading time</dt><dd>About 16 minutes</dd></div>
         <div><dt>License</dt><dd>CC BY 4.0 for the text, MIT for the code</dd></div>
       </dl>
@@ -160,12 +160,12 @@
 <p>Those are good places to put rules. But Claude Code doesn't decide what the rules should say, and it doesn't check later whether they're still true.</p>
 <p>house-rules supplies the rules themselves, written by someone who has learned what to ask for, in the same words in every house. It also adds four things the builder doesn't:</p>
 <ul><li><strong>A sealed copy of each rule file.</strong> Each copy has a fingerprint, a short code that changes if even one character changes, so an edit shows up.</li><li><strong>An inspector</strong> who reads the house's documents and reports what's wrong.</li><li><strong>A ledger</strong> recording what this house does differently, and why.</li><li><strong>A handoff</strong>, so what one guest learned reaches the next one instead of staying on the fridge.</li></ul>
-<p>The analogy breaks down in one place. An appliance can't switch off a real fuse box, but hooks can be turned off: by a setting, or by starting a session in bare, safe or restricted mode. So a rule that must always hold also gets a lock, one of the forbidden-command settings, instead of relying on the hook alone.</p>
+<p>The analogy breaks down in one place. An appliance can't switch off a real fuse box, but hooks can be turned off: by a setting, and a session started in bare, safe or restricted mode loads no project hooks at all. So a rule that must always hold also gets a lock, one of the forbidden-command settings, instead of relying on the hook alone.</p>
     </section>
     <section id="how-it-works">
       <h2>How it works, in six moves</h2>
 <p>The first three steps decide what a rule says and where it lives. The last three catch a rule that has stopped being true.</p>
-<ol><li><strong>Give every rule a reason.</strong> Each rule is an instruction, one clause saying why, a line naming what enforces it, and a pointer to the evidence behind it. People work around rules they can't justify.</li><li><strong>Load only what's relevant.</strong> Each rule file names the kinds of file it covers, so a session reads only the rules that apply. Each file also has a maximum length, 200 lines by default, set in your project's settings file.</li><li><strong>Copy the rules in.</strong> They're written word for word into your copy of the project (your checkout), where Claude Code reads them like any other file.</li><li><strong>Fingerprint each copy.</strong> A lock file records what each file looked like when it arrived.</li><li><strong>Run the checker.</strong> Whenever you ask, it rereads the project and lists what no longer matches.</li><li><strong>Fix rules at the source.</strong> If you disagree with a rule, change it in the package, not your copy. The next version reaches you as a plan you approve.</li></ol>
+<ol><li><strong>Give every rule a reason.</strong> Each rule is an instruction, one clause saying why, a line naming what enforces it, and a pointer to the evidence behind it. People work around rules they can't justify.</li><li><strong>Load only what's relevant.</strong> Each rule file names the kinds of file it covers, so a session reads only the rules that apply. Each file can also have a maximum length, set in your project's settings file; this package caps its own at 200 lines.</li><li><strong>Copy the rules in.</strong> They're written word for word into your copy of the project (your checkout), where Claude Code reads them like any other file.</li><li><strong>Fingerprint each copy.</strong> A lock file records what each file looked like when it arrived.</li><li><strong>Run the checker.</strong> Whenever you ask, it rereads the project and lists what no longer matches.</li><li><strong>Fix rules at the source.</strong> If you disagree with a rule, change it in the package, not your copy. The next version reaches you as a plan you approve.</li></ol>
     </section>
     <section id="whats-inside">
       <h2>What is in the package</h2>
