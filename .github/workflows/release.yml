@@ -10,11 +10,17 @@ on:
 # trigger another workflow.
 permissions:
   contents: read
+# One group per commit, so every push to main is evaluated: a single shared
+# group keeps only the newest pending run and would drop a queued release
+# behind a later push. Two runs that race on one version cannot both publish:
+# the second fails at the tag push or at gh release create.
 concurrency:
-  group: release
+  group: release-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   release:
+    # A manual run is a retry from main, never a release of an unmerged branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # contents: write pushes the vX.Y.Z tag and creates the GitHub release.
@@ -28,26 +34,33 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      # A push to main whose plugin version is already tagged is not a release:
-      # the job stops here and the sync job is skipped. The job's released
-      # output is true only when the publish step finished.
+      # A push to main whose version already has a GitHub release is not a
+      # release: the job stops here and the sync job is skipped. Keying on the
+      # release, not the tag, lets a rerun finish a run that tagged but failed
+      # to publish. The job's released output is true only when the publish
+      # step finished.
       - name: Read the plugin version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./plugins/house/.claude-plugin/plugin.json').version")
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "plugin.json version '${VERSION}' is not X.Y.Z; not releasing"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          set +e
-          git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null
-          RC=$?
-          set -e
-          case "$RC" in
-            0) echo "v${VERSION} is already tagged; nothing to release"
-               echo "released=false" >> "$GITHUB_OUTPUT" ;;
-            2) echo "v${VERSION} has no tag; releasing"
-               echo "released=pending" >> "$GITHUB_OUTPUT" ;;
-            *) echo "could not list the remote tags (exit ${RC})"
-               exit 1 ;;
-          esac
+          if gh release view "v${VERSION}" --json tagName > /dev/null 2> "$RUNNER_TEMP/view.err"; then
+            echo "v${VERSION} is already released; nothing to do"
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          elif grep -q 'release not found' "$RUNNER_TEMP/view.err"; then
+            echo "v${VERSION} has no release; releasing"
+            echo "released=pending" >> "$GITHUB_OUTPUT"
+          else
+            cat "$RUNNER_TEMP/view.err"
+            echo "could not look up the v${VERSION} release"
+            exit 1
+          fi
       # The notes are read before the tag is made, so a missing CHANGELOG
       # section fails the job without leaving a tag behind.
       - name: Extract the release notes
@@ -73,8 +86,17 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -a "v${VERSION}" -m "Release ${VERSION}" "$GITHUB_SHA"
-          git push origin "refs/tags/v${VERSION}"
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null
+          RC=$?
+          set -e
+          case "$RC" in
+            0) echo "v${VERSION} is already tagged; reusing the tag" ;;
+            2) git tag -a "v${VERSION}" -m "Release ${VERSION}" "$GITHUB_SHA"
+               git push origin "refs/tags/v${VERSION}" ;;
+            *) echo "could not list the remote tags (exit ${RC})"
+               exit 1 ;;
+          esac
           gh release create "v${VERSION}" --verify-tag --title "v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
           echo "released=true" >> "$GITHUB_OUTPUT"
   sync:
@@ -99,37 +121,30 @@ jobs:
       PROTECT: ${{ matrix.protect }}
     steps:
       - name: Check for the sync token
-        id: token
         env:
           TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
         run: |
           if [ -z "$TOKEN" ]; then
-            echo "ADOPTER_SYNC_TOKEN is not set; skipping the sync of ${REPO} to ${VERSION}"
-            echo "have=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "have=true" >> "$GITHUB_OUTPUT"
+            echo "::error::ADOPTER_SYNC_TOKEN is not set; ${REPO} not synced to ${VERSION}"
+            exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.token.outputs.have == 'true'
         with:
           ref: v${{ needs.release.outputs.version }}
           path: house-rules
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.token.outputs.have == 'true'
         with:
           repository: dubbl-a/${{ matrix.repo }}
           ref: ${{ matrix.branch }}
           token: ${{ secrets.ADOPTER_SYNC_TOKEN }}
           path: adopter
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.token.outputs.have == 'true'
         with: { node-version-file: house-rules/.nvmrc }
       # The sync branch exists before render, because render arms the adopter's
       # vendored .githooks floor, and the floor refuses commits on the default
       # branch.
       - name: Render and check
-        if: steps.token.outputs.have == 'true'
         working-directory: adopter
         run: |
           git config user.name 'github-actions[bot]'
@@ -148,7 +163,6 @@ jobs:
       # what git sees as changed, path by path.
       - name: Commit the changed paths
         id: commit
-        if: steps.token.outputs.have == 'true'
         working-directory: adopter
         run: |
           { git diff --name-only -z; git ls-files --others --exclude-standard -z; } > "$RUNNER_TEMP/paths"
@@ -157,7 +171,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ -n "$PROTECT" ] && tr '\0' '\n' < "$RUNNER_TEMP/paths" | grep -q "^${PROTECT}/"; then
+          if [ -n "$PROTECT" ] && tr '\0' '\n' < "$RUNNER_TEMP/paths" | grep -Eq "^${PROTECT}(/|$)"; then
             echo "::error::${REPO}: render changed a path under ${PROTECT}/; not syncing"
             exit 1
           fi
@@ -193,6 +207,7 @@ jobs:
         run: |
           if [ -d adopter/.github/workflows ]; then HAS_WORKFLOWS=true; else HAS_WORKFLOWS=false; fi
           GREEN=0
+          GREEN_SHA=
           RESULT=timeout
           for i in $(seq 1 40); do
             sleep 30
@@ -202,6 +217,7 @@ jobs:
             if printf '%s' "$OUT" | grep -q 'no checks reported'; then
               if [ "$HAS_WORKFLOWS" = false ]; then
                 echo "no checks reported and ${REPO} has no workflows; treating as no checks"
+                GREEN_SHA=$(gh pr view "$URL" --repo "$REPO" --json headRefOid -q .headRefOid)
                 RESULT=green
                 break
               fi
@@ -227,6 +243,9 @@ jobs:
               break
             fi
             if [ "$STATE" = green ]; then
+              SHA=$(gh pr view "$URL" --repo "$REPO" --json headRefOid -q .headRefOid)
+              if [ "$GREEN" -ge 1 ] && [ "$SHA" != "$GREEN_SHA" ]; then GREEN=0; fi
+              GREEN_SHA="$SHA"
               GREEN=$((GREEN + 1))
               if [ "$GREEN" -ge 2 ]; then RESULT=green; break; fi
             else
@@ -237,4 +256,5 @@ jobs:
             echo "::error::${REPO}: checks ${RESULT}; leaving ${URL} open"
             exit 1
           fi
-          gh pr merge "$URL" --repo "$REPO" --squash --delete-branch
+          # The head checked green is the only head that may merge.
+          gh pr merge "$URL" --repo "$REPO" --squash --delete-branch --match-head-commit "$GREEN_SHA"

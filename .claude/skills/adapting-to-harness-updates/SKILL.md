@@ -125,4 +125,5 @@ skeptics per duplicate-or-conflict claim, and two synthesis agents.
 This skill is repo-local. An edit reaches the next session that invokes it by name, and nothing
 ships to adopters. What reaches adopters is the rule and mechanism changes it produces, through a
 release: once the maintainer merges it, `.github/workflows/release.yml` tags and publishes it and
-merges each adopter's `render --apply` pull request.
+merges each adopter's `render --apply` pull request. After a failed sync leg, use "Re-run failed
+jobs" on that run, not "Re-run all jobs".

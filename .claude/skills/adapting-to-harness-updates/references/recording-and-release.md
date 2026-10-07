@@ -42,8 +42,10 @@ Release, per the repo's version rules:
 5. The maintainer squash-merges on green CI.
 6. `.github/workflows/release.yml` does the rest on that push to main: it tags the merge commit,
    creates the GitHub release from the CHANGELOG section, then opens a `render --apply` pull
-   request in each adopting repo and squash-merges it once its checks pass. The installed plugin
-   updates itself through marketplace auto-update at the next Claude Code start.
+   request in each adopting repo and squash-merges it once its checks pass. When a sync leg fails,
+   fix the cause and use "Re-run failed jobs" on that run, not "Re-run all jobs". The installed
+   plugin follows the marketplace when its auto-update is on (it is on for the maintainer's
+   machine); otherwise run `claude plugin update house-rules@house-rules`.
 
 A refuter is worth sending when a rewording touches a hook, the guard, the model tiers, or text
 every adopter vendors. For a small text change the gate covers, reading the diff is usually
