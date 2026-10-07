@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.20.2 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=2a6f2143d16245be90a830a193e94671d7c585fcc5c695e62a4a61172af7aadb DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.20.3 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=5daafcadf9d12376ae31c8e6349538899931ecc954d326995bb0bb28e302c789 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -72,7 +72,7 @@ Name the model on every agent call, because the harness resolves an omitted one 
 Match the tier to the task: mechanical joins and receipt checks on Haiku, code and prose on Sonnet, judgment and adjudication on Opus, even when the session itself is on Opus, because the verdict is the product and Opus is moderately priced.
 Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor; an explicit call-level model still wins, and Fable never runs on a subagent unless the user asks for it.
 Reach for the plugin's pinned roster before a bare agent call (scout on Haiku, researcher and builder on Sonnet, refuter and debugger on Opus), since each pins its model, effort, and tools in a file the harness enforces.
-Name the effort on an off-roster call too: a subagent without one inherits the session's effort, and a newly released model starts at its own default until an effort level applies to it, so set one per model in user settings.
+Name the effort on an off-roster call too, through the Agent tool's `effort` parameter, which a fork ignores: a subagent without one inherits the session's effort, and a newly released model starts at its own default until an effort level applies to it, so also set one per model in user settings as the floor.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
 Expect the harness to substitute and warn rather than fail, stepping a blocked call down to the newest allowed model in its family: the checker and the fork's model map make that step-down visible.
 State the tier a procedure requires and stop when the session is below it, and give a scripted run its budget ceiling, the print-mode flag, or the SDK budget option, which counts subagent spend and refuses further spawns at the cap, so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill.

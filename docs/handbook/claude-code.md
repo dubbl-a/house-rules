@@ -325,7 +325,16 @@ the session's effort, and a newly released model starts at its own default effor
 (https://code.claude.com/docs/en/model-config; changelog at
 https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md), which is why an
 off-roster call now names its effort explicitly rather than assuming the new model's default
-matches what an older one needed.
+matches what an older one needed. Since 2.1.292 the Agent tool takes an `effort` parameter, so
+the call names its effort directly (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md); the tool's own
+description tells the model to set it only when the user or an instruction file asks for a
+specific effort level, never on its own judgment, and says a fork ignores it; this rule asks every
+off-roster call to name an effort but leaves the level to the call, so a model reading the
+description strictly may still omit it, which is why the per-model level in user settings stays
+the floor (observed in a 2.1.292 session, 2026-10-07). Whether a call-level `effort` overrides a
+roster agent's frontmatter `effort` is not stated on the sub-agents page (fetched 2026-10-07), so
+the roster pins stay the record for roster agents.
 
 Sonnet 5.5 as the default Sonnet, 2026-09-28: Claude Code 2.1.284 made Claude Sonnet 5.5
 (`claude-sonnet-5-5`) the default Sonnet model on the Anthropic API: $2/$10 per Mtok with cache
