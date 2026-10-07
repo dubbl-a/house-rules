@@ -15,6 +15,7 @@ A patch release under ADR 0012: lowering the Node floor cannot break an adopter,
 - The Node floor is back at 22 (`engines`, `.nvmrc`, the `pr-checks.yml` template, README, CONTRIBUTING, the guide page). 0.20.0 raised it to 26 with no technical reason: the package uses only Node built-ins, the full suite passes on Node 22, Node 22 is Maintenance LTS until 2027-04-30, and GitHub's ubuntu-24.04 runner defaults to Node 22. CI now tests on Node 22 through `.nvmrc`. The floor moves to 24 when Node 22 reaches end of life.
 - The Vercel guide site is retired: the README link and the release step are removed, and `site/index.html` stays in the repo unpublished.
 - The README and the guide page are rewritten for clarity.
+- The harness survey records Claude Code 2.1.293 (#226): Haiku 5.5 becomes the default Haiku model on the Anthropic API, with effort levels, and a single-file `cat`, `head`, `tail`, `sed -n`, or `grep` through Bash now loads a matching path-scoped rule. Both are complements recorded in the handbook; no rule text changes. The handbook also corrects Sonnet 5.5's Claude Code default effort to medium.
 
 ## [0.20.3] - 2026-10-07
 
