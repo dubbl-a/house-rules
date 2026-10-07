@@ -6,6 +6,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.3] - 2026-10-07
+
+A patch release under ADR 0012: a reword that cites a new native floor after the Claude Code 2.1.290 to 2.1.292 survey; nothing the guard denies changes.
+
+### Changed
+
+- Off-roster agent calls name their effort through the Agent tool's new `effort` parameter (Claude Code 2.1.292), with the per-model level in user settings kept as the floor; the claude-code rule, the orchestration defaults, and the handbook receipt say so. Roster agents keep their pinned effort, since the docs do not yet say whether a call-level effort overrides an agent's frontmatter.
+- The harness survey records Claude Code 2.1.290, 2.1.291, and 2.1.292: no duplicates, no conflicts, one complement reworded (#217).
+
 ## [0.20.2] - 2026-10-05
 
 A patch release under ADR 0012: lifecycle fixes that restore behavior the commands already promised; the guard changes message text only, nothing it denies.

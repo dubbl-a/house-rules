@@ -46,8 +46,8 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   or where Opus at higher effort still falls short.
 - The harness runs a subagent, teammate, or workflow agent with no assigned model on the
   session's model unless `CLAUDE_CODE_SUBAGENT_MODEL` says otherwise, so every off-roster call
-  names a `model` and effort below the session unless the task needs the session's tier. Roster
-  agents are pinned.
+  names a `model` and an `effort` (the Agent tool takes both) below the session unless the task
+  needs the session's tier. Roster agents are pinned.
 - Fable never runs on a subagent unless the user asks for it.
 - Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
   or synthesis whose verdict decides, because the verdict is the product and Opus is moderately
