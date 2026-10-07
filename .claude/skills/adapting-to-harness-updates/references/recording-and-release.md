@@ -39,10 +39,13 @@ Release, per the repo's version rules:
 3. Cut the CHANGELOG section. Its summary sentence names the class and the ADR it follows.
 4. Run `node plugins/house/scripts/house render --apply --repo .`, then run the gate with
    `npm run verify`.
-5. Squash-merge on green CI, tag the merge commit, and create the GitHub release from the
-   CHANGELOG section.
-6. Update the installed plugin, then re-sync each adopting repo with its own `render --apply`
-   pull request.
+5. The maintainer squash-merges on green CI.
+6. `.github/workflows/release.yml` does the rest on that push to main: it tags the merge commit,
+   creates the GitHub release from the CHANGELOG section, then opens a `render --apply` pull
+   request in each adopting repo and squash-merges it once its checks pass. When a sync leg fails,
+   fix the cause and use "Re-run failed jobs" on that run, not "Re-run all jobs". The installed
+   plugin follows the marketplace when its auto-update is on (it is on for the maintainer's
+   machine); otherwise run `claude plugin update house-rules@house-rules`.
 
 A refuter is worth sending when a rewording touches a hook, the guard, the model tiers, or text
 every adopter vendors. For a small text change the gate covers, reading the diff is usually
