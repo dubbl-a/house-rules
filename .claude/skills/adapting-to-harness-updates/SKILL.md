@@ -1,6 +1,6 @@
 ---
 name: adapting-to-harness-updates
-description: Adapts house-rules to a newer Claude Code release or Claude model, so the package keeps complementing the harness instead of duplicating or contradicting it. Surveys what moved since the last dated survey, classifies every affected rule and mechanism, verifies each duplicate or conflict adversarially, applies the rewords, records a dated survey section, and ships a release. Use when the user says "adapt to the latest Claude updates", "a new Claude Code version is out", "a new model shipped", "re-survey the harness", or "is house-rules still current with Claude Code".
+description: Adapts house-rules to a newer Claude Code release or Claude model, so the package keeps complementing the harness instead of duplicating or contradicting it. Surveys what moved since the last dated survey, classifies every affected rule and mechanism, verifies each duplicate or conflict adversarially, applies the rewords, records a dated survey section, and prepares the release pull request. Use when the user says "adapt to the latest Claude updates", "a new Claude Code version is out", "a new model shipped", "re-survey the harness", or "is house-rules still current with Claude Code".
 disable-model-invocation: true
 ---
 
@@ -68,8 +68,8 @@ every fact in it still holds. This skill finds all four and fixes them.
    "known limit", name the house rule or doc recommendation that governs it and take the
    recommended option unless you can say why not.
 9. **Record** in the three places described in
-   [references/recording-and-release.md](references/recording-and-release.md). Then ship through
-   the release flow there.
+   [references/recording-and-release.md](references/recording-and-release.md). Then prepare the
+   release through the flow there; the merge hands the rest to CI.
 
 ## Choosing the depth
 
@@ -124,4 +124,5 @@ skeptics per duplicate-or-conflict claim, and two synthesis agents.
 
 This skill is repo-local. An edit reaches the next session that invokes it by name, and nothing
 ships to adopters. What reaches adopters is the rule and mechanism changes it produces, through a
-release and each adopter's `render --apply`.
+release: once the maintainer merges it, `.github/workflows/release.yml` tags and publishes it and
+merges each adopter's `render --apply` pull request.
