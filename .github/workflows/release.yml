@@ -91,7 +91,7 @@ jobs:
           RC=$?
           set -e
           case "$RC" in
-            0) echo "v${VERSION} is already tagged; reusing the tag" ;;
+            0) echo "v${VERSION} is already tagged at $(git ls-remote origin "refs/tags/v${VERSION}^{}" | cut -f1); this run is ${GITHUB_SHA}; reusing the tag" ;;
             2) git tag -a "v${VERSION}" -m "Release ${VERSION}" "$GITHUB_SHA"
                git push origin "refs/tags/v${VERSION}" ;;
             *) echo "could not list the remote tags (exit ${RC})"
