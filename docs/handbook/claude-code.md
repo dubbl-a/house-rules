@@ -352,7 +352,12 @@ researcher and builder pin the `sonnet` alias and their own effort, so they now 
 at the effort their frontmatter names. An off-roster call that lands on Sonnet through the
 subagent model variable runs at Sonnet 5.5's default of high until
 `modelSettings["claude-sonnet-5-5"].effortLevel` is set in user settings, which is the concrete
-case the effort line in the rule exists for.
+case the effort line in the rule exists for. Correction, 2026-10-07: the model-config page
+gives Sonnet 5.5 a Claude Code default of medium, below its API default of high
+(https://code.claude.com/docs/en/model-config, fetched 2026-10-07). As with Haiku 5.5 below,
+such a call that names no `effort` inherits the session's effort, as the rule's effort line
+says, and Sonnet 5.5 starts at that Claude Code default of medium, not the API's high, until
+an effort level applies to it; the case the effort line exists for is unchanged.
 
 Haiku 5.5 as the default Haiku, 2026-10-07: Claude Code 2.1.293 added Claude Haiku 5.5
 (`claude-haiku-5-5`) as the default Haiku model on the Anthropic API, with 1M context at
@@ -367,8 +372,10 @@ still to Haiku 4.5 on Bedrock, Google Cloud, Foundry, and Claude Platform on AWS
 v2.1.293 or later to use it (https://code.claude.com/docs/en/model-config, fetched 2026-10-07).
 Haiku stays the cheapest and fastest rung, so the ladder stands. The roster's scout pins the
 `haiku` alias and `effort: low`, so on the Anthropic API its effort pin now has a level to set,
-where on Haiku 4.5 it set none. An off-roster call that lands on Haiku runs at Haiku 5.5's
-default of medium until `modelSettings["claude-haiku-5-5"].effortLevel` is set in user settings.
+where on Haiku 4.5 it set none. An off-roster call that lands on Haiku and names no `effort`
+inherits the session's effort, as the rule's effort line says, and Haiku 5.5 starts at its own
+default of medium until an effort level applies to it, such as
+`modelSettings["claude-haiku-5-5"].effortLevel` in user settings.
 
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
