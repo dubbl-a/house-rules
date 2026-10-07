@@ -56,8 +56,6 @@ disagree with is argued on its evidence, not worked around.
 **If you are not an engineer**, these rules carry what you would otherwise have to learn the hard
 way or go and research: the practice an experienced team would already know, applied without you
 knowing its name, and each rule says why in the same breath, so you learn the reasoning as you go.
-Start with the plain-language guide, which explains every technical word where it first appears:
-https://house-rules-guide.vercel.app
 
 **If you are an engineer**, this is a Claude Code plugin. The twelve modules render into
 `.claude/rules/house/`, each rule an imperative heading, a one-clause why, an `Anchor:` naming what
