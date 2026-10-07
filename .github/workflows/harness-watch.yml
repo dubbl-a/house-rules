@@ -1,9 +1,11 @@
 name: harness-watch
 on:
   schedule:
-    # Offset off the top of the hour to dodge the cron stampede (see
-    # pr-checks.yml's header note on the same choice).
-    - cron: '17 6 * * *'
+    # Hourly, offset off the top of the hour to dodge the cron stampede (see
+    # pr-checks.yml's header note on the same choice). The check is one
+    # changelog fetch, and the routine below fires once per new version, not
+    # once per run, so a tighter cadence costs no extra routine runs.
+    - cron: '17 * * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -42,7 +44,7 @@ jobs:
           - Newer versions (newest first): ${NEWER}
           - Changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md
 
-          Run the adapting-to-harness-updates skill in a local session.
+          When the triage routine is configured, it opens a pull request on claude/harness-addendum-${LATEST}; start from that. Otherwise run the adapting-to-harness-updates skill in a local session.
           EOF
           )
           if ! gh label list --search harness-update --json name -q '.[].name' | grep -qx harness-update; then

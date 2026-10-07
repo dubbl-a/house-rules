@@ -24,8 +24,9 @@ every fact in it still holds. This skill finds all four and fixes them.
    changelog version since it, and the scheduled `harness-watch` Action files one
    `harness-update` issue when the list is not empty. When the `HARNESS_ROUTINE_URL` and
    `HARNESS_ROUTINE_TOKEN` secrets are set, the Action also fires a cloud routine. The routine runs
-   the delta addendum path and opens a draft PR on `claude/harness-addendum-<version>`. When that
-   PR exists, start from it rather than re-triaging. Compare against `claude --version` too.
+   the delta addendum path and opens a PR on `claude/harness-addendum-<version>`; its prompt,
+   kept on claude.ai, decides whether that PR only proposes the rewords or applies them, reviews
+   them, and prepares the release. When that PR exists, start from it rather than re-triaging. Compare against `claude --version` too.
 3. **Run the gate under the new CLI** before reading anything: `npm run verify` on a clean
    checkout. The plugin validator runs with `--strict`, so a warning a release adds fails the
    gate, and a changelog triage can read that entry as noise.
