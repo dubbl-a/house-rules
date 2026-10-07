@@ -19,7 +19,8 @@
 
 Keep `Claude Code X.Y.Z` in the survey heading. `scripts/check-harness-release.mjs` reads the last
 heading that carries it as the baseline, so a heading without it leaves the detector reporting an
-older baseline. Close the open `harness-update` issue from the PR that adds the section.
+older baseline. If an open `harness-update` issue exists from before the watcher stopped filing
+them, close it from the PR that adds the section.
 
 Keep the method in the skill and the dates in these records. The skill never carries a version
 number or an "as of".
