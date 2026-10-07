@@ -6,6 +6,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.4] - 2026-10-07
+
+A patch release under ADR 0012: lowering the Node floor cannot break an adopter, and ADR 0011 lists only raising it as the breaking class. Upgrading from 0.20.3: nothing required; Node 22 or newer now works.
+
+### Changed
+
+- The Node floor is back at 22 (`engines`, `.nvmrc`, the `pr-checks.yml` template, README, CONTRIBUTING, the guide page). 0.20.0 raised it to 26 with no technical reason: the package uses only Node built-ins, the full suite passes on Node 22, Node 22 is Maintenance LTS until 2027-04-30, and GitHub's ubuntu-24.04 runner defaults to Node 22. CI now tests on Node 22 through `.nvmrc`. The floor moves to 24 when Node 22 reaches end of life.
+- The Vercel guide site is retired: the README link and the release step are removed, and `site/index.html` stays in the repo unpublished.
+- The README and the guide page are rewritten for clarity.
+
 ## [0.20.3] - 2026-10-07
 
 A patch release under ADR 0012: a reword that cites a new native floor after the Claude Code 2.1.290 to 2.1.292 survey; nothing the guard denies changes.

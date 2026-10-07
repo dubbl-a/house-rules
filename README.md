@@ -69,7 +69,7 @@ plugin format has no rules component, and a `CLAUDE.md` at a plugin root is not 
 
 ## Prerequisites
 
-Node 26 or newer, `jq`, bash, and the GitHub CLI (`gh`), used by the cleanup script, deploy guards,
+Node 22 or newer, `jq`, bash, and the GitHub CLI (`gh`), used by the cleanup script, deploy guards,
 and handoff skill. git must be 2.28 or newer: below that, `--no-verify` skips the whole
 branch-policy floor, and `house doctor` says so. No language or framework is assumed. As the header
 of `plugins/house/payload/check.mjs` says, the docs gate checks `npm run` tokens only where
