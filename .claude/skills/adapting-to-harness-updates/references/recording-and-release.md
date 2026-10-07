@@ -47,6 +47,24 @@ Release, per the repo's version rules:
    plugin follows the marketplace when its auto-update is on (it is on for the maintainer's
    machine); otherwise run `claude plugin update house-rules@house-rules`.
 
+## How an update reaches the maintainer
+
+Nothing in this path asks the maintainer to remember a command or a folder; the one human step
+arrives in their inbox.
+
+1. `.github/workflows/harness-watch.yml` runs hourly on GitHub. When the changelog shows a version
+   newer than the last survey heading, it fires the claude.ai routine "house-rules harness triage"
+   once per version (remembered in the Actions cache) and opens no issue.
+2. The routine runs the prompt in [routine-prompt.md](routine-prompt.md) in a cloud session on the
+   maintainer's plan: survey, rewords, refuter rounds until clean, release prep when rules change,
+   `npm run verify`, a ready pull request, then one email to the maintainer through a send-only
+   Gmail connector.
+3. The maintainer reads the pull request's plain summary and merges it, usually from the GitHub app.
+4. `.github/workflows/release.yml` releases and syncs, as in Shipping step 6.
+
+`routine-prompt.md` is the copy of record. The routine itself lives on claude.ai, so a change to
+the prompt there must be copied into that file in the same pull request, and the reverse.
+
 A refuter is worth sending when a rewording touches a hook, the guard, the model tiers, or text
 every adopter vendors. For a small text change the gate covers, reading the diff is usually
 enough.
