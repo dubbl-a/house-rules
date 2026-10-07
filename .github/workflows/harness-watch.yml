@@ -7,9 +7,11 @@ on:
     # once per run, so a tighter cadence costs no extra routine runs.
     - cron: '17 * * * *'
   workflow_dispatch:
+# Read-only: the job reads the changelog and this repo, remembers a fired
+# version in the Actions cache, and calls the routine over HTTPS. It opens no
+# issue; the routine's pull request is the record of a new version.
 permissions:
   contents: read
-  issues: write
 concurrency:
   group: harness-watch
   cancel-in-progress: false
@@ -26,54 +28,45 @@ jobs:
         run: |
           set +e
           node scripts/check-harness-release.mjs --json > harness-release.json
-          echo "status=$?" >> "$GITHUB_OUTPUT"
-      - name: File or update the issue
+          STATUS=$?
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" = "1" ]; then
+            echo "latest=$(node -e "console.log(JSON.parse(require('fs').readFileSync('harness-release.json','utf8')).latest)")" >> "$GITHUB_OUTPUT"
+          fi
+      # The cache entry is the memory of "already fired for this version", so the
+      # routine runs once per version. A routine run that already pushed its branch
+      # also counts, in case the cache entry was evicted.
+      - name: Recall whether this version already fired
         if: steps.check.outputs.status == '1'
+        id: fired
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: harness-fired
+          key: harness-fired-${{ steps.check.outputs.latest }}
+          lookup-only: true
+      - name: Check for the routine's branch
+        if: steps.check.outputs.status == '1' && steps.fired.outputs.cache-hit != 'true'
+        id: branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST: ${{ steps.check.outputs.latest }}
         run: |
-          set -e
-          SURVEYED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('harness-release.json','utf8')).surveyed)")
-          LATEST=$(node -e "console.log(JSON.parse(require('fs').readFileSync('harness-release.json','utf8')).latest)")
-          NEWER=$(node -e "console.log(JSON.parse(require('fs').readFileSync('harness-release.json','utf8')).newer.join(', '))")
-          TITLE="Claude Code ${LATEST} shipped; last surveyed ${SURVEYED}"
-          BODY=$(cat <<EOF
-          Claude Code has shipped versions past the last one this repo surveyed.
-
-          - Last surveyed: ${SURVEYED}
-          - Newer versions (newest first): ${NEWER}
-          - Changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md
-
-          When the triage routine is configured, it opens a pull request on claude/harness-addendum-${LATEST}; start from that. Otherwise run the adapting-to-harness-updates skill in a local session.
-          EOF
-          )
-          if ! gh label list --search harness-update --json name -q '.[].name' | grep -qx harness-update; then
-            gh label create harness-update --description "Claude Code shipped past the last surveyed version" --color "5319E7"
-          fi
-          EXISTING=$(gh issue list --state open --label harness-update --json number -q '.[0].number')
-          if [ -n "$EXISTING" ]; then
-            OLD_TITLE=$(gh issue view "$EXISTING" --json title -q .title)
-            [ "$OLD_TITLE" = "$TITLE" ] && exit 0
-            gh issue edit "$EXISTING" --title "$TITLE" --body "$BODY"
-            ISSUE="$EXISTING"
+          if git ls-remote --exit-code --heads origin "claude/harness-addendum-${LATEST}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            ISSUE=$(gh issue create --title "$TITLE" --body "$BODY" --label harness-update | sed 's#.*/##')
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
-        id: issue
-      # Fires the triage routine once per new version, not once per day: the step
-      # above exits early when the open issue already names the latest version.
       # The routine's URL and token come from its API trigger on claude.ai; with
       # either secret unset this step is skipped.
       - name: Fire the triage routine
-        if: steps.issue.outputs.issue != ''
+        if: steps.check.outputs.status == '1' && steps.fired.outputs.cache-hit != 'true' && steps.branch.outputs.exists == 'false'
+        id: fire
         env:
           ROUTINE_URL: ${{ secrets.HARNESS_ROUTINE_URL }}
           ROUTINE_TOKEN: ${{ secrets.HARNESS_ROUTINE_TOKEN }}
-          ISSUE: ${{ steps.issue.outputs.issue }}
+          LATEST: ${{ steps.check.outputs.latest }}
         run: |
           if [ -z "$ROUTINE_URL" ] || [ -z "$ROUTINE_TOKEN" ]; then
-            echo "routine secrets not set; issue filed without a triage run"
+            echo "routine secrets not set; Claude Code ${LATEST} found but no triage run started"
             exit 0
           fi
           curl -fsS -X POST "$ROUTINE_URL" \
@@ -81,7 +74,15 @@ jobs:
             -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
             -H "anthropic-version: 2023-06-01" \
             -H "Content-Type: application/json" \
-            -d "{\"text\": \"issue=${ISSUE}\"}"
+            -d "{\"text\": \"version=${LATEST}\"}"
+          mkdir -p harness-fired && echo "${LATEST}" > harness-fired/version
+          echo "fired=true" >> "$GITHUB_OUTPUT"
+      - name: Remember the fired version
+        if: steps.fire.outputs.fired == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: harness-fired
+          key: harness-fired-${{ steps.check.outputs.latest }}
       - name: Fail on a bad argument or unreadable source
         if: steps.check.outputs.status == '3'
         run: |

@@ -1,5 +1,5 @@
 {
-  "version": "0.20.3",
+  "version": "0.20.4",
   "defaultBranch": "main",
   "branchPolicy": "pr",
   "protectedBranches": [
@@ -165,7 +165,7 @@
     }
   },
   "ratchet": {
-    "README.md": 188
+    "README.md": 186
   },
   "ratchetRaises": [
     {

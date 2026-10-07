@@ -21,9 +21,9 @@ every fact in it still holds. This skill finds all four and fixes them.
    `docs/handbook/sources/harness-survey.md`. The latest re-survey section there names the
    research bank directory. The model facts of record are in the "ladder" paragraphs of
    `docs/handbook/claude-code.md`. `npm run check:harness` prints that baseline and every
-   changelog version since it, and the scheduled `harness-watch` Action files one
-   `harness-update` issue when the list is not empty. When the `HARNESS_ROUTINE_URL` and
-   `HARNESS_ROUTINE_TOKEN` secrets are set, the Action also fires a cloud routine. The routine runs
+   changelog version since it. The scheduled `harness-watch` Action runs the same check and,
+   when the list is not empty and the `HARNESS_ROUTINE_URL` and `HARNESS_ROUTINE_TOKEN` secrets
+   are set, fires a cloud routine once per new version; it opens no issue. The routine runs
    the delta addendum path and opens a PR on `claude/harness-addendum-<version>`; its prompt,
    kept on claude.ai, decides whether that PR only proposes the rewords or applies them, reviews
    them, and prepares the release. When that PR exists, start from it rather than re-triaging. Compare against `claude --version` too.

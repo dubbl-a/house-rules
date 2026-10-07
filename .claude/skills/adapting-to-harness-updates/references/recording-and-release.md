@@ -19,7 +19,8 @@
 
 Keep `Claude Code X.Y.Z` in the survey heading. `scripts/check-harness-release.mjs` reads the last
 heading that carries it as the baseline, so a heading without it leaves the detector reporting an
-older baseline. Close the open `harness-update` issue from the PR that adds the section.
+older baseline. If an open `harness-update` issue exists from before the watcher stopped filing
+them, close it from the PR that adds the section.
 
 Keep the method in the skill and the dates in these records. The skill never carries a version
 number or an "as of".
@@ -36,12 +37,11 @@ Release, per the repo's version rules:
    deny set is a patch.
 2. Bump `plugins/house/.claude-plugin/plugin.json` and the pin in `house.json`.
 3. Cut the CHANGELOG section. Its summary sentence names the class and the ADR it follows.
-4. Bump the `Updated` date and `Covers` version in `site/index.html`.
-5. Run `node plugins/house/scripts/house render --apply --repo .`, then run the gate with
+4. Run `node plugins/house/scripts/house render --apply --repo .`, then run the gate with
    `npm run verify`.
-6. Squash-merge on green CI, tag the merge commit, and create the GitHub release from the
+5. Squash-merge on green CI, tag the merge commit, and create the GitHub release from the
    CHANGELOG section.
-7. Update the installed plugin, then re-sync each adopting repo with its own `render --apply`
+6. Update the installed plugin, then re-sync each adopting repo with its own `render --apply`
    pull request.
 
 A refuter is worth sending when a rewording touches a hook, the guard, the model tiers, or text
