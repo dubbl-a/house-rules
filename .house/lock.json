@@ -40,7 +40,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "add0042247de4811aa876b478edbaf38d6186af902620d945624e6c84fc03175"
+      "bodySha256": "700b9bcb87303577f870e0697d6062cd713efd7409b8253ebdd9eb54dd8526f4"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "e44b79b1df1160ddeb1126d93b1f46a37854c67bc3594a97decb10d4b5b47e6d"
+      "bodySha256": "e4d8ec1a7148c16de44ffbe941674d9344206463745859323face10e8177d30d"
     },
     {
       "path": "AGENTS.md",

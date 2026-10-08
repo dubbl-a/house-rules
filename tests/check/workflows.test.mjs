@@ -236,6 +236,36 @@ test('publish-token: the same publish with id-token: write is warning-free', () 
   assert.deepEqual(warns(repo({ '.github/workflows/release.yml': PUBLISH.replace('  contents: read\n', '  contents: read\n  id-token: write\n') })), []);
 });
 
+// pr-credential: the PR gate stays credential-free
+const PR_STEP = '      - run: echo hi\n';
+test('pr-credential: a secret in a pull_request workflow warns; GITHUB_TOKEN alone does not', () => {
+  const ws = warns(withWorkflow(CLEAN_WORKFLOW + PR_STEP + '        env:\n          K: ${{ secrets.FOO }}\n'));
+  assert.deepEqual(kinds(ws), ['pr-credential']);
+  assert.match(ws[0].message, /secrets\.FOO/);
+  assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW + PR_STEP + '        env:\n          K: ${{ secrets.GITHUB_TOKEN }}\n')), []);
+});
+
+test('pr-credential: contents: write in a pull_request or pull_request_target workflow warns; read does not', () => {
+  assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('contents: read', 'contents: write')))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('pull_request:', 'pull_request_target:').replace('contents: read', 'contents: write')))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('contents: read', 'contents: read\n  pull-requests: write')))), ['pr-credential']);
+  assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW.replace('contents: read', 'contents: read\n  pull-requests: read'))), []);
+});
+
+test('pr-credential: a push-only workflow with secrets and write is not judged; a mixed one is', () => {
+  const body = CLEAN_WORKFLOW.replace('pull_request:', 'push:').replace('contents: read', 'contents: write') + PR_STEP + '        env:\n          K: ${{ secrets.FOO }}\n';
+  assert.deepEqual(warns(withWorkflow(body)), []);
+  assert.deepEqual(kinds(warns(withWorkflow(body.replace('push:', 'push:\n  pull_request:')))), ['pr-credential', 'pr-credential']);
+});
+
+test('pr-credential: a recorded reason clears it', () => {
+  const dir = repo({
+    '.github/workflows/ci.yml': CLEAN_WORKFLOW.replace('contents: read', 'contents: write'),
+    'house.json': houseJson({ modules: { github: { enabled: true, config: { waivers: [{ check: 'pr-credential', path: '.github/workflows/ci.yml', why: 'labels PRs, reviewed' }] } } } }),
+  });
+  assert.deepEqual(warns(dir), []);
+});
+
 // 9
 test('unfrozen-install: npm install with a committed lockfile warns', () => {
   assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('run: npm ci', 'run: npm install --ignore-scripts')))), ['unfrozen-install']);

@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.20.5 module=github source=modules/github/rules/github.md body-sha256=9ce0e75d477f2255e9d3274e3f388baabe7cb7c3fae226ea243ee60b8f1af7b6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.20.5 module=github source=modules/github/rules/github.md body-sha256=581dbfde49150ffc60014a285da8aa32a87085e742d533f8f0906f7c49b6a2e3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -17,7 +17,7 @@ Each rule names what enforces it, or says plainly that nothing does.
 Gate on file-only checks, so the gate runs with no database, network, or secret to leak. Push stateful checks to a retro or a local pre-deploy step.
 Name what is deliberately not gated, and why, inside the workflow that gates: an unstated gap reads as coverage.
 Run the same set locally before opening the PR, and fail loudly on a missing secret before any lane starts.
-Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then reports what it reads there, failing on unpinned actions or missing permissions, but nothing checks that the gate stays credential-free, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
+Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then reports what it reads there, failing on unpinned actions or missing permissions and warning (`pr-credential`) when a pull-request workflow reads a secret other than `GITHUB_TOKEN` or grants a write permission, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
 Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated`
 
 ## Give a workflow read-only permissions and pin every action by SHA

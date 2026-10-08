@@ -2523,7 +2523,7 @@ function checkMinutes(ctx) {
 // are findings and fail the run; the rest are warnings. A recorded waiver
 // clears either. zizmor covers the workflow checks in
 // more depth; this family is the floor every adopter gets without installing it.
-const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy'];
+const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy', 'pr-credential'];
 const FAILING_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout']);
 const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
@@ -2856,6 +2856,27 @@ function checkWorkflows(ctx) {
           const headRef = (e.key === 'ref' && parentKey(e) === 'with' && PR_HEAD_REF_RE.test(e.value))
             || (e.key === 'with' && /\bref\s*:/.test(e.value) && PR_HEAD_REF_RE.test(e.value));
           if (headRef) warn('pr-target-checkout', f, e.line, 'runs on `pull_request_target`, which carries a write token and the repository\'s secrets, and checks out the pull request head, so the contributor\'s code runs with both. Use `pull_request` for anything that runs the PR\'s code, or keep this checkout on the base ref.');
+        }
+      }
+    }
+
+    // 4b. A pull_request workflow holding a credential: a secret other than
+    // GITHUB_TOKEN, or a write permission. The PR gate stays credential-free.
+    // A job-level `if:` or `on:` filter that keeps the job off PRs is not read,
+    // so a file with a PR trigger is judged as a whole.
+    if (on) {
+      const next = entries.find((e) => e.line > on.line && isTopLevel(e));
+      const onText = raw.split(YAML_LINE_BREAK_RE).slice(on.line - 1, next ? next.line - 1 : undefined).map(stripYamlComment).join('\n');
+      if (/\bpull_request(_target)?\b/.test(onText)) {
+        raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment).forEach((l, i) => {
+          const secret = [...l.matchAll(/\bsecrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]).find((n) => n !== 'GITHUB_TOKEN')
+            || (/\bsecrets\s*\[/.test(l) || /^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? 'secrets' : null);
+          if (secret) warn('pr-credential', f, i + 1, `reads \`${secret === 'secrets' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
+        });
+        for (const e of entries) {
+          const grant = (e.key === 'permissions' && /^write-all$|\bwrite\b/.test(e.value))
+            || (e.key !== null && e.key !== 'permissions' && parentKey(e) === 'permissions' && e.value === 'write');
+          if (grant) warn('pr-credential', f, e.line, 'grants a `write` permission in a workflow that runs on a pull request, so the PR gate can change the repository. Keep this workflow `contents: read` and put the write in a workflow that does not run on pull requests.');
         }
       }
     }
