@@ -59,8 +59,9 @@ arrives in their inbox.
 2. The routine runs the prompt in [routine-prompt.md](routine-prompt.md) in a cloud session on the
    maintainer's plan: survey, rewords, refuter rounds until clean, release prep when rules change,
    `npm run verify`, a ready pull request, then one email to the maintainer through a send-only
-   Gmail connector. The routine applies small opportunities in that PR and files an issue for each
-   larger one.
+   Gmail connector. The routine builds every opportunity in that PR, larger ones included. When a
+   release has nothing to adopt, it opens no PR: it comments the triage on the rolling
+   `survey-pending` issue, and the next PR records those versions and closes it.
 3. The maintainer reads the pull request's plain summary and merges it, usually from the GitHub app.
 4. `.github/workflows/release.yml` releases and syncs, as in Shipping step 6.
 

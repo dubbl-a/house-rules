@@ -1,6 +1,6 @@
 ---
 name: adapting-to-harness-updates
-description: Adapts house-rules to a newer Claude Code release or Claude model, so the package complements the harness, improves on it, and adopts what a release offers instead of duplicating or contradicting it. Surveys what moved since the last dated survey, classifies every affected rule and mechanism, verifies each duplicate or conflict adversarially, applies the rewords and small adoptions, files issues for larger ones, records a dated survey section, and prepares the release pull request. Use when the user says "adapt to the latest Claude updates", "a new Claude Code version is out", "a new model shipped", "re-survey the harness", or "is house-rules still current with Claude Code".
+description: Adapts house-rules to a newer Claude Code release or Claude model, so the package complements the harness, improves on it, and adopts what a release offers instead of duplicating or contradicting it. Surveys what moved since the last dated survey, classifies every affected rule and mechanism, verifies each duplicate or conflict adversarially, applies the rewords and adoptions, records a dated survey section, and prepares the release pull request, or logs a release with nothing to adopt on one rolling issue. Use when the user says "adapt to the latest Claude updates", "a new Claude Code version is out", "a new model shipped", "re-survey the harness", or "is house-rules still current with Claude Code".
 disable-model-invocation: true
 ---
 
@@ -69,10 +69,13 @@ every fact in it still holds. This skill finds all four and fixes them, and find
    or settings line, a constant in the checker's lists) is applied in the same PR, sent to a
    refuter, and carries the release prep (version bump per ADR 0011 and 0012 and a CHANGELOG
    section) so it reaches adopters. A larger adoption (a new hook or hook event, a change to the
-   guard, the agents, the workflow fork, or a new checker family) is not built in the triage run:
-   check that no open issue covers it, file one issue per opportunity with a concrete proposal and
-   the changelog line, and link it in the PR body. An opportunity that would weaken a guard or
-   loosen a deny is always the larger kind. A prompt-audit
+   guard, the agents, the workflow fork, or a new checker family) is built in the same PR too, with
+   its tests, refuted until clean, and named as larger in the PR body; a change to what the guard
+   denies is the breaking class under ADR 0011. An opportunity that would weaken a guard or loosen
+   a deny is built only as a proposal in the PR body, never applied. When a release offers nothing
+   to change beyond the survey record, open no PR: comment the triage on the open
+   `survey-pending` issue (open it if none exists), and let the next PR record those versions and
+   close it. A prompt-audit
    finding changes wording, never a rule's claim, and it has to fit the rule shape the checker
    enforces. Before accepting an agent's deviation, a reviewer's "non-blocking" note, or a
    "known limit", name the house rule or doc recommendation that governs it and take the
