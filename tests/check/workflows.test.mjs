@@ -245,6 +245,17 @@ test('pr-credential: a secret in a pull_request workflow warns; GITHUB_TOKEN alo
   assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW + PR_STEP + '        env:\n          K: ${{ secrets.GITHUB_TOKEN }}\n')), []);
 });
 
+test('pr-credential: only a secret read in an expression counts, and GITHUB_TOKEN in any case or bracket form does not', () => {
+  const env = (v) => withWorkflow(CLEAN_WORKFLOW + PR_STEP + `        env:\n          K: ${v}\n`);
+  assert.deepEqual(warns(env('${{ secrets.github_token }}')), []);
+  assert.deepEqual(warns(env("${{ secrets['GITHUB_TOKEN'] }}")), []);
+  assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW + '      - run: detect-secrets scan --baseline .secrets.baseline\n')), []);
+  assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW + '      - run: cp config/secrets.yml.example config/secrets.yml\n')), []);
+  assert.deepEqual(kinds(warns(env("${{ secrets['NPM_TOKEN'] }}"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(env('${{ secrets[matrix.name] }}'))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('contents: read', 'contents: "write"')))), ['pr-credential']);
+});
+
 test('pr-credential: contents: write in a pull_request or pull_request_target workflow warns; read does not', () => {
   assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('contents: read', 'contents: write')))), ['pr-credential']);
   assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('pull_request:', 'pull_request_target:').replace('contents: read', 'contents: write')))), ['pr-credential']);

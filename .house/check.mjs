@@ -2868,15 +2868,22 @@ function checkWorkflows(ctx) {
       const next = entries.find((e) => e.line > on.line && isTopLevel(e));
       const onText = raw.split(YAML_LINE_BREAK_RE).slice(on.line - 1, next ? next.line - 1 : undefined).map(stripYamlComment).join('\n');
       if (/\bpull_request(_target)?\b/.test(onText)) {
+        // A secret is read only inside a `${{ }}` expression (or handed down
+        // whole by `secrets: inherit`), so a file name like `.secrets.baseline`
+        // in a run line is not one. Secret names are case-insensitive.
         raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment).forEach((l, i) => {
-          const secret = [...l.matchAll(/\bsecrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]).find((n) => n !== 'GITHUB_TOKEN')
-            || (/\bsecrets\s*\[/.test(l) || /^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? 'secrets' : null);
-          if (secret) warn('pr-credential', f, i + 1, `reads \`${secret === 'secrets' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
+          const names = [...l.matchAll(/\$\{\{([^}]*)\}\}/g)].flatMap((x) => [
+            ...[...x[1].matchAll(/\bsecrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
+            ...[...x[1].matchAll(/\bsecrets\s*\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]/g)].map((m) => m[1] ?? m[2] ?? '*'),
+          ]);
+          const secret = names.find((n) => n.toUpperCase() !== 'GITHUB_TOKEN')
+            ?? (/^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? '*' : null);
+          if (secret !== null) warn('pr-credential', f, i + 1, `reads \`${secret === '*' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
         });
         for (const e of entries) {
           const grant = (e.key === 'permissions' && /^write-all$|\bwrite\b/.test(e.value))
-            || (e.key !== null && e.key !== 'permissions' && parentKey(e) === 'permissions' && e.value === 'write');
-          if (grant) warn('pr-credential', f, e.line, 'grants a `write` permission in a workflow that runs on a pull request, so the PR gate can change the repository. Keep this workflow `contents: read` and put the write in a workflow that does not run on pull requests.');
+            || (e.key !== null && e.key !== 'permissions' && parentKey(e) === 'permissions' && unquoteYaml(e.value) === 'write');
+          if (grant) warn('pr-credential', f, e.line, 'grants a `write` permission in a workflow that runs on a pull request, so the PR gate holds a credential. Keep this workflow `contents: read` and put the write in a workflow that does not run on pull requests.');
         }
       }
     }
