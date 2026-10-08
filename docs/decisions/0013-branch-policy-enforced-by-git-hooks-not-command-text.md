@@ -118,11 +118,12 @@ resolution; a command glued behind such a value, such as `-m "$(cat msg)";git co
 the guard's 5 second hook timeout is not denied, because Claude Code does not block on a timed-out
 hook; the file-tool and MCP scans already deny past `SCAN_BUDGET_MS`, and the Bash scans do not
 (#157). The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,
-written by `git fetch origin f:refs/remotes/origin/main` or `git remote set-head`, lets it accept
+written by `git fetch origin f:refs/remotes/origin/main`, `git remote set-head`, or a rewrite of
+`remote.origin.url`, lets it accept
 a local protected branch moved to an unmerged commit (#161). An inline `git -c alias.x='!...'`
 body is not read in any state, and an alias that calls another alias is read one level deep (#161).
-The CLI removes the floor from inside `house render --apply` or `house disable`, which the text
-guard does not see (#161).
+The CLI removes the floor from inside `house render --apply` (after the github module is disabled)
+or `house disable github --apply`, which the text guard does not see; reasoned, not run (#161).
 
 ### Confirmation
 
