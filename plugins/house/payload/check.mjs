@@ -2876,14 +2876,18 @@ function checkWorkflows(ctx) {
           // not end it; the lookbehind skips a property named secrets
           // (`steps.secrets.outputs`); a bare `secrets` (`toJSON(secrets)`)
           // hands over every secret. String literals (single-quoted, `''`
-          // escapes) are blanked first, so `hashFiles('secrets/**')` or
-          // `needs['secrets']` is not a read; the bracket form reads its
-          // literal name from the raw text.
+          // escapes) are blanked to same-length spaces first, so
+          // `hashFiles('secrets/**')` or `needs['secrets']` is not a read;
+          // the bracket form finds its match in the blanked text and reads
+          // its literal name from the raw text at the same offset.
           const names = [...l.matchAll(/\$\{\{(.*?)\}\}/g)].flatMap((x) => {
-            const code = x[1].replace(/'(?:[^']|'')*'/g, "''");
+            const code = x[1].replace(/'(?:[^']|'')*'/g, (s) => `'${' '.repeat(s.length - 2)}'`);
             return [
               ...[...code.matchAll(/(?<![\w.-])secrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
-              ...[...x[1].matchAll(/(?<![\w.'"[-])secrets\s*\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]/g)].map((m) => m[1] ?? m[2] ?? '*'),
+              ...[...code.matchAll(/(?<![\w.-])secrets\s*\[[^\]]*\]/g)].map((m) => {
+                const lit = /^secrets\s*\[\s*'((?:[^']|'')*)'\s*\]$/.exec(x[1].slice(m.index, m.index + m[0].length));
+                return lit ? lit[1].replace(/''/g, "'") : '*';
+              }),
               ...[...code.matchAll(/(?<![\w.-])secrets\b(?!\s*[.[])/g)].map(() => '*'),
             ];
           });
