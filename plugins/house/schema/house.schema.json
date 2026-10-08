@@ -71,7 +71,7 @@
         "required": ["path", "from", "to", "why", "decided"],
         "additionalProperties": false,
         "properties": {
-          "path": { "type": "string" }, "from": { "type": "integer", "description": "The file's current line ceiling; a raise applies only while it matches." }, "to": { "type": "integer" },
+          "path": { "type": "string" }, "from": { "type": "integer", "description": "The file's ratchet entry, or its configured line limit when it has none; a raise over the line limit applies only while it matches." }, "to": { "type": "integer" },
           "why": { "type": "string", "minLength": 1 }, "decided": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
         }
       }

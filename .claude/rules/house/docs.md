@@ -8,7 +8,7 @@ paths:
   - .claude/commands/**
   - docs/**
 ---
-<!-- house-managed v0.20.5 module=docs source=modules/docs/rules/docs.md body-sha256=fbbc8fa1bbb13589ac9a85aa3b1bb49c0be1c25b7750372f05dfb8d7eade80d7 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.20.5 module=docs source=modules/docs/rules/docs.md body-sha256=923e3f678d18354449ca0ea3daa227445ca10a82dc24c01873002abf6b2af507 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -65,7 +65,7 @@ Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-ru
 
 The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. The Claude Code docs say a file over 200 lines "may reduce adherence", and every loaded line costs context on each read.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work, not renegotiated.
-Raising a ceiling takes an entry naming the path, the old and new limit (the old must be the current ceiling, so a raise is spent once the file tightens below it), the reason, and the date decided, so it argues for itself in the diff, not as a quiet edit; it takes effect on its own, with no flag to run.
+Raising a ceiling takes an entry naming the path, the old and new limit (the old must be the file's ratchet entry, or its configured limit when it has none, so a raise is spent once the file tightens), the reason, and the date decided, so it argues for itself in the diff, not as a quiet edit; it takes effect on its own, with no flag to run.
 Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema.
 Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-only-with-a-written-reason`
 

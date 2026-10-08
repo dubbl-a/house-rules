@@ -1871,7 +1871,7 @@ function checkLengths(ctx) {
     }
 
     if (linesOver || bytesOver) {
-      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided) && (effectiveCeiling === null || r.from === effectiveCeiling));
+      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided) && (!linesOver || r.from === (ceilingFromRatchet ?? limitLines)));
       if (raise) {
         tighten.push({ path: file, to: raise.to });
       } else {

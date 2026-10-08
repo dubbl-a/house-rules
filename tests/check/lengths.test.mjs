@@ -169,6 +169,31 @@ test('lengths: a ratchetRaises entry applies only when its from is the current c
   assert.equal(JSON.parse(readFileSync(join(fresh, 'house.json'), 'utf8')).ratchet['README.md'], 195);
 });
 
+test('lengths: a raise from the configured limit is spent once a ratchet entry sits below it', () => {
+  const dir = sandbox({
+    'README.md': linesOf(150),
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } },
+      ratchet: { 'README.md': 90 },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, why: 'grew once', decided: '2026-08-24' }],
+    }),
+  });
+  assert.equal(run(dir, ['--only=lengths']).code, 1);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'house.json'), 'utf8')).ratchet['README.md'], 90);
+});
+
+test('lengths: a file over only its byte limit keeps passing on a raise, run after run', () => {
+  const dir = sandbox({
+    'README.md': Array.from({ length: 90 }, () => 'x'.repeat(8)).join('\n') + '\n',
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': { lines: 100, bytes: 500 } } } } },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 120, why: 'bytes', decided: '2026-08-24' }],
+    }),
+  });
+  assert.equal(run(dir, ['--only=lengths']).code, 0);
+  assert.equal(run(dir, ['--only=lengths']).code, 0);
+});
+
 test('lengths: --accept-lengths is still accepted, changes nothing, and says it is no longer needed', () => {
   const dir = sandbox({
     'README.md': linesOf(200),
