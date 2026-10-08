@@ -1,17 +1,18 @@
 ---
 name: adapting-to-harness-updates
-description: Adapts house-rules to a newer Claude Code release or Claude model, so the package keeps complementing the harness instead of duplicating or contradicting it. Surveys what moved since the last dated survey, classifies every affected rule and mechanism, verifies each duplicate or conflict adversarially, applies the rewords, records a dated survey section, and prepares the release pull request. Use when the user says "adapt to the latest Claude updates", "a new Claude Code version is out", "a new model shipped", "re-survey the harness", or "is house-rules still current with Claude Code".
+description: Adapts house-rules to a newer Claude Code release or Claude model, so the package complements the harness, improves on it, and adopts what a release offers instead of duplicating or contradicting it. Surveys what moved since the last dated survey, classifies every affected rule and mechanism, verifies each duplicate or conflict adversarially, applies the rewords and adoptions, records a dated survey section, and prepares the release pull request, or logs a release with nothing to adopt on one rolling issue. Use when the user says "adapt to the latest Claude updates", "a new Claude Code version is out", "a new model shipped", "re-survey the harness", or "is house-rules still current with Claude Code".
 disable-model-invocation: true
 ---
 
 # Adapting to harness updates
 
-The package's standing test: complement and improve the harness, and never duplicate or conflict
-with it unless that is declared on purpose, with the native floor named. A harness release can
-break that test three ways. It can ship natively what a rule or mechanism does, so the rule becomes
+The package's standing test: complement, improve, and adopt what the harness offers, and never
+duplicate or conflict with it unless that is declared on purpose, with the native floor named. A
+release is also a chance to use, teach, or retire something for a native capability, so the package
+updates as the harness does and does not only log it. A harness release can break the test three ways. It can ship natively what a rule or mechanism does, so the rule becomes
 a duplicate. It can change behavior a rule describes, so the rule becomes a conflict. Or it can add
 a floor a rule should cite. A new model can also make a rule's prompting style dated even when
-every fact in it still holds. This skill finds all four and fixes them.
+every fact in it still holds. This skill finds all four and fixes them, and finds what is worth adopting.
 
 ## Default path
 
@@ -49,7 +50,8 @@ every fact in it still holds. This skill finds all four and fixes them.
      `plugins/house/orchestration/ORCHESTRATION.md`.
 5. **Choose the depth.** Use the judgment below. Say which one you picked and why.
 6. **Triage and classify.** Every candidate gets one disposition: DUPLICATE, CONFLICT, COMPLEMENT,
-   or UNIQUE (definitions in [references/dispositions.md](references/dispositions.md)). Grep the
+   UNIQUE, or OPPORTUNITY (a finding can be COMPLEMENT and OPPORTUNITY at once; list it under both;
+   definitions in [references/dispositions.md](references/dispositions.md)). Grep the
    rule files, `plugins/house/orchestration/ORCHESTRATION.md`, the agents, the hooks, the skills,
    and the evals for any text that claims the old behavior.
    Beside each release's triage, review `RISKY_AGENT_SETTINGS` in `plugins/house/payload/check.mjs`
@@ -62,7 +64,18 @@ every fact in it still holds. This skill finds all four and fixes them.
    it (`--help`, a hook with a real payload, the checker), run.
 8. **Act on the disposition.** Resolve a conflict in the rule or hook. Retire a duplicate, or keep
    it as a declared duplicate that names the native floor. Reword a complement only where the rule
-   claims or implies a floor, and cite the fact. Record a unique and leave it. A prompt-audit
+   claims or implies a floor, and cite the fact. Record a unique and leave it. For an
+   opportunity, size it. A small adoption (a rule clause, an Anchor or receipt update, a template
+   or settings line, a constant in the checker's lists) is applied in the same PR, sent to a
+   refuter, and carries the release prep (version bump per ADR 0011 and 0012 and a CHANGELOG
+   section) so it reaches adopters. A larger adoption (a new hook or hook event, a change to the
+   guard, the agents, the workflow fork, or a new checker family) is built in the same PR too, with
+   its tests, refuted until clean, and named as larger in the PR body; a change to what the guard
+   denies is the breaking class under ADR 0011. A change that would weaken a guard, loosen a deny,
+   or edit `.github/workflows/` is written only as a proposal in the PR body, never applied. When a
+   release offers nothing to change beyond the survey record, open no PR: comment the triage on the
+   open issue titled `Survey pending: Claude Code updates checked, nothing to adopt yet` (open it
+   if none exists), and let the next PR record those versions and close it. A prompt-audit
    finding changes wording, never a rule's claim, and it has to fit the rule shape the checker
    enforces. Before accepting an agent's deviation, a reviewer's "non-blocking" note, or a
    "known limit", name the house rule or doc recommendation that governs it and take the

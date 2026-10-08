@@ -3,7 +3,7 @@ paths:
   - tests/**
   - .github/workflows/**
 ---
-<!-- house-managed v0.20.5 module=testing source=modules/testing/rules/testing.md body-sha256=5355cb1911e55b016bc2dc2382f2509d0ed698fb61116ed0ae6444aa288ab8c9 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.20.6 module=testing source=modules/testing/rules/testing.md body-sha256=c915e0af33764d5a385ba962a619d4987420b4261e41d08ec775437e839ac07a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -11,7 +11,7 @@ These rules cover the checks a repo runs on itself: the suite, the gates that gu
 
 ## Give the agent a check it can run before you walk away
 
-Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; making it enforced rather than advised is claude-code.md's hook ladder.
+Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted; making it enforced rather than advised is claude-code.md's hook ladder.
 Anchor: a single `verify` script that runs the suite, the hook harness, and the checker in one pass, so one command covers the tree.
 Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you-walk-away`
 

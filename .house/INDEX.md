@@ -206,7 +206,7 @@
 
 ## .claude/rules/house/testing.md
 - Give the agent a check it can run before you walk away
-  Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; making it enforced rather than advised is claude-code.md's hook ladder.
+  Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted; making it enforced rather than advised is claude-code.md's hook ladder.
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford
   Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 - Test the guard itself, as its own CI step
