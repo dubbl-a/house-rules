@@ -449,6 +449,22 @@ Native floor, as of 2026-09-28: PreToolUse hook decision mechanics
 shapes that load no project hooks at all (https://code.claude.com/docs/en/headless), including an
 SDK run whose setting sources leave out the project (https://code.claude.com/docs/en/agent-sdk/hooks).
 
+Native floor for the fail-closed half, as of 2026-10-08: Claude Code 2.1.295 "Added
+`onFailure: "block"` for command and HTTP hooks: a hook that can't start, times out, or exits
+with an unexpected code blocks the action instead of letting it through"
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched
+2026-10-08). The hooks page (https://code.claude.com/docs/en/hooks, fetched 2026-10-08) does not
+name the key yet and still says a timed-out PreToolUse hook "doesn't block the tool call", which
+stays true of a hook that leaves the key unset. Observed in a cloud session under
+`claude --version` 2.1.295: `claude plugin validate --strict` accepts `"continue"` and `"block"`
+and refuses any other value; 2.1.294 and 2.1.200 accept the key without complaint, so an older
+CLI ignores it rather than dropping the hook; and in headless runs a Bash PreToolUse hook that
+slept past a one-second timeout let the call run without the key and blocked it with the key, as
+did a hook that exited 1 and one whose command did not exist. The branch guard's entry in
+`plugins/house/hooks/hooks.json` sets it, and `tests/hooks/run.sh` pins that. The script's own
+hand-written denials stay: they name a reason, and they hold on a CLI older than 2.1.295. The
+setting applies in every repo, one that never adopted house included, which ADR 0018 records.
+
 ## Run adversarial review in a fresh subagent with a named lens
 
 repo-e's `reviews/2026-07-24-writing-efficacy-review.md` states the hybrid protocol

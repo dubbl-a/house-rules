@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.20.6 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=a9ce743e97cdad000074b3910d1c03f8909e5220c7db20df8b308a60e5e358ed DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=942c4dea966201ad916cd9490ebc4b275b0c76f79b711200f996ae3f78d11314 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -86,7 +86,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 
 Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
 Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a bare, safe-mode, or restricted session, or an SDK run whose setting sources leave out the project, never loads project hooks, so anything that must survive needs a deny rule in managed settings too.
-Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout.
+Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since by default the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout; set the hook's `onFailure` to `block` as the floor, so a hook that cannot start, times out, or exits with an unexpected code blocks the call, and keep the script's own denial, which names its reason and still holds on a CLI that ignores the key.
 Know where that exit stops binding: only the pre-tool event reads a failing exit as a block, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, since text left in only adds denials while text wrongly removed hides the verb and bypasses. Pin both directions in the tests.
 Keep the decision in the script rather than a hook's fine-grained filter, which the harness itself documents as best-effort, unfit for a hard allow or deny.

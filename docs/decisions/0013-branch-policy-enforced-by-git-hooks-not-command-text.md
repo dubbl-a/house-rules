@@ -115,10 +115,12 @@ unquoted `&`, `;`, `|`, `<` or `>`, after a quoted span too. A value holding a `
 `<(` or `>(` (or a double-quoted span holding `$(` or a backtick) keeps the whitespace end from
 that point, so a `cd` behind a separator inside a nested substitution cannot steer target
 resolution; a command glued behind such a value, such as `-m "$(cat msg)";git commit`, is still unseen by the text scan, as before this change (#154). A Bash command long enough to outlast
-the guard's 5 second hook timeout is not denied, because Claude Code does not block on a timed-out
-hook; the file-tool and MCP scans already deny past `SCAN_BUDGET_MS`, and the Bash scans do not
-(#157). The floor reads `refs/remotes/*` as proof the remote has a commit, so a forged one,
-written by `git fetch origin f:refs/remotes/origin/main`, `git remote set-head`, or a rewrite of
+the guard's 5 second hook timeout was not denied, because Claude Code did not block on a timed-out
+hook; the file-tool and MCP scans already deny past `SCAN_BUDGET_MS`, and the Bash scans do not.
+Since Claude Code 2.1.295 the guard's `onFailure: "block"` refuses such a command with no
+reason, in any repo (ADR 0018); a CLI older than that still runs it (#157). The floor reads
+`refs/remotes/*` as proof the remote has a commit, so a forged one, written by
+`git fetch origin f:refs/remotes/origin/main`, `git remote set-head`, or a rewrite of
 `remote.origin.url`, lets it accept
 a local protected branch moved to an unmerged commit (#161). An inline `git -c alias.x='!...'`
 body is not read in any state, and an alias that calls another alias is read one level deep (#161).

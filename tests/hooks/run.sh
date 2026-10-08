@@ -1959,7 +1959,7 @@ HOOK_ENV=()
 expect_allow "the same relative path with no project directory set is an ordinary path" \
   "$(mk_mcp_payload mcp__fs__write_file '{"path": ".githooks/pre-push"}' "$pg/docs")"
 # Many path-like strings: git calls must not scale with them, or the 5 s
-# timeout lets the call through. The deny sorts last.
+# timeout ends the check with no decision. The deny sorts last.
 mkdir -p "$pg/many"
 _many=$(for ((i = 0; i < 200; i++)); do mkdir -p "$pg/many/d$i"; printf '%s\n' "$pg/many/d$i/.gitkeep"; done | jq -R . | jq -s --arg last "$pg/zz/../.git/config" '{paths: (. + [$last])}')
 _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
@@ -1971,12 +1971,12 @@ if [[ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision
 else
   fail "201 .git-bearing MCP strings into one repo deny under 2500 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
 fi
-# Past the scan's time budget (kept under the 5 s timeout in hooks.json, which
-# would let the call through) the hook stops and refuses. Whether a given
-# input outruns the default budget depends on the machine (a fast CI runner
-# finished these 4000 strings inside it), so every overrun case lowers the
-# budget to 1 ms through HOUSE_SCAN_BUDGET_MS, which can only shrink it, and
-# the overrun is certain anywhere.
+# Past the scan's time budget (kept under the 5 s timeout in hooks.json,
+# which would end the check with no decision) the hook stops and refuses.
+# Whether a given input outruns the default budget depends on the machine (a
+# fast CI runner finished these 4000 strings inside it), so every overrun
+# case lowers the budget to 1 ms through HOUSE_SCAN_BUDGET_MS, which can only
+# shrink it, and the overrun is certain anywhere.
 _huge=$(for ((i = 0; i < 200; i++)); do for ((j = 0; j < 20; j++)); do printf '%s\n' "$pg/many/d$i/f$j.gitkeep"; done; done | jq -R . | jq -s '{paths: .}')
 HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
 _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
@@ -2007,8 +2007,9 @@ expect_deny "4000 strings past the budget in a repo that never adopted house, on
   "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq '.paths += ["file:%2egit%2Fconfig"]')" "$n")" "too large to check"
 # RESIDUE, pinned: past the budget a weak-marker symlink into an adopted
 # repo's floor, from a cwd that never adopted house, passes. Closing it needs
-# a link walk per string, which costs the hook's timeout (a fail open) and
-# denies system-link paths in repos that never adopted the guard.
+# a link walk per string, which costs the hook's timeout (a refusal with no
+# reason, or a fail open on a CLI too old to read hooks.json's onFailure)
+# and denies system-link paths in repos that never adopted the guard.
 mkdir -p "$n/A"; ln -s "$pg/.githooks" "$n/A/hooklink"
 expect_allow "RESIDUE: 4000 strings past the budget in a repo that never adopted house, one through a hooklink symlink to .githooks" \
   "$(mk_mcp_payload mcp__fs__write_file "$(printf '%s' "$_hooky" | jq '.paths += ["A/hooklink/pre-push"]')" "$n")"
@@ -2166,6 +2167,28 @@ expect_deny "ACCEPTED FALSE DENY: Edit on a .githooks file in a branchPolicy dir
 # A repo that never adopted house is still nobody's business here.
 expect_allow "Edit on a .githooks file in a repo that never adopted house" \
   "$(mk_file_payload Edit "$n/.githooks/pre-push" "$n")"
+
+# ── the harness side of failing closed: the guard's entry in hooks.json ───
+# Every case above is the script's own decision. A guard that cannot start,
+# outlasts its timeout, or exits with a code the harness does not expect
+# makes no decision at all, and the harness lets the call through unless the
+# entry sets onFailure to block (Claude Code 2.1.295; an older CLI ignores
+# the key, so the script's own fail-closed paths above still carry it there).
+# The budget stays under the timeout, so a deny with a reason comes first.
+HOOKS_JSON="$REPO_ROOT/plugins/house/hooks/hooks.json"
+_entry=$(jq -c '[.hooks.PreToolUse[].hooks[] | select((.command // "") | contains("no-direct-master.sh"))]' "$HOOKS_JSON")
+if [[ "$(jq -r 'length' <<<"$_entry")" -ge 1 && "$(jq -r 'all(.onFailure == "block")' <<<"$_entry")" == true ]]; then
+  pass "hooks.json: every guard entry blocks when the hook cannot start, times out, or exits unexpectedly"
+else
+  fail "hooks.json: every guard entry sets onFailure to block" "entries=[$_entry]"
+fi
+_timeout_ms=$(jq -r 'map(.timeout // 600) | min * 1000' <<<"$_entry")
+_budget_ms=$(sed -n 's/^SCAN_BUDGET_MS=\([0-9][0-9]*\)$/\1/p' "$HOOK")
+if [[ -n "$_budget_ms" && "$_budget_ms" -lt "$_timeout_ms" ]]; then
+  pass "the scan budget (${_budget_ms} ms) stays under the guard's timeout (${_timeout_ms} ms)"
+else
+  fail "the scan budget stays under the guard's timeout" "budget=[$_budget_ms] timeout_ms=[$_timeout_ms]"
+fi
 
 # ── latency: the hook runs on every Bash call, so it has a budget ─────────
 echo

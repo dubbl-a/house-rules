@@ -5,6 +5,8 @@ date: 2026-08-24
 
 # Hook fails open without a manifest, and the repo hook wins during migration
 
+> Amended by [0018](0018-the-guard-blocks-when-it-cannot-decide-in-time.md) on 2026-10-08: a guard that cannot start, outlasts its timeout, or exits unexpectedly refuses the call in every repo, a repo with no manifest included. The branches below stand for every decision the guard makes.
+
 ## Context and problem statement
 
 The branch guard hook installs at user scope, which means it fires in every repo the session touches, including repos that never asked for house and repos mid-migration onto it. Two of the fleet's repos (a legacy-redirect repo, and repo-e pre-adoption) must see zero behavior change from the install. Two others (repo-c, repo-a) already run their own repo-local guard and need a migration window where both cannot be simultaneously enforcing, possibly disagreeing, verdicts. The hook has to encode all three states correctly: not adopted, adopted and migrating, adopted and fully on.

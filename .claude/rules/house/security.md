@@ -4,7 +4,7 @@ paths:
   - package.json
   - .github/workflows/**
 ---
-<!-- house-managed v0.20.6 module=security source=modules/security/rules/security.md body-sha256=5152bde973825ed92835cb4420f8d8936e4f1f87e0f33d1f598042f7f3d3ac29 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.0 module=security source=modules/security/rules/security.md body-sha256=5152bde973825ed92835cb4420f8d8936e4f1f87e0f33d1f598042f7f3d3ac29 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: agents and the supply chain
 
