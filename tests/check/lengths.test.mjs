@@ -192,6 +192,20 @@ test('lengths: a file over only its byte limit keeps passing on a raise, run aft
   });
   assert.equal(run(dir, ['--only=lengths']).code, 0);
   assert.equal(run(dir, ['--only=lengths']).code, 0);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'house.json'), 'utf8')).ratchet?.['README.md'], undefined, 'a byte-only raise writes no line ceiling');
+});
+
+test('lengths: a raise that clears a byte overrun never lifts the line ratchet', () => {
+  const dir = sandbox({
+    'README.md': Array.from({ length: 80 }, () => 'x'.repeat(40)).join('\n') + '\n',
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': { lines: 100, bytes: 3000 } } } } },
+      ratchet: { 'README.md': 80 },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, why: 'old', decided: '2026-08-24' }],
+    }),
+  });
+  assert.equal(run(dir, ['--only=lengths']).code, 0);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'house.json'), 'utf8')).ratchet['README.md'], 80);
 });
 
 test('lengths: --accept-lengths is still accepted, changes nothing, and says it is no longer needed', () => {
