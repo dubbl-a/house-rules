@@ -11,7 +11,7 @@ Two of the rules arrived later than the rest, from a survey of the public Claude
 
 ## Give the agent a check it can run before you walk away
 
-No incident recorded; the rule came in on reasoning alone, from Claude Code's own best-practices guidance: give the agent a check it can run before you walk away, tests, a build's exit code, a linter, a screenshot diff, because without a pass/fail signal "looks done" is the only signal there is, and without it you become the verification loop yourself (EXT-028). The `verify` skill name was added 2026-10-08 from the Claude Code 2.1.286 changelog: when a project or user skill is named `verify`, Claude is told to run it right before committing, except for docs-only and tests-only commits.
+No incident recorded; the rule came in on reasoning alone, from Claude Code's own best-practices guidance: give the agent a check it can run before you walk away, tests, a build's exit code, a linter, a screenshot diff, because without a pass/fail signal "looks done" is the only signal there is, and without it you become the verification loop yourself (EXT-028). The `verify` skill name was added 2026-10-08 from the Claude Code 2.1.286 changelog (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-10-08): when a project or user skill is named `verify`, Claude is told to run it right before committing, except for docs-only and tests-only commits.
 
 Native floor, as of 2026-09-02: CLAUDE.md, loaded at the start of every session as context rather than enforcement, so naming the command there makes it findable and nothing more (https://code.claude.com/docs/en/memory#claude-md-vs-auto-memory).
 

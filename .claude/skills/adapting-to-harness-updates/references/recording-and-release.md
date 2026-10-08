@@ -35,7 +35,8 @@ Release, per the repo's version rules:
 1. Choose the class. Under ADR 0012, below 1.0 the breaking class (ADR 0011) takes the minor and
    everything else the patch. Rule prose with no heading renamed and no change to the guard's
    deny set is a patch.
-2. Bump `plugins/house/.claude-plugin/plugin.json` and the pin in `house.json`.
+2. Bump `plugins/house/.claude-plugin/plugin.json`, the pin in `house.json`, and every release tag
+   in `README.md`'s install section (`tests/readme-pin.test.mjs` fails until they match).
 3. Cut the CHANGELOG section. Its summary sentence names the class and the ADR it follows.
 4. Run `node plugins/house/scripts/house render --apply --repo .`, then run the gate with
    `npm run verify`.
@@ -61,7 +62,8 @@ arrives in their inbox.
    `npm run verify`, a ready pull request, then one email to the maintainer through a send-only
    Gmail connector. The routine builds every opportunity in that PR, larger ones included. When a
    release has nothing to adopt, it opens no PR: it comments the triage on the rolling
-   `survey-pending` issue, and the next PR records those versions and closes it.
+   issue titled `Survey pending: Claude Code updates checked, nothing to adopt yet`, and the next
+   PR records those versions and closes it.
 3. The maintainer reads the pull request's plain summary and merges it, usually from the GitHub app.
 4. `.github/workflows/release.yml` releases and syncs, as in Shipping step 6.
 

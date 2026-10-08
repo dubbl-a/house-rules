@@ -71,11 +71,11 @@ every fact in it still holds. This skill finds all four and fixes them, and find
    section) so it reaches adopters. A larger adoption (a new hook or hook event, a change to the
    guard, the agents, the workflow fork, or a new checker family) is built in the same PR too, with
    its tests, refuted until clean, and named as larger in the PR body; a change to what the guard
-   denies is the breaking class under ADR 0011. An opportunity that would weaken a guard or loosen
-   a deny is built only as a proposal in the PR body, never applied. When a release offers nothing
-   to change beyond the survey record, open no PR: comment the triage on the open
-   `survey-pending` issue (open it if none exists), and let the next PR record those versions and
-   close it. A prompt-audit
+   denies is the breaking class under ADR 0011. A change that would weaken a guard, loosen a deny,
+   or edit `.github/workflows/` is written only as a proposal in the PR body, never applied. When a
+   release offers nothing to change beyond the survey record, open no PR: comment the triage on the
+   open issue titled `Survey pending: Claude Code updates checked, nothing to adopt yet` (open it
+   if none exists), and let the next PR record those versions and close it. A prompt-audit
    finding changes wording, never a rule's claim, and it has to fit the rule shape the checker
    enforces. Before accepting an agent's deviation, a reviewer's "non-blocking" note, or a
    "known limit", name the house rule or doc recommendation that governs it and take the
