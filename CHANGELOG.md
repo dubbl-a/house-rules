@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.5] - 2026-10-07
+
+A patch release under ADR 0012: an additive optional `args.efforts` and two prompt sentences in the `/deep-research` fork; nothing the guard denies changes. Upgrading from 0.20.4: rebuild the fork with `check-deep-research-upstream.mjs --install`; nothing else required.
+
+### Fixed
+
+- The `/deep-research` fork no longer lets the scope agent run the searches itself (#230). A run sat in Scope for 20 minutes while the scope agent, inheriting the session's `max` effort, ran 15 web searches. The fork now pins an `effort` on all five stages (an `EFFORTS` map, medium except synthesize at high, overridable through `args.efforts`) and tells the scope and synthesize agents not to call any tool. The rebuild refuses unless each prompt anchor matches exactly once.
+
 ## [0.20.4] - 2026-10-07
 
 A patch release under ADR 0012: lowering the Node floor cannot break an adopter, and ADR 0011 lists only raising it as the breaking class. Upgrading from 0.20.3: nothing required; Node 22 or newer now works.
