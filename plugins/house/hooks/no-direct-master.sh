@@ -228,9 +228,10 @@
 # substring (`hooklink -> .githooks`, `my.git -> .git`), pointing into an
 # adopted repo's floor, named in an unchecked string while nothing adopted
 # has been seen and the cwd is not adopted, since closing it needs a link
-# walk per string, which costs the hook's timeout (a fail open) and denies
-# system-link paths (/tmp, /var, /etc) in repos that never adopted the
-# guard; a planted file more than
+# walk per string, which costs the hook's timeout (a refusal with no
+# reason under hooks.json's onFailure, a fail open on a CLI too old to read
+# it) and denies system-link paths (/tmp, /var, /etc) in repos that never
+# adopted the guard; a planted file more than
 # three levels under the hooks directory, which no dispatcher can run; and
 # `git config --file <path> --get core.hooksPath`, readable for the same
 # reason `--get` alone is (see 1) because `--file` and its value never reach
@@ -265,7 +266,9 @@
 # pass instead of tripping the crash-deny path. Deliberately no `-e`: the trap
 # alone fires on an unguarded failing command, and skipping `-e` means a stray
 # failure BEFORE the trap is armed falls through to the final `exit 0`, i.e.
-# fails open, which is what the adoption gates want anyway. `-f`: nothing here
+# fails open, which is what the adoption gates want anyway (a fatal error
+# there exits non-zero instead, which hooks.json's onFailure refuses in every
+# repo on Claude Code 2.1.295 and later, ADR 0018). `-f`: nothing here
 # needs pathname expansion (carve-out globs are matched by `case`, which -f
 # does not touch), and an unquoted refspec token such as `m?ster` used to
 # expand against the hook's own cwd, so the decision depended on which files
@@ -274,12 +277,15 @@ set -Euf -o pipefail
 
 payload=$(cat)
 
-# The file modes' scan runs against a time budget, since the harness lets a
-# call through once a hook passes its `timeout` (5 s for this hook in
-# hooks.json; a change there is a change here). The budget leaves margin for
-# the jq passes, the deny, and a slow machine. Elapsed time is read with
-# builtins: EPOCHREALTIME (bash 5, microseconds), or SECONDS (whole seconds,
-# so the stop comes up to one second early) on the bash 3.2 macOS ships.
+# The file modes' scan runs against a time budget, since a hook that passes
+# its `timeout` (5 s for this hook in hooks.json; a change there is a change
+# here) makes no decision: hooks.json's `onFailure: "block"` turns that into
+# a refusal with no reason on Claude Code 2.1.295 and later, and an older
+# CLI lets the call through. The budget denies first, with a reason, and
+# leaves margin for the jq passes, the deny, and a slow machine. Elapsed
+# time is read with builtins: EPOCHREALTIME (bash 5, microseconds), or
+# SECONDS (whole seconds, so the stop comes up to one second early) on the
+# bash 3.2 macOS ships.
 SCAN_BUDGET_MS=2000
 # HOUSE_SCAN_BUDGET_MS, a positive integer, LOWERS the budget (the suite sets
 # 1 so an overrun does not depend on machine speed). It is only ever taken
@@ -487,8 +493,10 @@ EOF
 
 # A fatal shell error (an unset variable under `set -u`, a bad substitution)
 # exits non-zero without firing ERR, and the harness reads any non-zero exit
-# here as no objection, so the call went through (#147). Armed beside the ERR
-# trap: every deliberate exit in this hook is 0, so a non-zero one is a crash.
+# here as no objection unless hooks.json's onFailure blocks it, which a CLI
+# older than 2.1.295 ignores, so the call went through (#147). Armed beside
+# the ERR trap: every deliberate exit in this hook is 0, so a non-zero one is
+# a crash, and this turns it into a deny with a reason.
 # shellcheck disable=SC2329 # invoked indirectly via `trap crashed_on_exit EXIT`
 crashed_on_exit() {
   [[ "$?" -eq 0 ]] || crashed
@@ -1656,9 +1664,11 @@ run_file_scan() {
 MAIN_ROOT=''; COMMON_DIR=''
 
 # The file modes can decide hundreds of targets in one call (an MCP tool's
-# path-like strings), and past the 5 s timeout the harness lets the call
-# through. So a repo is resolved with git once per invocation (the memo
-# below), and a directory is resolved with builtins alone, never a process.
+# path-like strings), and past the 5 s timeout the call is refused with no
+# reason, or let through on a CLI older than 2.1.295, which ignores
+# hooks.json's onFailure. So a repo is resolved with git once per
+# invocation (the memo below), and a directory is resolved with builtins
+# alone, never a process.
 # Parallel indexed arrays, since bash 3.2 has no associative ones; the memo
 # holds one entry per repo, so scanning it stays short.
 MEMO_KEYS=(); MEMO_TOP=(); MEMO_COMMON=(); MEMO_MAIN=(); MEMO_KEY=''
@@ -1700,7 +1710,7 @@ decide_file_mode() {
     deny "Refusing this $tool_name call: it names a path of $PATH_BYTES bytes, longer than $PATH_MAX_BYTES bytes, the largest PATH_MAX of any platform this hook supports, so no OS can resolve it and this hook cannot tell whether it reaches the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Give the path in its real, shorter form."
   fi
   if [[ "$MODE" == toolarge ]]; then
-    deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
+    deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would end the check with no decision), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
   fi
   if [[ "$MODE" == unreadable ]]; then
     deny "Refusing this tool call: its payload could not be parsed as a tool call (empty or malformed JSON, or a Bash command that is not a string), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
@@ -2015,7 +2025,7 @@ if [[ "$MODE" == mcp ]]; then
           .[gG][iI][tT]|.[gG][iI][tT]/*|*/.[gG][iI][tT]|*/.[gG][iI][tT]/*|\
           .[gG][iI][tT][hH][oO][oO][kK][sS]|.[gG][iI][tT][hH][oO][oO][kK][sS]/*|\
           */.[gG][iI][tT][hH][oO][oO][kK][sS]|*/.[gG][iI][tT][hH][oO][oO][kK][sS]/*)
-            deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would let the call through unchecked), and a string not yet checked names a .git or .githooks path. Split the call into smaller ones." ;;
+            deny "Refusing this $tool_name call: its input is too large to check in time (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would end the check with no decision), and a string not yet checked names a .git or .githooks path. Split the call into smaller ones." ;;
         esac
         IFS= read -r mcp_rest || break
       done

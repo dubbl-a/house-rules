@@ -6,6 +6,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-08
+
+The branch guard now refuses a call when it cannot decide in time, which tightens what it denies, the breaking class, so this is a minor release under ADR 0012. Upgrading from 0.20.6: run `/house-rules:sync`; the guard's new behavior needs Claude Code 2.1.295 or later, and an older CLI ignores it.
+
+### Changed
+
+- The branch guard fails closed at the harness level too (Claude Code 2.1.295). Its entry in `plugins/house/hooks/hooks.json` sets `onFailure: "block"`, so a guard that cannot start, runs past its five-second timeout, or exits with an unexpected code refuses the call instead of letting it through, which is the gap #157 records for a very long command. The guard's own denials, which name a reason, still come first, and `tests/hooks/run.sh` pins both the setting and the scan budget under the timeout. This applies in every repo, including one that never adopted house: there a Bash command of several hundred KB that names git can now be refused with no reason, where before it ran. ADR 0018 records that choice and amends ADR 0002, whose promise of no change in such a repo already gave way for a missing `jq`.
+- The Claude Code rule's "Fail it closed" line tells a guard to set `onFailure` to `block` and keep its own denial, which names its reason and holds on a CLI that ignores the key.
+- The harness survey records Claude Code 2.1.295.
+
 ## [0.20.6] - 2026-10-08
 
 A patch release under ADR 0012: one testing-rule clause, a shorter install, and a README pin that is now tested; nothing the guard denies changes. Upgrading from 0.20.5: run `/house-rules:sync`.
