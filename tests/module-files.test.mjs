@@ -776,7 +776,12 @@ function fakeNativeBody(overrides = {}) {
   // (e.g. inside a prompt string), for the negative control on trigger 1.
   if (overrides.prose) lines.push(overrides.prose);
   lines.push(
-    `const scope = await agent("q", ${scope})`,
+    // The scope and synthesize prompts end as the native ones do (the body is
+    // stored template-escaped, so `\n` is written doubled here). `prompts:
+    // false` drops that ending, for the refusal.
+    `const scope = await agent("Avoid redundancy.${overrides.prompts === false ? '' : '\\\\n\\\\nStructured output only.'}",`,
+    `  ${scope}`,
+    ')',
     'agent(SEARCH_PROMPT(angle), {',
     '    label: "search:" + angle.label, phase: "Search", schema: SEARCH_SCHEMA',
     '  })',
@@ -787,7 +792,9 @@ function fakeNativeBody(overrides = {}) {
     '          schema: VERDICT_SCHEMA,',
     '        })',
     ...selectionLines,
-    'const report = await agent("s", { label: "synthesize", schema: REPORT_SCHEMA })',
+    `const report = await agent("6. List 2-4 open questions that emerged but weren't answered.${overrides.prompts === false ? '' : '\\\\n\\\\nStructured output only.'}",`,
+    '  { label: "synthesize", schema: REPORT_SCHEMA }',
+    ')',
     ...(overrides.selection === false || overrides.note === false ? [] : [
       'if (killed.length > 0) return {',
       '    stats: { angles: scope.angles.length, sources: allSources.length, claims: allClaims.length, verified: voted.length, confirmed: 0 },',
@@ -897,6 +904,48 @@ test('deep-research check: --rebuild writes a fork with five model pins, a MODEL
   assert.ok(!fork.includes('\\\\/'), 'no doubled backslashes remain');
 });
 
+test('deep-research check: --rebuild pins an effort on all five agent() calls with an EFFORTS map (issue #230)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  assert.equal((fork.match(/effort: EFFORTS\./g) || []).length, 5);
+  assert.match(fork, /synthesize: "high"/);
+  assert.match(fork, /ARGS_OBJ\.efforts/);
+  assert.match(fork, /log\("Efforts: /);
+  assert.match(fork, /efforts: \{scope, search, fetch, verify, synthesize\}/);
+});
+
+test('deep-research check: --rebuild forbids tools in the scope and synthesize prompts, once each, before the closing line (issue #230)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  const scopeSentence = 'Do not call any tool (no ToolSearch, WebSearch or WebFetch): write the angles from the question text alone. The Search phase runs every query you return.';
+  const synthSentence = 'Work only from the claims above. Do not call any tool (no ToolSearch, WebSearch or WebFetch).';
+  assert.equal(fork.split(scopeSentence).length - 1, 1);
+  assert.equal(fork.split(synthSentence).length - 1, 1);
+  assert.ok(fork.includes(`${scopeSentence}\\n\\nStructured output only.",\n  { label: "scope"`));
+  assert.ok(fork.includes(`${synthSentence}\\n\\nStructured output only.",\n  { label: "synthesize"`));
+});
+
+test('deep-research check: --rebuild refuses when a prompt anchor no longer matches exactly once (issue #230)', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ prompts: false }));
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /rebuild refused/);
+  assert.match(res.stdout, /anchor not found exactly once: Avoid redundancy/);
+  assert.ok(!existsSync(out), 'no partial fork written');
+});
+
 test('deep-research check: --rebuild refuses when a pin anchor no longer matches exactly once', () => {
   const dir = mktemp('house-dr-');
   const bin = fakeBinary(dir, fakeNativeBody({ scope: '{ label: "scope", schema: SCOPE_SCHEMA, effort: "high" }' }));
@@ -976,6 +1025,25 @@ test('deep-research check: the rebuilt budget block resolves depth, overrides, a
   assert.match(run({ question: 'q', budget: { votes: 1, refutationsRequired: 2 } }).error, /refutationsRequired <= votes/);
   assert.match(run({ question: 'q', budget: { maxFetch: -1 } }).error, /maxFetch/);
   assert.match(run({ question: 'q', budget: { votes: '3' } }).error, /votes/);
+});
+
+test('deep-research check: the rebuilt effort block applies args.efforts and rejects a level the runtime does not take', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  const start = fork.indexOf('const EFFORTS');
+  const end = fork.indexOf('\n', fork.indexOf('log("Efforts: '));
+  const block = fork.slice(start, end);
+  const run = (args) => new Function('ARGS_OBJ', 'log', `${block}\nreturn { EFFORTS }`)(args, () => {});
+  assert.deepEqual(run({}).EFFORTS, { scope: 'medium', search: 'medium', fetch: 'medium', verify: 'medium', synthesize: 'high' });
+  assert.equal(run({ efforts: { scope: 'low' } }).EFFORTS.scope, 'low');
+  assert.equal(run({ efforts: { scope: 'low' } }).EFFORTS.synthesize, 'high', 'unlisted stages keep the default');
+  assert.match(run({ efforts: { verify: 'bogus' } }).error, /args\.efforts\.verify/);
+  assert.match(run({ efforts: { scope: null } }).error, /args\.efforts\.scope/);
 });
 
 test('deep-research check: pickRoundRobin takes one claim per angle in turn, each angle in its own order, up to the cap', async () => {

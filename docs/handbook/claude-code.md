@@ -280,6 +280,18 @@ verify prompt; with the args held and a deterministic selection, a larger cap ke
 call already made and appends the rest. The script cannot read its own run id, so the note says "this run's id" and the session
 supplies the id the tool returned.
 
+The scope agent ran the searches itself, 2026-10-07 (#230): a `standard` run sat in Scope for 20
+minutes and was stopped by hand (run `wf_7669cf26-64a`). The scope agent, on Opus and inheriting
+the session's `max` effort, loaded WebSearch through ToolSearch and ran 15 searches in three
+rounds of five, because `agent()` has no tool allowlist and the native scope prompt ends with only
+"Structured output only." The fork pinned `model` on all five stages but no `effort`, so every
+stage, the Sonnet searchers, fetchers and verifiers included, ran at the session's. The fork now
+adds an `effort` to each pin (an `EFFORTS` map, defaults medium with synthesize high, overridable
+through `args.efforts` and logged like `MODELS`) and a no-tool sentence before the closing line of
+the scope and synthesize prompts; the prompt text is the only lever, so the rebuild refuses unless
+each anchor matches once. A control run (`wf_2c15b854-cbc`, same question and args) made one tool
+call, the StructuredOutput, and returned five angles in 9 seconds.
+
 The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,
 and the way of working was being retyped into prompts ("subagents on lower models, and here is
 how to use them"). The plugin now ships it. Five agents under `plugins/house/agents/` (scout on

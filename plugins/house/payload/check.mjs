@@ -1871,9 +1871,13 @@ function checkLengths(ctx) {
     }
 
     if (linesOver || bytesOver) {
-      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided));
+      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided) && (!linesOver || r.from === (ceilingFromRatchet ?? limitLines)));
       if (raise) {
-        tighten.push({ path: file, to: raise.to });
+        // A raise moves the line ceiling only when it cleared a line overrun;
+        // one that cleared a byte overrun alone leaves the ratchet to tighten
+        // as usual, so it cannot lift the line ceiling for later growth.
+        if (linesOver) tighten.push({ path: file, to: raise.to });
+        else if (ceilingFromRatchet !== null && count < ceilingFromRatchet) tighten.push({ path: file, to: count });
       } else {
         const linesMsg = linesOver ? `${count} lines (limit ${effectiveCeiling})` : '';
         const bytesMsg = bytesOver ? `${linesMsg ? ', ' : ''}${bytes} bytes (limit ${limitBytes})` : '';
@@ -2523,7 +2527,7 @@ function checkMinutes(ctx) {
 // are findings and fail the run; the rest are warnings. A recorded waiver
 // clears either. zizmor covers the workflow checks in
 // more depth; this family is the floor every adopter gets without installing it.
-const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy'];
+const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy', 'pr-credential'];
 const FAILING_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout']);
 const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
@@ -2856,6 +2860,49 @@ function checkWorkflows(ctx) {
           const headRef = (e.key === 'ref' && parentKey(e) === 'with' && PR_HEAD_REF_RE.test(e.value))
             || (e.key === 'with' && /\bref\s*:/.test(e.value) && PR_HEAD_REF_RE.test(e.value));
           if (headRef) warn('pr-target-checkout', f, e.line, 'runs on `pull_request_target`, which carries a write token and the repository\'s secrets, and checks out the pull request head, so the contributor\'s code runs with both. Use `pull_request` for anything that runs the PR\'s code, or keep this checkout on the base ref.');
+        }
+      }
+    }
+
+    // 4b. A pull_request workflow holding a credential: a secret other than
+    // GITHUB_TOKEN, or a write permission. The PR gate stays credential-free.
+    // A job-level `if:` or `on:` filter that keeps the job off PRs is not read,
+    // so a file with a PR trigger is judged as a whole.
+    if (on) {
+      const next = entries.find((e) => e.line > on.line && isTopLevel(e));
+      const onText = raw.split(YAML_LINE_BREAK_RE).slice(on.line - 1, next ? next.line - 1 : undefined).map(stripYamlComment).join('\n');
+      if (/\bpull_request(_target)?\b/.test(onText)) {
+        // A secret is read only inside a `${{ }}` expression (or handed down
+        // whole by `secrets: inherit`), so a file name like `.secrets.baseline`
+        // in a run line is not one. Secret names are case-insensitive.
+        raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment).forEach((l, i) => {
+          // Lazy, so a `}` inside the expression (`format('{0}', ...)`) does
+          // not end it; the lookbehind skips a property named secrets
+          // (`steps.secrets.outputs`); a bare `secrets` (`toJSON(secrets)`)
+          // hands over every secret. String literals (single-quoted, `''`
+          // escapes) are blanked to same-length spaces first, so
+          // `hashFiles('secrets/**')` or `needs['secrets']` is not a read;
+          // the bracket form finds its match in the blanked text and reads
+          // its literal name from the raw text at the same offset.
+          const names = [...l.matchAll(/\$\{\{(.*?)\}\}/g)].flatMap((x) => {
+            const code = x[1].replace(/'(?:[^']|'')*'/g, (s) => `'${' '.repeat(s.length - 2)}'`);
+            return [
+              ...[...code.matchAll(/(?<![\w.-])secrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
+              ...[...code.matchAll(/(?<![\w.-])secrets\s*\[[^\]]*\]/g)].map((m) => {
+                const lit = /^secrets\s*\[\s*'((?:[^']|'')*)'\s*\]$/.exec(x[1].slice(m.index, m.index + m[0].length));
+                return lit ? lit[1].replace(/''/g, "'") : '*';
+              }),
+              ...[...code.matchAll(/(?<![\w.-])secrets\b(?!\s*[.[])/g)].map(() => '*'),
+            ];
+          });
+          const secret = names.find((n) => n.toUpperCase() !== 'GITHUB_TOKEN')
+            ?? (/^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? '*' : null);
+          if (secret !== null) warn('pr-credential', f, i + 1, `reads \`${secret === '*' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
+        });
+        for (const e of entries) {
+          const grant = (e.key === 'permissions' && /^write-all$|\bwrite\b/.test(e.value))
+            || (e.key !== null && e.key !== 'permissions' && parentKey(e) === 'permissions' && unquoteYaml(e.value) === 'write');
+          if (grant) warn('pr-credential', f, e.line, 'grants a `write` permission in a workflow that runs on a pull request, so the PR gate holds a credential. Keep this workflow `contents: read` and put the write in a workflow that does not run on pull requests.');
         }
       }
     }

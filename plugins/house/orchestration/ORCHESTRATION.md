@@ -58,8 +58,8 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - On `/deep-research`, never `Workflow({name: "deep-research"})`, which pins no model. Copy
   `<home>/.claude/workflows/deep-research-tiered.js` into the session scratchpad and run
   `Workflow({scriptPath: <that copy>, args: {question, depth}})`, stating the depth (light,
-  standard, deep); Workflow runs only scripts in the working directory, an added directory, or the
-  scratchpad. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
+  standard, deep; `args.efforts` overrides the per-stage effort); Workflow runs only scripts in
+  the working directory, an added directory, or the scratchpad. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
   --install` (`scripts/house/`, else the house plugin's claude-code module files). On a
   `verifyNote` the question warrants, offer the user to extend that run (`resumeFromRunId`, the
   original args plus the note's `budget.maxVerifyClaims`, the extra agents); never start it unasked.

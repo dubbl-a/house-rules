@@ -53,15 +53,25 @@ export const BASELINE = {
 const BODY_START = '// deep-research:';
 const BODY_END_ANCHOR = 'agentCalls:';
 
-// The five agent() option objects the fork adds a model to. Each must match
-// exactly once in the native body or the rebuild refuses, so a silently
-// mismatched pin can never ship.
+// The five agent() option objects the fork adds a model and an effort to. Each
+// must match exactly once in the native body or the rebuild refuses, so a
+// silently mismatched pin can never ship.
 export const PINS = [
-  ['{ label: "scope", schema: SCOPE_SCHEMA }', '{ label: "scope", schema: SCOPE_SCHEMA, model: MODELS.scope }'],
-  ['phase: "Search", schema: SEARCH_SCHEMA\n', 'phase: "Search", schema: SEARCH_SCHEMA, model: MODELS.search\n'],
-  ['schema: EXTRACT_SCHEMA,\n', 'schema: EXTRACT_SCHEMA,\n          model: MODELS.fetch,\n'],
-  ['schema: VERDICT_SCHEMA,\n', 'schema: VERDICT_SCHEMA,\n          model: MODELS.verify,\n'],
-  ['{ label: "synthesize", schema: REPORT_SCHEMA }', '{ label: "synthesize", schema: REPORT_SCHEMA, model: MODELS.synthesize }'],
+  ['{ label: "scope", schema: SCOPE_SCHEMA }', '{ label: "scope", schema: SCOPE_SCHEMA, model: MODELS.scope, effort: EFFORTS.scope }'],
+  ['phase: "Search", schema: SEARCH_SCHEMA\n', 'phase: "Search", schema: SEARCH_SCHEMA, model: MODELS.search, effort: EFFORTS.search\n'],
+  ['schema: EXTRACT_SCHEMA,\n', 'schema: EXTRACT_SCHEMA,\n          model: MODELS.fetch,\n          effort: EFFORTS.fetch,\n'],
+  ['schema: VERDICT_SCHEMA,\n', 'schema: VERDICT_SCHEMA,\n          model: MODELS.verify,\n          effort: EFFORTS.verify,\n'],
+  ['{ label: "synthesize", schema: REPORT_SCHEMA }', '{ label: "synthesize", schema: REPORT_SCHEMA, model: MODELS.synthesize, effort: EFFORTS.synthesize }'],
+];
+// The scope and synthesize prompts, which agent() cannot stop from using
+// tools: the scope agent ran 15 web searches itself and never returned angles
+// (issue #230). Each sentence goes before the prompt's final "Structured
+// output only." and the anchor runs on to the agent's label so it matches
+// exactly once (other prompts end the same way). `\n` here is the literal
+// backslash-n of the JS source.
+export const PROMPT_PINS = [
+  ['Avoid redundancy.\\n\\nStructured output only.",\n  { label: "scope"', 'Avoid redundancy.\\n\\nDo not call any tool (no ToolSearch, WebSearch or WebFetch): write the angles from the question text alone. The Search phase runs every query you return.\\n\\nStructured output only.",\n  { label: "scope"'],
+  ['weren\'t answered.\\n\\nStructured output only.",\n  { label: "synthesize"', 'weren\'t answered.\\n\\nWork only from the claims above. Do not call any tool (no ToolSearch, WebSearch or WebFetch).\\n\\nStructured output only.",\n  { label: "synthesize"'],
 ];
 // The four fan-out constants the fork replaces with a depth-scaled budget.
 // Native fixes them, so every non-trivial question costs the same ~110
@@ -197,12 +207,22 @@ const MODELS = Object.assign(
   { scope: "opus", search: "sonnet", fetch: "sonnet", verify: "sonnet", synthesize: "opus" },
   ARGS_OBJ.models || {}
 )
-log("Models: scope=" + MODELS.scope + " search=" + MODELS.search + " fetch=" + MODELS.fetch + " verify=" + MODELS.verify + " synthesize=" + MODELS.synthesize)`;
+log("Models: scope=" + MODELS.scope + " search=" + MODELS.search + " fetch=" + MODELS.fetch + " verify=" + MODELS.verify + " synthesize=" + MODELS.synthesize)
+// Per-stage effort pins, so a max-effort session does not run a decomposition
+// step or every Sonnet searcher at max. Override any stage via args.efforts.
+const EFFORTS = Object.assign(
+  { scope: "medium", search: "medium", fetch: "medium", verify: "medium", synthesize: "high" },
+  ARGS_OBJ.efforts || {}
+)
+for (const k of ["scope", "search", "fetch", "verify", "synthesize"]) {
+  if (!["low", "medium", "high", "xhigh", "max"].includes(EFFORTS[k])) return { error: "args.efforts." + k + " must be low, medium, high, xhigh or max, got " + JSON.stringify(EFFORTS[k]) }
+}
+log("Efforts: scope=" + EFFORTS.scope + " search=" + EFFORTS.search + " fetch=" + EFFORTS.fetch + " verify=" + EFFORTS.verify + " synthesize=" + EFFORTS.synthesize)`;
 
 const META = (version, sha) => `export const meta = {
   name: 'deep-research-pinned',
   description: 'Deep research harness with per-stage model pins and a depth-scaled budget: fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.',
-  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). To run it, ${RUN_HINT}. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, minPerAngle, maxVerifyCeiling, votes, refutationsRequired}}. A run that drops claims returns verifyNote; extend that same run only when the user agrees. Retire when check-deep-research-upstream.mjs exits 2.',
+  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). To run it, ${RUN_HINT}. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, efforts: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, minPerAngle, maxVerifyCeiling, votes, refutationsRequired}}. A run that drops claims returns verifyNote; extend that same run only when the user agrees. Retire when check-deep-research-upstream.mjs exits 2.',
   phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle"},{"title":"Fetch","detail":"URL-dedup, fetch the top sources the depth allows, extract falsifiable claims"},{"title":"Verify","detail":"Adversarial vote per claim, count and quorum set by the depth"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
 
@@ -310,7 +330,7 @@ export function rebuild(body, version) {
   let s = body;
   // Order matters: the budget block defines ARGS_OBJ, which the question
   // replacement reads, and both sit above the first use in the native body.
-  for (const [from, to, times = 1] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT], [SELECTION_LINE, SELECTION_REPLACEMENT], [NOTE_EARLY_LINE, NOTE_EARLY_REPLACEMENT, 2], [NOTE_FINAL_LINE, NOTE_FINAL_REPLACEMENT]]) {
+  for (const [from, to, times = 1] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT], [SELECTION_LINE, SELECTION_REPLACEMENT], [NOTE_EARLY_LINE, NOTE_EARLY_REPLACEMENT, 2], [NOTE_FINAL_LINE, NOTE_FINAL_REPLACEMENT], ...PROMPT_PINS]) {
     if (s.split(from).length !== times + 1) throw new Error(`anchor not found ${times === 1 ? 'exactly once' : `exactly ${times} times`}: ${from.trim().split('\n')[0]}`);
     s = s.split(from).join(to);
   }

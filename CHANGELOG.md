@@ -6,6 +6,24 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.5] - 2026-10-07
+
+A patch release under ADR 0012: an additive optional `args.efforts` and two prompt sentences in the `/deep-research` fork, a new workflows check that warns and never fails, and docs; nothing the guard denies changes. Upgrading from 0.20.4: rebuild the fork with `check-deep-research-upstream.mjs --install`; a pull-request workflow that holds a credential now prints a `pr-credential` warning, which a `modules.github.config.waivers` entry clears.
+
+### Fixed
+
+- The `/deep-research` fork no longer lets the scope agent run the searches itself (#230). A run sat in Scope for 20 minutes while the scope agent, inheriting the session's `max` effort, ran 15 web searches. The fork now pins an `effort` on all five stages (an `EFFORTS` map, medium except synthesize at high, overridable through `args.efforts`) and tells the scope and synthesize agents not to call any tool. The rebuild refuses unless each prompt anchor matches exactly once, and the fork returns an error for an `args.efforts` level the Workflow runtime does not take.
+- A `ratchetRaises` entry no longer lets a file grow back after it shrank (#231). Any raise whose `to` covered the file applied, so an old one let a trimmed file regrow to it silently and the checker wrote the higher ceiling. A raise over the line limit now applies only while its `from` equals the file's ratchet entry, or its configured limit when it has none.
+
+### Added
+
+- The workflows family warns when a workflow triggered by `pull_request` or `pull_request_target` reads a secret other than `GITHUB_TOKEN` or grants a `write` permission (`pr-credential`, #160). The github rule asks for a credential-free pull-request gate, and nothing checked it. The check is line-based and judges the file as a whole, so a job kept off pull requests by its own `if:` needs a waiver; `docs/handbook/github.md` states the limits, and #232 tracks reading expressions with a tokenizer.
+
+### Changed
+
+- The README says the git-hook floor and the PreToolUse hook catch mistakes and the remote's branch protection stops a determined session (#161). ADR 0013's residue entries for #161 gain the `remote.origin.url` rewrite and name the CLI paths, and `SECURITY.md` no longer says ADR 0013 omits them.
+- The upstreams ledger re-reads ai-rulez and packmind (#207). ai-rulez v5 now has a content lock and `paths`-scoped rules, the two reasons it was not adopted, so its row says the case is open for review; nothing is adopted. packmind's change is a command rename.
+
 ## [0.20.4] - 2026-10-07
 
 A patch release under ADR 0012: lowering the Node floor cannot break an adopter, and ADR 0011 lists only raising it as the breaking class. Upgrading from 0.20.3: nothing required; Node 22 or newer now works.
