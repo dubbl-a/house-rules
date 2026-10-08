@@ -1027,6 +1027,25 @@ test('deep-research check: the rebuilt budget block resolves depth, overrides, a
   assert.match(run({ question: 'q', budget: { votes: '3' } }).error, /votes/);
 });
 
+test('deep-research check: the rebuilt effort block applies args.efforts and rejects a level the runtime does not take', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  const start = fork.indexOf('const EFFORTS');
+  const end = fork.indexOf('\n', fork.indexOf('log("Efforts: '));
+  const block = fork.slice(start, end);
+  const run = (args) => new Function('ARGS_OBJ', 'log', `${block}\nreturn { EFFORTS }`)(args, () => {});
+  assert.deepEqual(run({}).EFFORTS, { scope: 'medium', search: 'medium', fetch: 'medium', verify: 'medium', synthesize: 'high' });
+  assert.equal(run({ efforts: { scope: 'low' } }).EFFORTS.scope, 'low');
+  assert.equal(run({ efforts: { scope: 'low' } }).EFFORTS.synthesize, 'high', 'unlisted stages keep the default');
+  assert.match(run({ efforts: { verify: 'bogus' } }).error, /args\.efforts\.verify/);
+  assert.match(run({ efforts: { scope: null } }).error, /args\.efforts\.scope/);
+});
+
 test('deep-research check: pickRoundRobin takes one claim per angle in turn, each angle in its own order, up to the cap', async () => {
   const { pickRoundRobin } = await import(pathToFileURL(DR_CHECK).href);
   const claims = [

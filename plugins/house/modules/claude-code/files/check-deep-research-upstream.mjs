@@ -214,6 +214,9 @@ const EFFORTS = Object.assign(
   { scope: "medium", search: "medium", fetch: "medium", verify: "medium", synthesize: "high" },
   ARGS_OBJ.efforts || {}
 )
+for (const k of ["scope", "search", "fetch", "verify", "synthesize"]) {
+  if (!["low", "medium", "high", "xhigh", "max"].includes(EFFORTS[k])) return { error: "args.efforts." + k + " must be low, medium, high, xhigh or max, got " + JSON.stringify(EFFORTS[k]) }
+}
 log("Efforts: scope=" + EFFORTS.scope + " search=" + EFFORTS.search + " fetch=" + EFFORTS.fetch + " verify=" + EFFORTS.verify + " synthesize=" + EFFORTS.synthesize)`;
 
 const META = (version, sha) => `export const meta = {
