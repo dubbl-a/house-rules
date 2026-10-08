@@ -46,8 +46,8 @@
       "relationship": "BORROW",
       "remote": "https://github.com/Goldziher/ai-rulez",
       "ref": { "branch": "main" },
-      "sha": "3c056acdada8fbc7d84cb2f29441852da464807e",
-      "consulted": "2026-08-23",
+      "sha": "01417cf7823427227150667be21534798345a7d4",
+      "consulted": "2026-10-07",
       "paths": ["README.md"],
       "recheck": "check whether include pinning or a lock has landed"
     },
@@ -56,8 +56,8 @@
       "relationship": "BORROW",
       "remote": "https://github.com/PackmindHub/packmind",
       "ref": { "branch": "main" },
-      "sha": "d9a55bdd36f3b175b21c1f04cfca0d6786e112ce",
-      "consulted": "2026-08-23",
+      "sha": "8a10541cb9e6b29a094e1434e6398701bb50452c",
+      "consulted": "2026-10-07",
       "paths": ["README.md"],
       "recheck": "re-read only if house needs a multi-user approval path"
     },
