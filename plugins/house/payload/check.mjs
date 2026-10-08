@@ -2875,12 +2875,18 @@ function checkWorkflows(ctx) {
           // Lazy, so a `}` inside the expression (`format('{0}', ...)`) does
           // not end it; the lookbehind skips a property named secrets
           // (`steps.secrets.outputs`); a bare `secrets` (`toJSON(secrets)`)
-          // hands over every secret.
-          const names = [...l.matchAll(/\$\{\{(.*?)\}\}/g)].flatMap((x) => [
-            ...[...x[1].matchAll(/(?<![\w.-])secrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
-            ...[...x[1].matchAll(/(?<![\w.-])secrets\s*\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]/g)].map((m) => m[1] ?? m[2] ?? '*'),
-            ...[...x[1].matchAll(/(?<![\w.-])secrets\b(?!\s*[.[])/g)].map(() => '*'),
-          ]);
+          // hands over every secret. String literals (single-quoted, `''`
+          // escapes) are blanked first, so `hashFiles('secrets/**')` or
+          // `needs['secrets']` is not a read; the bracket form reads its
+          // literal name from the raw text.
+          const names = [...l.matchAll(/\$\{\{(.*?)\}\}/g)].flatMap((x) => {
+            const code = x[1].replace(/'(?:[^']|'')*'/g, "''");
+            return [
+              ...[...code.matchAll(/(?<![\w.-])secrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
+              ...[...x[1].matchAll(/(?<![\w.'"[-])secrets\s*\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]/g)].map((m) => m[1] ?? m[2] ?? '*'),
+              ...[...code.matchAll(/(?<![\w.-])secrets\b(?!\s*[.[])/g)].map(() => '*'),
+            ];
+          });
           const secret = names.find((n) => n.toUpperCase() !== 'GITHUB_TOKEN')
             ?? (/^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? '*' : null);
           if (secret !== null) warn('pr-credential', f, i + 1, `reads \`${secret === '*' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
