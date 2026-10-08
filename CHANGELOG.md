@@ -13,10 +13,11 @@ A patch release under ADR 0012: an additive optional `args.efforts` and two prom
 ### Fixed
 
 - The `/deep-research` fork no longer lets the scope agent run the searches itself (#230). A run sat in Scope for 20 minutes while the scope agent, inheriting the session's `max` effort, ran 15 web searches. The fork now pins an `effort` on all five stages (an `EFFORTS` map, medium except synthesize at high, overridable through `args.efforts`) and tells the scope and synthesize agents not to call any tool. The rebuild refuses unless each prompt anchor matches exactly once, and the fork returns an error for an `args.efforts` level the Workflow runtime does not take.
+- A `ratchetRaises` entry no longer lets a file grow back after it shrank (#231). Any raise whose `to` covered the file applied, so an old one let a trimmed file regrow to it silently and the checker wrote the higher ceiling. A raise over the line limit now applies only while its `from` equals the file's ratchet entry, or its configured limit when it has none.
 
 ### Added
 
-- The workflows family warns when a workflow triggered by `pull_request` or `pull_request_target` reads a secret other than `GITHUB_TOKEN` or grants a `write` permission (`pr-credential`, #160). The github rule asks for a credential-free pull-request gate, and nothing checked it. The check is line-based and judges the file as a whole, so a job kept off pull requests by its own `if:` needs a waiver; `docs/handbook/github.md` states the limits.
+- The workflows family warns when a workflow triggered by `pull_request` or `pull_request_target` reads a secret other than `GITHUB_TOKEN` or grants a `write` permission (`pr-credential`, #160). The github rule asks for a credential-free pull-request gate, and nothing checked it. The check is line-based and judges the file as a whole, so a job kept off pull requests by its own `if:` needs a waiver; `docs/handbook/github.md` states the limits, and #232 tracks reading expressions with a tokenizer.
 
 ### Changed
 
