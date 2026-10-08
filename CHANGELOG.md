@@ -14,6 +14,8 @@ A patch release under ADR 0012: one testing-rule clause, a shorter install, and 
 
 - The testing rule teaches the `verify` skill name: a repo that ships its check as a project skill names it `verify`, and Claude Code 2.1.286 then tells Claude to run it before each commit, docs-only and tests-only commits excepted.
 - The install is one pinned command, `claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.20.6 --scope user` (Claude Code 2.1.292), in the README, the bootstrap skill, and `house` wiring output.
+- The harness-update skill and its routine now adopt what a Claude Code release offers, not only guard against it: a fifth disposition, OPPORTUNITY, is built in the update's pull request (larger ones with tests), a release with nothing to adopt is a comment on one rolling `Survey pending` issue instead of a pull request, and the routine's email is a plain-language briefing. Maintainer-side; nothing an adopter receives changes. A catch-up pass over 2.1.284 to 2.1.294 produced the two changes above and #236.
+- The harness survey records Claude Code 2.1.294: a fix to `prompt` and `agent` hooks this package does not use, so no rule changes (#235).
 
 ### Fixed
 
