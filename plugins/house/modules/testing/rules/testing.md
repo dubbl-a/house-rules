@@ -5,7 +5,7 @@ These rules cover the checks a repo runs on itself: the suite, the gates that gu
 
 ## Give the agent a check it can run before you walk away
 
-Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; making it enforced rather than advised is claude-code.md's hook ladder.
+Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted; making it enforced rather than advised is claude-code.md's hook ladder.
 Anchor: a single `verify` script that runs the suite, the hook harness, and the checker in one pass, so one command covers the tree.
 Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you-walk-away`
 

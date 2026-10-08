@@ -194,8 +194,7 @@ Add a CI step that runs:
   node .house/check.mjs
 
 Install the plugin once per machine:
-  claude plugin marketplace add dubbl-a/house-rules
-  claude plugin install house-rules@house-rules --scope user
+  claude plugin install house-rules --marketplace dubbl-a/house-rules --scope user
 
 Arm the git hooks once per clone (render --apply and every session start also do this):
   git config core.hooksPath "$(pwd)/.githooks"

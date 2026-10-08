@@ -6,6 +6,19 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.20.6] - 2026-10-08
+
+A patch release under ADR 0012: one testing-rule clause, a shorter install, and a README pin that is now tested; nothing the guard denies changes. Upgrading from 0.20.5: run `/house-rules:sync`.
+
+### Changed
+
+- The testing rule teaches the `verify` skill name: a repo that ships its check as a project skill names it `verify`, and Claude Code 2.1.286 then tells Claude to run it before each commit, docs-only and tests-only commits excepted.
+- The install is one pinned command, `claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.20.6 --scope user` (Claude Code 2.1.292), in the README, the bootstrap skill, and `house` wiring output.
+
+### Fixed
+
+- The README install pin sat on v0.20.3 through two releases. `tests/readme-pin.test.mjs` now fails when a pinned tag differs from the plugin version.
+
 ## [0.20.5] - 2026-10-07
 
 A patch release under ADR 0012: an additive optional `args.efforts` and two prompt sentences in the `/deep-research` fork, a new workflows check that warns and never fails, and docs; nothing the guard denies changes. Upgrading from 0.20.4: rebuild the fork with `check-deep-research-upstream.mjs --install`; a pull-request workflow that holds a credential now prints a `pr-credential` warning, which a `modules.github.config.waivers` entry clears.
