@@ -195,10 +195,15 @@ jobs:
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "pull request: $URL"
-      # Merge only on all green. "No checks reported" counts as green only in a
-      # repo with no .github/workflows directory at the PR head; anywhere else it
-      # means the checks have not registered yet, so keep waiting. A green poll
-      # is confirmed by a second one, so a check that registers late is seen.
+      # Merge only on all green. Every check on an adopter PR is a GitHub
+      # Actions run, so this reads the workflow runs for the PR head commit, not
+      # `gh pr checks`: a fine-grained token cannot read check runs (no Checks
+      # permission). The token needs Actions: read here, besides Contents and
+      # Pull requests read/write. "No runs" counts as green only in a repo with
+      # no .github/workflows directory at the PR head; anywhere else it means
+      # the runs have not registered yet, so keep waiting. A green poll is
+      # confirmed by a second one on the same head, so a run that registers
+      # late is seen.
       - name: Wait for checks, then merge
         if: steps.commit.outputs.changed == 'true'
         env:
@@ -212,38 +217,46 @@ jobs:
           for i in $(seq 1 40); do
             sleep 30
             set +e
-            OUT=$(gh pr checks "$URL" --repo "$REPO" --json name,bucket 2>&1)
+            SHA=$(gh pr view "$URL" --repo "$REPO" --json headRefOid -q .headRefOid 2>&1)
+            SHA_RC=$?
+            OUT=
+            API_RC=0
+            if [ "$SHA_RC" -eq 0 ]; then
+              OUT=$(gh api "repos/${REPO}/actions/runs?head_sha=${SHA}&per_page=100" 2>&1)
+              API_RC=$?
+            fi
             set -e
-            if printf '%s' "$OUT" | grep -q 'no checks reported'; then
-              if [ "$HAS_WORKFLOWS" = false ]; then
-                echo "no checks reported and ${REPO} has no workflows; treating as no checks"
-                GREEN_SHA=$(gh pr view "$URL" --repo "$REPO" --json headRefOid -q .headRefOid)
-                RESULT=green
-                break
-              fi
-              echo "poll ${i}: no checks registered yet"
+            if [ "$SHA_RC" -ne 0 ] || [ "$API_RC" -ne 0 ]; then
+              echo "poll ${i}: could not read runs: ${SHA} ${OUT}"
               GREEN=0
               continue
             fi
-            if ! STATE=$(printf '%s' "$OUT" | node -e '
-              const c = JSON.parse(require("fs").readFileSync(0, "utf8"));
-              if (!Array.isArray(c) || c.length === 0) { console.log("none"); process.exit(0); }
-              const b = c.map((x) => x.bucket);
-              console.log(b.some((x) => x === "fail" || x === "cancel") ? "fail"
-                : b.some((x) => x === "pending") ? "pending" : "green");
-            '); then
-              echo "poll ${i}: could not read checks: $OUT"
+            if ! STATE=$(printf '%s' "$OUT" | node house-rules/scripts/release-run-state.mjs); then
+              echo "poll ${i}: could not read runs: $OUT"
+              GREEN=0
+              continue
+            fi
+            if [ "$STATE" = none ]; then
+              if [ "$HAS_WORKFLOWS" = false ]; then
+                echo "no runs and ${REPO} has no workflows; treating as no checks"
+                GREEN_SHA="$SHA"
+                RESULT=green
+                break
+              fi
+              echo "poll ${i}: no runs registered yet"
               GREEN=0
               continue
             fi
             echo "poll ${i}: ${STATE}"
             if [ "$STATE" = fail ]; then
-              printf '%s\n' "$OUT"
+              printf '%s' "$OUT" | node -e '
+                const r = JSON.parse(require("fs").readFileSync(0, "utf8")).workflow_runs;
+                for (const x of r) console.log(`${x.name}: ${x.status} ${x.conclusion} ${x.html_url}`);
+              '
               RESULT=fail
               break
             fi
             if [ "$STATE" = green ]; then
-              SHA=$(gh pr view "$URL" --repo "$REPO" --json headRefOid -q .headRefOid)
               if [ "$GREEN" -ge 1 ] && [ "$SHA" != "$GREEN_SHA" ]; then GREEN=0; fi
               GREEN_SHA="$SHA"
               GREEN=$((GREEN + 1))

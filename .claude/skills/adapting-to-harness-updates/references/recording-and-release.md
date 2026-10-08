@@ -42,7 +42,8 @@ Release, per the repo's version rules:
 5. The maintainer squash-merges on green CI.
 6. `.github/workflows/release.yml` does the rest on that push to main: it tags the merge commit,
    creates the GitHub release from the CHANGELOG section, then opens a `render --apply` pull
-   request in each adopting repo and squash-merges it once its checks pass. When a sync leg fails,
+   request in each adopting repo and squash-merges it once its checks pass (it reads their
+   Actions runs; the sync token needs Contents rw, Pull requests rw, and Actions read). When a sync leg fails,
    fix the cause and use "Re-run failed jobs" on that run, not "Re-run all jobs". The installed
    plugin follows the marketplace when its auto-update is on (it is on for the maintainer's
    machine); otherwise run `claude plugin update house-rules@house-rules`.
