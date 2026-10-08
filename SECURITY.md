@@ -72,8 +72,8 @@ checkout. Two findings from 2026-10-03 show the edge:
   not see. Reasoned, not run end to end.
 
 Branch protection on the remote is the control that holds: see "Protect the default branch at the
-remote" in `plugins/house/modules/github/rules/github.md`, and issue #161. These findings are not
-on the residue list in ADR 0013, a decided record this note leaves as written.
+remote" in `plugins/house/modules/github/rules/github.md`, and issue #161. ADR 0013 lists both
+findings in its residue.
 
 ### For an organization
 
