@@ -2872,9 +2872,14 @@ function checkWorkflows(ctx) {
         // whole by `secrets: inherit`), so a file name like `.secrets.baseline`
         // in a run line is not one. Secret names are case-insensitive.
         raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment).forEach((l, i) => {
-          const names = [...l.matchAll(/\$\{\{([^}]*)\}\}/g)].flatMap((x) => [
-            ...[...x[1].matchAll(/\bsecrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
-            ...[...x[1].matchAll(/\bsecrets\s*\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]/g)].map((m) => m[1] ?? m[2] ?? '*'),
+          // Lazy, so a `}` inside the expression (`format('{0}', ...)`) does
+          // not end it; the lookbehind skips a property named secrets
+          // (`steps.secrets.outputs`); a bare `secrets` (`toJSON(secrets)`)
+          // hands over every secret.
+          const names = [...l.matchAll(/\$\{\{(.*?)\}\}/g)].flatMap((x) => [
+            ...[...x[1].matchAll(/(?<![\w.-])secrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
+            ...[...x[1].matchAll(/(?<![\w.-])secrets\s*\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]/g)].map((m) => m[1] ?? m[2] ?? '*'),
+            ...[...x[1].matchAll(/(?<![\w.-])secrets\b(?!\s*[.[])/g)].map(() => '*'),
           ]);
           const secret = names.find((n) => n.toUpperCase() !== 'GITHUB_TOKEN')
             ?? (/^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? '*' : null);

@@ -253,6 +253,11 @@ test('pr-credential: only a secret read in an expression counts, and GITHUB_TOKE
   assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW + '      - run: cp config/secrets.yml.example config/secrets.yml\n')), []);
   assert.deepEqual(kinds(warns(env("${{ secrets['NPM_TOKEN'] }}"))), ['pr-credential']);
   assert.deepEqual(kinds(warns(env('${{ secrets[matrix.name] }}'))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(env("${{ format('Bearer {0}', secrets.API_KEY) }}"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(env("${{ secrets.FOO || '}' }}"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(env('${{ toJSON(secrets) }}'))), ['pr-credential']);
+  assert.deepEqual(warns(env('${{ steps.secrets.outputs.token }}')), []);
+  assert.deepEqual(warns(env('${{ needs.secrets.result }}')), []);
   assert.deepEqual(kinds(warns(withWorkflow(CLEAN_WORKFLOW.replace('contents: read', 'contents: "write"')))), ['pr-credential']);
 });
 
