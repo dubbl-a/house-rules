@@ -29,7 +29,7 @@ You are adapting the house-rules repository (a Claude Code conventions plugin) t
    - **What this means for house-rules.** What the PR changes and why, or why nothing applies, in two or three sentences.
    - **Terms used above.** Every technical term the email used (for example hook, pull request, CI, refuter, ratchet, frontmatter, guard), each defined in one plain sentence tied to how it shows up in this work. Skip a term any office worker already knows.
    - **One thing to try.** One concrete, safe thing the maintainer could do in their next Claude Code session to see a new feature, when one fits; omit the section when none does.
-   - **Next step.** For a PR: the sentence saying what merging does, the full PR URL again, and "Open it, scroll to the bottom, and tap Merge (in the GitHub app or the browser) to ship it." On the no-PR path: the pending issue link and "Nothing to merge."
+   - **Next step.** For a PR: the sentence saying what merging does, and "Open the link at the top, scroll to the bottom, and tap Merge to ship it." No second link. Omit this section on the no-PR path.
    Use short paragraphs and plain headings; no tables, no code blocks beyond a single command. Use Gmail for this single email only; never read, search, label, or send anything else. Do not send a push notification. If the run stopped before opening a PR for any other reason, send the email with one plain sentence saying why instead.
 
 Never merge, tag, create a release, close a PR or issue, or touch any repository but this one. The one exception for issues is opening and commenting on the `Survey pending` issue in this repository; it closes only through a merged PR's `Closes` line.
