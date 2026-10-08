@@ -51,11 +51,10 @@ apply what an experienced team knows, and each says why, so you learn the reason
 **If you are an engineer**, this is a Claude Code plugin. The twelve modules render into
 `.claude/rules/house/`. Each rule has an imperative heading, a one-clause why, an `Anchor:` naming
 what enforces it, and a receipt. `.house/lock.json` hashes every managed file. A git-hook floor
-refuses a commit or push to a protected branch, and a PreToolUse hook backs it up; both catch
-mistakes, and the remote's branch protection stops a determined session (`SECURITY.md`). The
-vendored rules and the checker reach you as a diff you approve through `/house-rules:sync`. The
-plugin's hooks and skills change when the plugin updates, with no sync. Nothing is on npm or GitHub
-Packages. An adopting repo carries its own copy of the checker and rules.
+refuses a commit or push to a protected branch, backed by a PreToolUse hook; both catch mistakes,
+and the remote's branch protection stops a determined session (`SECURITY.md`). The rules and
+checker reach you as a diff you approve through `/house-rules:sync`; hooks and skills update with
+the plugin. Nothing is on npm or GitHub Packages. An adopting repo carries its own checker and rules.
 
 These are one maintainer's opinionated conventions, published so other people can adopt them. They
 keep changing, so read each update as a dependency bump. Take the parts you want, and fork for the
