@@ -177,7 +177,7 @@ ratchet family holds every document, root file, rule file, README, skill body, a
 chapter, to its configured ceiling, and the ceiling tightens on its own whenever a file shrinks,
 so a raise takes a written entry naming the path, the old and new limit, the reason, and the date
 decided, validated against the manifest schema, rather than landing as a quiet edit; the recorded
-raise takes effect on the next run on its own (`--accept-lengths` is still accepted and does nothing).
+raise takes effect on the next run on its own, only while its old limit is the file's current ceiling, so it is spent once the file tightens below it (`--accept-lengths` is still accepted and does nothing).
 
 Where each limit comes from, as of 2026-10-04 (research on issue #160). The 200-line rule file
 matches Claude Code's memory docs, which say a longer file consumes more context and may reduce

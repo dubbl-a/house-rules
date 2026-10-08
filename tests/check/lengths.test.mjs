@@ -149,6 +149,26 @@ test('lengths: a matching non-empty-why ratchetRaises entry takes effect on its 
   assert.equal(written.ratchet['README.md'], 210);
 });
 
+test('lengths: a ratchetRaises entry applies only when its from is the current ceiling (#231)', () => {
+  const files = (raise) => ({
+    'README.md': linesOf(187),
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } },
+      ratchet: { 'README.md': 186 },
+      ratchetRaises: [{ path: 'README.md', ...raise, why: 'grew', decided: '2026-08-24' }],
+    }),
+  });
+  const stale = sandbox(files({ from: 100, to: 210 }));
+  const before = readFileSync(join(stale, 'house.json'), 'utf8');
+  assert.equal(run(stale, ['--only=lengths']).code, 1);
+  assert.equal(readFileSync(join(stale, 'house.json'), 'utf8'), before);
+
+  const fresh = sandbox(files({ from: 186, to: 195 }));
+  const { code, out } = run(fresh, ['--only=lengths']);
+  assert.equal(code, 0, out);
+  assert.equal(JSON.parse(readFileSync(join(fresh, 'house.json'), 'utf8')).ratchet['README.md'], 195);
+});
+
 test('lengths: --accept-lengths is still accepted, changes nothing, and says it is no longer needed', () => {
   const dir = sandbox({
     'README.md': linesOf(200),
