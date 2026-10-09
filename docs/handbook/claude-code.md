@@ -389,6 +389,32 @@ inherits the session's effort, as the rule's effort line says, and Haiku 5.5 sta
 default of medium until an effort level applies to it, such as
 `modelSettings["claude-haiku-5-5"].effortLevel` in user settings.
 
+Sonnet 5.5 cache reads, 2026-10-09: Claude Code 2.1.296 now prices Sonnet 5.5 cache reads at $0.10
+per million tokens, down from $0.20, in `/cost`, the status line, `--max-budget-usd`, and the SDK's
+cost figures (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md). That is 5 percent of
+Sonnet 5.5's $2 input price, not the 10 percent the 2026-09-28 paragraph above gives, and the
+models overview now says cache reads cost 5 percent of the base input price on Opus 5.5 and Sonnet
+5.5 (https://platform.claude.com/docs/en/about-claude/models/overview, fetched 2026-10-09). The
+ladder and the roster pins are unchanged; a budget ceiling now counts a Sonnet subagent's cache
+reads at half the earlier rate.
+
+The workflow model variable, 2026-10-09: Claude Code 2.1.296 added
+`CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` "to run every workflow agent on one model while other
+subagents keep theirs" (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md). Unlike
+`CLAUDE_CODE_SUBAGENT_MODEL`, it is not a default beneath a named model. The 2.1.296 binary's model
+resolution, read on 2026-10-09, drops both the per-call `model` and the agent definition's `model`
+for an agent inside a workflow run when the variable is set to anything but `inherit`, and the
+Workflow tool logs "Workflow agent model ... ignored: CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL is set"
+for each agent whose options named one. So the `/deep-research` fork's per-stage models, and a
+roster agent's pin when a workflow spawns it, give way to the variable, and a tiered fan-out runs
+on one model. The rule and `plugins/house/orchestration/ORCHESTRATION.md` therefore say to leave it
+unset where a tiered fork runs. The sub-agents, model-config, and environment variables pages
+(https://code.claude.com/docs/en/sub-agents, https://code.claude.com/docs/en/model-config,
+https://code.claude.com/docs/en/env-vars, fetched 2026-10-09) do not name the variable yet, so the
+changelog line and the binary are the record until they do.
+
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
 repo-c's `.claude/settings.json` scopes its hook entry with a declarative `"if": "Bash(git *)"`

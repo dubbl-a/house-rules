@@ -44,10 +44,10 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - The ladder, by capability and cost together: Fable, Opus, Sonnet, Haiku. Opus is the default
   session for most work; reach for Fable for demanding reasoning, long-horizon agentic work,
   or where Opus at higher effort still falls short.
-- The harness runs a subagent, teammate, or workflow agent with no assigned model on the
-  session's model unless `CLAUDE_CODE_SUBAGENT_MODEL` says otherwise, so every off-roster call
-  names a `model` and an `effort` (the Agent tool takes both) below the session unless the task
-  needs the session's tier. Roster agents are pinned.
+- The harness runs a subagent, teammate, or workflow agent with no assigned model on the session's
+  model unless `CLAUDE_CODE_SUBAGENT_MODEL` says otherwise, so every off-roster call names a `model`
+  and an `effort` (the Agent tool takes both) below the session unless the task needs the session's
+  tier. Unset `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` for `/deep-research`; it overrides named models.
 - Fable never runs on a subagent unless the user asks for it.
 - Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
   or synthesis whose verdict decides, because the verdict is the product and Opus is moderately

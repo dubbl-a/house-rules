@@ -2,7 +2,7 @@
 paths:
   - scripts/**
 ---
-<!-- house-managed v0.21.0 module=security source=modules/security/rules/security-server.md body-sha256=2ac996d5900aa73f0a30283e96e5c2ad6750979d502916dde3240abb3347edc8 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.1 module=security source=modules/security/rules/security-server.md body-sha256=2ac996d5900aa73f0a30283e96e5c2ad6750979d502916dde3240abb3347edc8 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: server code
 

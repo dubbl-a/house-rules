@@ -6,6 +6,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-10-09
+
+A patch release under ADR 0012: one Claude Code rule clause, one orchestration sentence, and two handbook receipts; no heading is renamed and nothing the guard denies changes. Upgrading from 0.21.0: run `/house-rules:sync`.
+
+### Changed
+
+- The Claude Code rule's model-floor line and the orchestration defaults say to leave the workflow subagent model variable that Claude Code 2.1.296 added unset where a tiered workflow runs: unlike the subagent model variable, it replaces every workflow agent's model, a named one included, so it would run the `/deep-research` fork's tiered stages on one model.
+- The handbook's Sonnet 5.5 receipt corrects its cache-read price to 5 percent of input ($0.10 per Mtok), as Claude Code 2.1.296 and the models overview now give it.
+- The harness survey records Claude Code 2.1.296.
+
 ## [0.21.0] - 2026-10-08
 
 The branch guard now refuses a call when it cannot decide in time, which tightens what it denies, the breaking class, so this is a minor release under ADR 0012. Upgrading from 0.20.6: run `/house-rules:sync`; the guard's new behavior needs Claude Code 2.1.295 or later, and an older CLI ignores it.

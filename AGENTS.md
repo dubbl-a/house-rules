@@ -1,4 +1,4 @@
-<!-- house-managed:begin v0.21.0 DO NOT EDIT between these markers: house render rewrites it; text outside them is yours. Propose upstream, or house render --force-managed AGENTS.md -->
+<!-- house-managed:begin v0.21.1 DO NOT EDIT between these markers: house render rewrites it; text outside them is yours. Propose upstream, or house render --force-managed AGENTS.md -->
 ## House rules
 
 These rules live in `.claude/rules/house/`. Claude Code loads them automatically by path.
