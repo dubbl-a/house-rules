@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.21.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=942c4dea966201ad916cd9490ebc4b275b0c76f79b711200f996ae3f78d11314 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.1 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=8d6f0a7fcd1c40df07a68d90a9ed3b6f74854b9fe9386e7c125e66a1c0008fc3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -70,7 +70,7 @@ Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with
 
 Name the model on every agent call, because the harness resolves an omitted one through the subagent model variable and then to the session's model, so a wide fan-out otherwise runs at whatever tier you happened to be in.
 Match the tier to the task: mechanical joins and receipt checks on Haiku, code and prose on Sonnet, judgment and adjudication on Opus, even when the session itself is on Opus, because the verdict is the product and Opus is moderately priced.
-Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor; an explicit call-level model still wins, and Fable never runs on a subagent unless the user asks for it.
+Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor; an explicit call-level model still wins, except that the workflow model variable, once set, replaces every workflow agent's model, the `/deep-research` fork's per-stage models included, so leave it unset where a tiered fork runs, and Fable never runs on a subagent unless the user asks for it.
 Reach for the plugin's pinned roster before a bare agent call (scout on Haiku, researcher and builder on Sonnet, refuter and debugger on Opus), since each pins its model, effort, and tools in a file the harness enforces.
 Name the effort on an off-roster call too, through the Agent tool's `effort` parameter, which a fork ignores: a subagent without one inherits the session's effort, and a newly released model starts at its own default until an effort level applies to it, so also set one per model in user settings as the floor.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.
