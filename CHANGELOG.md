@@ -6,6 +6,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-10-14
+
+A patch release under ADR 0012: one evals rule Anchor and its handbook receipt; no heading is renamed and nothing the guard denies changes. Upgrading from 0.21.1: run `/house-rules:sync`.
+
+### Changed
+
+- The evals rule "Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero" names how Claude Code 2.1.299's eval runner scores a run that ends on an API error: 0, without grading it, while failing the suite. The runner no longer passes such a run, but its zero is still not a measurement, so treat that run as NOT EVALUABLE and rerun it rather than averaging it in.
+- The harness survey records Claude Code 2.1.299.
+
 ## [0.21.1] - 2026-10-09
 
 A patch release under ADR 0012: one Claude Code rule clause, one orchestration sentence, and two handbook receipts; no heading is renamed and nothing the guard denies changes. Upgrading from 0.21.0: run `/house-rules:sync`.

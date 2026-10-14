@@ -2,7 +2,7 @@
 paths:
   - plugins/house/evals/**
 ---
-<!-- house-managed v0.21.1 module=evals source=modules/evals/rules/evals.md body-sha256=88b6c7efec6a223a4dd0fd85bb14537b52d5128cf5cb064684f21bda4c82d5b6 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.2 module=evals source=modules/evals/rules/evals.md body-sha256=822c02bfbbd7a27611847c2e6b2d8821bbd696fb56e772751aebab87892851e7 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Evals
 
@@ -35,7 +35,7 @@ Receipts: `docs/handbook/evals.md#never-let-a-gate-mint-the-answer-key-it-grades
 
 Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
 Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
-Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early and omits a delta when its arms are not comparable, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
+Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early, omits a delta when its arms are not comparable, and scores a run that ends on an API error as 0 without grading it while failing the suite, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
 Receipts: `docs/handbook/evals.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
 
 ## Show the ratio and the sample, because one number is never the accuracy
