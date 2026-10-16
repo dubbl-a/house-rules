@@ -16,8 +16,9 @@
 #      branch, so this uses the GitHub API instead, which such a hook
 #      does not intercept; the harness's auto-mode classifier can still
 #      refuse the call, so a failed delete prints the exact command for
-#      the user). Skipped if `gh` is missing or the remote ref is already
-#      gone. While it is there, reports when the repository has automatic
+#      the user, but only for a real refusal). Skipped if the remote ref is
+#      already gone (checked first with `git ls-remote`; `gh api` answering
+#      404 or 422 counts as gone too) or `gh` is missing. While it is there, reports when the repository has automatic
 #      head-branch deletion off, the setting that makes this step
 #      unnecessary; turning it on is the owner's call, not this script's.
 #
@@ -201,9 +202,15 @@ git branch -D "$BRANCH"
 # such a hook leaves it alone). The harness's auto-mode classifier is a
 # different gate and has refused this call when an agent ran it, so a
 # failure prints the exact command for the user instead of being retried
-# another way. Treat 422 (ref already gone) and missing `gh` as non-fatal:
-# the local cleanup still succeeded.
-if command -v gh >/dev/null 2>&1; then
+# another way. A ref that `gh pr merge --delete-branch` already deleted is
+# reported as gone, not as a refusal: `git ls-remote --exit-code` answers 2
+# for an absent ref, and a 404 or 422 from the DELETE means the same. Missing
+# `gh` is non-fatal: the local cleanup still succeeded.
+ls_status=0
+git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1 || ls_status=$?
+if [[ $ls_status -eq 2 ]]; then
+  echo "→ remote branch already deleted ($BRANCH)"
+elif command -v gh >/dev/null 2>&1; then
   REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
   if [[ -n "$REPO" ]]; then
     # Automatic head-branch deletion is what stops merged branches piling
@@ -215,10 +222,13 @@ if command -v gh >/dev/null 2>&1; then
       echo "    the owner can turn it on with: gh repo edit $REPO --delete-branch-on-merge"
     fi
     echo "→ gh api DELETE repos/$REPO/git/refs/heads/$BRANCH"
-    if gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" >/dev/null 2>&1; then
+    delete_out=""
+    if delete_out="$(gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" 2>&1)"; then
       echo "  remote branch deleted"
+    elif [[ "$delete_out" == *"HTTP 404"* || "$delete_out" == *"HTTP 422"* ]]; then
+      echo "  remote branch already deleted"
     else
-      echo "  remote branch not deleted: already gone, or the call was refused (the harness's classifier may have blocked it)."
+      echo "  remote branch not deleted: the call was refused (the harness's classifier may have blocked it)."
       echo "  If it is still there, run this yourself:"
       echo "    gh api -X DELETE repos/$REPO/git/refs/heads/$BRANCH"
     fi

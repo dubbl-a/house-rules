@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- `cleanup-worktree.sh` no longer prints the manual `gh api -X DELETE` command after `gh pr merge --delete-branch` has already removed the remote branch. It checks `git ls-remote` first, treats a 404 or 422 from the DELETE as already gone, and hands over the command only for a real refusal (#252).
+
 ## [0.21.2] - 2026-10-14
 
 A patch release under ADR 0012: one evals rule Anchor and its handbook receipt; no heading is renamed and nothing the guard denies changes. Upgrading from 0.21.1: run `/house-rules:sync`.

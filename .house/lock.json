@@ -52,7 +52,7 @@
       "path": "scripts/house/cleanup-worktree.sh",
       "module": "github",
       "source": "modules/github/files/cleanup-worktree.sh",
-      "bodySha256": "468e941e812cfe9aba94d904700701d4367e188d019283fe9781c8af7b57eeda"
+      "bodySha256": "7b35987fcb65a881b89212b0550388a7adef2167b63501cba28565ea36dfe8b0"
     },
     {
       "path": ".githooks/pre-commit",
