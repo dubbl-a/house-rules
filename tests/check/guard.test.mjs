@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
 
@@ -449,4 +449,39 @@ test('guard by floor or remote: a record without a why or date, or with an unkno
     assert.equal(guardWarnings(json).length, 1, `${JSON.stringify(guard)} must still warn`);
     assert.ok((json.findings || []).some((f) => f.family === 'manifest'), `${JSON.stringify(guard)} must be a manifest finding`);
   }
+});
+
+// A fresh bootstrap: render wrote the floor to disk but nothing is staged yet.
+// CI sees the committed state, so under "floor" it is still a finding, but the
+// message must name the missing stage and not tell the reader to re-render.
+test('guard by floor: a floor on disk but unstaged is a finding that says to git add it', () => {
+  const dir = sandbox({ 'house.json': houseJson({ guard: guardRecord('floor') }) });
+  for (const p of FLOOR_FILES) {
+    mkdirSync(join(dir, dirname(p)), { recursive: true });
+    writeFileSync(join(dir, p), FLOOR_BODY, { mode: 0o755 });
+  }
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 1);
+  const f = floorFindings(json);
+  assert.equal(f.length, 1, JSON.stringify(json.findings));
+  assert.match(f[0].message, /rendered on disk but not staged/);
+  assert.match(f[0].message, /git add \.githooks\//);
+  assert.doesNotMatch(f[0].message, /not vendored here/);
+});
+
+test('guard by remote: the info line names an absent floor, and a vendored floor does not trigger that sentence', () => {
+  const bare = run(sandbox({ 'house.json': houseJson({ guard: guardRecord('remote') }) }), ['--only=guard', '--json']).json;
+  assert.match(bare.info.find((i) => /"remote"/.test(i.message)).message, /floor is not vendored here/);
+  assert.equal(bare.warnings.length, 0);
+  const full = run(floorSandbox(houseJson({ guard: guardRecord('remote') })), ['--only=guard', '--json']).json;
+  assert.doesNotMatch(full.info.find((i) => /"remote"/.test(i.message)).message, /floor is not vendored here/);
+});
+
+test('guard by remote: the github module off is the recorded state, not a warning or a finding', () => {
+  const dir = sandbox({ 'house.json': houseJson({ guard: guardRecord('remote'), modules: { github: { enabled: false } } }) });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 0, JSON.stringify(json.findings));
+  assert.equal(guardWarnings(json).length, 0);
+  assert.equal(floorWarnings(json).length, 0);
+  assert.equal(floorFindings(json).length, 0);
 });

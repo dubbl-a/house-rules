@@ -3219,7 +3219,7 @@ const GUARD_BY = ['plugin', 'floor', 'remote'];
 function guardRecord(d) {
   const g = isPlainObject(d) ? d.guard : null;
   if (!isPlainObject(g)) return null;
-  if (!GUARD_BY.includes(g.by) ||!isNonEmptyString(g.why) || !isDate(g.decided)) return null;
+  if (!GUARD_BY.includes(g.by) || !isNonEmptyString(g.why) || !isDate(g.decided)) return null;
   // An unknown key is malformed here too, or a record the manifest family
   // rejects would still buy guard-family silence and the two would disagree.
   if (!Object.keys(g).every((k) => ['by', 'decided', 'why'].includes(k))) return null;
@@ -3296,7 +3296,7 @@ function checkGuardFloor(ctx, d) {
   // so an absent floor is the recorded state and not a warning.
   const by = (guardRecord(d) || {}).by;
   const absent = (where, message) => {
-    if (by === 'floor') findings.push(mk('guard', where, null, 'floor', `guard.by is "floor" but ${message}`));
+    if (by === 'floor') findings.push(mk('guard', where, null, 'floor', `guard.by is "floor", so the floor must be vendored, and it is not: ${message}`));
     else if (by !== 'remote') warnings.push(mk('guard', where, null, 'floor', message));
   };
   if (isPlainObject(github) && github.enabled === false) {
@@ -3316,7 +3316,15 @@ function checkGuardFloor(ctx, d) {
   // the rest: a deleted `house-lib.sh` fails every commit closed, a deleted
   // `pre-push.d/10-house-branch` leaves the push path open, and neither is the
   // "has not upgraded yet" state the warning exists to be kind about.
-  if (missing.length && present.length === 0) {
+  // Render writes the floor to disk and the index only learns of it at `git add`.
+  // A floor that is on disk but unstaged is still not vendored where CI looks (the
+  // committed state), so the verdict stands, but the cause is a missing stage and
+  // sending the reader to re-render would be false.
+  const unstaged = missing.filter((p) => existsSync(join(ctx.repoRoot, p)));
+  if (missing.length && present.length === 0 && unstaged.length) {
+    absent('.githooks',
+      `branchPolicy is "pr" and the git-hook floor is rendered on disk but not staged: ${unstaged.map((p) => `\`${p}\``).join(', ')} ${unstaged.length === 1 ? 'is' : 'are'} missing from the index, so a commit or CI would not carry the floor. Run \`git add .githooks/\` and commit it.`);
+  } else if (missing.length && present.length === 0) {
     absent('.githooks',
       `branchPolicy is "pr" but the git-hook floor is not vendored here: ${missing.map((p) => `\`${p}\``).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing from the index. Those hooks are what refuses a commit or a push on a protected branch when no session is watching (ADR 0013), and a repo rendered before the floor shipped has none of them. Run \`house render --apply\` to vendor them, then arm them once per clone: \`git config core.hooksPath "$(pwd)/.githooks"\` (render and every session start arm them too; \`house doctor\` reports whether this clone is armed).`);
   } else if (missing.length) {
@@ -3397,13 +3405,14 @@ function checkGuard(ctx) {
       'branchPolicy is "pr" and this repo-local guard file exists but does nothing: every line is blank, a comment, or a bare `exit 0`. It is not a guard, and until this was fixed it also disarmed the plugin\'s hook by its mere presence, so the repo reported protection while enforcing none. Either give the file a real guard body, or delete it so the plugin\'s hook applies.'));
   } else if (!repoHook && !settingsPreHook && !guardRecord(d)) {
     warnings.push(mk('guard', 'house.json', null, 'guard',
-      'branchPolicy is "pr" but no reachable branch guard was found in the repo: no `.claude/hooks/no-direct-master.sh`, no PreToolUse hook in `.claude/settings.json`, and no recorded plugin-guard choice. Wire a PreToolUse hook, vendor the hook file, or record the guard with a dated why: `"guard": {"by": "plugin", "decided": "YYYY-MM-DD", "why": "..."}` in house.json. "plugin" fits a solo repo; a team repo where the plugin is not installed for everyone records "floor" (the vendored git hooks plus remote branch protection; the checker then requires the floor to be vendored) or "remote" (the server alone; the checker cannot verify it). `house doctor` shows whether the choice is recorded. The session-time scan is only half of it: the git-hook floor under `.githooks/` is what holds when no session is in the loop, and it is reported separately below.'));
+      'branchPolicy is "pr" but no reachable branch guard was found in the repo: no `.claude/hooks/no-direct-master.sh`, no PreToolUse hook in `.claude/settings.json`, and no recorded guard choice. Wire a PreToolUse hook, vendor the hook file, or record the guard with a dated why: `"guard": {"by": "plugin", "decided": "YYYY-MM-DD", "why": "..."}` in house.json. "plugin" fits a solo repo; a team repo where the plugin is not installed for everyone records "floor" (the vendored git hooks plus remote branch protection; the checker then requires the floor to be vendored) or "remote" (the server alone; the checker cannot verify it). `house doctor` shows whether the choice is recorded. The session-time scan is only half of it: the git-hook floor under `.githooks/` is what holds when no session is in the loop, and it is reported separately below.'));
   }
   const floor = checkGuardFloor(ctx, d);
   const info = [...(tgt.info || [])];
   const rec = guardRecord(d);
   if (rec && rec.by === 'remote') {
-    info.push(mk('guard', 'house.json', null, 'guard', `guard.by is "remote" (decided ${rec.decided}): the server's branch protection is recorded as the guard. This checker cannot see branch protection, so the record is taken on trust; confirm the ruleset in the host's settings.`));
+    const floorAbsent = gitIndexModes(ctx.repoRoot, GUARD_FLOOR_FILES).size === 0;
+    info.push(mk('guard', 'house.json', null, 'guard', `guard.by is "remote" (decided ${rec.decided}): the server's branch protection is recorded as the guard. This checker cannot see branch protection, so the record is taken on trust; confirm the ruleset in the host's settings.${floorAbsent ? ' The git-hook floor is not vendored here, so the server is the only guard when no session is in the loop.' : ''}`));
   }
   return { findings: [...tgt.findings, ...floor.findings], warnings: [...warnings, ...floor.warnings], info };
 }
