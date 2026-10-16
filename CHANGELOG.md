@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- `plugins/house/templates/pr-checks.yml` pins `actions/setup-node` v7.1.0, matching this repo's workflows after the Dependabot bump (#242). Dependabot does not scan the templates. Existing adopters keep their file and can copy the `uses:` line.
+
 ### Fixed
 
 - `cleanup-worktree.sh` no longer prints the manual `gh api -X DELETE` command after `gh pr merge --delete-branch` has already removed the remote branch. It checks `git ls-remote` first, treats a 404 or 422 from the DELETE as already gone, and hands over the command only for a real refusal (#252).
