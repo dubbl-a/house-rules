@@ -3798,3 +3798,94 @@ test('#167 disable github: the plan sentence about the guard says what ADR 0017 
   assert.match(line, /commit and push refusals on a protected branch stand down once this change is on HEAD/);
   assert.match(line, /disable list \(a core\.hooksPath change, a write or removal under \.githooks\/, --no-verify\), the ref-writing plumbing scan, and the configured-alias checks stay/);
 });
+
+// #247: a step decided against leaves the not-confirmed list through a dated
+// deviation of kind "declined-step", which `house decline` writes.
+const declinedOf = (repo) => JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).deviations.filter((d) => d.kind === 'declined-step');
+
+test('#247 decline: writes a dated declined-step deviation and doctor lists the step as declined, not as not confirmed', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'no outside contributors', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  const now = new Date();
+  const today = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+  const [dev] = declinedOf(repo);
+  assert.equal(declinedOf(repo).length, 1);
+  assert.deepEqual({ kind: dev.kind, module: dev.module, step: dev.step, why: dev.why, decided: dev.decided }, { kind: 'declined-step', module: 'gamma', step: 'owners', why: 'no outside contributors', decided: today });
+  assert.match(dev.what, /owners/);
+  assert.equal(runVendoredCheck(repo).status, 0, 'the vendored checker accepts the record');
+
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.match(doc.out, /^at-adoption steps not confirmed for gamma: scan-on \(/m);
+  assert.doesNotMatch(doc.out, /not confirmed for gamma:[^\n]*owners/);
+  assert.match(doc.out, new RegExp(`^at-adoption steps declined for gamma: owners \\(${today}: no outside contributors\\)$`, 'm'));
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [{ id: 'owners', decided: today, why: 'no outside contributors' }], undeclared: [], undeclaredDeclined: [] }]);
+
+  assert.equal(runCli(cliPath, ['decline', 'gamma', 'scan-on', '--why', 'not needed', '--repo', repo]).code, 0);
+  assert.doesNotMatch(runCli(cliPath, ['doctor', '--repo', repo]).out, /not confirmed/, 'nothing left to confirm');
+});
+
+test('#247 decline: needs a why, refuses an undeclared step, a disabled or unknown module, and repeats keep the first record', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const noWhy = runCli(cliPath, ['decline', 'gamma', 'owners', '--repo', repo]);
+  assert.equal(noWhy.code, 2, noWhy.out + noWhy.err);
+  assert.match(noWhy.err, /--why/);
+  const flagWhy = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', '--repo', repo]);
+  assert.equal(flagWhy.code, 2);
+  const undeclared = runCli(cliPath, ['decline', 'gamma', 'nope', '--why', 'x', '--repo', repo]);
+  assert.equal(undeclared.code, 2);
+  assert.match(undeclared.err, /not an at-adoption step of `gamma`/);
+  assert.equal(runCli(cliPath, ['decline', 'delta', 'deny-list', '--why', 'x', '--repo', repo]).code, 2);
+  assert.equal(runCli(cliPath, ['decline', 'nosuch', 'x', '--why', 'x', '--repo', repo]).code, 2);
+  assert.equal(gitStatusShort(repo), '', 'every refusal wrote nothing');
+
+  assert.equal(runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'first', '--repo', repo]).code, 0);
+  const again = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'second', '--repo', repo]);
+  assert.equal(again.code, 0);
+  assert.match(again.out, /already declined on/);
+  assert.deepEqual(declinedOf(repo).map((d) => d.why), ['first']);
+});
+
+test('#247 decline: refuses, writing nothing, while the vendored checker is not the plugin\'s', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  writeFileSync(join(repo, '.house', 'check.mjs'), OLD_CHECK_MJS);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files.find((f) => f.path === '.house/check.mjs').bodySha256 = sha256Hex(OLD_CHECK_MJS);
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'an adopter still on the old checker');
+  const r = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'x', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /house decline: nothing was written/);
+  assert.match(r.err, /\/house-rules:sync/);
+  assert.equal(gitStatusShort(repo), '');
+});
+
+test('#247 decline then confirm: the step is confirmed, the decline record stays as history and doctor lists it as neither open nor declined', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  assert.equal(runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'for now', '--repo', repo]).code, 0);
+  const c = runCli(cliPath, ['confirm', 'gamma', 'owners', '--repo', repo]);
+  assert.equal(c.code, 0, c.out + c.err);
+  assert.match(c.out, /earlier decline/);
+  assert.equal(declinedOf(repo).length, 1, 'the decline record is kept');
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.doesNotMatch(doc.out, /owners/, 'confirmed wins over an older decline');
+  assert.equal(runVendoredCheck(repo).status, 0);
+  const d = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'x', '--repo', repo]);
+  assert.equal(d.code, 2, 'a confirmed step is not declined over');
+  assert.match(d.err, /already confirmed/);
+});
+
+test('#247 doctor: a declined step the module no longer declares is named, not hidden', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.deviations = [{ kind: 'declined-step', module: 'gamma', step: 'gone', what: 'x', why: 'y', decided: '2026-10-15' }];
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /declined steps gamma no longer declares: gone/);
+});

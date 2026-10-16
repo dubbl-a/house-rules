@@ -54,8 +54,9 @@
         "required": ["kind", "what", "why", "decided"],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["disabled-module", "branch-policy", "carve-out", "unmanaged-file", "coload-ceiling", "other"] },
-          "module": { "type": "string" },
+          "kind": { "enum": ["disabled-module", "branch-policy", "carve-out", "unmanaged-file", "coload-ceiling", "declined-step", "other"] },
+          "module": { "type": "string", "description": "Required for kind declined-step." },
+          "step": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "Required for kind declined-step: the at-adoption step id the module declares. Written by `house decline <module> <step-id> --why \"...\"`; `house doctor` lists the step as declined rather than not confirmed." },
           "ceiling": { "type": "integer", "minimum": 1 },
           "what": { "type": "string", "minLength": 1 },
           "why": { "type": "string", "minLength": 1 },

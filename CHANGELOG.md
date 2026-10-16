@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- `house decline <module> <step-id> --why "..."` records an at-adoption step the repo decided not to do (#247). It writes a dated `declined-step` deviation naming the module and step, and `house doctor` lists the step as declined, with the date and reason, instead of not confirmed, so the not-confirmed list can be emptied. The checker validates the record's shape and that its module is in `house.json`. Like `confirm`, it refuses until the vendored checker is the plugin's. Confirming a declined step later still works and wins; the decline stays in `deviations` as history.
+
 ### Changed
 
 - `plugins/house/templates/pr-checks.yml` pins `actions/setup-node` v7.1.0, matching this repo's workflows after the Dependabot bump (#242). Dependabot does not scan the templates. Existing adopters keep their file and can copy the `uses:` line.

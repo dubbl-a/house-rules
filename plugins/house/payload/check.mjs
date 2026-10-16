@@ -1993,7 +1993,7 @@ const MANIFEST_TOP_KEYS = new Set(['version', 'defaultBranch', 'branchPolicy', '
 // ADR 0015. Absent means ["claude-code"]; the package ships as a Claude Code
 // plugin, so claude-code is required whenever the key is present.
 const TARGETS = ['claude-code', 'codex', 'gemini'];
-const DEVIATION_KINDS = new Set(['disabled-module', 'branch-policy', 'carve-out', 'unmanaged-file', 'coload-ceiling', 'other']);
+const DEVIATION_KINDS = new Set(['disabled-module', 'branch-policy', 'carve-out', 'unmanaged-file', 'coload-ceiling', 'declined-step', 'other']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // A real calendar date: the shape, and it survives a round trip through Date.
 const isDate = (s) => typeof s === 'string' && DATE_RE.test(s) && new Date(`${s}T00:00:00Z`).toJSON()?.slice(0, 10) === s;
@@ -2278,7 +2278,16 @@ function checkManifest(ctx) {
       if ('what' in dev && !isNonEmptyString(dev.what)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].what must be a non-empty string`));
       if ('why' in dev && !isNonEmptyString(dev.why)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].why must be a non-empty string`));
       if ('decided' in dev && !isDate(dev.decided)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].decided must be YYYY-MM-DD`));
-      if (dev.kind === 'coload-ceiling' && !(Number.isInteger(dev.ceiling) && dev.ceiling > 0)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (coload-ceiling) must carry an integer \`ceiling\` equal to modules.docs.config.maxCoLoadLines; prose in \`what\` is not parsed`));
+      // #247: an at-adoption step decided against, written by `house decline`.
+      // Shape only, as for `confirmed`: the declared step ids live in the
+      // plugin's module.json, so `house decline` and `house doctor` own that check.
+      if (dev.kind === 'declined-step') {
+        if (!isNonEmptyString(dev.module)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (declined-step) must name a \`module\`; \`house decline <module> <step-id> --why "..."\` writes it`));
+        else if (isPlainObject(d.modules) && !(dev.module in d.modules)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (declined-step) names module \`${dev.module}\`, which is not in house.json modules`));
+        if (!isNonEmptyString(dev.step)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (declined-step) must name a \`step\` (the at-adoption step id)`));
+        else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(dev.step)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].step must be a step id (kebab-case), got ${JSON.stringify(dev.step)}`));
+      }
+      if (dev.kind === 'coload-ceiling' &&!(Number.isInteger(dev.ceiling) && dev.ceiling > 0)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (coload-ceiling) must carry an integer \`ceiling\` equal to modules.docs.config.maxCoLoadLines; prose in \`what\` is not parsed`));
     });
   }
 

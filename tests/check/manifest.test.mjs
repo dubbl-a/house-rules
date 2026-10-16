@@ -249,8 +249,8 @@ test('manifest: every deviation kind in the schema enum is accepted; an unknown 
   const kinds = JSON.parse(readFileSync(schemaPath, 'utf8')).properties.deviations.items.properties.kind.enum;
   assert.ok(kinds.includes('coload-ceiling'), 'the schema declares coload-ceiling');
   for (const kind of kinds) {
-    const extra = kind === 'coload-ceiling' ? { ceiling: 500 } : {};
-    const dir = sandbox({ 'house.json': houseJson({ deviations: [{ kind, ...extra, what: 'x', why: 'y', decided: '2026-08-25' }] }) });
+    const extra = kind === 'coload-ceiling' ? { ceiling: 500 } : kind === 'declined-step' ? { module: 'github', step: 'community-profile' } : {};
+    const dir = sandbox({ 'house.json': houseJson({ modules: { github: { enabled: true } }, deviations: [{ kind, ...extra, what: 'x', why: 'y', decided: '2026-08-25' }] }) });
     const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
     assert.equal(code, 0, `${kind}: ${out}`);
   }
@@ -752,4 +752,30 @@ test('#244: the lock decides over a different installed plugin, which only warns
   assert.equal(r.code, 0, r.out);
   const local = vendoredCheck(d, true);
   assert.ok(has(local.json.warnings, /lock record for module `testing` differs from the installed house plugin.*house render --apply/), local.out);
+});
+
+// #247: a declined at-adoption step is a deviation of kind "declined-step"
+// naming the module and the step id. The checker has no module.json to know
+// the declared ids, so it checks the shape and that the module is in house.json.
+const declinedStep = (over = {}) => ({ kind: 'declined-step', module: 'github', step: 'community-profile', what: 'Declined at-adoption step `community-profile`', why: 'internal repo, no outside contributors', decided: '2026-10-15', ...over });
+const declinedHouse = (dev) => houseJson({ modules: { github: { enabled: true } }, deviations: [dev] });
+
+test('#247 manifest: a declined-step deviation naming a module in house.json passes', () => {
+  const { code, out } = run(sandbox({ 'house.json': declinedHouse(declinedStep()) }), ['--only=manifest']);
+  assert.equal(code, 0, out);
+});
+
+test('#247 manifest: a declined-step deviation missing module, step, why, or a real date is a finding', () => {
+  for (const [over, re] of [
+    [{ module: undefined }, /deviations\[0\] \(declined-step\) must name a `module`/],
+    [{ step: undefined }, /deviations\[0\] \(declined-step\) must name a `step`/],
+    [{ step: 'Not Kebab' }, /deviations\[0\]\.step must be a step id/],
+    [{ why: undefined }, /missing `why`/],
+    [{ decided: '2026-13-40' }, /decided must be YYYY-MM-DD/],
+    [{ module: 'nosuch' }, /\(declined-step\) names module `nosuch`, which is not in house\.json modules/],
+  ]) {
+    const { code, out } = run(sandbox({ 'house.json': declinedHouse(declinedStep(over)) }), ['--only=manifest']);
+    assert.equal(code, 1, `${JSON.stringify(over)}: ${out}`);
+    assert.match(out, re, JSON.stringify(over));
+  }
 });

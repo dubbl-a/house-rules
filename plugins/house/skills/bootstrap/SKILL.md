@@ -63,6 +63,17 @@ first date if the step was already confirmed. It refuses while `.house/check.mjs
 plugin's copy, since an older checker fails CI on the record: run `/house-rules:sync` first. Do not confirm a step on the person's behalf. A
 step left open is fine: `house doctor` lists every step of an enabled module not yet confirmed.
 
+When the person decides a step is not for this repo, record the decision and its reason, never
+a confirmation:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house decline <module> <step-id> --why "<reason>" --repo <path>
+```
+
+It writes a dated `declined-step` deviation (the same sync-first refusal applies), and `house
+doctor` then lists the step as declined rather than not confirmed. Confirming it later still
+works and wins; the decline stays in `deviations` as history. Ask for the reason; do not invent one.
+
 ## Disable modules in an adopted repo
 
 When the person asks to turn modules off, run the plan first, for every module named, in one run:
