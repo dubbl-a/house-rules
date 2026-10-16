@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "5befa745a734689282c375919ca86b5e6fb3bd19895ab69894306a80f30a32f1"
+      "bodySha256": "c056bfc8a2ec8b754aeea9c29dce638073613a84fbf3bd2edb66d7dc13ed1e28"
     },
     {
       "path": "AGENTS.md",
@@ -175,5 +175,227 @@
       "evals/",
       "eval/"
     ]
+  },
+  "modules": {
+    "claude-code": {
+      "default": "on",
+      "rules": 1,
+      "config": {
+        "claudeWorkflowGlobs": []
+      },
+      "pathSlots": [
+        "claudeGlobs",
+        "claudeWorkflowGlobs"
+      ],
+      "globs": [
+        ".claude/**",
+        "CLAUDE.md"
+      ]
+    },
+    "data-pipelines": {
+      "default": "detect",
+      "rules": 1
+    },
+    "database": {
+      "default": "detect",
+      "rules": 1
+    },
+    "deployment": {
+      "default": "detect",
+      "rules": 1
+    },
+    "docs": {
+      "default": "on",
+      "rules": 1,
+      "config": {
+        "roots": [],
+        "excludeFiles": [
+          "plugins/house/modules/**",
+          "plugins/house/templates/**",
+          "plugins/house/skills/**",
+          "plugins/house/evals/**",
+          {
+            "path": "plugins/house/agents/**",
+            "why": "subagent definitions the harness loads; their tokens name tools and models, not this tree"
+          },
+          {
+            "path": "plugins/house/orchestration/**",
+            "why": "session-start context the hook injects; its tokens name agents and tiers, not this tree"
+          },
+          {
+            "path": "docs/handbook/sources/**",
+            "why": "package-authored survey material; its tokens describe surveyed repos, not this tree"
+          },
+          "docs/handbook/claude-code.md",
+          "docs/handbook/conventions.md",
+          "docs/handbook/data-pipelines.md",
+          "docs/handbook/database.md",
+          "docs/handbook/deployment.md",
+          "docs/handbook/docs.md",
+          "docs/handbook/llm-output.md",
+          "docs/decisions/0004-archive-tier-scanned-by-per-repo-flag.md",
+          "docs/decisions/0007-path-scoped-rules-load-on-read.md"
+        ],
+        "archiveDirs": [],
+        "scanArchive": true,
+        "haystackDirs": [
+          "scripts",
+          "package.json",
+          ".github/workflows",
+          "plugins/house/scripts",
+          "plugins/house/payload",
+          "plugins/house/hooks",
+          "plugins/house/schema"
+        ],
+        "extraPathRoots": [],
+        "packageRoots": [],
+        "buildArtifactPrefixes": [],
+        "classPrefixes": [],
+        "componentSuffixes": [],
+        "componentAllowlist": [],
+        "bareScriptAllowlist": [
+          "check:docs",
+          "check:house",
+          "prebuild",
+          "postbuild"
+        ],
+        "lengthLimits": {
+          "CLAUDE.md": 40,
+          "README.md": 160,
+          ".claude/rules/house/*.md": 200
+        },
+        "maxCoLoadLines": 400,
+        "emDash": {
+          "mode": "all",
+          "exclude": [
+            {
+              "path": "docs/handbook/sources/**",
+              "why": "point-in-time research notes kept verbatim"
+            }
+          ]
+        }
+      },
+      "pathSlots": [
+        "docFiles"
+      ],
+      "globs": [
+        "CLAUDE.md",
+        "README.md",
+        "CHANGELOG.md",
+        ".claude/rules/**",
+        ".claude/skills/**",
+        ".claude/commands/**",
+        "docs/**"
+      ]
+    },
+    "engineering": {
+      "default": "on",
+      "rules": 1,
+      "config": {
+        "codeGlobs": [],
+        "gateGlobs": []
+      },
+      "pathSlots": [
+        "codeRoots",
+        "codeGlobs",
+        "gateGlobs"
+      ],
+      "globs": [
+        "scripts/**",
+        "src/**",
+        "lib/**"
+      ]
+    },
+    "evals": {
+      "default": "detect",
+      "rules": 1,
+      "config": {
+        "evalGlobs": [
+          "plugins/house/evals/**"
+        ]
+      },
+      "pathSlots": [
+        "evalRoots",
+        "evalGlobs"
+      ],
+      "globs": [
+        "evals/**",
+        "eval/**",
+        "plugins/house/evals/**"
+      ]
+    },
+    "github": {
+      "default": "on",
+      "rules": 1,
+      "config": {
+        "actionsBudgetMinutes": null,
+        "secretGlobs": [],
+        "waivers": [
+          {
+            "check": "codeowners",
+            "why": "solo repo: github.md asks for code owners once there is a second maintainer, and until then there is nobody to route a review to"
+          }
+        ]
+      },
+      "pathSlots": [
+        "githubGlobs",
+        "secretGlobs"
+      ],
+      "globs": [
+        ".github/**",
+        ".githooks/**",
+        ".env.example"
+      ]
+    },
+    "llm-output": {
+      "default": "detect",
+      "rules": 1
+    },
+    "retrieval": {
+      "default": "off",
+      "rules": 1
+    },
+    "security": {
+      "default": "off",
+      "rules": 2,
+      "config": {},
+      "pathSlots": [
+        "securityAgentRoots",
+        "securityGlobs",
+        "securityRoots"
+      ],
+      "globs": [
+        ".claude/settings.json",
+        ".claude/hooks/**",
+        ".mcp.json",
+        "package.json",
+        ".github/workflows/**",
+        "src/**",
+        "lib/**",
+        "scripts/**"
+      ]
+    },
+    "testing": {
+      "default": "on",
+      "rules": 1,
+      "config": {
+        "testGlobs": [
+          "tests/**"
+        ],
+        "gateGlobs": [
+          ".github/workflows/**"
+        ]
+      },
+      "pathSlots": [
+        "testRoots",
+        "testGlobs",
+        "gateGlobs"
+      ],
+      "globs": [
+        "tests/**",
+        "test/**",
+        ".github/workflows/**"
+      ]
+    }
   }
 }

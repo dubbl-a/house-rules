@@ -390,6 +390,34 @@ test('drift: an untracked, unignored path on disk is a finding, as it is in CI',
   assert.match(out, /\[file path\] scripts\/reports/);
 });
 
+// #251: a new doc not yet added is still part of the next commit, so the
+// local run scans it the way CI will. What it names still has to be tracked
+// (the case above), and an ignored doc never reaches a commit, so it is not
+// scanned.
+test('#251: drift scans an untracked, unignored doc, so a new doc fails locally as it will in CI', () => {
+  const dir = sandbox({ 'README.md': '# Hello\n', 'src/real.ts': 'export const x = 1;\n' });
+  writeUntracked(dir, { 'docs/new.md': 'See `src/does-not-exist.ts` for details.\n' });
+  const { code, out } = run(dir, ['--only=drift']);
+  assert.equal(code, 1, out);
+  assert.match(out, /docs\/new\.md:1 \[file path\] src\/does-not-exist\.ts/);
+});
+
+test('#251: a path that is on disk but untracked says to git add it', () => {
+  const dir = sandbox({ 'README.md': '# Hello\n', 'src/real.ts': 'export const x = 1;\n' });
+  writeUntracked(dir, { 'docs/new.md': 'See `src/new.ts` for details.\n', 'src/new.ts': 'export const y = 1;\n' });
+  const { code, out } = run(dir, ['--only=drift']);
+  assert.equal(code, 1, out);
+  assert.match(out, /docs\/new\.md:1 \[file path\] src\/new\.ts .*untracked.*git add/);
+});
+
+test('#251: an ignored doc is not scanned (negative control)', () => {
+  const dir = sandbox({ 'README.md': '# Hello\n', 'src/real.ts': 'export const x = 1;\n', '.gitignore': 'scratch/\n' });
+  writeUntracked(dir, { 'scratch/new.md': 'See `src/does-not-exist.ts` for details.\n' });
+  const { code, out } = run(dir, ['--only=drift']);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /scratch\/new\.md/);
+});
+
 test('drift: a gitignored glob parent resolves with nothing on disk', () => {
   const dir = sandbox({
     'README.md': 'Sessions run in `scripts/worktrees/*` worktrees.\n',

@@ -799,7 +799,10 @@ function checkAnchorToken(tok, docPath, lineNo, o) {
     // skill's directory (scripts/, references/, assets/), not repo root.
     const skillDir = skillDirFor(docPath);
     if (skillDir && o.pathExists(`${skillDir}/${tok}`)) return;
-    o.findings.push(mk('drift', docPath, lineNo, 'file path', tok));
+    // #251: the scan reads untracked docs, but a path still resolves only
+    // when tracked (#21); say so when the target is merely not added yet.
+    const untracked = o.untrackedSet && o.untrackedSet.has(tok.replace(/\/$/, ''));
+    o.findings.push(mk('drift', docPath, lineNo, 'file path', untracked ? `${tok} (on disk but untracked, so neither this run nor CI counts it; stage it with \`git add\`)` : tok));
     return;
   }
 
@@ -948,8 +951,13 @@ function checkDrift(ctx) {
 
   const ALWAYS_INCLUDE = ['.claude/rules/', '.claude/skills/', '.claude/commands/'];
   const allMd = ctx.allTracked.filter((f) => f.endsWith('.md'));
+  // #251: a doc not yet added is in the next commit too, so it is scanned the
+  // way CI will scan it; reading only tracked docs let a new doc pass here and
+  // fail there. Anchors still resolve against tracked paths only (#21), and
+  // the roots and exclusion checks below stay on the tracked set.
+  const untrackedMd = ctx.untracked.filter((f) => f.endsWith('.md'));
 
-  const scanned = allMd.filter((f) => {
+  const scanned = [...allMd, ...untrackedMd].filter((f) => {
     if (ALWAYS_INCLUDE.some((p) => f.startsWith(p))) return true;
     if (excludeFiles.some((p) => matchesConfigPath(f, p))) return false;
     if (!scanArchive && archiveDirs.some((p) => matchesConfigPath(f, p))) return false;
@@ -1099,6 +1107,12 @@ function checkDrift(ctx) {
     let i = f.indexOf('/');
     while (i !== -1) { trackedSet.add(f.slice(0, i)); trackedSet.add(f.slice(0, i + 1)); i = f.indexOf('/', i + 1); }
   }
+  const untrackedSet = new Set();
+  for (const f of ctx.untracked) {
+    untrackedSet.add(f);
+    let i = f.indexOf('/');
+    while (i !== -1) { untrackedSet.add(f.slice(0, i)); i = f.indexOf('/', i + 1); }
+  }
   // #21: paths whose only resolution was a local-only ignore rule, collected
   // during the scan and reported once at the end so the divergence is visible
   // where it can still be fixed -- locally, not in a CI log.
@@ -1212,7 +1226,7 @@ function checkDrift(ctx) {
       bareScriptAllowlist, pathPrefixRe, pkgPathPrefixRe: docPkgRoot ? pkgPrefixReForRoot(docPkgRoot) : null,
       buildArtifactPrefixes, pathExists, componentAllowlist, componentSuffixes, componentBasenames,
       componentExts, haystackText, classPrefixes, repoRoot: ctx.repoRoot, houseManaged,
-      findings: sink, docPkgRoot,
+      findings: sink, docPkgRoot, untrackedSet,
     };
 
     let inFence = false;
@@ -2024,26 +2038,70 @@ function readModuleRuleCountsFrom(modulesDir) {
   }
   return out;
 }
-function resolveModuleRuleCounts(ctx) {
+// #244: render writes each module's default and rule count into
+// .house/lock.json as `modules`, the one source an adopter's CI has.
+// Advisory, like detectPaths: tamper does not read it.
+function readLockModules(repoRoot) {
+  const p = join(repoRoot, '.house', 'lock.json');
+  if (!existsSync(p) || specialFileKind(p)) return null;
+  let j;
+  try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+  if (!isPlainObject(j) || !isPlainObject(j.modules)) return null;
+  const out = {};
+  for (const [name, rec] of Object.entries(j.modules)) if (isPlainObject(rec)) out[name] = rec;
+  return out;
+}
+function moduleSourceDir(ctx) {
   const record = resolveHousePluginRecord(readInstalledPlugins());
-  if (record && record.installPath && existsSync(join(record.installPath, 'modules'))) {
-    return readModuleRuleCountsFrom(join(record.installPath, 'modules'));
-  }
+  if (record && record.installPath && existsSync(join(record.installPath, 'modules'))) return join(record.installPath, 'modules');
   const local = join(ctx.repoRoot, 'plugins', 'house', 'modules');
-  if (existsSync(local)) return readModuleRuleCountsFrom(local);
+  return existsSync(local) ? local : null;
+}
+function readModuleRecordsFrom(modulesDir) {
+  const defaults = readModuleDefaultsFrom(modulesDir);
+  const rules = readModuleRuleCountsFrom(modulesDir);
+  const out = {};
+  for (const name of Object.keys(defaults)) out[name] = { on: defaults[name], rules: rules[name] ?? 0 };
+  return out;
+}
+// {from, records: {name -> {on, rules, config?, globs?}}, mismatches}, or
+// null when nothing answers. Whenever a lock exists it decides, since an
+// adopter's CI has nothing else and a verdict must not turn on which plugin
+// version this machine has installed (#244); a module it has no record of is
+// the caller's finding, never a fallback to the plugin. A reachable plugin
+// source that disagrees with the lock is named in `mismatches`, for a local
+// warning. Only with no lock (before the first render) does the installed
+// plugin, else this package's own modules tree, answer.
+function resolveModuleRecords(ctx) {
+  const dir = moduleSourceDir(ctx);
+  if (readLockEntries(ctx.repoRoot) !== null) {
+    const locked = readLockModules(ctx.repoRoot);
+    const records = {};
+    for (const [name, rec] of Object.entries(locked || {})) {
+      records[name] = { on: (rec.default ?? 'on') === 'on', rules: Number.isInteger(rec.rules) ? rec.rules : 0, config: rec.config, pathSlots: rec.pathSlots, globs: rec.globs };
+    }
+    const source = dir ? readModuleRecordsFrom(dir) : {};
+    const mismatches = Object.keys(records).filter((n) => source[n] && (source[n].on !== records[n].on || source[n].rules !== records[n].rules));
+    // `complete`: render lists every module its plugin ships, so with the
+    // record present a missing name is one that plugin did not know.
+    return { from: 'lock', complete: locked !== null, records, mismatches };
+  }
+  if (dir) return { from: 'source', complete: true, records: readModuleRecordsFrom(dir), mismatches: [] };
   return null;
 }
-// Read module defaults from the installed plugin when reachable, else from
-// this repo's own plugins/house/modules/*/module.json (running inside the
-// package repo itself), else null so the caller skips the sub-check.
-function resolveModuleDefaults(ctx) {
-  const record = resolveHousePluginRecord(readInstalledPlugins());
-  if (record && record.installPath && existsSync(join(record.installPath, 'modules'))) {
-    return readModuleDefaultsFrom(join(record.installPath, 'modules'));
-  }
-  const local = join(ctx.repoRoot, 'plugins', 'house', 'modules');
-  if (existsSync(local)) return readModuleDefaultsFrom(local);
-  return null;
+// A config as render recorded it or house.json holds it, with each path-glob
+// slot sorted, since the order of a paths: list changes nothing it loads.
+function configKey(config, pathSlots) {
+  const out = { ...(isPlainObject(config) ? config : {}) };
+  for (const s of arr(pathSlots)) if (Array.isArray(out[s])) out[s] = [...out[s]].map(String).sort();
+  return canonicalJson(out);
+}
+// Key-order-independent JSON, for comparing a house.json config object
+// against the one the lock recorded.
+function canonicalJson(v) {
+  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`;
+  if (isPlainObject(v)) return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(v[k])}`).join(',')}}`;
+  return JSON.stringify(v);
 }
 
 // {moduleName -> detectPaths} for each detect-default module that names its
@@ -2366,24 +2424,40 @@ function checkManifest(ctx) {
     const covered = deviations.some((x) => isPlainObject(x) && x.kind === 'coload-ceiling' && x.ceiling === coloadMax);
     if (!covered) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.docs.config.maxCoLoadLines is ${coloadMax}, above the default ${DEFAULT_MAX_COLOAD_LINES}, with no deviations entry (kind "coload-ceiling", \`ceiling\` ${coloadMax}); narrow the colliding module's path slot, tighten this repo's own rule paths, or trim first, and record the raise if it must stay`));
   }
-  const defaults = resolveModuleDefaults(ctx);
-  if (defaults && isPlainObject(d.modules)) {
+  const moduleRecords = resolveModuleRecords(ctx);
+  // A lock with no record at all predates it, so a re-render fixes that; a
+  // name missing from a full record is one the rendering plugin does not
+  // ship: retired or misspelled, which a re-render leaves as it is, or added
+  // by a newer plugin, which a re-render with that plugin fixes.
+  const noRecord = (name) => mk('manifest', 'house.json', null, 'manifest', moduleRecords.complete
+    ? `module \`${name}\` is in house.json, but the plugin that rendered .house/lock.json ships no module \`${name}\` (retired, misspelled, or newer than that plugin), so nothing loads or checks it; if your installed plugin ships it, run \`house render --apply\` and commit the lock, otherwise remove the key or correct its name`
+    : `module \`${name}\` is in house.json, but there is no record of module \`${name}\` in .house/lock.json, so its default and rule count cannot be checked here or in CI; run \`house render --apply\` and commit the lock`);
+  for (const name of moduleRecords ? moduleRecords.mismatches : []) {
+    warnings.push(mk('manifest', '.house/lock.json', null, 'manifest', `lock record for module \`${name}\` differs from the installed house plugin (another version rendered this lock), so this run's verdicts follow the lock, as CI's do; run \`house render --apply\` to bring the lock up to the installed plugin`));
+  }
+  if (moduleRecords && isPlainObject(d.modules)) {
     for (const [name, entry] of Object.entries(d.modules)) {
-      if (isPlainObject(entry) && entry.enabled === false && defaults[name] === true) {
+      if (!isPlainObject(entry) || entry.enabled !== false) continue;
+      const rec = moduleRecords.records[name];
+      if (!rec) {
+        if (moduleRecords.from === 'lock') findings.push(noRecord(name));
+        continue;
+      }
+      if (rec.on) {
         const covered = deviations.some((x) => isPlainObject(x) && x.kind === 'disabled-module' && x.module === name);
         if (!covered) findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is default-on but disabled with no deviations entry (kind "disabled-module", module "${name}")`));
       }
     }
-  } else if (!defaults && isPlainObject(d.modules)) {
+  } else if (!moduleRecords && isPlainObject(d.modules)) {
     // P8: the disabled-module deviation check reads module defaults from the
-    // installed plugin OR the local package tree; when NEITHER is reachable it
-    // used to pass silently, so a default-on module disabled without a
-    // deviation slipped through. It cannot be verified from the repo alone, but
-    // silence is the wrong answer -- warn whenever a module IS disabled and the
-    // defaults could not be resolved, so the un-run check is visible.
+    // installed plugin OR the local package tree OR the lock; when NONE is
+    // reachable it used to pass silently, then warned, which left CI (no
+    // plugin) passing what a local run failed (#244). Render writes the
+    // defaults into the lock, so reaching here means the lock is missing its
+    // record: fail closed whenever a module IS disabled.
     const disabled = Object.entries(d.modules).filter(([, e]) => isPlainObject(e) && e.enabled === false).map(([n]) => n);
     if (disabled.length) {
-      warnings.push(mk('manifest', 'house.json', null, 'manifest', `disabled-module check could not resolve module defaults (no installed house plugin and no local plugins/house/modules tree is reachable this run), so ${disabled.length === 1 ? `disabled module \`${disabled[0]}\`` : `disabled modules ${disabled.map((n) => `\`${n}\``).join(', ')}`} cannot be verified against its default. Install the house plugin (or run from the package tree) to restore this check.`));
+      findings.push(mk('manifest', 'house.json', null, 'manifest', `disabled-module check could not resolve module defaults (no installed house plugin, no local plugins/house/modules tree, and no \`modules\` record in .house/lock.json is reachable this run), so ${disabled.length === 1 ? `disabled module \`${disabled[0]}\`` : `disabled modules ${disabled.map((n) => `\`${n}\``).join(', ')}`} cannot be verified against its default. Run \`house render --apply\` so the lock carries the module defaults, then commit it.`));
     }
   }
 
@@ -2408,17 +2482,51 @@ function checkManifest(ctx) {
   // the repo has a lock (render has run), require every enabled rule-bearing
   // module to have at least one lock entry. Before the first render (no lock)
   // this is silent, since there is nothing to have vendored yet.
+  // #245: a module whose paths are all its own defaults, none matching a
+  // tracked file yet (testing's tests/** in a new repo), is a warning until
+  // one does: render vendors it then, so a fresh repo starts from a clean
+  // gate. Paths house.json wrote that match nothing stay a finding, since
+  // that is a mistake rather than a repo not there yet, as render's own
+  // dropped-glob warning already treats it (#25). The paths come from the
+  // lock's `modules` record, so CI reads the same ones; which of them the
+  // adopter wrote comes from house.json, and a house.json config that is not
+  // the one the lock was rendered from is a finding until it is re-rendered.
   const lockEntries = readLockEntries(ctx.repoRoot);
-  const ruleCounts = resolveModuleRuleCounts(ctx);
-  if (lockEntries && ruleCounts && isPlainObject(d.modules)) {
+  if (lockEntries && moduleRecords && isPlainObject(d.modules)) {
     const lockModules = new Set();
     for (const e of lockEntries) if (isPlainObject(e) && typeof e.module === 'string') lockModules.add(e.module);
     for (const [name, entry] of Object.entries(d.modules)) {
       if (!isPlainObject(entry) || entry.enabled !== true) continue;
-      if (!(ruleCounts[name] > 0)) continue; // module ships no rule: nothing to vendor
-      if (!lockModules.has(name)) {
-        findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled but vendored zero rules (its defaultPaths expanded to nothing in this repo); give the module a non-empty path set, disable it with a deviation, or fill its config globs, then re-render`));
+      const rec = moduleRecords.records[name];
+      if (!rec) {
+        // Fail closed (#244): without a record this cannot tell a module
+        // that ships no rule from one that vendored none.
+        if (!lockModules.has(name)) findings.push(noRecord(name));
+        continue;
       }
+      // Every enabled module, vendored or not: a config edited since the
+      // render means what is vendored no longer follows house.json.
+      const houseCfg = isPlainObject(entry.config) ? entry.config : {};
+      if (!isPlainObject(rec.config) || configKey(houseCfg, rec.pathSlots) !== configKey(rec.config, rec.pathSlots)) {
+        findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled, but modules.${name}.config differs from what the last render used (or the module was off then), so what is vendored and the paths the lock records are stale; run \`house render --apply\` and commit the result`));
+        continue;
+      }
+      if (lockModules.has(name)) continue;
+      if (!(rec.rules > 0)) continue; // module ships no rule: nothing to vendor
+      const globs = arr(rec.globs).filter(isNonEmptyString);
+      const houseValues = new Set(Object.values(houseCfg).filter(Array.isArray).flat());
+      const adopterGlobs = globs.filter((g) => houseValues.has(g));
+      if (globs.length && !adopterGlobs.length) {
+        const hit = globs.find((g) => ctx.allTracked.some((f) => globToRegExp(g).test(f)));
+        if (hit) {
+          findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled but vendored zero rules, and its default path ${hit} now matches a file here; re-render so its rules load`));
+        } else {
+          warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled but vendored zero rules: none of its default paths (${globs.join(', ')}) matches a file here yet, so nothing of it loads. Re-render once one does, set its config slots to a path this repo has, or disable it with a deviation`));
+        }
+        continue;
+      }
+      const why = adopterGlobs.length ? `its paths matched nothing in this repo: ${adopterGlobs.join(', ')}` : 'its defaultPaths expanded to nothing in this repo';
+      findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled but vendored zero rules (${why}); give the module a non-empty path set, disable it with a deviation, or fill its config globs, then re-render`));
     }
   }
 
@@ -3367,9 +3475,12 @@ function main() {
   // lock, not this list, so a managed file the lock names stays `[missing]`.
   const deletedFromDisk = new Set(gitLsFilesZ(repoRoot, ['--deleted']));
   const allTracked = gitLsFilesZ(repoRoot).filter((f) => !deletedFromDisk.has(f));
+  // Untracked and not ignored: what the next `add -A` would stage. Only drift
+  // reads it (#251); every other family stays on the tracked set.
+  const untracked = gitLsFilesZ(repoRoot, ['--others', '--exclude-standard']);
 
   const ctx = {
-    repoRoot, house, houseUnusable, allTracked, json: args.json,
+    repoRoot, house, houseUnusable, allTracked, untracked, json: args.json,
     acceptLengths: args.acceptLengths, familiesRun: new Set(families),
     pendingRatchetTighten: [],
   };

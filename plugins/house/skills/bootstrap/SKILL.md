@@ -145,9 +145,11 @@ The probe reads, and does not write:
 
 ## Propose house.json
 
-Every module the probe cannot rule out goes into the proposal as `"detect"`, not `true` or
-`false`. `"detect"` means the repo decides at render time, not the skill guessing on its behalf.
-Core modules (`docs`, `engineering`, `github`, `claude-code`) are always on. Print the full
+Propose what `init` printed: every module's `enabled` is `true` or `false`, the only values the
+checker accepts. `init` already settles a detect module from its own `detectPaths`, so the skill
+does not guess on the repo's behalf. To leave an optional module undecided, leave its key out of
+`modules`: render then lists it under "available", and render and the checker warn once its
+`detectPaths` match this repo. Core modules (`docs`, `engineering`, `github`, `claude-code`) are always on. Print the full
 proposed `house.json` body, not a summary, so the person reviewing it can read every field
 before anything is written.
 
@@ -227,5 +229,6 @@ checks. None of that is this skill's job to do for them; bootstrap stops at rend
 - Don't overwrite or append to an existing CLAUDE.md, ever, under any flag.
 - Don't re-propose over a repo that already has `house.json`. Send it to `/house-rules:sync`,
   or to `house enable` when the ask is to turn modules on.
-- Don't guess a module on or off when the probe is ambiguous. Propose `"detect"` and let the
-  repo decide.
+- Don't guess a module on or off when the probe is ambiguous. Keep the boolean `init` wrote, or
+  leave the module's key out so the detect warning decides later; never write a string for
+  `enabled`.
