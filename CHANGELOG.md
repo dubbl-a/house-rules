@@ -13,8 +13,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
-- The review rule and the session-start orchestration text now say a must-fix names a concrete failure, that added machinery is a cost the fix must justify, that the refuter names the simplest fix, and that a simplification pass keeping the safety core, then a check scoped to it, is a valid round when rounds keep adding machinery (#254).
-
+- The review rule and the session-start orchestration text now say a must-fix names a concrete failure, that added machinery is a cost the fix must justify, that the refuter names the simplest fix, and that a simplification pass keeping the safety core, then a check scoped to it, is an option to offer the user when rounds keep adding machinery (#254).
 - `plugins/house/templates/pr-checks.yml` pins `actions/setup-node` v7.1.0, matching this repo's workflows after the Dependabot bump (#242). Dependabot does not scan the templates. Existing adopters keep their file and can copy the `uses:` line.
 - The github rule and its `push-protection` at-adoption step name a content-scanning fallback for a plan that refuses push protection: a checksum-pinned scanner in CI over full history plus a staged-content pre-commit hook. It is a handbook recipe an adopter opts into, not a scaffold (#250).
 - `plugins/house/templates/pr-checks.yml` runs `npm ls --all` after the install, where a lockfile is committed, and this repo's `verify` script and workflow run it too. An adopter saw `npm ci` accept a stale nested lockfile entry a grouped Dependabot bump left behind; `npm ls` exits non-zero on `invalid` or `missing` (#255). The scaffold is written only where absent, so an existing adopter copies the step by hand. A repo with a pre-existing invalid entry fixes it first or records a deviation, or the step fails from day one.

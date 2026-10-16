@@ -113,10 +113,10 @@ diffs."):
   gate covers, reading the diff yourself is usually enough. Judgment, not a category.
 - A must-fix names a concrete failure: unsafe, irreversible, or wrong or unfollowable work. Added
   machinery is a cost the fix must justify; the refuter names the simplest fix.
-- Review until a round returns no must-fix, each later round checking only the last round's fixes.
-- Before a third round, tell the user what each round found, what the next checks, and why the
-  rounds are converging. Hand it to the user when must-fixes land in the last round's own fixes or
-  one defect class keeps returning, or simplify, keeping the safety core, and check only that.
+- Review until a round returns no must-fix, each checking only the prior round's fixes; the
+  verdict decides, not a count. Before a third round, tell the user what each round found, what
+  the next checks, and why it converges. If must-fixes land in the prior round's fixes or a defect
+  class recurs, hand it to the user, offering a simplification pass. The user can stop or extend.
 - Each agent gets its own source of truth. Two agents reading one file is one agent.
 - Anything settleable by running it gets run.
 - Never accept "done" or "tests pass". The refuter reruns them; when no refuter is sent, the

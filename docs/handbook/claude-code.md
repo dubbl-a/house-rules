@@ -544,7 +544,7 @@ complexity: a plan went from 260 to 294 lines under review fixes, each fix addin
 that the next round found must-fixes inside, until a simplification pass cut it to 188 lines
 and a check scoped to the safety core passed. The rule therefore ties a must-fix to a concrete
 failure, treats added machinery as a cost the fix must justify, has the refuter name the
-simplest fix, and counts a simplification pass as a valid round. It sets no round count, per the
+simplest fix, and offers the user a simplification pass as one way on. It sets no round count, per the
 owner's judgment-over-rules preference. Issue #253 gave the refuter read-only web tools and a
 document-review report shape, since it could not open sources when reviewing sourced claims.
 
