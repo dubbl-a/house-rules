@@ -3,7 +3,7 @@ paths:
   - .claude/**
   - CLAUDE.md
 ---
-<!-- house-managed v0.21.2 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=8d6f0a7fcd1c40df07a68d90a9ed3b6f74854b9fe9386e7c125e66a1c0008fc3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.2 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=126eb35077d779a42f2cd0549a19f997a476ff0a3c7e81d8b385b48e64012d50 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -100,8 +100,9 @@ Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-clo
 The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
 Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard or hook, facts or numbers someone will act on, or text many repos follow; a prompted reviewer usually reports something even when the work is sound, so match the review to the risk rather than to a category.
 For a small text or mechanical change a gate covers, reading the diff and rerunning the tests yourself is usually enough.
-Keep reviewing while a round returns a must-fix and stop at the first round that returns none, scoping each later round to the last round's fixes and what they touched, since a verdict, not a count, says whether another round is worth it.
-Before a third round, tell the user what each round found, what the next will check, and why the rounds are converging; hand it to the user when a round's must-fixes sit inside the last round's fixes or one defect class keeps returning, because that points at the design, and let the user stop or extend review at any point.
+Call a finding a must-fix only when it names a concrete failure: something unsafe, irreversible, or that makes the work wrong or impossible to follow. Added machinery is a cost its fix must justify, so have the refuter name the simplest fix that closes the failure.
+Keep reviewing while a round returns a must-fix and stop at the first round that returns none, scoping each later round to the last round's fixes and what they touched; a verdict, not a count, says whether another round is worth it.
+Before a third round, tell the user what each round found, what the next will check, and why the rounds are converging. When must-fixes sit inside the last round's fixes or one defect class keeps returning, the design is the problem: hand it to the user, or run a simplification pass that keeps the safety core and a check scoped to it. The user can stop or extend review at any point.
 Delegate file-heavy investigation the same way, so only the summary reaches the main context; the full rule on a verify phase's UNVERIFIED lives in evals.md.
 Let the reviewer apply mechanical fixes in its own commit, and land judgment-level changes as proposals.
 Remember that a background review's applied fixes land outside the session's checkpoints, so git is the only way back.

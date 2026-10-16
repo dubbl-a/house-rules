@@ -9,8 +9,11 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Added
 
 - `house decline <module> <step-id> --why "..."` records an at-adoption step the repo decided not to do (#247). It writes a dated `declined-step` deviation naming the module and step, and `house doctor` lists the step as declined, with the date and reason, instead of not confirmed, so the not-confirmed list can be emptied. The checker validates the record's shape and that its module is in `house.json`. Like `confirm`, it refuses until the vendored checker is the plugin's. Confirming a declined step later still works and wins; the decline stays in `deviations` as history.
+- The refuter agent has WebFetch and WebSearch (read-only) and a document-review report shape: per-claim CONFIRMED, REFUTED, or UNVERIFIED verdicts, each with a quote and URL, and no TESTS line (#253).
 
 ### Changed
+
+- The review rule and the session-start orchestration text now say a must-fix names a concrete failure, that added machinery is a cost the fix must justify, that the refuter names the simplest fix, and that a simplification pass keeping the safety core, then a check scoped to it, is a valid round when rounds keep adding machinery (#254).
 
 - `plugins/house/templates/pr-checks.yml` pins `actions/setup-node` v7.1.0, matching this repo's workflows after the Dependabot bump (#242). Dependabot does not scan the templates. Existing adopters keep their file and can copy the `uses:` line.
 - The github rule and its `push-protection` at-adoption step name a content-scanning fallback for a plan that refuses push protection: a checksum-pinned scanner in CI over full history plus a staged-content pre-commit hook. It is a handbook recipe an adopter opts into, not a scaffold (#250).

@@ -109,14 +109,14 @@ diffs."):
 
 - Agents are sent to refute, not confirm. Agreement without stated attacks is nothing.
 - Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard
-  or hook, facts or numbers someone will act on, or text many repos follow. For a small text or
-  mechanical change a gate covers, reading the diff yourself is usually enough. Judgment, not a
-  category.
-- Review until a round returns no must-fix. Each later round checks only the last round's fixes
-  and what they touched. The verdict decides, not a count.
+  or hook, facts or numbers someone will act on, or text many repos follow. For a small change a
+  gate covers, reading the diff yourself is usually enough. Judgment, not a category.
+- A must-fix names a concrete failure: unsafe, irreversible, or wrong or unfollowable work. Added
+  machinery is a cost the fix must justify; the refuter names the simplest fix.
+- Review until a round returns no must-fix, each later round checking only the last round's fixes.
 - Before a third round, tell the user what each round found, what the next checks, and why the
   rounds are converging. Hand it to the user when must-fixes land in the last round's own fixes or
-  one defect class keeps returning. The user can stop or extend review at any point.
+  one defect class keeps returning, or simplify, keeping the safety core, and check only that.
 - Each agent gets its own source of truth. Two agents reading one file is one agent.
 - Anything settleable by running it gets run.
 - Never accept "done" or "tests pass". The refuter reruns them; when no refuter is sent, the

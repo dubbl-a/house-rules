@@ -539,6 +539,15 @@ the previous round's own fixes or one defect class keeps returning, the pattern 
 guard's text-scan design in favor of the git-hook floor (ADR 0013). The owner can stop or extend
 review at any point.
 
+Issue #254 added the must-fix test and the simplification pass. Review rounds ratcheted
+complexity: a plan went from 260 to 294 lines under review fixes, each fix adding machinery
+that the next round found must-fixes inside, until a simplification pass cut it to 188 lines
+and a check scoped to the safety core passed. The rule therefore ties a must-fix to a concrete
+failure, treats added machinery as a cost the fix must justify, has the refuter name the
+simplest fix, and counts a simplification pass as a valid round. It sets no round count, per the
+owner's judgment-over-rules preference. Issue #253 gave the refuter read-only web tools and a
+document-review report shape, since it could not open sources when reviewing sourced claims.
+
 The owner also said the refuter trigger is judgment, not a hard rule: a refuter is fine whenever
 it is warranted. The 0.13.0 wording ("only when", "no refuter") read as a prohibition, and the
 same day showed the category test misfiring: the 0.13.1 rule trim was "text only" yet its first
