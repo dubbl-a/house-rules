@@ -3393,7 +3393,7 @@ function probeJqOnPath() {
 function guardRecordIsWellFormed(houseData) {
   const g = isPlainObject(houseData) ? houseData.guard : null;
   return isPlainObject(g)
-    && g.by === 'plugin'
+    && ['plugin', 'floor', 'remote'].includes(g.by)
     && isDate(g.decided)
     && isNonEmptyString(g.why)
     && Object.keys(g).every((k) => ['by', 'decided', 'why'].includes(k));
@@ -3507,14 +3507,23 @@ function cmdDoctor(args) {
   let guard;
   let caveat = null;
   let guardRecorded = false;
+  const gitHookFloor = gitHookFloorProbe(repoRoot);
   if (repoHookExists || settingsHooksBlock) {
     guard = 'repo';
   } else if (houseData && houseData.branchPolicy === 'pr') {
     guardRecorded = guardRecordIsWellFormed(houseData);
-    guard = guardRecorded
-      ? `plugin (recorded ${houseData.guard.decided})`
-      : 'plugin (unrecorded; record it as "guard": {"by": "plugin", "decided": "<date>", "why": "..."} in house.json to clear the checker\'s [guard] warning)';
-    caveat = PLUGIN_ENABLEMENT_CAVEAT;
+    const by = guardRecorded ? houseData.guard.by : 'plugin';
+    if (by === 'floor') {
+      // #246: the git hooks are the guard, so say whether THIS machine runs them.
+      guard = `floor (recorded ${houseData.guard.decided}; ${gitHookFloor && gitHookFloor.armed ? 'armed on this machine' : 'NOT armed on this machine'}, plus the remote's branch protection, which the checker cannot see)`;
+    } else if (by === 'remote') {
+      guard = `remote (recorded ${houseData.guard.decided}; the server's branch protection, which neither the checker nor doctor can see)`;
+    } else {
+      guard = guardRecorded
+        ? `plugin (recorded ${houseData.guard.decided})`
+        : 'plugin (unrecorded; record it as "guard": {"by": "plugin", "decided": "<date>", "why": "..."} in house.json to clear the checker\'s [guard] warning; a team repo records "floor" or "remote" instead)';
+      caveat = PLUGIN_ENABLEMENT_CAVEAT;
+    }
   } else if (houseData && houseData.branchPolicy === 'direct') {
     guard = 'NONE (branchPolicy direct)';
   } else {
@@ -3547,7 +3556,6 @@ function cmdDoctor(args) {
     ? (houseData.version === pluginVersion ? `pin v${houseData.version} matches plugin v${pluginVersion}` : `pin v${houseData.version} differs from installed plugin v${pluginVersion} (run \`house render --apply\` to sync)`)
     : 'no version pin (house.json absent, unparseable, or missing "version")';
 
-  const gitHookFloor = gitHookFloorProbe(repoRoot);
   const targets = targetLines(houseTargets(houseData), ruleLoadProbe, gitHookFloor);
 
   const result = {

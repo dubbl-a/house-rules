@@ -164,6 +164,20 @@ does not guess on the repo's behalf. To leave an optional module undecided, leav
 proposed `house.json` body, not a summary, so the person reviewing it can read every field
 before anything is written.
 
+With `branchPolicy` "pr", ask who will work in the repo and propose the matching `guard` record, so
+the checker's `[guard]` warning is answered by a choice and not left open. Each record needs
+`decided` (today) and a non-empty `why`:
+
+- Solo repo, the plugin installed wherever it is worked on: `"by": "plugin"`. The `why` names the
+  install (user scope, say).
+- Team repo, the plugin not installed for every contributor: `"by": "floor"`. The vendored git hooks
+  under `.githooks/` plus the remote's branch protection are the guard. The checker requires the
+  floor files to be vendored and tracked, and `house doctor` says whether this machine is armed. The
+  `why` names the branch protection ruleset.
+- Team repo guarded by the server alone: `"by": "remote"`. The checker cannot see branch protection
+  and takes the record on trust, so the `why` names the ruleset and where it is set. Use it only when
+  the repo has no floor.
+
 ## Apply: write the manifest, the rules, and the skeleton
 
 Only after the person says to apply:

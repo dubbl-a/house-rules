@@ -384,3 +384,69 @@ test('guard: Gemini wiring passes through GEMINI.md\'s import or settings contex
     assert.ok(targetFindings(json).some((f) => /Gemini CLI/.test(f.message) && /@AGENTS\.md/.test(f.message)), JSON.stringify(json.findings));
   }
 });
+
+// #246: a team repo cannot honestly record "plugin" (not every contributor has
+// it installed). "floor" says the vendored git hooks plus remote branch
+// protection are the guard; "remote" says the server alone is. The checker can
+// verify the first offline and cannot see the second at all.
+const guardRecord = (by, extra = {}) => ({ by, decided: '2026-10-16', why: 'team repo: plugin not installed for every contributor', ...extra });
+
+test('guard by floor: a rendered floor plus the record clears the session warning and stays silent', () => {
+  const dir = floorSandbox(houseJson({ guard: guardRecord('floor') }));
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 0, JSON.stringify(json.findings));
+  assert.equal(guardWarnings(json).length, 0);
+  assert.equal(floorFindings(json).length, 0);
+  assert.equal(floorWarnings(json).length, 0);
+});
+
+test('guard by floor: a floor that is not vendored is a FINDING, not the adopter-upgrade warning (negative control)', () => {
+  const dir = sandbox({ 'house.json': houseJson({ guard: guardRecord('floor') }) });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 1);
+  assert.equal(floorWarnings(json).length, 0);
+  const f = floorFindings(json);
+  assert.equal(f.length, 1, JSON.stringify(json.findings));
+  assert.match(f[0].message, /"floor"/);
+});
+
+test('guard by floor: the github module off is a FINDING too, since the floor comes from that module', () => {
+  const dir = sandbox({ 'house.json': houseJson({ guard: guardRecord('floor'), modules: { github: { enabled: false } } }) });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 1);
+  assert.equal(floorFindings(json).length, 1, JSON.stringify(json.findings));
+});
+
+test('guard by remote: a dated why clears the session warning and the absent-floor warning, and says the checker cannot verify it', () => {
+  const dir = sandbox({ 'house.json': houseJson({ guard: guardRecord('remote') }) });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 0, JSON.stringify(json.findings));
+  assert.equal(guardWarnings(json).length, 0);
+  assert.equal(floorWarnings(json).length, 0);
+  const info = (json.info || []).filter((i) => i.family === 'guard' && /remote/.test(i.message));
+  assert.equal(info.length, 1, JSON.stringify(json.info));
+  assert.match(info[0].message, /cannot see branch protection/);
+});
+
+test('guard by remote: a partly vendored floor is still a finding (negative control)', () => {
+  const dir = floorSandbox(houseJson({ guard: guardRecord('remote') }), { omit: ['.githooks/house-lib.sh'] });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 1);
+  assert.equal(floorFindings(json).length, 1, JSON.stringify(json.findings));
+});
+
+test('guard by floor or remote: a record without a why or date, or with an unknown by, does NOT clear the warning (negative controls)', () => {
+  const bads = [
+    { by: 'remote', decided: '2026-10-16', why: '' },
+    { by: 'remote', why: 'x' },
+    { by: 'floor', decided: '2026-10-16' },
+    { by: 'floor', decided: '2026-1-16', why: 'x' },
+    { by: 'server', decided: '2026-10-16', why: 'x' },
+  ];
+  for (const guard of bads) {
+    const dir = sandbox({ 'house.json': houseJson({ guard }) });
+    const { json } = run(dir, ['--only=guard,manifest', '--json']);
+    assert.equal(guardWarnings(json).length, 1, `${JSON.stringify(guard)} must still warn`);
+    assert.ok((json.findings || []).some((f) => f.family === 'manifest'), `${JSON.stringify(guard)} must be a manifest finding`);
+  }
+});
