@@ -41,7 +41,7 @@ Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-
 ## Turn on push protection, head-branch deletion, and grouped dependency updates
 
 Turn on secret scanning push protection and automatic head-branch deletion, and group dependency updates with security updates left on, so a credential is blocked before history and grouping cuts volume without muting what matters.
-Where the plan refuses push protection or branch protection, scan content instead: a scanner in CI over full history plus a staged-content pre-commit hook, since the path-only backstop lets a pasted key reach history. Pin the scanner binary by checksum rather than use its paid-license action.
+Where the plan refuses push protection, scan content instead: a scanner in CI over full history plus a staged-content pre-commit hook, since the path-only backstop lets a pasted key reach history. Pin the scanner binary by checksum.
 Anchor: the rendered `.github/dependabot.yml` carries the grouping and a cooldown, and `node .house/check.mjs --only=workflows` warns on an update entry with no cooldown; the other two are repository settings, confirmed at adoption. The content-scanning fallback is a recipe in the handbook chapter an adopter opts into, not a scaffold, and nothing checks that it was added.
 Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-and-grouped-dependency-updates`
 
