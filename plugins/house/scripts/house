@@ -518,6 +518,26 @@ function moduleDetectPaths(modules) {
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
+// {name -> {default, rules, config?, pathSlots?, globs?}} for .house/lock.json
+// (#244): what the checker otherwise reads from module.json, which an
+// adopter's CI does not have. It lists every module this plugin ships, so a
+// house.json key it lacks is one the rendering plugin did not know. config,
+// pathSlots, and globs come from the render plan, for enabled modules only
+// (#245).
+function moduleLockRecord(modules, modulePaths) {
+  const out = {};
+  for (const m of modules) {
+    if (m.error || !m.json) continue;
+    const name = moduleName(m);
+    out[name] = {
+      ...(typeof m.json.default === 'string' ? { default: m.json.default } : {}),
+      rules: arr(m.json.rules).length,
+      ...(modulePaths[name] || {}),
+    };
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
 // One detectPaths entry against the repo: a trailing slash means a
 // directory, anything else a regular file, so a file named `evals` is not an
 // eval directory and a directory named `Dockerfile` is not a Dockerfile.
@@ -1367,6 +1387,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
   const moduleWarnings = [];
   const available = [];
   const droppedDefaults = [];
+  const modulePaths = {};
   // Hoisted: one `git ls-files` for the whole plan (it was re-run per rule),
   // unioned with the dests this render will write, so a glob is dropped only
   // when nothing in the repo AND nothing this render creates satisfies it.
@@ -1399,6 +1420,11 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
     // spread puts cfg.config last and expandPaths only reads Array-valued slots.
     const moduleCfg = { ...slotDefaults(m.json), ...(isPlainObject(cfg.config) ? cfg.config : {}) };
     const moduleDefaultPaths = defaultPathSet(m.json);
+    // #245: the config this render used, so the checker can tell a house.json
+    // edited since from the paths the lock records.
+    // pathSlots names the slots that feed paths, whose order does not matter.
+    const pathSlots = [...new Set(modulePathEntries(m.json).filter((p) => typeof p === 'string' && p.startsWith('$')).map((p) => p.slice(1)))];
+    modulePaths[name] = { config: isPlainObject(cfg.config) ? cfg.config : {}, pathSlots, globs: [] };
     // #177: a slot declaring `movedFrom` took over paths an older slot carried
     // (security's agent config left securityRoots for securityAgentRoots). An
     // entry the adopter still keeps in the old slot that looks like it belongs
@@ -1421,6 +1447,9 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
       if (!existsSync(sourceAbs)) { moduleWarnings.push(`modules/${m.dirName}/${rulePath}: rule source is missing`); continue; }
       const sourceBody = readFileSync(sourceAbs, 'utf8');
       const rawExpanded = expandPaths(ruleEntryPaths(m.json, ruleEntry), moduleCfg);
+      // #245: what this module's rules asked for, so the checker can tell "no
+      // default path matches yet" from "the adopter's own paths match nothing".
+      for (const g of rawExpanded) if (!modulePaths[name].globs.includes(g)) modulePaths[name].globs.push(g);
       const destPath = posixJoin('.claude/rules/house', path.basename(rulePath));
       // F1(b): drop any paths: glob that matches zero tracked files in THIS
       // repo. A trigger for a directory the consumer does not have is dead
@@ -1486,7 +1515,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
   if (wantsAgentsBlock(targets)) plan.push(planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedPath));
   else blockRemoval = planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath);
 
-  return { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets };
+  return { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets, modulePaths };
 }
 
 // #12: the managed files a render with these plan dests removes: every dest
@@ -1846,7 +1875,7 @@ function cmdRender(args) {
   const migration = planOldPreCommitMigration(repoRoot, houseData, modules, loadPriorLock(repoRoot));
   const migrations = migration ? [migration] : [];
   const treatAsAbsent = new Set(migrations.map((m) => m.from));
-  const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
+  const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets, modulePaths } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
@@ -2041,6 +2070,11 @@ function cmdRender(args) {
     // checker's missing-module warning fires in an adopter's CI, where no
     // plugin source exists to read module.json from. Not hash-checked.
     detectPaths: moduleDetectPaths(modules),
+    // #244: every module's default and rule count, and for an enabled module
+    // the paths its rules asked for, so the checker's disabled-module and
+    // zero-rule checks reach the same verdict in an adopter's CI as on a
+    // machine with the plugin. Not hash-checked, like detectPaths.
+    modules: moduleLockRecord(modules, modulePaths),
   };
   writeIfChanged(path.join(repoRoot, '.house', 'lock.json'), `${JSON.stringify(lockData, null, 2)}\n`);
   writeIfChanged(path.join(repoRoot, '.house', 'INDEX.md'), buildIndex(plan));

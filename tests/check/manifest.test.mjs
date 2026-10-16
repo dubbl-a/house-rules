@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,19 +113,19 @@ test('manifest: disabling a default-OFF module needs no deviations entry', () =>
 });
 
 // P8: the disabled-module deviation check reads module defaults from the
-// installed plugin OR the local package tree. When NEITHER is reachable it used
-// to pass silently, so a default-on module disabled without a deviation could
-// slip through. It still cannot be VERIFIED from the repo alone (no false
-// positive), but the un-run check is now surfaced as a warning instead of
-// vanishing. Exit stays 0: a warning does not block.
-test('P8: an unreachable defaults sub-check WARNS about a disabled module (positive control)', () => {
-  // No plugins/house/modules/ dir and no installed_plugins.json: defaults can't
-  // be resolved, but there IS a disabled module, so the check warns.
+// installed plugin OR the local package tree OR the lock render wrote. When
+// NONE is reachable it used to pass silently, then only warned, so CI (no
+// plugin) passed a commit the local run failed (#244). Render now carries the
+// defaults in the lock, so this case means a lock render did not write: fail
+// closed.
+test('P8: an unreachable defaults sub-check is a FINDING for a disabled module (positive control)', () => {
+  // No plugins/house/modules/ dir, no installed_plugins.json, no lock:
+  // defaults can't be resolved, but there IS a disabled module.
   const dir = sandbox({ 'house.json': houseJson({ modules: { 'git-workflow': { enabled: false } } }) });
   const { code, json } = run(dir, ['--only=manifest', '--json'], { CLAUDE_CONFIG_DIR: '/definitely/does/not/exist' });
-  assert.equal(code, 0, JSON.stringify(json));
-  assert.ok((json.warnings || []).some((w) => /could not resolve module defaults/.test(w.message) && /git-workflow/.test(w.message)),
-    'an unverifiable disabled module must surface a warning, not silently pass');
+  assert.equal(code, 1, JSON.stringify(json));
+  assert.ok((json.findings || []).some((w) => /could not resolve module defaults/.test(w.message) && /git-workflow/.test(w.message) && /house render --apply/.test(w.message)),
+    'an unverifiable disabled module must fail the gate, not silently pass');
 });
 
 test('P8: reachable defaults run the real check and emit no unresolved-defaults warning (negative control)', () => {
@@ -552,4 +553,203 @@ test('#178: a same-named .sh twin still warns by basename', () => {
   const { code, out } = run(dir, ['--only=manifest']);
   assert.equal(code, 0, out);
   assert.match(out, /scripts\/house\/hook\.sh \[unreferenced script\]/);
+});
+
+// ── #243, #244, #245: a fresh bootstrap reaches one verdict, locally and in CI ──
+//
+// These run the real CLI (init, render) into a throwaway repo and then the
+// VENDORED checker there twice: once as CI sees it (an empty
+// CLAUDE_CONFIG_DIR, no plugin, no modules tree) and once as a machine with
+// the plugin installed does. The two runs must agree on the exit code and on
+// which messages are findings, since a finding only one machine reports reads
+// as noise and a gate CI runs weaker than the local one is no gate.
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const CLI = join(ROOT, 'plugins/house/scripts/house');
+// render --apply arms the git-hook floor in the repo it renders into, which
+// then refuses these fixtures' commits on main; point git at an empty hooks
+// dir so the tests exercise render's output, not the guard.
+const NO_HOOKS_DIR = mkdtempSync(join(tmpdir(), 'house-no-hooks-'));
+const gitIn = (cwd, ...a) => execFileSync('git', ['-c', `core.hooksPath=${NO_HOOKS_DIR}`, ...a], { cwd, stdio: 'pipe' });
+const houseCli = (repo, ...a) => execFileSync('node', [CLI, ...a, '--repo', repo], { stdio: 'pipe' }).toString();
+
+function freshBootstrap(files = { 'README.md': '# X\n' }) {
+  const d = mkdtempSync(join(tmpdir(), 'house-fresh-'));
+  gitIn(d, 'init', '-q'); gitIn(d, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+  gitIn(d, 'config', 'user.email', 't@t'); gitIn(d, 'config', 'user.name', 't');
+  addFilesIn(d, files, 'init');
+  houseCli(d, 'init', '--apply');
+  rerender(d);
+  return d;
+}
+function addFilesIn(d, files, msg) {
+  for (const [p, c] of Object.entries(files)) { mkdirSync(join(d, dirname(p)), { recursive: true }); writeFileSync(join(d, p), c); }
+  gitIn(d, 'add', '-A'); gitIn(d, 'commit', '-q', '-m', msg);
+}
+function rerender(d) {
+  houseCli(d, 'render', '--apply');
+  gitIn(d, 'add', '-A'); gitIn(d, 'commit', '-q', '--allow-empty', '-m', 'render');
+}
+function editHouse(d, fn) {
+  const hj = JSON.parse(readFileSync(join(d, 'house.json'), 'utf8'));
+  fn(hj);
+  writeFileSync(join(d, 'house.json'), `${JSON.stringify(hj, null, 2)}\n`);
+}
+function vendoredCheck(d, withPlugin) {
+  const cfg = mkdtempSync(join(tmpdir(), 'house-cfg-'));
+  if (withPlugin) {
+    mkdirSync(join(cfg, 'plugins'), { recursive: true });
+    writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: join(ROOT, 'plugins/house') }] } }));
+  }
+  const r = spawnSync('node', ['.house/check.mjs', '--only=manifest', '--json'], { cwd: d, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+  return { code: r.status, json: JSON.parse(r.stdout), out: r.stdout + r.stderr };
+}
+// Both runs, asserted to agree; returns the CI run.
+function ciAndLocal(d) {
+  const ci = vendoredCheck(d, false);
+  const local = vendoredCheck(d, true);
+  const msgs = (r) => r.json.findings.map((f) => f.message).sort();
+  assert.equal(ci.code, local.code, `CI exit ${ci.code} vs local exit ${local.code}\nCI: ${ci.out}\nlocal: ${local.out}`);
+  assert.deepEqual(msgs(ci), msgs(local), 'CI and local report the same findings');
+  return ci;
+}
+const has = (list, re) => list.some((x) => re.test(x.message));
+
+test('#243: the bootstrap skill proposes only what the checker accepts: booleans, never "detect"', () => {
+  const skill = readFileSync(join(ROOT, 'plugins/house/skills/bootstrap/SKILL.md'), 'utf8');
+  assert.doesNotMatch(skill, /"detect"/, 'the skill must not tell anyone to write "detect" into house.json');
+  // The contract the skill now points at: init writes booleans, and a
+  // non-boolean is a finding.
+  const d = freshBootstrap();
+  const hj = JSON.parse(readFileSync(join(d, 'house.json'), 'utf8'));
+  for (const [name, m] of Object.entries(hj.modules)) assert.equal(typeof m.enabled, 'boolean', `init wrote a boolean for ${name}`);
+  editHouse(d, (h) => { h.modules.database.enabled = 'detect'; });
+  gitIn(d, 'commit', '-q', '-am', 'detect');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1);
+  assert.ok(has(r.json.findings, /module `database`\.enabled must be boolean/), r.out);
+});
+
+test('#245/#244: a fresh bootstrap with no tests reaches a clean gate, locally and in CI', () => {
+  const d = freshBootstrap();
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 0, r.out);
+  assert.ok(has(r.json.warnings, /module `testing` is enabled but vendored zero rules: none of its default paths \(tests\/\*\*, test\/\*\*\) matches a file here yet/), r.out);
+  assert.ok(!has(r.json.warnings, /could not resolve module defaults/), 'CI resolves module defaults from the lock');
+  const lock = JSON.parse(readFileSync(join(d, '.house/lock.json'), 'utf8'));
+  assert.equal(lock.modules.testing.default, 'on', 'the lock carries the module default');
+});
+
+test('#245: once a default path matches, the unrendered module is a finding, locally and in CI', () => {
+  const d = freshBootstrap();
+  addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, /module `testing` is enabled but vendored zero rules, and its default path tests\/\*\* now matches a file here; re-render/), r.out);
+  rerender(d);
+  const after = ciAndLocal(d);
+  assert.equal(after.code, 0, 'negative control: the re-render vendors the rule and clears it');
+  assert.ok(!has([...after.json.findings, ...after.json.warnings], /`testing` is enabled but vendored zero rules/), after.out);
+});
+
+test('#245: paths the adopter configured that match nothing stay a finding, locally and in CI', () => {
+  const d = freshBootstrap();
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
+  rerender(d);
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, /module `testing` is enabled but vendored zero rules \(its paths matched nothing in this repo: spec\/\*\*\)/), r.out);
+});
+
+test('#244: a default-on module disabled with no deviation is a finding in CI too', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(d, (h) => { h.modules.testing.enabled = false; });
+  rerender(d);
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, /module `testing` is default-on but disabled with no deviations entry/), r.out);
+});
+
+test('#244: with no plugin and a lock that carries no module record, the gate fails closed', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  const lockPath = join(d, '.house/lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  delete lock.modules;
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  gitIn(d, 'commit', '-q', '--allow-empty', '-am', 'a lock render did not write');
+  const ci = ciAndLocal(d);
+  assert.equal(ci.code, 1, ci.out);
+  assert.ok(has(ci.json.findings, /no record of module `database` in \.house\/lock\.json.*house render --apply/), ci.out);
+});
+
+function editLock(d, fn) {
+  const lockPath = join(d, '.house/lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  fn(lock);
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+}
+
+test('#245: paths set in house.json but not yet rendered are a finding, locally and in CI', () => {
+  const d = freshBootstrap();
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
+  gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, /modules\.testing\.config differs from what the last render used.*house render --apply/), r.out);
+  assert.ok(!has(r.json.warnings, /none of its default paths/), 'the stale lock paths are not reported as the verdict');
+});
+
+test('#244: a module the rendering plugin does not ship is a finding that names the key and re-renders only if the installed plugin ships it, locally and in CI', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(d, (h) => { h.modules['retired-mod'] = { enabled: false }; h.modules['old-mod'] = { enabled: true }; });
+  rerender(d);
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  for (const name of ['retired-mod', 'old-mod']) {
+    const re = new RegExp(`the plugin that rendered \\.house/lock\\.json ships no module \`${name}\`.*run \`house render --apply\`.*otherwise remove the key or correct its name`);
+    const f = r.json.findings.find((x) => re.test(x.message));
+    assert.ok(f, `${name}: ${r.out}`);
+    assert.doesNotMatch(f.message, /no record of module/, 'a full record that lacks the key is not the stale-lock case, so re-rendering is not the only advice');
+  }
+});
+
+test('#245: a house.json config edited since the last render is a finding even when the module vendored rules', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
+  gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, /modules\.testing\.config differs from what the last render used.*house render --apply/), r.out);
+});
+
+test('#245: reordering a path-glob slot is not a config change', () => {
+  // A zero-rule module, so the verdict that follows the comparison shows.
+  const d = freshBootstrap();
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**', 'specs/**']; });
+  rerender(d);
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['specs/**', 'spec/**']; });
+  gitIn(d, 'commit', '-q', '-am', 'reordered');
+  const r = ciAndLocal(d);
+  assert.ok(!has(r.json.findings, /config differs from what the last render used/), r.out);
+  assert.ok(has(r.json.findings, /its paths matched nothing in this repo: spec\/\*\*, specs\/\*\*/), r.out);
+
+  const v = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(v, (h) => { h.modules.testing.config.testRoots = ['tests/**', 'test/**']; });
+  rerender(v);
+  editHouse(v, (h) => { h.modules.testing.config.testRoots = ['test/**', 'tests/**']; });
+  gitIn(v, 'commit', '-q', '-am', 'reordered');
+  assert.equal(ciAndLocal(v).code, 0, 'a vendoring module with a reordered slot passes');
+});
+
+test('#244: the lock decides over a different installed plugin, which only warns locally', () => {
+  // The lock was rendered by a version where testing was default-off; the
+  // installed plugin says default-on. The verdict follows the lock.
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(d, (h) => { h.modules.testing.enabled = false; });
+  rerender(d);
+  editLock(d, (l) => { l.modules.testing.default = 'off'; });
+  gitIn(d, 'commit', '-q', '-am', 'rendered by another version');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 0, r.out);
+  const local = vendoredCheck(d, true);
+  assert.ok(has(local.json.warnings, /lock record for module `testing` differs from the installed house plugin.*house render --apply/), local.out);
 });
