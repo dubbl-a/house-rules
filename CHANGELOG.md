@@ -10,6 +10,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 - `plugins/house/templates/pr-checks.yml` pins `actions/setup-node` v7.1.0, matching this repo's workflows after the Dependabot bump (#242). Dependabot does not scan the templates. Existing adopters keep their file and can copy the `uses:` line.
 
+- The github rule and its `push-protection` at-adoption step name a content-scanning fallback for a plan that refuses push protection or branch protection: a checksum-pinned scanner in CI over full history plus a staged-content pre-commit hook. It is a handbook recipe an adopter opts into, not a scaffold (#250).
+- `plugins/house/templates/pr-checks.yml` runs `npm ls --all` after the install, where a lockfile is committed, and this repo's `verify` script and workflow run it too. `npm ci` accepts a stale nested lockfile entry a grouped Dependabot bump leaves behind; `npm ls` exits non-zero on `invalid` or `missing` (#255). The scaffold is written only where absent, so an existing adopter copies the step by hand. A repo with a pre-existing invalid entry fixes it first or records a deviation, or the step fails from day one.
+
 ### Fixed
 
 - `cleanup-worktree.sh` no longer prints the manual `gh api -X DELETE` command after `gh pr merge --delete-branch` has already removed the remote branch. It checks `git ls-remote` first, treats a 404 or 422 from the DELETE as already gone, and hands over the command only for a real refusal (#252).
