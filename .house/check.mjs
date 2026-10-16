@@ -2287,7 +2287,7 @@ function checkManifest(ctx) {
         if (!isNonEmptyString(dev.step)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (declined-step) must name a \`step\` (the at-adoption step id)`));
         else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(dev.step)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}].step must be a step id (kebab-case), got ${JSON.stringify(dev.step)}`));
       }
-      if (dev.kind === 'coload-ceiling' &&!(Number.isInteger(dev.ceiling) && dev.ceiling > 0)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (coload-ceiling) must carry an integer \`ceiling\` equal to modules.docs.config.maxCoLoadLines; prose in \`what\` is not parsed`));
+      if (dev.kind === 'coload-ceiling' && !(Number.isInteger(dev.ceiling) && dev.ceiling > 0)) findings.push(mk('manifest', 'house.json', null, 'manifest', `deviations[${i}] (coload-ceiling) must carry an integer \`ceiling\` equal to modules.docs.config.maxCoLoadLines; prose in \`what\` is not parsed`));
     });
   }
 
