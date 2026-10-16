@@ -581,6 +581,54 @@ test('cleanup-worktree.sh: reports head-branch deletion off and hands a refused 
   assert.match(src, /gh api -X DELETE repos\/\$REPO\/git\/refs\/heads\/\$BRANCH"$/m);
 });
 
+// #252: `gh pr merge --delete-branch` already removed the remote branch, so the
+// script must say "already deleted" and not hand over a manual command. A fake
+// `gh` on PATH stands in for the API; a local bare repo is the real origin.
+function runCleanupWithFakeGh({ pushBranch, ghDeletes }) {
+  const { base, work, origin } = makeRepoWithOrigin('main');
+  const wt = join(base, 'wt');
+  execFileSync('git', ['-C', work, 'worktree', 'add', '-q', '-b', 'feat/x', wt]);
+  if (pushBranch) execFileSync('git', ['-C', work, 'push', '-q', 'origin', 'feat/x']);
+  const bin = join(base, 'bin');
+  mkdirSync(bin);
+  const gh = join(bin, 'gh');
+  writeFileSync(gh, [
+    '#!/usr/bin/env bash',
+    'case "$*" in',
+    '  "repo view --json nameWithOwner"*) echo o/r ;;',
+    '  "repo view --json deleteBranchOnMerge"*) echo true ;;',
+    `  "api -X DELETE"*) ${ghDeletes ? `git -C "${origin}" branch -D feat/x >/dev/null` : 'echo "gh: Forbidden (HTTP 403)" >&2; exit 1'} ;;`,
+    'esac',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  return spawnSync('bash', [CLEANUP_SH, wt], {
+    encoding: 'utf8',
+    cwd: work,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+}
+
+test('cleanup-worktree.sh: a remote branch the merge already deleted is reported gone, with no manual command', () => {
+  const res = runCleanupWithFakeGh({ pushBranch: false, ghDeletes: false });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /remote branch already deleted/);
+  assert.doesNotMatch(res.stdout, /run this yourself|not deleted/);
+});
+
+test('cleanup-worktree.sh: a present remote branch is deleted through gh', () => {
+  const res = runCleanupWithFakeGh({ pushBranch: true, ghDeletes: true });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /remote branch deleted/);
+  assert.doesNotMatch(res.stdout, /run this yourself/);
+});
+
+test('cleanup-worktree.sh: a present remote branch that gh refuses to delete prints the manual command', () => {
+  const res = runCleanupWithFakeGh({ pushBranch: true, ghDeletes: false });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /not deleted: the call was refused/);
+  assert.match(res.stdout, /run this yourself/);
+});
+
 test('cleanup-worktree.sh: refuses to operate on the current (main) checkout', () => {
   const { work } = makeRepoWithOrigin('main');
   const res = spawnSync('bash', [CLEANUP_SH, work], { encoding: 'utf8', cwd: work });
