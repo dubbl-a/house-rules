@@ -12,6 +12,8 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - The github rule and its `push-protection` at-adoption step name a content-scanning fallback for a plan that refuses push protection: a checksum-pinned scanner in CI over full history plus a staged-content pre-commit hook. It is a handbook recipe an adopter opts into, not a scaffold (#250).
 - `plugins/house/templates/pr-checks.yml` runs `npm ls --all` after the install, where a lockfile is committed, and this repo's `verify` script and workflow run it too. An adopter saw `npm ci` accept a stale nested lockfile entry a grouped Dependabot bump left behind; `npm ls` exits non-zero on `invalid` or `missing` (#255). The scaffold is written only where absent, so an existing adopter copies the step by hand. A repo with a pre-existing invalid entry fixes it first or records a deviation, or the step fails from day one.
 
+- The security module's `credential-deny` step now says "user settings, or the committed project settings for a shared repo", and `plugins/house/templates/settings.json` carries the credential-path `Read` denies (`.env`, `.env.*`, `.dev.vars`, `secrets/`, `credentials/`). They cover the Read tool, not a shell command that prints the file. Render still never writes the template (#249).
+
 ### Fixed
 
 - `cleanup-worktree.sh` no longer prints the manual `gh api -X DELETE` command after `gh pr merge --delete-branch` has already removed the remote branch. It checks `git ls-remote` first, treats a 404 or 422 from the DELETE as already gone, and hands over the command only for a real refusal (#252).

@@ -30,7 +30,14 @@
       "Bash(git * -c *)",
       "Bash(git --exec-path*)",
       "Bash(git * --exec-path*)",
-      "Bash(psql *\\!*)"
+      "Bash(psql *\\!*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./.dev.vars)",
+      "Read(./secrets/**)",
+      "Read(./credentials/**)"
     ]
   }
 }
