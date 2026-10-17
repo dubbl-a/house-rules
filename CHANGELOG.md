@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fresh adoption resolves the env variables and constants its code reads (#265).** `house init` now says in its plan where `modules.docs.config.haystackDirs` came from, and also looks for `lib`, `app`, `api` and `server`. The `[env/const]` drift finding, when `haystackDirs` is empty, now names that setting as the fix ahead of the `docs-drift-ignore` marker. The docs rule's anchor line no longer implies every backticked token resolves with an empty list. An existing `house.json` is never rewritten.
+
 ## [0.21.3] - 2026-10-16
 
 A patch release under ADR 0012: new commands (`house decline`, `house hook add`), honest guard records for a team repo, checker fixes that make a fresh bootstrap pass and give CI the local verdict, and rule clauses following Claude Code 2.1.302 and adopter reports. No heading is renamed, no config slot changes, and nothing the guard denies changes (its refusal message is reworded only). `house.json` gains optional values (`guard.by` `"floor"` and `"remote"`, a `declined-step` deviation kind), and `.house/lock.json` gains a `modules` key without any change to the layout of `.house/`. Upgrading from 0.21.2: run `/house-rules:sync`, which writes the new checker and the lock's `modules` record together.

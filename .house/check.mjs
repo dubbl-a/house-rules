@@ -865,7 +865,14 @@ function checkAnchorToken(tok, docPath, lineNo, o) {
 
   // (f) ALL_CAPS_WITH_UNDERSCORES, >= 6 chars
   if (/^[A-Z][A-Z0-9_]{5,}$/.test(tok) && tok.includes('_')) {
-    if (!o.haystackText.includes(tok)) o.findings.push(mk('drift', docPath, lineNo, 'env/const', tok));
+    if (!o.haystackText.includes(tok)) {
+      // An empty haystackDirs searches no code at all, so name it as the fix
+      // ahead of the ignore marker, which hides the line from later checks.
+      const hint = o.haystackEmpty
+        ? ` (modules.docs.config.haystackDirs is empty, so no code is searched: set it to the directories whose code reads ${tok}; a docs-drift-ignore marker is the last resort and hides the line from every later check)`
+        : '';
+      o.findings.push(mk('drift', docPath, lineNo, 'env/const', `${tok}${hint}`));
+    }
     return;
   }
 
@@ -1225,7 +1232,7 @@ function checkDrift(ctx) {
       npmScripts: scriptsForRoot(docPkgRoot), scriptNamespaces: namespacesForRoot(docPkgRoot),
       bareScriptAllowlist, pathPrefixRe, pkgPathPrefixRe: docPkgRoot ? pkgPrefixReForRoot(docPkgRoot) : null,
       buildArtifactPrefixes, pathExists, componentAllowlist, componentSuffixes, componentBasenames,
-      componentExts, haystackText, classPrefixes, repoRoot: ctx.repoRoot, houseManaged,
+      componentExts, haystackText, haystackEmpty: !haystackDirs.length, classPrefixes, repoRoot: ctx.repoRoot, houseManaged,
       findings: sink, docPkgRoot, untrackedSet,
     };
 
