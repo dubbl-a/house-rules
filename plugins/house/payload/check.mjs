@@ -9,6 +9,7 @@
 //
 // Usage:
 //   node check.mjs [--only=fam,fam,...] [--json] [--repo <path>]
+//   node check.mjs --floor-status [--json] [--repo <path>]   (is this machine's git-hook floor armed; always exits 0)
 //   (--accept-lengths is still accepted and does nothing; see ratchetRaises)
 //
 // Families (default: all): drift, todo, tamper, behind, shape, lengths,
@@ -3290,7 +3291,8 @@ const GUARD_FLOOR_FILES = [
 
 // Whether THIS clone is armed (`core.hooksPath` pointing at `.githooks`) is
 // deliberately never read here. ADR 0008: machine-local state is reported by
-// `house doctor`, which asks `arm-git-hooks.sh --probe`; the checker answers
+// `house doctor`, which asks `arm-git-hooks.sh --probe` (or, in a session where
+// `house` is not on PATH, `--floor-status` below); the checker answers
 // for the repo, so every clone of the same commit must get the same verdict.
 // A checker that read git config would fail CI on a fresh runner and pass on
 // the machine that armed itself once, which is the opposite of a gate.
@@ -3394,6 +3396,94 @@ function checkTargets(ctx, d) {
   return { findings, info };
 }
 
+// `--floor-status` (#266): the one read of machine state in this file, and a
+// separate mode, never part of a family run (ADR 0008 above). In a session
+// `house` is not on PATH and the PreToolUse guard refuses to scan some
+// hooks-path reads, so an agent had no way to learn whether the pre-commit
+// floor (secret scanning included) ran on what it committed. This answers with
+// `git config` through child_process, so no command text is involved. It
+// reports and exits 0 on every machine: a CI runner is never armed, so CI must
+// not fail on it. Byte-identity is checked against the LOCK's hashes, not the
+// installed plugin's copy; the guard's own armed test compares the plugin copy.
+function floorStatus(repoRoot) {
+  const gitOut = (args, cwd = repoRoot) => {
+    try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
+  };
+  const real = (p) => { try { return realpathSync(p); } catch { return null; } };
+  const hooksPath = gitOut(['config', '--get', 'core.hooksPath']) || null;
+  // A linked worktree reads its hooks path from the main checkout's config, so
+  // the floor it owns may be the main checkout's.
+  const common = gitOut(['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  const mainRoot = common && basename(common) === '.git' ? dirname(common) : repoRoot;
+  let owner = null;
+  let hooksDir = join(repoRoot, '.githooks');
+  if (hooksPath) {
+    const resolved = hooksPath.startsWith('~') ? join(homedir(), hooksPath.slice(1)) : resolve(repoRoot, hooksPath);
+    const rp = real(resolved);
+    for (const root of [repoRoot, mainRoot]) {
+      const rf = real(join(root, '.githooks'));
+      if (rp && rf && rp === rf) { owner = root; hooksDir = resolved; break; }
+    }
+  }
+  const hooksPathResolves = owner !== null;
+
+  const hashes = loadLockManagedHashes(repoRoot);
+  const mismatched = [];
+  const missing = [];
+  const unlocked = [];
+  for (const p of GUARD_FLOOR_FILES) {
+    const abs = join(hooksDir, p.slice('.githooks/'.length));
+    let st = null;
+    try { st = statSync(abs); } catch { /* absent */ }
+    if (!st || !st.isFile()) { missing.push(p); continue; }
+    if (!(st.mode & 0o111)) { mismatched.push(p); continue; }
+    const want = hashes.get(p);
+    if (want === undefined) { unlocked.push(p); continue; }
+    if (sha256Hex(managedBody(readFileSync(abs, 'utf8'))) !== want) mismatched.push(p);
+  }
+  const filesMatchLock = missing.length === 0 && mismatched.length === 0 && unlocked.length === 0;
+
+  // The regular files on disk under the hooks dir against the tree at HEAD,
+  // plus a clean status: an ignored or planted file is exactly what to catch.
+  let hooksDirMatchesHead = false;
+  const dirExtra = [];
+  const dirAbsent = [];
+  if (owner) {
+    const tracked = new Set((gitOut(['ls-tree', '-r', '--name-only', 'HEAD', '--', '.githooks'], owner) || '').split('\n').filter(Boolean));
+    const onDisk = new Set();
+    const walk = (dir, prefix) => {
+      let ents = [];
+      try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of ents) {
+        if (e.isDirectory()) walk(join(dir, e.name), `${prefix}${e.name}/`);
+        else if (e.isFile()) onDisk.add(`${prefix}${e.name}`);
+      }
+    };
+    walk(hooksDir, '.githooks/');
+    for (const f of onDisk) if (!tracked.has(f)) dirExtra.push(f);
+    for (const f of tracked) if (!onDisk.has(f)) dirAbsent.push(f);
+    const status = gitOut(['status', '--porcelain', '--untracked-files=all', '--', '.githooks'], owner);
+    hooksDirMatchesHead = dirExtra.length === 0 && dirAbsent.length === 0 && status === '';
+  }
+
+  const ver = (gitOut(['--version']) || '').match(/(\d+)\.(\d+)/);
+  const gitVersionOk = !!ver && (Number(ver[1]) > 2 || (Number(ver[1]) === 2 && Number(ver[2]) >= 28));
+  const armed = hooksPathResolves && filesMatchLock && hooksDirMatchesHead && gitVersionOk;
+  return { armed, hooksPath, hooksPathResolves, filesMatchLock, mismatched, missing, unlocked, hooksDirMatchesHead, dirExtra, dirAbsent, gitVersionOk };
+}
+
+function formatFloorStatus(s) {
+  const lines = [`floor: ${s.armed ? 'ARMED' : 'NOT ARMED'}`];
+  lines.push(`  core.hooksPath: ${s.hooksPath === null ? '(unset)' : s.hooksPath}${s.hooksPathResolves ? ' (this repo\'s .githooks)' : s.hooksPath === null ? '' : ' (not this repo\'s .githooks)'}`);
+  const bad = [...s.missing.map((p) => `${p} (missing)`), ...s.mismatched.map((p) => `${p} (edited or not executable)`), ...s.unlocked.map((p) => `${p} (not in the lock)`)];
+  lines.push(`  floor files match the lock: ${s.filesMatchLock ? 'yes' : `NO: ${bad.join(', ')}`}`);
+  lines.push(`  hooks dir matches HEAD: ${s.hooksDirMatchesHead ? 'yes' : s.hooksPathResolves ? `NO${s.dirExtra.length ? `; not tracked: ${s.dirExtra.join(', ')}` : ''}${s.dirAbsent.length ? `; absent on disk: ${s.dirAbsent.join(', ')}` : ''}` : 'not checked (hooks path is not this repo\'s floor)'}`);
+  lines.push(`  git 2.28 or newer: ${s.gitVersionOk ? 'yes' : 'NO (reference-transaction cannot cover history)'}`);
+  lines.push('  Byte-identity is checked against the lock, not the installed plugin. A CI runner is never armed; this mode always exits 0, so CI must not gate on it.');
+  if (!s.armed) lines.push('  To arm: `house render --apply`, or set the hooks path to this repo\'s .githooks from the main checkout.');
+  return lines.join('\n');
+}
+
 function checkGuard(ctx) {
   const warnings = [];
   const d = ctx.house.data;
@@ -3427,11 +3517,12 @@ function checkGuard(ctx) {
 // ── CLI / orchestration ──────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { only: null, json: false, acceptLengths: false, repo: null };
+  const out = { only: null, json: false, acceptLengths: false, repo: null, floorStatus: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') out.json = true;
     else if (a === '--accept-lengths') out.acceptLengths = true;
+    else if (a === '--floor-status') out.floorStatus = true;
     else if (a === '--repo') out.repo = argv[++i];
     else if (a.startsWith('--repo=')) out.repo = a.slice('--repo='.length);
     else if (a === '--only') out.only = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -3507,6 +3598,12 @@ function main() {
       process.stderr.write(`house check: not a git repository and no --repo given (${e.message})\n`);
       process.exit(2);
     }
+  }
+
+  if (args.floorStatus) {
+    const s = floorStatus(repoRoot);
+    console.log(args.json ? JSON.stringify({ floorStatus: s }, null, 2) : formatFloorStatus(s));
+    return;
   }
 
   const house = loadHouseJson(repoRoot);
