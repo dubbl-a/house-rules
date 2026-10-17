@@ -94,7 +94,7 @@ In the target repo:
 - `/house-rules:sync` re-renders after this package or `house.json` changes.
 - `house enable <module...>` prints one plan (paths, files, load cost, checklist). `--apply` acts.
 - `house disable` is its reverse; `--why` records why a default-on module is off.
-- `house confirm` dates a done step.
+- `house confirm` dates a done step. `house decline <module> <step-id> --why "..."` records a step decided against as a dated `declined-step` deviation, and `house doctor` lists it as declined instead of not confirmed.
 
 To wire the checker in by hand, run `node .house/check.mjs` in CI. Add it to `package.json` as
 `check:house`, and add `check:docs` with `--only=drift,todo`. `house.json` holds the modules, a

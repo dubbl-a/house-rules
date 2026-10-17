@@ -16,6 +16,7 @@
 //       [--force-managed <path>] [--json]
 // house enable <module...> [--repo <path>] [--apply]
 // house confirm <module> <step-id> [--repo <path>]
+// house decline <module> <step-id> --why "<reason>" [--repo <path>]
 // house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]
 //
 // Repo root: `git rev-parse --show-toplevel` from cwd, or the literal path
@@ -36,7 +37,8 @@
 // unusable or a name is not a module, 1 when render would refuse, otherwise
 // render's exit when it fails and then the vendored checker's. confirm -- 2
 // when it refuses (no house.json, unknown or disabled module, undeclared
-// step), 0 otherwise. uninstall -- 2 when house.json is unparseable, or
+// step), 0 otherwise; decline -- the same, plus 2 for a missing --why or a
+// step already confirmed. uninstall -- 2 when house.json is unparseable, or
 // when neither it nor a lock is here and no commit ever had one (never
 // adopted); 1 when a removal is refused, an unrecoverable house.json is
 // unflagged, files look managed but nothing records them, or a run could not
@@ -2117,6 +2119,21 @@ function confirmedSteps(houseData, name) {
   return Object.fromEntries(Object.entries(c).filter(([, d]) => isDate(d)));
 }
 
+// #247: the steps a repo decided against, read from deviations as
+// { kind: "declined-step", module, step, what, why, decided }, which `house
+// decline` writes. A record without a module, a step id, a why, or a real date
+// reads as no decision, and the first record for a step stands.
+function declinedSteps(houseData, name) {
+  const out = {};
+  for (const d of arr(isPlainObject(houseData) ? houseData.deviations : null)) {
+    if (!isPlainObject(d) || d.kind !== 'declined-step' || d.module !== name) continue;
+    if (!isNonEmptyString(d.step) || !isNonEmptyString(d.why) || !isDate(d.decided) || d.step in out) continue;
+    out[d.step] = { decided: d.decided, why: d.why };
+  }
+  return out;
+}
+
+// Confirmed wins over declined: a step declined and later confirmed is done.
 function unconfirmedAtAdoption(houseData, modules) {
   const out = [];
   for (const m of modules) {
@@ -2124,10 +2141,13 @@ function unconfirmedAtAdoption(houseData, modules) {
     const name = moduleName(m);
     if (!moduleEnabled(houseData, name)) continue;
     const done = confirmedSteps(houseData, name);
+    const no = declinedSteps(houseData, name);
     const declared = atAdoptionSteps(m.json).map((s) => s.id);
-    const open = declared.filter((id) => !(id in done));
+    const open = declared.filter((id) => !(id in done) && !(id in no));
+    const declined = declared.filter((id) => !(id in done) && id in no).map((id) => ({ id, ...no[id] }));
     const undeclared = Object.keys(done).filter((id) => !declared.includes(id));
-    if (open.length || undeclared.length) out.push({ module: name, unconfirmed: open, undeclared });
+    const undeclaredDeclined = Object.keys(no).filter((id) => !declared.includes(id));
+    if (open.length || declined.length || undeclared.length || undeclaredDeclined.length) out.push({ module: name, unconfirmed: open, declined, undeclared, undeclaredDeclined });
   }
   return out;
 }
@@ -2150,6 +2170,26 @@ const SYNC_FIRST = 'run /house-rules:sync (or `house render --apply`) so .house/
 function todayIso() {
   const d = new Date();
   return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+}
+
+// A record an older vendored checker rejects fails the adopter's CI, so confirm
+// and decline write nothing until the checker is this plugin's. `rejects`
+// completes "an older vendored checker ...".
+function refuseIfCheckerStale(cmd, repoRoot, rejects) {
+  if (vendoredCheckerIsCurrent(repoRoot)) return;
+  // A hand-edited vendored checker is refused by render, so `house render
+  // --apply` alone would not sync it. Asked of the same classify render uses
+  // (the lock's hash, or the plugin's own when the lock has no entry).
+  let handEdited = false;
+  try {
+    const content = readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8');
+    const c = classify(repoRoot, { path: '.house/check.mjs', module: '_payload', source: 'payload/check.mjs', content, lockHash: sha256Hex(managedBody(content)), kind: 'payload' }, loadPriorLock(repoRoot), null);
+    handEdited = c.status === 'refuse' && !c.reason;
+  } catch { /* unreadable: the plain advice stands */ }
+  console.error(handEdited
+    ? `house ${cmd}: nothing was written. .house/check.mjs was edited by hand, so \`house render --apply\` refuses it and would not sync it. First keep any change worth proposing upstream in house, then run \`house render --apply --force-managed .house/check.mjs\` so it is this plugin's (an older vendored checker ${rejects} and fails CI); then re-run this command.`
+    : `house ${cmd}: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
+  process.exit(2);
 }
 
 function cmdConfirm(args) {
@@ -2205,27 +2245,80 @@ function cmdConfirm(args) {
     console.error(`house confirm: modules.${name}.confirmed["${id}"] holds ${JSON.stringify(existing[id])}, which is not a date (YYYY-MM-DD), so nothing was written. Fix or delete it by hand, then re-run.`);
     process.exit(2);
   }
-  if (!vendoredCheckerIsCurrent(repoRoot)) {
-    // A hand-edited vendored checker is refused by render, so `house render
-    // --apply` alone would not sync it. Asked of the same classify render uses
-    // (the lock's hash, or the plugin's own when the lock has no entry).
-    let handEdited = false;
-    try {
-      const content = readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8');
-      const c = classify(repoRoot, { path: '.house/check.mjs', module: '_payload', source: 'payload/check.mjs', content, lockHash: sha256Hex(managedBody(content)), kind: 'payload' }, loadPriorLock(repoRoot), null);
-      handEdited = c.status === 'refuse' && !c.reason;
-    } catch { /* unreadable: the plain advice stands */ }
-    console.error(handEdited
-      ? `house confirm: nothing was written. .house/check.mjs was edited by hand, so \`house render --apply\` refuses it and would not sync it. First keep any change worth proposing upstream in house, then run \`house render --apply --force-managed .house/check.mjs\` so it is this plugin's (an older vendored checker reports \`confirmed\` as an unknown key and fails CI); then re-run this command.`
-      : `house confirm: nothing was written. First ${SYNC_FIRST}; then re-run this command.`);
-    process.exit(2);
-  }
+  refuseIfCheckerStale('confirm', repoRoot, 'reports `confirmed` as an unknown key');
   entry.confirmed = { ...existing, [id]: todayIso() };
   writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
   console.log(`Wrote modules.${name}.confirmed[${JSON.stringify(id)}] = "${entry.confirmed[id]}" to ${housePath}`);
+  const earlier = declinedSteps(houseData, name)[id];
+  if (earlier) console.log(`  the earlier decline of this step (${earlier.decided}: ${earlier.why}) stays in deviations as history; doctor now counts the step as confirmed`);
   for (const [other, v] of Object.entries(existing)) {
     if (!isDate(v)) console.log(`  left \`${other}\` as it was (${JSON.stringify(v)}); the checker reports it until it is a date or removed`);
   }
+  process.exit(0);
+}
+
+// #247: `house decline <module> <step-id> --why "..."` records an at-adoption
+// step the repo decided not to do as a dated deviation (kind "declined-step"),
+// the record deviations already are for "not done, by decision". doctor lists
+// the step as declined instead of not confirmed. Confirming it later is still
+// allowed and wins; the decline stays as history.
+function cmdDecline(args) {
+  const repoRoot = resolveRepoRoot(args);
+  const housePath = path.join(repoRoot, 'house.json');
+  if (!existsSync(housePath)) {
+    console.error(`house decline: ${housePath} not found, so this repo has not adopted house. Run /house-rules:bootstrap first.`);
+    process.exit(2);
+  }
+  let houseData;
+  try { houseData = JSON.parse(readFileSync(housePath, 'utf8')); }
+  catch (e) {
+    console.error(`house decline: ${housePath} is not valid JSON (${e.message})`);
+    process.exit(2);
+  }
+  if (!isPlainObject(houseData) || !isPlainObject(houseData.modules)) {
+    console.error(`house decline: ${housePath} has no usable "modules" object`);
+    process.exit(2);
+  }
+  const [name, id] = args.names;
+  if (!name || !id || args.names.length !== 2 || !isNonEmptyString(args.why)) {
+    console.error('usage: house decline <module> <step-id> --why "<reason>" [--repo <path>]; the reason is required, since a step left undone by decision must say why');
+    process.exit(2);
+  }
+  const mod = findModules().find((m) => !m.error && moduleName(m) === name);
+  if (!mod) {
+    console.error(`house decline: \`${name}\` is not a module, so nothing was written.`);
+    process.exit(2);
+  }
+  if (!moduleEnabled(houseData, name)) {
+    console.error(`house decline: \`${name}\` is not enabled in house.json, so it has no steps to decline. Turn it on with \`house enable ${name}\` first.`);
+    process.exit(2);
+  }
+  const steps = atAdoptionSteps(mod.json);
+  const step = steps.find((s) => s.id === id);
+  if (!step) {
+    const declared = steps.map((s) => s.id);
+    console.error(`house decline: \`${id}\` is not an at-adoption step of \`${name}\`, so nothing was written. Its steps: ${declared.length ? declared.join(', ') : '(none declared)'}.`);
+    process.exit(2);
+  }
+  const confirmed = confirmedSteps(houseData, name)[id];
+  if (confirmed) {
+    console.error(`house decline: ${name} step \`${id}\` was already confirmed on ${confirmed}, so nothing was written.`);
+    process.exit(2);
+  }
+  const prior = declinedSteps(houseData, name)[id];
+  if (prior) {
+    console.log(`${name} step \`${id}\` was already declined on ${prior.decided} (${prior.why}); the first record is kept and nothing was written.`);
+    process.exit(0);
+  }
+  if ('deviations' in houseData && !Array.isArray(houseData.deviations)) {
+    console.error('house decline: house.json "deviations" is not an array, so nothing was written. Make it an array by hand, then re-run.');
+    process.exit(2);
+  }
+  refuseIfCheckerStale('decline', repoRoot, 'rejects the `declined-step` deviation kind');
+  const record = { kind: 'declined-step', module: name, step: id, what: `Declined at-adoption step \`${id}\`: ${step.step}`, why: args.why, decided: todayIso() };
+  houseData.deviations = [...arr(houseData.deviations), record];
+  writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
+  console.log(`Wrote a declined-step deviation for ${name} step \`${id}\` (${record.decided}) to ${housePath}; \`house doctor\` now lists it as declined.`);
   process.exit(0);
 }
 
@@ -3490,6 +3583,8 @@ function cmdDoctor(args) {
     const checkerCurrent = vendoredCheckerIsCurrent(repoRoot);
     for (const a of atAdoption) {
       if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (${checkerCurrent ? `record each with \`house confirm ${a.module} <step-id>\`` : `sync first: ${SYNC_FIRST}; then record each with house confirm`})`);
+      if (a.declined.length) console.log(`at-adoption steps declined for ${a.module}: ${a.declined.map((x) => `${x.id} (${x.decided}: ${x.why})`).join(', ')}`);
+      if (a.undeclaredDeclined.length) console.log(`at-adoption declined steps ${a.module} no longer declares: ${a.undeclaredDeclined.join(', ')} (remove their declined-step deviations)`);
       if (a.undeclared.length) console.log(`at-adoption confirmations ${a.module} no longer declares: ${a.undeclared.join(', ')} (remove them from modules.${a.module}.confirmed)`);
     }
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);
@@ -3589,8 +3684,8 @@ function main() {
 
   if (cmd === 'check') { cmdCheck(rest); return; }
 
-  if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]');
+  if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'doctor'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]');
     process.exit(2);
   }
 
@@ -3601,6 +3696,7 @@ function main() {
   if (cmd === 'disable') return cmdDisable(args);
   if (cmd === 'uninstall') return cmdUninstall(args);
   if (cmd === 'confirm') return cmdConfirm(args);
+  if (cmd === 'decline') return cmdDecline(args);
   if (cmd === 'doctor') return cmdDoctor(args);
 }
 
