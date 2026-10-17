@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import nodePath, { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { buildFacts, renderBlock, splice } from '../scripts/gen-module-facts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REAL_CLI_SRC = join(HERE, '..', 'plugins', 'house', 'scripts', 'house');
@@ -2585,7 +2586,7 @@ test('#151 disable github: the plan names the removed floor, the scaffold left i
 
 test('#151 disable --apply: the real vendored checker exits 0 afterwards', () => {
   const { dir, cliPath } = buildEnableFixture();
-  copyFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), join(dir, 'payload', 'check.mjs'));
+  installRealChecker(dir);
   const repo = enabledGammaRepo(cliPath);
   assert.equal(runVendoredCheck(repo).status, 0, `precondition: the adopted repo passes\n${runVendoredCheck(repo).stdout}`);
   const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
@@ -2621,9 +2622,17 @@ function todayLocal() {
   return [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
 }
 
+// The real checker judges module defaults and paths from the MODULE_FACTS it
+// carries (#258), which know only the shipped modules; a fixture plugin's
+// modules (alpha, gamma, delta) get their facts regenerated from the fixture.
+function installRealChecker(fixtureDir) {
+  const real = readFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), 'utf8');
+  writeFileSync(join(fixtureDir, 'payload', 'check.mjs'), splice(real, renderBlock(buildFacts(join(fixtureDir, 'modules')))));
+}
+
 function realCheckerFixture() {
   const fx = buildEnableFixture();
-  copyFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), join(fx.dir, 'payload', 'check.mjs'));
+  installRealChecker(fx.dir);
   return fx;
 }
 
