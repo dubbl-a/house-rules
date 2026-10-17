@@ -1059,6 +1059,8 @@ expect_allow "git config --get-all core.hooksPath is readable" \
   "$(mk_payload "git config --get-all core.$_ph" "$d")"
 expect_deny "git config --unset core.hooksPath" \
   "$(mk_payload "git config --unset core.$_ph" "$d")" "disables or moves"
+expect_deny "the refusal of a hooks-path write names the read-only floor-status route (#266)" \
+  "$(mk_payload "git config --unset core.$_ph" "$d")" "node .house/check.mjs --floor-status"
 expect_deny "git config --get core.hooksPath chained with --unset" \
   "$(mk_payload "git config --get core.$_ph && git config --unset core.$_ph" "$d")" "disables or moves"
 expect_deny "a -c assignment next to a readable --get" \

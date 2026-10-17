@@ -847,7 +847,14 @@ collect_candidates() {
 
 # ── A. The disable list ──────────────────────────────────────────────────
 floor_deny() {
-  deny "Refusing '$1': it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Commit on a feature branch and open a PR. This check reads the command's text and cannot tell data or a read from a write; if the command only carries text (a PR or issue body, a printf label), write that text to a file with the Write tool and pass the path (for example --body-file <path>); a command meant for the user goes in a fenced block for them to copy, not to the clipboard; anything else, give it to the user to run. Do not rephrase a real write."
+  local armed_hint=''
+  # The refusal of a hooks-path spelling names the read-only way to ask whether
+  # the floor is armed, so an agent that only wanted to know does not stop here.
+  # shellcheck disable=SC2016 # the backticks are literal text in the message
+  case "$1" in
+    *[hH][oO][oO][kK][sS][pP][aA][tT][hH]*) armed_hint=' To check whether the floor is armed on this machine, run `node .house/check.mjs --floor-status`; it only reports.' ;;
+  esac
+  deny "Refusing '$1': it disables or moves the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Commit on a feature branch and open a PR. This check reads the command's text and cannot tell data or a read from a write; if the command only carries text (a PR or issue body, a printf label), write that text to a file with the Write tool and pass the path (for example --body-file <path>); a command meant for the user goes in a fenced block for them to copy, not to the clipboard; anything else, give it to the user to run. Do not rephrase a real write.$armed_hint"
 }
 # Read clause by clause over the WHOLE command. Every entry is a literal: no
 # shape-guessing, nothing an abbreviation or a rename quietly widens. This list

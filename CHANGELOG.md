@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- `node .house/check.mjs --floor-status [--json]` reports whether this machine's git-hook floor is armed, for a session where `house` is not on PATH (#266). It reads the hooks path with `git config` through child_process, so no command text reaches the guard, and says whether the path resolves to the repo's floor, whether the seven floor files match the lock's hashes (the lock, not the installed plugin), whether the hooks directory equals the tree at HEAD, and whether git is 2.28 or newer. It always exits 0, because a CI runner is never armed. The family run still never reads machine state.
+
+### Changed
+
+- The guard's refusal of a hooks-path spelling now names `node .house/check.mjs --floor-status` as the way to check the floor, and the github rule points a session at it beside `house doctor` (#266). What the guard matches, strips and refuses is unchanged.
+
 ### Fixed
 
 - **A fresh adoption resolves the env variables and constants its code reads (#265).** `house init` now says in its plan where `modules.docs.config.haystackDirs` came from, and also looks for `lib`, `app`, `api` and `server`. The `[env/const]` drift finding, when `haystackDirs` is empty, now names that setting as the fix ahead of the `docs-drift-ignore` marker. The docs rule's anchor line no longer implies every backticked token resolves with an empty list. An existing `house.json` is never rewritten.
