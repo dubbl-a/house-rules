@@ -33,6 +33,11 @@ jobs:
         run: npm ci --ignore-scripts
       - if: hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''
         run: npm install --ignore-scripts
+      # `npm ci` has accepted a stale nested lockfile entry a grouped bump
+      # left behind; `npm ls` exits non-zero on `invalid` or `missing`. A repo with
+      # a pre-existing invalid entry fixes it first or records a deviation.
+      - if: hashFiles('package-lock.json') != '' || hashFiles('npm-shrinkwrap.json') != ''
+        run: npm ls --all
       - run: node .house/check.mjs
       # The branch-guard hook protects this repo; test it here too, not only
       # on the machine that happened to write it.
