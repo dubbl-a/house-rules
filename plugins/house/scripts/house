@@ -296,13 +296,46 @@ function probeDefaultBranch(repoRoot) {
 // witnessed, rather than leaving either to inference.
 
 // <key> mirrors payload/check.mjs's memoryIndexPath: CLAUDE_CODE_PROJECT_DIR_NAME
-// when it rides beside CLAUDE_CONFIG_DIR, else repoRoot with every "/" turned
-// into "-". The hook derives the same key from the payload's own `cwd`
-// instead of a resolved repo root, since that is all a hook ever sees.
-function instructionsLoadedLogPath(repoRoot) {
+// when it rides beside CLAUDE_CONFIG_DIR, else the main checkout's root with
+// every "/" turned into "-". The hook derives the same root from the payload's
+// `cwd` with git, so a session in a linked worktree or a subdirectory logs
+// under it too; doctor run from a linked worktree resolves the same root.
+// Logs older versions of the hook wrote under a worktree's own key,
+// `<key>-.claude-worktrees-<name>.jsonl`, are read as well (see
+// instructionsLoadedLogPaths); only that prefix, because a bare `<key>-`
+// would also match a sibling repo such as `<root>-2`.
+function mainCheckoutRoot(repoRoot) {
+  try {
+    const common = git(repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
+    if (!common || path.basename(common) !== '.git') return repoRoot;
+    const main = path.dirname(common);
+    // Same directory spelled differently (a symlinked tmp dir): keep the caller's.
+    try { if (realpathSync(main) === realpathSync(repoRoot)) return repoRoot; } catch { /* use main */ }
+    return main;
+  } catch { return repoRoot; }
+}
+function instructionsLoadedKeyDir(repoRoot) {
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
-  const key = (process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME) || repoRoot.replace(/\//g, '-');
-  return path.join(cfgDir, 'house', 'instructions-loaded', `${key}.jsonl`);
+  const keyOverride = process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+  const key = keyOverride || mainCheckoutRoot(repoRoot).replace(/\//g, '-');
+  return { dir: path.join(cfgDir, 'house', 'instructions-loaded'), key, pooled: !keyOverride };
+}
+function instructionsLoadedLogPath(repoRoot) {
+  const { dir, key } = instructionsLoadedKeyDir(repoRoot);
+  return path.join(dir, `${key}.jsonl`);
+}
+// The root-keyed log first, then (unless the key is an override) each legacy
+// worktree-keyed log; files that are not there are left out.
+function instructionsLoadedLogPaths(repoRoot) {
+  const { dir, key, pooled } = instructionsLoadedKeyDir(repoRoot);
+  const paths = [path.join(dir, `${key}.jsonl`)];
+  if (pooled) {
+    let entries = [];
+    try { entries = readdirSync(dir).sort(); } catch { /* no log directory yet */ }
+    const prefix = `${key}-.claude-worktrees-`;
+    for (const name of entries) if (name.startsWith(prefix) && name.endsWith('.jsonl')) paths.push(path.join(dir, name));
+  }
+  return paths.filter((p) => existsSync(p));
 }
 
 // A repo-local hook the InstructionsLoaded event would actually invoke: a
@@ -375,22 +408,25 @@ function instructionsLoadedProbe(repoRoot) {
   const vendored = vendoredRuleDests(repoRoot);
   const seen = new Set();
   let lastLoadAt = null;
-  try {
-    const raw = readFileSync(logPath, 'utf8');
-    for (const line of raw.split('\n')) {
-      if (!line.trim()) continue;
-      let rec;
-      try { rec = JSON.parse(line); } catch { continue; }
-      if (!isPlainObject(rec)) continue;
-      if (typeof rec.ts === 'string' && isRealTimestamp(rec.ts)
-        && (lastLoadAt === null || rec.ts > lastLoadAt)) lastLoadAt = rec.ts;
-      if (typeof rec.file_path === 'string') {
-        for (const dest of vendored) if (rec.file_path.endsWith(dest)) seen.add(dest);
+  const logFilePaths = instructionsLoadedLogPaths(repoRoot);
+  for (const file of logFilePaths) {
+    try {
+      const raw = readFileSync(file, 'utf8');
+      for (const line of raw.split('\n')) {
+        if (!line.trim()) continue;
+        let rec;
+        try { rec = JSON.parse(line); } catch { continue; }
+        if (!isPlainObject(rec)) continue;
+        if (typeof rec.ts === 'string' && isRealTimestamp(rec.ts)
+          && (lastLoadAt === null || rec.ts > lastLoadAt)) lastLoadAt = rec.ts;
+        if (typeof rec.file_path === 'string') {
+          for (const dest of vendored) if (rec.file_path.endsWith(dest)) seen.add(dest);
+        }
       }
-    }
-  } catch { /* no log yet for this checkout */ }
+    } catch { /* unreadable log: skip it */ }
+  }
   return {
-    source, logPath, lastLoadAt, vendoredSeen: seen.size, vendoredTotal: vendored.length,
+    source, logPath, logFiles: logFilePaths.length, lastLoadAt, vendoredSeen: seen.size, vendoredTotal: vendored.length,
     vendoredUnseen: vendored.filter((d) => !seen.has(d)).sort(),
   };
 }
@@ -3589,6 +3625,7 @@ function cmdDoctor(args) {
       console.log(ruleLoadProbe.lastLoadAt
         ? `rule-load positive control: plugin hook; log ${ruleLoadProbe.logPath}: last load ${ruleLoadProbe.lastLoadAt}, ${ruleLoadProbe.vendoredSeen} of ${ruleLoadProbe.vendoredTotal} vendored rules seen${unseenVendoredSuffix(ruleLoadProbe)}`
         : 'rule-load positive control: plugin hook declared; no log yet for this checkout (start a session here, then re-run doctor)');
+      if (ruleLoadProbe.lastLoadAt) console.log(`  pooled ${ruleLoadProbe.logFiles} log ${ruleLoadProbe.logFiles === 1 ? 'file' : 'files'} (this checkout's root-keyed log plus any legacy worktree-keyed logs)`);
       console.log(`  caveat: ${PLUGIN_ENABLEMENT_CAVEAT}`);
     } else {
       console.log('rule-load positive control: none wired (add an InstructionsLoaded hook to log which rule files load; without it a rule whose glob never matches looks exactly like a rule that does nothing)');

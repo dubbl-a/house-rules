@@ -10,9 +10,9 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, utimesSync, realpathSync,
 } from 'node:fs';
-import { spawnSync, spawn } from 'node:child_process';
+import { spawnSync, spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,7 +111,7 @@ test('writes one JSON line under the sandboxed CLAUDE_CONFIG_DIR, keyed off cwd,
   assert.equal(rec.session_id, 'sess-1');
   assert.equal(typeof rec.ts, 'string');
   assert.ok(!Number.isNaN(Date.parse(rec.ts)), `ts must be parseable: ${rec.ts}`);
-  assert.deepEqual(Object.keys(rec).sort(), ['file_path', 'load_reason', 'session_id', 'ts']);
+  assert.deepEqual(Object.keys(rec).sort(), ['cwd', 'file_path', 'load_reason', 'repo_root', 'session_id', 'ts']);
 });
 
 test('honors CLAUDE_CODE_PROJECT_DIR_NAME beside CLAUDE_CONFIG_DIR for the log key, mirroring memoryIndexPath', () => {
@@ -434,4 +434,66 @@ test('a burst crossing the cap under concurrency never fabricates or corrupts a 
     assert.ok(allowedFilePaths.has(filePath), `surviving file_path ${filePath} must trace to a seed or burst write, never a phantom`);
   }
   assert.ok(newestRealTs !== null, 'at least one surviving line must carry a real, parseable timestamp');
+});
+
+// ── log key is the main checkout's root, from any cwd inside the repo ─────
+
+function sandboxRepoWithWorktree() {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'house-hook-repo-')));
+  CLEANUP_DIRS.push(base);
+  const root = join(base, 'main-repo');
+  mkdirSync(join(root, 'sub', 'dir'), { recursive: true });
+  const g = (args) => execFileSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=t', ...args], { cwd: root });
+  g(['-c', 'init.defaultBranch=main', 'init', '-q']);
+  writeFileSync(join(root, 'sub', 'dir', 'f.txt'), 'x\n');
+  g(['add', '-A']);
+  g(['commit', '-q', '-m', 'init']);
+  const worktree = join(base, 'wt');
+  g(['worktree', 'add', '-q', '-b', 'wt-branch', worktree]);
+  return { root, worktree };
+}
+
+function payloadFor(cwd) {
+  return JSON.stringify({
+    session_id: 's', cwd, hook_event_name: 'InstructionsLoaded', file_path: `${cwd}/CLAUDE.md`, load_reason: 'session_start',
+  });
+}
+
+test('a linked worktree cwd logs under the main checkout root key, with repo_root and cwd on the line', () => {
+  const { root, worktree } = sandboxRepoWithWorktree();
+  const { code, out, configDir } = runHook(payloadFor(worktree));
+  assert.equal(code, 0);
+  assert.equal(out, '');
+  const logPath = logPathFor(configDir, root.replace(/\//g, '-'));
+  assert.ok(existsSync(logPath), `expected a log at ${logPath}`);
+  const rec = JSON.parse(readFileSync(logPath, 'utf8').trim());
+  assert.equal(rec.repo_root, root);
+  assert.equal(rec.cwd, worktree);
+  assert.ok(!existsSync(logPathFor(configDir, worktree.replace(/\//g, '-'))), 'no worktree-keyed log');
+});
+
+test('a subdirectory cwd logs under the main checkout root key', () => {
+  const { root } = sandboxRepoWithWorktree();
+  const sub = join(root, 'sub', 'dir');
+  const { code, out, configDir } = runHook(payloadFor(sub));
+  assert.equal(code, 0);
+  assert.equal(out, '');
+  const rec = JSON.parse(readFileSync(logPathFor(configDir, root.replace(/\//g, '-')), 'utf8').trim());
+  assert.equal(rec.repo_root, root);
+  assert.equal(rec.cwd, sub);
+});
+
+test('a cwd outside any repo falls back to its own key, and bad input still exits 0 with empty stdout', () => {
+  const plain = realpathSync(mkdtempSync(join(tmpdir(), 'house-hook-plain-')));
+  CLEANUP_DIRS.push(plain);
+  const { code, out, configDir } = runHook(payloadFor(plain));
+  assert.equal(code, 0);
+  assert.equal(out, '');
+  const rec = JSON.parse(readFileSync(logPathFor(configDir, plain.replace(/\//g, '-')), 'utf8').trim());
+  assert.equal(rec.repo_root, plain);
+  for (const bad of ['', 'not json', '[]', JSON.stringify({ cwd: '/nonexistent/dir/for/house' })]) {
+    const r = runHook(bad);
+    assert.equal(r.code, 0);
+    assert.equal(r.out, '');
+  }
 });

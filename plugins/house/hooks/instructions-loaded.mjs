@@ -18,9 +18,17 @@
 // Log path and its <key> mirror payload/check.mjs's memoryIndexPath:
 // <CLAUDE_CONFIG_DIR or ~/.claude>/house/instructions-loaded/<key>.jsonl,
 // where <key> is CLAUDE_CODE_PROJECT_DIR_NAME when it rides beside
-// CLAUDE_CONFIG_DIR, else this payload's own `cwd` with every "/" turned
-// into "-". `house doctor` derives the same key from the resolved repo
-// root instead, since that is all doctor ever has.
+// CLAUDE_CONFIG_DIR, else the MAIN checkout's root with every "/" turned into
+// "-". The root comes from git (`rev-parse --git-common-dir` from the payload's
+// `cwd`, its parent when it ends in `/.git`), so a session in the main
+// checkout, in a linked worktree, or in a subdirectory all pool into one log;
+// keyed by raw `cwd`, every worktree and subdirectory session wrote a log of
+// its own and `house doctor` saw a small fraction of the evidence. When git
+// fails or `cwd` is not in a repo, the root is `cwd` itself. Each line
+// carries `repo_root` and `cwd`, so the pooled log stays attributable.
+// `house doctor` derives the same key from the resolved repo root, and also
+// reads the legacy `<key>-.claude-worktrees-*.jsonl` logs older versions of
+// this hook wrote.
 //
 // Past CAP_BYTES the log rewrites itself down to roughly its last half
 // (trimIfOversized below); before that rewrite, the same function sweeps
@@ -30,6 +38,7 @@
 import {
   readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync, renameSync, unlinkSync, readdirSync,
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -40,9 +49,21 @@ import path from 'node:path';
 // remaining window where a concurrent event can be lost, see trimIfOversized.
 const CAP_BYTES = 256 * 1024;
 
-function logPathFor(cwd) {
+// The main checkout's root for `cwd`, or `cwd` itself when git cannot say.
+// A bare repo's common dir does not end in `/.git`, so it is used as-is.
+function repoRootFor(cwd) {
+  try {
+    const common = execFileSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (!common) return cwd;
+    return path.basename(common) === '.git' ? path.dirname(common) : common;
+  } catch { return cwd; }
+}
+
+function logPathFor(repoRoot) {
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
-  const key = (process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME) || cwd.replace(/\//g, '-');
+  const key = (process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME) || repoRoot.replace(/\//g, '-');
   return path.join(cfgDir, 'house', 'instructions-loaded', `${key}.jsonl`);
 }
 
@@ -142,13 +163,16 @@ try {
   const payload = JSON.parse(raw);
   if (payload && typeof payload === 'object' && !Array.isArray(payload)
     && typeof payload.cwd === 'string' && payload.cwd) {
+    const repoRoot = repoRootFor(payload.cwd);
     const record = {
       ts: new Date().toISOString(),
+      repo_root: repoRoot,
+      cwd: payload.cwd,
       file_path: typeof payload.file_path === 'string' ? payload.file_path : null,
       load_reason: typeof payload.load_reason === 'string' ? payload.load_reason : null,
       session_id: typeof payload.session_id === 'string' ? payload.session_id : null,
     };
-    const logPath = logPathFor(payload.cwd);
+    const logPath = logPathFor(repoRoot);
     appendLine(logPath, JSON.stringify(record));
     trimIfOversized(logPath);
   }
