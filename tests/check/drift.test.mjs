@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { sandbox, run, houseJson, writeUntracked } from './helpers.mjs';
+import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { join, dirname } from 'node:path';
+import { sandbox, run, houseJson, writeUntracked, CHECK_SRC } from './helpers.mjs';
 
 test('drift: passes a clean doc set with no anchors', () => {
   const dir = sandbox({ 'README.md': '# Hello\n\nNo backticked claims here.\n' });
@@ -518,6 +521,46 @@ test('drift: ENV/const anchor resolves against the haystack', () => {
     'src/config.js': 'const SOME_REAL_VAR = 1;\n',
   });
   assert.equal(run(dirGood, ['--only=drift']).code, 0);
+});
+
+// #265: a freshly adopted repo must resolve an env variable its code reads, and
+// an empty haystackDirs must name itself as the fix before the ignore marker.
+test('drift: an env anchor read by scripts/ passes after init and render (#265)', () => {
+  const dir = sandbox({
+    'README.md': '# app\n',
+    'scripts/x.mjs': 'export const key = process.env.FOO_KEY;\n',
+  });
+  const cli = join(dirname(CHECK_SRC), '..', 'scripts', 'house');
+  execFileSync('node', [cli, 'init', '--repo', dir, '--apply'], { stdio: 'pipe' });
+  execFileSync('node', [cli, 'render', '--repo', dir, '--apply'], { stdio: 'pipe' });
+  writeFileSync(join(dir, 'NOTES.md'), 'The script reads `FOO_KEY`.\n');
+  execFileSync('git', ['add', '-A'], { cwd: dir });
+  const { code, out } = run(dir, ['--only=drift']);
+  assert.equal(code, 0, out);
+});
+
+test('drift: an env/const finding names haystackDirs when it is empty (#265)', () => {
+  const dir = sandbox({
+    'README.md': 'Set `FOO_KEY`.\n',
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { haystackDirs: [] } } } }),
+    'scripts/x.mjs': 'export const key = process.env.FOO_KEY;\n',
+  });
+  const { code, out } = run(dir, ['--only=drift']);
+  assert.equal(code, 1);
+  assert.match(out, /\[env\/const\] FOO_KEY/);
+  assert.match(out, /modules\.docs\.config\.haystackDirs/);
+  assert.ok(out.indexOf('haystackDirs') < out.indexOf('docs-drift-ignore'), 'haystackDirs comes before the ignore marker');
+});
+
+test('drift: an env/const finding stays bare when haystackDirs is set (#265)', () => {
+  const dir = sandbox({
+    'README.md': 'Set `SOME_MISSING_VAR`.\n',
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { haystackDirs: ['src'] } } } }),
+    'src/config.js': 'const OTHER_VAR = 1;\n',
+  });
+  const { out } = run(dir, ['--only=drift']);
+  assert.match(out, /\[env\/const\] SOME_MISSING_VAR/);
+  assert.doesNotMatch(out, /haystackDirs/);
 });
 
 test('drift: an unrecognized token shape is skipped silently', () => {

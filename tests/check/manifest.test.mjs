@@ -684,7 +684,7 @@ test('#245: a house.json config edited since the last render is a finding even w
   gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
   const r = ciAndLocal(d);
   assert.equal(r.code, 1, r.out);
-  assert.ok(has(r.json.findings, /modules\.testing\.config differs from what the last render used.*house render --apply/), r.out);
+  assert.ok(has(r.json.findings, /its current paths match files that its vendored rules do not cover.*house render --apply/), r.out);
 });
 
 test('#245: reordering a path-glob slot is not a config change', () => {
@@ -695,7 +695,7 @@ test('#245: reordering a path-glob slot is not a config change', () => {
   editHouse(d, (h) => { h.modules.testing.config.testRoots = ['specs/**', 'spec/**']; });
   gitIn(d, 'commit', '-q', '-am', 'reordered');
   const r = ciAndLocal(d);
-  assert.ok(!has(r.json.findings, /config differs from what the last render used/), r.out);
+  assert.ok(!has(r.json.findings, /its current paths match files that its vendored rules do not cover/), r.out);
   assert.ok(has(r.json.findings, /its paths matched nothing in this repo: specs\/\*\*, spec\/\*\*/), r.out);
 
   const v = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
@@ -762,7 +762,56 @@ test('#258: deleting the whole modules record does not silence a stale-config fi
   const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
   gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
-  sameAfterLockEdit(d, (l) => { delete l.modules; }, /modules\.testing\.config differs from what the last render used/);
+  sameAfterLockEdit(d, (l) => { delete l.modules; }, /its current paths match files that its vendored rules do not cover/);
+});
+
+const STALE = /module `(engineering|testing)` is enabled, but its current paths match files that its vendored rules do not cover/;
+
+test('#258: deleting a slot so its defaults return is stale when a default path matches a file the rule did not cover', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'src/a.js': '//\n', 'scripts/b.js': '//\n' });
+  editHouse(d, (h) => { h.modules.engineering.config.codeRoots = ['src/**']; });
+  rerender(d);
+  assert.equal(ciAndLocal(d).code, 0, 'the render is current');
+  editHouse(d, (h) => { delete h.modules.engineering.config.codeRoots; });
+  gitIn(d, 'commit', '-q', '-am', 'slot deleted, no re-render');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, STALE), r.out);
+});
+
+test('#258: reverting a slot to {} is stale when the restored default matches a directory the render left out', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '//\n', 'test/b.test.mjs': '//\n' });
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['tests/**']; });
+  rerender(d);
+  assert.equal(ciAndLocal(d).code, 0, 'the render is current');
+  editHouse(d, (h) => { h.modules.testing.config = {}; });
+  gitIn(d, 'commit', '-q', '-am', 'config reverted, no re-render');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, STALE), r.out);
+});
+
+test('#258: a glob dropped at render that later matches a file is stale without claiming house.json changed', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '//\n' });
+  editHouse(d, (h) => { h.modules.testing.config.testGlobs = ['e2e/**']; });
+  rerender(d);
+  assert.equal(ciAndLocal(d).code, 0, 'e2e/** matched nothing, so render dropped it');
+  addFilesIn(d, { 'e2e/a.js': '//\n' }, 'e2e added, no re-render');
+  const r = ciAndLocal(d);
+  assert.equal(r.code, 1, r.out);
+  assert.ok(has(r.json.findings, STALE), r.out);
+  assert.ok(!has(r.json.findings, /config differs/), 'house.json did not change');
+});
+
+test('#258: relabelling a lock entry module does not make an unvendored module look vendored', () => {
+  const d = freshBootstrap();
+  addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
+  const before = ciAndLocal(d);
+  assert.equal(before.code, 1, before.out);
+  editLock(d, (l) => { l.files.find((e) => e.module === 'engineering').module = 'testing'; });
+  gitIn(d, 'commit', '-q', '-am', 'relabelled entry');
+  const after = ciAndLocal(d);
+  assert.deepEqual(verdict(after), verdict(before));
 });
 
 test('#258: setting a disabled module record default to match does not silence the disabled-module finding', () => {

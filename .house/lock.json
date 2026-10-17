@@ -16,7 +16,7 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "a526205976d83be4fa2b774d4db45cfea96e14ad7d2146182908499de350c30e"
+      "bodySha256": "99dec8aaed05904b073a3d9bb933b835748a5997110a18d1ce386636ef6942cb"
     },
     {
       "path": ".claude/rules/house/engineering.md",
@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "73e7f795502fa2ccef490bc793b10ac74a87f23450111a6dbfd358378db9bf5c"
+      "bodySha256": "64b03e8087d2be5d38c4d401771304c8b6d9bc18c7b447dcb41ceafe6f8a304d"
     },
     {
       "path": "AGENTS.md",

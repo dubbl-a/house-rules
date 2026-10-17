@@ -283,6 +283,27 @@ test('init --apply proposes the docs root once a markdown file exists anywhere u
   assert.deepEqual(data.modules.docs.config.roots, ['docs'], 'a nested .md file is enough to qualify the directory');
 });
 
+// #265: init says where haystackDirs came from, and never rewrites house.json.
+test('init seeds haystackDirs from the code dirs it finds and says so in the plan', () => {
+  const { cliPath } = buildFixturePlugin({ withDocsModule: true });
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'scripts/x.mjs': 'process.env.FOO_KEY;\n' });
+  const { code, out } = runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(code, 0);
+  const data = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  assert.deepEqual(data.modules.docs.config.haystackDirs, ['scripts']);
+  assert.match(out, /haystackDirs: scripts \(code dirs found in this repo/);
+});
+
+test('init leaves an existing house.json untouched, an explicit empty haystackDirs included', () => {
+  const { cliPath } = buildFixturePlugin({ withDocsModule: true });
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'scripts/x.mjs': 'x\n' });
+  const body = `${JSON.stringify({ modules: { docs: { enabled: true, config: { haystackDirs: [] } } } }, null, 2)}\n`;
+  writeFileSync(join(repo, 'house.json'), body);
+  const { code } = runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(code, 1);
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), body);
+});
+
 // ── render ───────────────────────────────────────────────────────────────
 
 test('render: requires house.json (exit 2 when absent)', () => {

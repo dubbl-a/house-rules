@@ -865,7 +865,14 @@ function checkAnchorToken(tok, docPath, lineNo, o) {
 
   // (f) ALL_CAPS_WITH_UNDERSCORES, >= 6 chars
   if (/^[A-Z][A-Z0-9_]{5,}$/.test(tok) && tok.includes('_')) {
-    if (!o.haystackText.includes(tok)) o.findings.push(mk('drift', docPath, lineNo, 'env/const', tok));
+    if (!o.haystackText.includes(tok)) {
+      // An empty haystackDirs searches no code at all, so name it as the fix
+      // ahead of the ignore marker, which hides the line from later checks.
+      const hint = o.haystackEmpty
+        ? ` (modules.docs.config.haystackDirs is empty, so no code is searched: set it to the directories whose code reads ${tok}; a docs-drift-ignore marker is the last resort and hides the line from every later check)`
+        : '';
+      o.findings.push(mk('drift', docPath, lineNo, 'env/const', `${tok}${hint}`));
+    }
     return;
   }
 
@@ -1225,7 +1232,7 @@ function checkDrift(ctx) {
       npmScripts: scriptsForRoot(docPkgRoot), scriptNamespaces: namespacesForRoot(docPkgRoot),
       bareScriptAllowlist, pathPrefixRe, pkgPathPrefixRe: docPkgRoot ? pkgPrefixReForRoot(docPkgRoot) : null,
       buildArtifactPrefixes, pathExists, componentAllowlist, componentSuffixes, componentBasenames,
-      componentExts, haystackText, classPrefixes, repoRoot: ctx.repoRoot, houseManaged,
+      componentExts, haystackText, haystackEmpty: !haystackDirs.length, classPrefixes, repoRoot: ctx.repoRoot, houseManaged,
       findings: sink, docPkgRoot, untrackedSet,
     };
 
@@ -2476,18 +2483,17 @@ function checkManifest(ctx) {
   // rule paths expanded with house.json's slot values, as render expands them
   // (#258: never read from the lock). For a module that did vendor, the same
   // expansion is compared with the `paths:` of its vendored rule files, whose
-  // hashes tamper verifies: a vendored glob house.json no longer yields, or an
-  // adopter glob that now matches a file but is not vendored, means house.json
-  // changed since the last render.
+  // hashes tamper verifies: a vendored glob the current paths no longer yield,
+  // or a current glob that matches a file but is not vendored (a slot edited or
+  // deleted, a directory added), means the last render is stale. A module counts
+  // as vendored through its rule files' lock paths, not the entries' unverified
+  // `module` label.
   const lockEntries = readLockEntries(ctx.repoRoot);
   if (lockEntries && isPlainObject(d.modules)) {
-    const lockModules = new Set();
+    // Keyed by path only: an entry's `module` label is unverified, so a module
+    // counts as vendored through the rule files MODULE_FACTS names for it.
     const lockedRules = new Map();
-    for (const e of lockEntries) {
-      if (!isPlainObject(e) || typeof e.module !== 'string') continue;
-      lockModules.add(e.module);
-      if (typeof e.path === 'string') lockedRules.set(e.path, e);
-    }
+    for (const e of lockEntries) if (isPlainObject(e) && typeof e.path === 'string') lockedRules.set(e.path, e);
     const vendoredGlobs = (file) => {
       const rel = `.claude/rules/house/${file}`;
       const e = lockedRules.get(rel);
@@ -2508,14 +2514,14 @@ function checkManifest(ctx) {
       const houseCfg = isPlainObject(entry.config) ? entry.config : {};
       const houseValues = new Set(Object.values(houseCfg).filter(Array.isArray).flat());
       const perRule = facts.rules.map((r) => ({ file: r.file, globs: expandFactPaths(r.paths, facts.slots, houseCfg) }));
-      if (lockModules.has(name)) {
+      if (perRule.some((r) => lockedRules.has(`.claude/rules/house/${r.file}`))) {
         const stale = perRule.some((r) => {
           const have = vendoredGlobs(r.file);
           if (have === null && lockedRules.has(`.claude/rules/house/${r.file}`)) return false;
           return (have || []).some((g) => !r.globs.includes(g))
-            || r.globs.some((g) => houseValues.has(g) && !(have || []).includes(g) && matchesTracked(g));
+            || r.globs.some((g) => !(have || []).includes(g) && matchesTracked(g));
         });
-        if (stale) findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled, but modules.${name}.config differs from what the last render used, so the paths its vendored rules load on are stale; run \`house render --apply\` and commit the result`));
+        if (stale) findings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is enabled, but its current paths match files that its vendored rules do not cover (house.json changed, or files were added, since the last render), so those rules do not load on them; run \`house render --apply\` and commit the result`));
         continue;
       }
       if (!perRule.length) continue; // module ships no rule: nothing to vendor
