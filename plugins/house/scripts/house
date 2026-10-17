@@ -47,7 +47,7 @@
 
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync,
-  chmodSync, statSync, renameSync, rmdirSync, realpathSync, lstatSync, accessSync, constants as fsConstants,
+  chmodSync, copyFileSync, statSync, renameSync, rmdirSync, realpathSync, lstatSync, accessSync, constants as fsConstants,
 } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -3644,10 +3644,80 @@ function cmdCheck(rawArgs) {
   process.exit(res.status === null ? 1 : res.status);
 }
 
+// ── hook add ─────────────────────────────────────────────────────────────
+
+// Adopter-owned hooks live in .githooks/<stage>.d/. A session cannot write
+// there (the branch guard refuses any write under the hooks directory), so
+// this command is the one sanctioned route: it copies a file in under a name
+// that cannot shadow a house-owned hook, then re-arms. House owns the 10- and
+// 20- prefixes (10-house-branch, 20-secrets); the rest of the range is open.
+const HOOK_ADD_STAGES = ['pre-commit', 'pre-push'];
+const HOOK_ADD_NAME = /^\d\d-[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const HOOK_ADD_RESERVED = ['10', '20'];
+
+function cmdHookAdd(args) {
+  const [sub, file] = args.names;
+  if (sub !== 'add' || !file || args.names.length !== 2) {
+    console.error('usage: house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
+    process.exit(2);
+  }
+  const stage = args.stage || 'pre-commit';
+  if (!HOOK_ADD_STAGES.includes(stage)) {
+    console.error(`house hook add: --stage must be one of ${HOOK_ADD_STAGES.join(', ')}, got \`${stage}\`; nothing was written.`);
+    process.exit(2);
+  }
+  const repoRoot = resolveRepoRoot(args);
+  const src = path.resolve(process.cwd(), file);
+  let srcStat;
+  try { srcStat = lstatSync(src); } catch {
+    console.error(`house hook add: ${src} does not exist; nothing was written.`);
+    process.exit(2);
+  }
+  if (!srcStat.isFile()) {
+    console.error(`house hook add: ${src} is not a regular file (a symlink, directory or device is refused); nothing was written.`);
+    process.exit(2);
+  }
+  const name = args.name || path.basename(src);
+  if (!HOOK_ADD_NAME.test(name) || /(~|\.disabled|\.sample)$/.test(name)) {
+    console.error(`house hook add: \`${name}\` is not a usable hook name. Use NN-name (two digits, a dash, then letters, digits, dot, dash or underscore), not ending in ~, .disabled or .sample, which the dispatcher skips silently. Pass --name 30-mycheck to choose one.`);
+    process.exit(2);
+  }
+  if (HOOK_ADD_RESERVED.includes(name.slice(0, 2))) {
+    console.error(`house hook add: the ${HOOK_ADD_RESERVED.join('- and ')}- prefixes belong to house (10-house-branch, 20-secrets), so \`${name}\` is refused. Pick another number, for example 30-${name.slice(3)}.`);
+    process.exit(2);
+  }
+  const hooksDir = path.join(repoRoot, '.githooks');
+  if (!existsSync(path.join(hooksDir, stage))) {
+    console.error(`house hook add: ${hooksDir}/${stage} is missing, so the github module's hook floor is not rendered here. Run \`house render --apply\` first; nothing was written.`);
+    process.exit(2);
+  }
+  const destDir = path.join(hooksDir, `${stage}.d`);
+  mkdirSync(destDir, { recursive: true });
+  const realRepo = realpathSync(repoRoot);
+  const realDestDir = realpathSync(destDir);
+  if (realDestDir !== path.join(realRepo, '.githooks', `${stage}.d`)) {
+    console.error(`house hook add: ${destDir} resolves to ${realDestDir}, outside the repo's own .githooks; nothing was written.`);
+    process.exit(2);
+  }
+  const dest = path.join(realDestDir, name);
+  let destExists = true;
+  try { lstatSync(dest); } catch { destExists = false; }
+  if (destExists) {
+    console.error(`house hook add: ${path.relative(repoRoot, dest)} already exists, so it was not overwritten (it may be a house-owned or an earlier hook of yours). Remove it yourself or choose another --name.`);
+    process.exit(2);
+  }
+  copyFileSync(src, dest);
+  chmodSync(dest, 0o755);
+  runArmGitHooks(repoRoot, false);
+  const rel = posixJoin('.githooks', `${stage}.d`, name);
+  console.log(`house hook add: wrote ${rel} (mode 755) and re-armed the hooks.`);
+  console.log(`  The dispatcher refuses every ${stage} until the file is tracked, and the session branch guard reads the floor as unarmed while it is untracked or uncommitted. Run: git add ${rel} && git commit, on a feature branch.`);
+}
+
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: [], json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [] };
+  const out = { repo: null, apply: false, forceManaged: [], json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [], name: null, stage: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
@@ -3677,6 +3747,10 @@ function parseArgs(argv) {
     // used to record "--apply" and drop the apply.
     else if (a === '--why') out.why = (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) ? '' : argv[++i];
     else if (a.startsWith('--why=')) out.why = a.slice('--why='.length);
+    else if (a === '--name') out.name = (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) ? '' : argv[++i];
+    else if (a.startsWith('--name=')) out.name = a.slice('--name='.length);
+    else if (a === '--stage') out.stage = (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) ? '' : argv[++i];
+    else if (a.startsWith('--stage=')) out.stage = a.slice('--stage='.length);
     // A bare word is a module name; enable, disable and confirm read them.
     else if (!a.startsWith('-')) out.names.push(a);
     // Unrecognized flags are ignored for init/render/enable/doctor (check has
@@ -3692,8 +3766,8 @@ function main() {
 
   if (cmd === 'check') { cmdCheck(rest); return; }
 
-  if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'doctor'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]');
+  if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'doctor', 'hook'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
     process.exit(2);
   }
 
@@ -3706,6 +3780,7 @@ function main() {
   if (cmd === 'confirm') return cmdConfirm(args);
   if (cmd === 'decline') return cmdDecline(args);
   if (cmd === 'doctor') return cmdDoctor(args);
+  if (cmd === 'hook') return cmdHookAdd(args);
 }
 
 main();
