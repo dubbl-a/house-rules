@@ -316,23 +316,59 @@ function headWindow(lines, n = 3) {
   return top;
 }
 
+// A `paths:` list item as YAML reads it. This is the subset render writes and
+// an adopter hand-writes, not a YAML parser: a plain scalar, a double-quoted
+// scalar (JSON escapes, which is what render emits), or a single-quoted one
+// ('' for a quote). Returns {value} or {problem}. A plain scalar that opens
+// with a YAML indicator (`*`, `&`, `!`, `{`, `[`, `|`, `>`, `%`, `@`, a
+// backtick, or `#` / `?` / `:` / `-` before a space) or holds `: ` is invalid
+// YAML, so the harness drops the whole `paths:` and loads the rule unscoped.
+// plugins/house/scripts/house keeps a copy of this; change both together.
+function parseYamlListScalar(v) {
+  const tail = (rest) => /^\s*(#.*)?$/.test(rest);
+  if (v.startsWith('"')) {
+    let j = 1;
+    while (j < v.length && v[j] !== '"') j += v[j] === '\\' ? 2 : 1;
+    if (j >= v.length) return { problem: 'has an unterminated double quote' };
+    if (!tail(v.slice(j + 1))) return { problem: 'has text after its closing quote' };
+    try { return { value: JSON.parse(v.slice(0, j + 1)) }; } catch { return { problem: 'has an escape YAML would reject' }; }
+  }
+  if (v.startsWith("'")) {
+    let j = 1;
+    while (j < v.length && !(v[j] === "'" && v[j + 1] !== "'")) j += v[j] === "'" ? 2 : 1;
+    if (j >= v.length) return { problem: 'has an unterminated single quote' };
+    if (!tail(v.slice(j + 1))) return { problem: 'has text after its closing quote' };
+    return { value: v.slice(1, j).replace(/''/g, "'") };
+  }
+  const plain = v.replace(/\s+#.*$/, '').trim();
+  if (/^[*&!{[|>%@`]/.test(plain) || /^[#?:-](\s|$)/.test(plain) || /:\s/.test(plain)) {
+    return { problem: `is a plain value YAML rejects (${plain})` };
+  }
+  return { value: plain };
+}
+
 // The `paths:` YAML-list mini-parser shared by drift's frontmatter validator
-// and coload's rule-file glob extraction.
+// and coload's rule-file glob extraction. `problems` lists each list item
+// YAML would reject, with its 1-based line, for validateRulesFrontmatter.
 function parseRuleFrontmatterPaths(raw) {
   const lines = raw.split('\n');
   const closeIdx = frontmatterCloseIndex(lines);
-  if (closeIdx <= 0) return { hasFrontmatter: false, globs: [] };
+  if (closeIdx <= 0) return { hasFrontmatter: false, globs: [], problems: [] };
   const globs = [];
+  const problems = [];
   let inPathsList = false;
   for (let i = 1; i < closeIdx; i++) {
     const l = lines[i];
     if (/^paths\s*:\s*$/.test(l)) { inPathsList = true; continue; }
     if (inPathsList && /^[a-zA-Z]/.test(l)) inPathsList = false;
     if (!inPathsList) continue;
-    const m = l.match(/^\s*-\s*['"]?([^'"]+?)['"]?\s*$/);
-    if (m) globs.push(m[1]);
+    const m = l.match(/^\s*-\s+(\S.*?)\s*$/);
+    if (!m) continue;
+    const r = parseYamlListScalar(m[1]);
+    if (r.problem) problems.push({ line: i + 1, message: r.problem });
+    else if (r.value !== '') globs.push(r.value);
   }
-  return { hasFrontmatter: true, globs };
+  return { hasFrontmatter: true, globs, problems };
 }
 
 function extractHeadings(raw) {
@@ -635,7 +671,10 @@ function collectHaystack(repoRoot, allTracked, haystackDirs) {
 }
 
 function validateRulesFrontmatter(docPath, raw, repoRoot, findings, allTracked) {
-  const { hasFrontmatter, globs } = parseRuleFrontmatterPaths(raw);
+  const { hasFrontmatter, globs, problems } = parseRuleFrontmatterPaths(raw);
+  for (const p of problems) {
+    findings.push(mk('drift', docPath, p.line, 'paths frontmatter', `this \`paths:\` item ${p.message}; YAML rejects it, so the harness loads the rule unscoped. Re-render (house render --apply) or double-quote the glob`));
+  }
   if (!hasFrontmatter || globs.length === 0) {
     findings.push(mk('drift', docPath, 1, 'always-on rule', 'no `paths:` frontmatter'));
     return;

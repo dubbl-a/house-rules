@@ -1,8 +1,8 @@
 ---
 paths:
-  - .github/**
-  - .githooks/**
-  - .env.example
+  - ".github/**"
+  - ".githooks/**"
+  - ".env.example"
 ---
 <!-- house-managed v0.21.3 module=github source=modules/github/rules/github.md body-sha256=900c4f2ae4f2400bb639d883d304958c22c1332bcd4b9d173843cda5bfb94fbf DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->

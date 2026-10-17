@@ -344,8 +344,8 @@ test('render --apply vendors a rule with paths: frontmatter, the managed header,
   // paths: frontmatter, expanded from alpha's literal defaultPaths.
   assert.equal(lines[0], '---');
   assert.equal(lines[1], 'paths:');
-  assert.equal(lines[2], '  - src/**');
-  assert.equal(lines[3], '  - scripts/**');
+  assert.equal(lines[2], '  - "src/**"');
+  assert.equal(lines[3], '  - "scripts/**"');
   assert.equal(lines[4], '---');
 
   // Managed header: one line, exact format, with a correct body-sha256.
@@ -1005,13 +1005,13 @@ test('#19: a slot value repeating a literal renders once (positive); a distinct 
   writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { gamma: { enabled: true, config: { slot: ['src/**'] } } } });
   const dup = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(dup.code, 0, dup.out + dup.err);
-  assert.equal(count(rendered(), /^ {2}- src\/\*\*$/gm), 1, `expected src/** once:\n${rendered()}`);
+  assert.equal(count(rendered(), /^ {2}- "src\/\*\*"$/gm), 1, `expected src/** once:\n${rendered()}`);
 
   writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { gamma: { enabled: true, config: { slot: ['scripts/**'] } } } });
   const distinct = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(distinct.code, 0, distinct.out + distinct.err);
-  assert.equal(count(rendered(), /^ {2}- src\/\*\*$/gm), 1);
-  assert.equal(count(rendered(), /^ {2}- scripts\/\*\*$/gm), 1);
+  assert.equal(count(rendered(), /^ {2}- "src\/\*\*"$/gm), 1);
+  assert.equal(count(rendered(), /^ {2}- "scripts\/\*\*"$/gm), 1);
 });
 
 // ── #177: a rule file with its own paths ─────────────────────────────────
@@ -1035,8 +1035,8 @@ test('#177: a {file, paths} rules entry renders its own paths; a plain string ke
   const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
   const front = (f) => readFileSync(join(repo, '.claude', 'rules', 'house', f), 'utf8').split('\n---\n')[0];
-  assert.equal(front('gamma.md'), '---\npaths:\n  - src/**', 'a plain string renders the module defaultPaths, as before');
-  assert.equal(front('gamma-two.md'), '---\npaths:\n  - scripts/**\n  - lib/**', 'an object entry renders its own paths, slots expanded');
+  assert.equal(front('gamma.md'), '---\npaths:\n  - "src/**"', 'a plain string renders the module defaultPaths, as before');
+  assert.equal(front('gamma-two.md'), '---\npaths:\n  - "scripts/**"\n  - "lib/**"', 'an object entry renders its own paths, slots expanded');
   assert.match(r.out + r.err, /rules\[\] entry {"paths":\["src\/\*\*"\]} needs a file and a paths array; skipped/);
   assert.match(r.out + r.err, /rules\[\] entry {"file":"rules\/gamma-three\.md","paths":"src\/\*\*"} needs a file and a paths array; skipped/);
   assert.ok(!existsSync(join(repo, '.claude', 'rules', 'house', 'gamma-three.md')), 'a paths value that is not an array renders nothing');
@@ -2079,7 +2079,7 @@ test('#135 enable --apply: two modules in one run, one render, then the vendored
   assert.equal(house.modules.delta.enabled, true);
   assert.equal(house.modules.alpha.enabled, true, 'other modules untouched');
   const gamma = readFileSync(join(repo, '.claude', 'rules', 'house', 'gamma.md'), 'utf8');
-  assert.match(gamma, /^ {2}- src\/\*\*$/m);
+  assert.match(gamma, /^ {2}- "src\/\*\*"$/m);
   assert.doesNotMatch(gamma, /lib\/\*\*/, 'unresolved path dropped in the rendered rule');
   assert.ok(existsSync(join(repo, '.claude', 'rules', 'house', 'delta.md')));
   assert.equal((r.out.match(/^Rendering /gm) || []).length, 1, `one render for both modules:\n${r.out}`);
@@ -2432,7 +2432,7 @@ test('#135 enable --apply: an off module keeps the config written for it by hand
   assert.equal(r.code, 0, r.out + r.err);
   assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).modules.gamma, { enabled: true, config: { gammaRoots: ['scripts/**'] } });
   const gamma = readFileSync(join(repo, '.claude', 'rules', 'house', 'gamma.md'), 'utf8');
-  assert.match(gamma, /^ {2}- scripts\/\*\*$/m);
+  assert.match(gamma, /^ {2}- "scripts\/\*\*"$/m);
   assert.doesNotMatch(gamma, /src\/\*\*/);
 });
 
