@@ -79,11 +79,11 @@ of `plugins/house/payload/check.mjs` says, the docs gate checks `npm run` tokens
 
 Install the plugin once per machine, pinned to a release tag:
 
-    claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.21.2 --scope user
+    claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.21.3 --scope user
 
-The plugin resolves from the marketplace's checkout, so the `#v0.21.2` tag is the pin. Without it
+The plugin resolves from the marketplace's checkout, so the `#v0.21.3` tag is the pin. Without it
 you follow the default branch. To move a pin, read
-`git diff v0.21.2..vX.Y.Z -- plugins/house/hooks`, remove the marketplace (which uninstalls its
+`git diff v0.21.3..vX.Y.Z -- plugins/house/hooks`, remove the marketplace (which uninstalls its
 plugins), then run the one command with the new tag. Whether auto-update respects a pin is undocumented,
 so leave it off (its third-party default).
 
