@@ -1517,7 +1517,7 @@ function buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManag
         skips.push({ path: destPath, module: name, rulePath, reason: 'every paths: glob expanded from this module matched no file in this repo; a rule with no `paths:` is always-on, so it was not written. Populate its config slot with a real path.' });
         continue;
       }
-      const fm = `---\npaths:\n${expanded.map((p) => `  - ${p}`).join('\n')}\n---\n`;
+      const fm = `---\npaths:\n${expanded.map((p) => `  - ${JSON.stringify(p)}`).join('\n')}\n---\n`;
       const headerHash = sha256Hex(sourceBody);
       const source = `modules/${m.dirName}/${rulePath}`;
       const header = `<!-- house-managed v${pluginVersion} module=${name} source=${source} body-sha256=${headerHash} DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->`;
@@ -2382,10 +2382,32 @@ function ruleFrontmatterGlobs(raw) {
     if (/^paths\s*:\s*$/.test(l)) { inPathsList = true; continue; }
     if (inPathsList && /^[a-zA-Z]/.test(l)) inPathsList = false;
     if (!inPathsList) continue;
-    const m = l.match(/^\s*-\s*['"]?([^'"]+?)['"]?\s*$/);
-    if (m) globs.push(m[1]);
+    const m = l.match(/^\s*-\s+(\S.*?)\s*$/);
+    if (!m) continue;
+    const r = parseYamlListScalar(m[1]);
+    if (!r.problem && r.value !== '') globs.push(r.value);
   }
   return globs;
+}
+
+// Copy of payload/check.mjs's parseYamlListScalar; change both together.
+function parseYamlListScalar(v) {
+  const tail = (rest) => /^\s*(#.*)?$/.test(rest);
+  if (v.startsWith('"')) {
+    let j = 1;
+    while (j < v.length && v[j] !== '"') j += v[j] === '\\' ? 2 : 1;
+    if (j >= v.length || !tail(v.slice(j + 1))) return { problem: true };
+    try { return { value: JSON.parse(v.slice(0, j + 1)) }; } catch { return { problem: true }; }
+  }
+  if (v.startsWith("'")) {
+    let j = 1;
+    while (j < v.length && !(v[j] === "'" && v[j + 1] !== "'")) j += v[j] === "'" ? 2 : 1;
+    if (j >= v.length || !tail(v.slice(j + 1))) return { problem: true };
+    return { value: v.slice(1, j).replace(/''/g, "'") };
+  }
+  const plain = v.replace(/\s+#.*$/, '').trim();
+  if (/^[*&!{[|>%@`]/.test(plain) || /^[#?:-](\s|$)/.test(plain) || /:\s/.test(plain)) return { problem: true };
+  return { value: plain };
 }
 
 function coloadRules(repoRoot, tracked, plan) {

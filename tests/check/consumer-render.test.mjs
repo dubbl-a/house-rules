@@ -176,8 +176,8 @@ test('#13: a house.json slot override narrows what the docs rule vendors; the de
   // (empty) adopter config, so the docs rule still governs the full literal set.
   house(repo, 'render', '--apply');
   const full = readFileSync(join(repo, '.claude/rules/house/docs.md'), 'utf8');
-  assert.match(full, /^ {2}- CLAUDE\.md$/m);
-  assert.match(full, /^ {2}- docs\/\*\*$/m);
+  assert.match(full, /^ {2}- "CLAUDE\.md"$/m);
+  assert.match(full, /^ {2}- "docs\/\*\*"$/m);
 
   // Narrow docFiles to README.md only, then re-render.
   const hj = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
@@ -186,9 +186,9 @@ test('#13: a house.json slot override narrows what the docs rule vendors; the de
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'narrow docFiles');
   house(repo, 'render', '--apply');
   const narrowed = readFileSync(join(repo, '.claude/rules/house/docs.md'), 'utf8');
-  assert.match(narrowed, /^ {2}- README\.md$/m);
-  assert.doesNotMatch(narrowed, /^ {2}- CLAUDE\.md$/m);
-  assert.doesNotMatch(narrowed, /^ {2}- docs\/\*\*$/m);
+  assert.match(narrowed, /^ {2}- "README\.md"$/m);
+  assert.doesNotMatch(narrowed, /^ {2}- "CLAUDE\.md"$/m);
+  assert.doesNotMatch(narrowed, /^ {2}- "docs\/\*\*"$/m);
 });
 
 // #18: render wrote the github scaffolds (PR template, pr-checks.yml) even when
@@ -314,11 +314,11 @@ test('#19: every module literal path sits behind a slot defaulting to the histor
   // spreads each module's declared slot default under the (empty) config, so
   // the historical literal set still governs on an untouched repo.
   const vendored = (f) => readFileSync(join(repo, '.claude/rules/house', f), 'utf8').split('\n---\n')[0];
-  assert.match(vendored('github.md'), /^ {2}- \.githooks\/\*\*$/m);
-  assert.match(vendored('github.md'), /^ {2}- \.env\.example$/m);
-  assert.match(vendored('claude-code.md'), /^ {2}- CLAUDE\.md$/m);
-  assert.match(vendored('database.md'), /^ {2}- migrations\/\*\*$/m);
-  assert.match(vendored('testing.md'), /^ {2}- test\/\*\*$/m);
+  assert.match(vendored('github.md'), /^ {2}- "\.githooks\/\*\*"$/m);
+  assert.match(vendored('github.md'), /^ {2}- "\.env\.example"$/m);
+  assert.match(vendored('claude-code.md'), /^ {2}- "CLAUDE\.md"$/m);
+  assert.match(vendored('database.md'), /^ {2}- "migrations\/\*\*"$/m);
+  assert.match(vendored('testing.md'), /^ {2}- "test\/\*\*"$/m);
 
   hj.modules.github.config.githubGlobs = ['.github/workflows/**'];
   hj.modules.testing.config.testRoots = [];
@@ -327,11 +327,11 @@ test('#19: every module literal path sits behind a slot defaulting to the histor
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'narrow slots');
   house(repo, 'render', '--apply');
   const gh = vendored('github.md');
-  assert.match(gh, /^ {2}- \.github\/workflows\/\*\*$/m);
+  assert.match(gh, /^ {2}- "\.github\/workflows\/\*\*"$/m);
   assert.doesNotMatch(gh, /githooks|\.env\.example/);
   const t = vendored('testing.md');
-  assert.equal((t.match(/^ {2}- tests\/\*\*$/gm) || []).length, 1, `tests/** exactly once:\n${t}`);
-  assert.doesNotMatch(t, /^ {2}- test\/\*\*$/m);
+  assert.equal((t.match(/^ {2}- "tests\/\*\*"$/gm) || []).length, 1, `tests/** exactly once:\n${t}`);
+  assert.doesNotMatch(t, /^ {2}- "test\/\*\*"$/m);
 });
 
 // #119: the measurement and eval-tier rules live in an evals module rooted at
@@ -346,7 +346,7 @@ test('#119: evals detects on from an eval directory, renders its root, and stays
   assert.deepEqual(hj.modules.evals.config, {});
   house(withEvals, 'render', '--apply');
   const front = readFileSync(join(withEvals, '.claude/rules/house/evals.md'), 'utf8').split('\n---\n')[0];
-  assert.match(front, /^ {2}- evals\/\*\*$/m);
+  assert.match(front, /^ {2}- "evals\/\*\*"$/m);
 
   const withEval = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'eval/case.mjs': '// c\n' });
   house(withEval, 'init', '--apply');
@@ -487,18 +487,18 @@ test('security: off at init, renders its roots once enabled, narrows by slot, an
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'enable security');
   house(repo, 'render', '--apply');
   const front = (f = 'security.md') => readFileSync(join(repo, '.claude/rules/house', f), 'utf8').split('\n---\n')[0];
-  for (const p of [/^ {2}- \.claude\/settings\.json$/m, /^ {2}- \.claude\/hooks\/\*\*$/m, /^ {2}- \.mcp\.json$/m, /^ {2}- package\.json$/m]) assert.match(front(), p);
-  assert.doesNotMatch(front(), /^ {2}- \.claude\/\*\*$/m, 'not all of .claude/**, which would co-load with claude-code and docs');
-  assert.doesNotMatch(front(), /^ {2}- src\/\*\*$/m, 'the code roots load the server-code half, not this one');
-  assert.match(front('security-server.md'), /^ {2}- src\/\*\*$/m);
-  assert.doesNotMatch(front('security-server.md'), /^ {2}- lib\/\*\*$/m, 'a default root matching nothing is dropped');
+  for (const p of [/^ {2}- "\.claude\/settings\.json"$/m, /^ {2}- "\.claude\/hooks\/\*\*"$/m, /^ {2}- "\.mcp\.json"$/m, /^ {2}- "package\.json"$/m]) assert.match(front(), p);
+  assert.doesNotMatch(front(), /^ {2}- "\.claude\/\*\*"$/m, 'not all of .claude/**, which would co-load with claude-code and docs');
+  assert.doesNotMatch(front(), /^ {2}- "src\/\*\*"$/m, 'the code roots load the server-code half, not this one');
+  assert.match(front('security-server.md'), /^ {2}- "src\/\*\*"$/m);
+  assert.doesNotMatch(front('security-server.md'), /^ {2}- "lib\/\*\*"$/m, 'a default root matching nothing is dropped');
 
   hj.modules.security.config = { securityRoots: [], securityAgentRoots: [], securityGlobs: ['src/**'] };
   writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
   git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'narrow security');
   house(repo, 'render', '--apply');
   for (const f of ['security.md', 'security-server.md']) {
-    assert.match(front(f), /^ {2}- src\/\*\*$/m);
+    assert.match(front(f), /^ {2}- "src\/\*\*"$/m);
     assert.doesNotMatch(front(f), /\.claude|\.mcp\.json|package\.json/);
   }
 
@@ -575,9 +575,9 @@ test('#177: security at defaults beside engineering, github, and data-pipelines 
   assert.doesNotMatch(res.stdout, /\[coload\]/);
 
   const front = (f) => readFileSync(join(repo, '.claude/rules/house', f), 'utf8').split('\n---\n')[0];
-  assert.match(front('security.md'), /^ {2}- \.github\/workflows\/\*\*$/m, 'the agent and supply-chain half loads on workflows');
-  assert.doesNotMatch(front('security.md'), /^ {2}- (src|lib|scripts)\/\*\*$/m, 'and not on the code roots');
-  assert.match(front('security-server.md'), /^ {2}- scripts\/\*\*$/m, 'the server-code half loads on the code roots');
+  assert.match(front('security.md'), /^ {2}- "\.github\/workflows\/\*\*"$/m, 'the agent and supply-chain half loads on workflows');
+  assert.doesNotMatch(front('security.md'), /^ {2}- "(src|lib|scripts)\/\*\*"$/m, 'and not on the code roots');
+  assert.match(front('security-server.md'), /^ {2}- "scripts\/\*\*"$/m, 'the server-code half loads on the code roots');
   assert.doesNotMatch(front('security-server.md'), /\.claude|package\.json/, 'and not on agent config');
 });
 
@@ -699,7 +699,7 @@ test('#26: a glob matching nothing tracked and nothing rendered is still dropped
   // quiet in text mode.
   assert.doesNotMatch(out, /warning:/, 'a dropped default prints no warning');
   const eng = readFileSync(join(repo, '.claude/rules/house/engineering.md'), 'utf8').split('\n---\n')[0];
-  assert.doesNotMatch(eng, /^ {2}- src\/\*\*$/m, 'src/** is absent here and stays dropped from the frontmatter');
+  assert.doesNotMatch(eng, /^ {2}- "src\/\*\*"$/m, 'src/** is absent here and stays dropped from the frontmatter');
 
   const outJson = JSON.parse(house(repo, 'render', '--json').toString());
   const eng2 = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/engineering.md');
