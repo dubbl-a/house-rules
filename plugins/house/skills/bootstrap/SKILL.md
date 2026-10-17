@@ -164,6 +164,20 @@ does not guess on the repo's behalf. To leave an optional module undecided, leav
 proposed `house.json` body, not a summary, so the person reviewing it can read every field
 before anything is written.
 
+With `branchPolicy` "pr", ask who will work in the repo and propose the matching `guard` record, so
+the checker's `[guard]` warning is answered by a choice and not left open. Each record needs
+`decided` (today) and a non-empty `why`:
+
+- Solo repo, the plugin installed wherever it is worked on: `"by": "plugin"`. The `why` names the
+  install (user scope, say).
+- Team repo, the plugin not installed for every contributor: `"by": "floor"`. The vendored git hooks
+  under `.githooks/` plus the remote's branch protection are the guard. The checker requires the
+  floor files to be vendored and tracked (`git add .githooks/` after render), and `house doctor` says whether this machine is armed. The
+  `why` names the branch protection ruleset.
+- Team repo guarded by the server alone: `"by": "remote"`. The checker cannot see branch protection
+  and takes the record on trust, so the `why` names the ruleset and where it is set. Use it only when
+  the repo has no floor.
+
 ## Apply: write the manifest, the rules, and the skeleton
 
 Only after the person says to apply:
@@ -228,7 +242,7 @@ Tell the person what is not yet done: the skeleton still needs merging into CLAU
 and then deleting (it will not be written again),
 the wiring block still needs pasting in, and `node .house/check.mjs` is worth a local run before
 the first commit so the repo starts from a clean gate rather than an inherited failure. Stage the
-rendered files by path first (`house.json .house/ .claude/rules/house/`, plus `scripts/house/`
+rendered files by path first (`house.json .house/ .claude/rules/house/ .githooks/ .github/`, plus `scripts/house/`
 only when render listed a file there, since git refuses a pathspec that matches nothing): until
 they are staged the manifest family warns `[untracked]` per file, and a wholesale `.claude/` or
 `.house/` ignore is a `[gitignored]` finding, because a file git cannot see is one no family

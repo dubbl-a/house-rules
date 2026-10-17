@@ -533,6 +533,27 @@ test('#32 doctor: the plugin guard line reports whether house.json records the c
   }
 });
 
+// #246: a team repo records "floor" or "remote"; doctor shows which was
+// recorded, and for "floor" whether this machine runs the hooks. Neither is
+// the plugin, so neither carries the plugin-enablement caveat.
+test('#246 doctor: a floor or remote guard record is shown by name, without the plugin caveat', () => {
+  const { cliPath } = buildFixturePlugin();
+  for (const by of ['floor', 'remote']) {
+    const repo = buildTargetRepo();
+    writeHouseJson(repo, { ...BASE_HOUSE_JSON, guard: { by, decided: '2026-10-16', why: 'team repo: plugin not installed for everyone' }, modules: {} });
+    const r = runCli(cliPath, ['doctor', '--repo', repo]);
+    assert.equal(r.code, 0);
+    assert.match(r.out, new RegExp(`effective branch guard:\\s*${by} \\(recorded 2026-10-16;`));
+    assert.doesNotMatch(r.out, /caveat:/);
+    const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+    assert.equal(j.guardRecorded, true);
+    assert.equal(j.caveat, null);
+  }
+  const floorRepo = buildTargetRepo();
+  writeHouseJson(floorRepo, { ...BASE_HOUSE_JSON, guard: { by: 'floor', decided: '2026-10-16', why: 'x' }, modules: {} });
+  assert.match(runCli(cliPath, ['doctor', '--repo', floorRepo]).out, /floor \(recorded 2026-10-16; NOT armed on this machine/, 'a fresh clone has not armed the hooks');
+});
+
 // ── rule-load positive control (#26) ────────────────────────────────────
 //
 // instructionsLoadedProbe used to be a substring search over two settings
