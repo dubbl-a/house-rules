@@ -1447,7 +1447,61 @@ function checkTamper(ctx) {
       }
     }
   }
+  findings.push(...lockModulesCrossCheck(ctx, entries));
   return { findings, warnings };
+}
+
+// #258: the lock's `modules` record decides disabled-module, zero-rule and
+// config-drift verdicts, and no hash covers it. What it can be checked against
+// without a network is the vendored rule files, which the loop above
+// hash-verifies: a file whose body no longer matches its entry is skipped here
+// (it already has its own finding), so only trusted frontmatter is read. Three
+// facts follow. A module with any vendored file must have a record. Its
+// `rules` (the count module.json declares, which includes rules render
+// skipped) cannot be below the rule files vendored. Its `globs` (the expanded
+// paths asked for, before render drops those matching nothing) must contain
+// every glob a vendored file carries; order is not compared. Cannot be
+// checked: `default` and `config` (no offline source of truth; a changed
+// config shows against house.json elsewhere), and an edit that RAISES `rules`,
+// widens `globs`, or touches a module with nothing vendored. A lock with no
+// `modules` key predates the record, so there is nothing to compare.
+function lockModulesCrossCheck(ctx, entries) {
+  const recorded = readLockModules(ctx.repoRoot);
+  if (recorded === null) return [];
+  const findings = [];
+  const byModule = new Map();
+  for (const e of entries) {
+    if (!isPlainObject(e) || typeof e.module !== 'string' || e.module.startsWith('_') || typeof e.path !== 'string') continue;
+    if (e.kind === 'block' || unsafeLockPathReason(ctx.repoRoot, e.path)) continue;
+    const abs = join(ctx.repoRoot, e.path);
+    if (!existsSync(abs) || specialFileKind(abs)) continue;
+    let raw;
+    try { raw = readFileSync(abs, 'utf8'); } catch { continue; }
+    if (typeof e.bodySha256 !== 'string' || sha256Hex(managedBody(raw)) !== e.bodySha256) continue;
+    const m = byModule.get(e.module) || { rules: 0, globs: new Set() };
+    byModule.set(e.module, m);
+    if (/^\.claude\/rules\/house\/[^/]+\.md$/.test(e.path)) {
+      m.rules += 1;
+      for (const g of parseRuleFrontmatterPaths(raw).globs) m.globs.add(g);
+    }
+  }
+  const why = 'a hand edit to .house/lock.json is the likely cause; run `house render --apply` to rewrite the record';
+  for (const [name, m] of byModule) {
+    const rec = recorded[name];
+    if (!rec) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `module \`${name}\` has files vendored by the lock, but the lock's \`modules\` record has no entry for it; ${why}`));
+      continue;
+    }
+    if (!Number.isInteger(rec.rules) || rec.rules < m.rules) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock record for module \`${name}\` says rules ${JSON.stringify(rec.rules)}, but ${m.rules} rule file(s) of it are vendored; ${why}`));
+    }
+    const have = new Set(arr(rec.globs).filter(isNonEmptyString));
+    const absent = [...m.globs].filter((g) => !have.has(g));
+    if (absent.length) {
+      findings.push(mk('tamper', '.house/lock.json', null, 'lock', `lock record for module \`${name}\` lacks ${absent.length === 1 ? 'a glob' : 'globs'} its vendored rule files carry (${absent.join(', ')}); ${why}`));
+    }
+  }
+  return findings;
 }
 
 // Pull the source-file hash render stamped into a vendored file's managed
@@ -2040,7 +2094,9 @@ function readModuleRuleCountsFrom(modulesDir) {
 }
 // #244: render writes each module's default and rule count into
 // .house/lock.json as `modules`, the one source an adopter's CI has.
-// Advisory, like detectPaths: tamper does not read it.
+// Tamper cross-checks `rules` and `globs` and a vendored module's presence
+// against the hash-verified rule files (lockModulesCrossCheck); `default` and
+// `config` are trusted as written, since nothing offline can confirm them.
 function readLockModules(repoRoot) {
   const p = join(repoRoot, '.house', 'lock.json');
   if (!existsSync(p) || specialFileKind(p)) return null;

@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- The checker's tamper family cross-checks the lock's `modules` record against the rule files it already hash-verifies (#258). A vendored module with no record, a `rules` count below the rule files vendored, or a `globs` list missing a glob a vendored rule file carries is a finding that names the module and points to a hand edit and `house render --apply`. Glob order is not compared. This covers a quiet edit that lowers `rules`, rewrites `globs`, or deletes a record; it cannot cover `default` and `config`, which no file offline confirms, nor an edit that raises `rules` or widens `globs`, nor a module with nothing vendored. A lock with no `modules` record (rendered before 0.21.3) is not cross-checked.
+
 ## [0.21.3] - 2026-10-16
 
 A patch release under ADR 0012: new commands (`house decline`, `house hook add`), honest guard records for a team repo, checker fixes that make a fresh bootstrap pass and give CI the local verdict, and rule clauses following Claude Code 2.1.302 and adopter reports. No heading is renamed, no config slot changes, and nothing the guard denies changes (its refusal message is reworded only). `house.json` gains optional values (`guard.by` `"floor"` and `"remote"`, a `declined-step` deviation kind), and `.house/lock.json` gains a `modules` key without any change to the layout of `.house/`. Upgrading from 0.21.2: run `/house-rules:sync`, which writes the new checker and the lock's `modules` record together.
