@@ -1,0 +1,421 @@
+{
+ "area": "Claude Code native harness features: hooks, permissions, settings layering, and managed policy settings (as of 2026-09-02)",
+ "facts": [
+  {
+   "feature": "Hook lifecycle & event set",
+   "behavior": "Hooks are user-defined handlers (shell commands, HTTP endpoints, MCP tools, LLM prompts, or subagents) that execute at specific lifecycle points. Event cadences: once per session (SessionStart, SessionEnd), once per turn (UserPromptSubmit, Stop, StopFailure), on every tool call (PreToolUse, PostToolUse, except EndConversation calls skip both).",
+   "limits": "Full event list: SessionStart, SessionEnd, Setup, UserPromptSubmit, UserPromptExpansion, PreToolUse, PermissionRequest, PermissionDenied, PostToolUse, PostToolUseFailure, PostToolBatch, Notification, MessageDisplay, SubagentStart, SubagentStop, TaskCreated, TaskCompleted, Stop, StopFailure, TeammateIdle, InstructionsLoaded, ConfigChange, CwdChanged, DirectoryAdded, FileChanged, WorktreeCreate, WorktreeRemove, PreCompact, PostCompact, PreModelSwitch, PostModelSwitch, Elicitation, ElicitationResult. Not every event supports a matcher or a blocking decision.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "PreToolUse hook",
+   "behavior": "Fires before a tool call executes. Can block it via exit code 2 or hookSpecificOutput.permissionDecision:\"deny\". PreToolUse hooks fire before any permission-mode check, in every permission mode including bypassPermissions and dontAsk, so a deny blocks the call even in bypassPermissions mode.",
+   "limits": "A hook returning \"allow\" does NOT bypass deny/ask rules from settings (including managed deny lists) or prompts required for MCP tools marked requiresUserInteraction / org-set-to-ask connector tools. When multiple PreToolUse hooks return updatedInput, the last one to finish (non-deterministic under parallel execution) wins.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "PostToolUse / PostToolUseFailure hooks",
+   "behavior": "Fire after a tool call succeeds/fails. Exit 2 shows stderr to Claude as feedback but the tool has already run/failed \u2014 the hook cannot undo the action.",
+   "limits": "Cannot block; decision control limited to additionalContext, systemMessage, terminalSequence.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "UserPromptSubmit hook",
+   "behavior": "Fires when the user submits a prompt, before Claude processes it. Exit 2 blocks the prompt and erases it. permissionDecision \"allow\"/\"deny\" control it; additionalContext injects text into Claude's context (must be nested under hookSpecificOutput or it is silently ignored).",
+   "limits": "No matcher support (always fires). Timeout lowered to 30s from the 600s default.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Stop / SubagentStop hooks",
+   "behavior": "Fire when Claude (or a subagent) finishes responding. Exit 2 (or continue:false) prevents stopping and additionalContext/stopReason feed back to Claude so it keeps working.",
+   "limits": "Don't fire on user interrupts (StopFailure fires instead on API errors). Claude Code overrides a Stop hook after it blocks 8 times in a row without progress unless the hook checks stop_hook_active and exits early; the cap is raisable via CLAUDE_CODE_STOP_HOOK_BLOCK_CAP.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "PermissionRequest hook (auto-approve/deny prompts)",
+   "behavior": "Fires when Claude Code is about to ask the user for a permission decision. Returns a decision object (not permissionDecision): {\"decision\":\"allow\"|\"deny\"|\"promptUser\", decisionReason, decisionPriority}. Can set updatedPermissions with a setMode entry to switch the session's permission mode (e.g., to acceptEdits) for the session.",
+   "limits": "Exit code 2 is ignored for this event \u2014 only the JSON decision object matters. In non-interactive -p mode, this hook only fires when the Agent SDK's canUseTool callback supplies a prompt; otherwise use PreToolUse hooks. bypassPermissions can only be set via this hook if bypass mode was already available at session start, and is never saved as defaultMode.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "PermissionDenied hook",
+   "behavior": "Fires when auto mode denies a tool call, including denials without a classifier verdict. hookSpecificOutput.retry:true tells the model it may retry the denied call.",
+   "limits": "Exit code 2 is ignored. Claude Code ignores retry when the classifier produced no verdict.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "ConfigChange hook",
+   "behavior": "Fires when a settings/skills file changes during a session (matcher: user_settings, project_settings, local_settings, policy_settings, skills). Exit 2 blocks the config change from taking effect.",
+   "limits": "Cannot block changes with matcher policy_settings (managed settings changes can't be blocked this way). Only fires for settings-file changes Claude Code detects, not for managed settings arriving via MDM/claude.ai console.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Matcher pattern evaluation",
+   "behavior": "Matcher values: \"*\", \"\", or omitted match all occurrences; a string of only letters/digits/_/-/spaces/,/| is treated as an exact string or pipe/comma-separated list (e.g. Bash, Edit|Write, Edit, Write); any other character makes the matcher an unanchored regex (e.g. ^Notebook, mcp__memory__.*).",
+   "limits": "Each event type filters on a specific field (tool name, session-start mode, notification type, agent type, etc.) \u2014 several events (UserPromptSubmit, PostToolBatch, Stop, TeammateIdle, TaskCreated, TaskCompleted, WorktreeCreate, WorktreeRemove, CwdChanged, MessageDisplay) support no matcher at all and always fire.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Hook `if` field (fine-grained filter using permission-rule syntax)",
+   "behavior": "The if field uses permission rule syntax (e.g. \"Bash(git *)\", \"Edit(*.ts)\") to filter which hook process spawns, beyond the matcher's tool-name-only filtering. It strips leading env assignments, checks each subcommand in a compound command, and checks commands inside $()/backticks.",
+   "limits": "Works only on tool events: PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, PermissionDenied \u2014 adding it to any other event prevents the hook from running. It's best-effort (unparseable commands run the hook regardless), so the docs say to use the permission system, not a hook `if`, for a hard allow/deny.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Hook JSON output schema",
+   "behavior": "hookSpecificOutput carries hookEventName, permissionDecision (\"allow\"/\"deny\"), permissionDecisionReason, additionalContext, updatedInput, continue, stopReason, suppressOutput, systemMessage, terminalSequence, retry \u2014 applicability of each field varies per event.",
+   "limits": "Stdout is parsed as JSON only if it starts with { and ends with } (ignoring whitespace); otherwise treated as plain text. Invalid JSON (parse or schema failure) produces a non-blocking error even on exit 0.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Hook exit code semantics",
+   "behavior": "Exit 0 = no objection (normal permission flow still applies for PreToolUse). Exit 2 = blocking error on events that support blocking (PreToolUse, UserPromptSubmit, UserPromptExpansion, Stop, SubagentStop, TeammateIdle, TaskCreated, TaskCompleted, ConfigChange except policy_settings, PostToolBatch); on non-blockable events (PostToolUse, PostToolUseFailure, PermissionRequest, StopFailure) exit 2's effect is limited (e.g. stderr shown but action already happened, or ignored). Other exit codes: if stdout is valid JSON passing schema, the JSON alone decides the outcome regardless of exit code; otherwise it's a non-blocking error.",
+   "limits": "Blocking message priority: permissionDecision reason from JSON, then stderr text, then a default error \u2014 and it cannot be overridden by JSON even with permissionDecision:\"allow\". WorktreeCreate is a special case: any non-zero exit fails creation without parsing JSON. StopFailure ignores all output except terminalSequence.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Hook timeouts",
+   "behavior": "Default timeouts: 600s for command/http/mcp_tool, 30s for prompt, 60s for agent; lowered to 30s for UserPromptSubmit/PreModelSwitch/PostModelSwitch and 10s for MessageDisplay. SessionEnd hooks of any type share a 1.5s budget (raised to match a longer explicit per-hook timeout, up to 60s). async:true command hooks are not subject to the timeout.",
+   "limits": "On PreToolUse, a timed-out command/http/mcp_tool hook doesn't block \u2014 it proceeds through the normal permission flow. On PreModelSwitch, a timed-out hook blocks the model switch.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Combining results from multiple matching hooks",
+   "behavior": "When multiple hooks match the same event, every hook's command runs to completion (in parallel) before Claude Code merges results. One hook returning deny does NOT stop sibling hooks from executing their side effects. For PreToolUse permission decisions, the most restrictive answer applies in order deny > defer > ask > allow. additionalContext text is kept from every hook and passed to Claude together.",
+   "limits": "Docs explicitly warn: don't rely on one hook's deny to suppress side effects in another hook (e.g. a logging hook still writes its log entry even if a sibling hook denies the action).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks-guide.md"
+  },
+  {
+   "feature": "disableAllHooks",
+   "behavior": "Setting \"disableAllHooks\": true in a settings file disables hooks. Claude Code reads the value left after settings precedence applies, so a project's settings file can override a user file's true. disableAllHooks:false in project settings overrides a user-level true. Passed via CLI (--settings '{\"disableAllHooks\": true}') it takes precedence for that session.",
+   "limits": "Hooks configured in managed settings still run unless disableAllHooks is ALSO set at the managed level \u2014 managed settings can only be disabled by a managed disableAllHooks, not by user/project settings.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Hook configuration location & scope",
+   "behavior": "Hook scope by file: ~/.claude/settings.json (all your projects, not shareable), .claude/settings.json (single project, shareable/committed), .claude/settings.local.json (single project, not shareable, gitignored), managed policy settings (organization-wide, admin-controlled), plugin hooks/hooks.json (when plugin enabled), skill frontmatter (rest of session once invoked), subagent frontmatter (while that subagent runs). Hooks from user/project/local/plugin settings merge (don't replace); the same handler defined in multiple files runs once.",
+   "limits": "Project skill/subagent frontmatter hooks follow workspace-trust rules: skills register when invoked (including -p runs); subagents run only after workspace trust is accepted (not in -p mode).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "HTTP hook URL allowlist",
+   "behavior": "allowedHttpHookUrls (settings key, e.g. [\"http://localhost:8080/*\", \"https://api.example.com/*\"]) restricts which URLs http-type hooks may POST to; when defined at any settings level, HTTP hooks only run if the URL matches the merged allowlist. httpHookAllowedEnvVars similarly gates which env vars can be interpolated into HTTP hook headers.",
+   "limits": "Header values support $VAR interpolation only for vars explicitly listed in a hook's own allowedEnvVars field; other $VAR references remain empty.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Prompt-based hooks (type: \"prompt\")",
+   "behavior": "For judgment-based (not deterministic) decisions, sends the hook's prompt plus input JSON to a Claude model (Haiku by default, configurable via model field) which must return JSON {\"ok\": true/false, \"reason\": ...}. On Stop/SubagentStop, ok:false's reason is fed back to Claude to keep working unless \"impossible\": true is also set, which allows the stop. On PreToolUse, ok:false denies the call and by default ends the turn with the reason shown as a warning, unless continueOnBlock:true feeds the reason back to Claude as a tool error instead.",
+   "limits": "$ARGUMENTS is escaped with \\$ for literals. Default timeout 30s.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/hooks-guide.md"
+  },
+  {
+   "feature": "Agent-based hooks (type: \"agent\", experimental)",
+   "behavior": "Spawns a subagent with tool access (can read files, run commands) to verify conditions, up to 50 tool-use turns, default 60s timeout. Uses the same ok/reason format as prompt hooks; on ok:false is handled the same as continueOnBlock:true (turn continues on PreToolUse/PostToolUse).",
+   "limits": "Explicitly marked experimental \u2014 \"behavior and configuration may change in future releases. For production workflows, prefer command hooks.\" Has no continueOnBlock field and doesn't support the impossible field.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/hooks-guide.md"
+  },
+  {
+   "feature": "Command hook exec form vs shell form",
+   "behavior": "With an args array present, the command is spawned directly (exec form): no shell interpretation, path placeholders substituted as plain strings, special characters pass through verbatim. Without args (shell form), the command string is passed to sh -c (macOS/Linux), Git Bash (Windows), or PowerShell, which tokenizes, expands variables, and interprets pipes/&&/redirects/globs.",
+   "limits": "shell:\"bash\"|\"powershell\" field is ignored when args is present.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Debugging hooks",
+   "behavior": "Ctrl+O opens the transcript view showing a hook's outcome; a failed non-blocking hook shows a \"<hook name> hook error\" notice with the first line of stderr. Start with claude --debug-file <path> or run /debug mid-session to get full hook execution details (which hooks matched, exit codes, stdout, stderr) in the debug log.",
+   "limits": "On successful/silent runs, nothing is shown in the transcript unless the hook's JSON surfaces something (systemMessage, Stop feedback).",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/hooks-guide.md"
+  },
+  {
+   "feature": "Permission system tiers (Manual/default mode)",
+   "behavior": "Read-only tools (file reads, Grep) never require approval within the working directory and additional directories. Bash commands require approval except a built-in read-only set. File modification (Edit/Write) always requires approval. WebFetch requires approval except a built-in set of preapproved documentation domains. WebSearch always requires approval.",
+   "limits": "'Yes, and don't ask again' persists permanently per repository+command for Bash and per repository+domain for WebFetch, but only until session end for file modification approvals (never saved to a rule file).",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Permission modes",
+   "behavior": "default (\"Manual\"): prompts on first use of each tool. acceptEdits: auto-accepts file edits and common filesystem commands (mkdir, touch, mv, cp) in the working/additional directories. plan: read-only exploration, no edits (classifier-approved commands also run if auto mode is available). auto: auto-approves tool calls with background safety-check classifier. dontAsk: auto-denies tools unless pre-approved via /permissions or permissions.allow (still asks/denies AskUserQuestion, requiresUserInteraction MCP tools, and org-set-to-ask connector tools). bypassPermissions: skips permission prompts except the actions no mode auto-approves.",
+   "limits": "permissions.defaultMode values \"auto\" and \"bypassPermissions\" don't take effect from project or local settings \u2014 must be set in user or managed settings, or passed via --permission-mode for one session (before v2.1.257, bypassPermissions took effect from any file).",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "bypassPermissions mode risk & lock",
+   "behavior": "bypassPermissions mode skips permission prompts, including writes to protected paths such as .git and .claude; cross-session messaging safeguards still apply. Docs warn: \"Only use this mode in isolated environments like containers or VMs where Claude Code can't cause damage.\" permissions.disableBypassPermissionsMode and permissions.disableAutoMode set to \"disable\" in any settings file prevent that mode from being used, most useful in managed settings where they can't be overridden.",
+   "limits": "disableBypassPermissionsMode works from any scope, including a user's own settings, to lock themselves out.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Permission rule evaluation order",
+   "behavior": "Rules are evaluated in order: deny, then ask, then allow. The first match in that order determines the outcome, and rule specificity does NOT change the order \u2014 a broad deny like Bash(aws *) blocks even a narrower matching allow like Bash(aws s3 ls); a matching ask rule prompts even when a more specific allow rule also matches.",
+   "limits": "Deny rules are enforced by Claude Code, not the model \u2014 CLAUDE.md or prompt instructions shape what Claude tries but don't change what's allowed.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Bare tool-name deny rules remove the tool entirely",
+   "behavior": "A bare tool name like \"Bash\" in deny removes the tool from Claude's context entirely so Claude never sees it. A scoped rule like Bash(rm *) leaves the tool available and blocks matching calls when attempted.",
+   "limits": "Applies to every tool EXCEPT EndConversation: a deny rule can't remove EndConversation while any other tool remains, and an ask rule never prompts for it.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Match by input parameter (Tool(param:value))",
+   "behavior": "Deny and ask rules can match a top-level input parameter on any built-in tool, e.g. Agent(model:opus), Bash(run_in_background:true). Supports * wildcard within the value; a parameter the model omits is never matched.",
+   "limits": "Cannot match a tool's primary content field this way (command for Bash/PowerShell, file_path for Read/Edit/Write, path for Grep/Glob, notebook_path for NotebookEdit, url for WebFetch) \u2014 Claude Code ignores such a rule and emits a startup warning. Value comparison is against the literal pre-normalization input.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Bash wildcard rule matching",
+   "behavior": "A * in a Bash rule matches any text including spaces. Put the * after the subcommand (Bash(git log *) not Bash(git * main)); Claude Code warns at startup about a wildcard placed before the subcommand. A trailing \" *\" also matches the bare command form (with the space being part of the rule); the :* suffix is an equivalent trailing-wildcard shorthand only recognized at the end of a pattern.",
+   "limits": "Docs warn that Bash permission patterns constraining arguments (e.g. restricting curl to a domain) are fragile \u2014 bypassable via option ordering, protocol changes, redirects, variables, or extra spaces; recommends deny-rules on curl/wget plus WebFetch(domain:...) or a PreToolUse hook instead.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Bash compound command handling",
+   "behavior": "Claude Code recognizes shell operators &&, ||, ;, |, |&, &, and newlines, and a rule must match each subcommand independently \u2014 a rule like Bash(safe-cmd *) does not grant permission for safe-cmd && other-cmd. Approving a compound command with 'Yes, and don't ask again' saves a separate rule per subcommand needing approval (up to 5 rules per compound command).",
+   "limits": "When && or || has nothing after it (e.g. \"npm test &&\"), the command is treated as unparseable and NOT split into subcommands, so a rule like Bash(npm *) doesn't approve it.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Bash command wrappers stripped before matching",
+   "behavior": "Before matching, Claude Code strips timeout, time, nice, nohup, stdbuf, the shell builtins command and builtin, zsh's noglob, bare xargs (no flags), and a leading assignment of certain known-safe env vars, so Bash(npm test *) also matches e.g. timeout 30 npm test or NODE_ENV=test npm test.",
+   "limits": "This wrapper list is BUILT-IN and NOT configurable. Development environment runners (direnv exec, devbox run, mise exec, npx, docker exec) are NOT in the list \u2014 a rule like Bash(devbox run *) matches whatever follows run, including devbox run rm -rf .; exec wrappers (watch, setsid, ionice, flock) and find with -exec/-delete can't be auto-approved by a prefix rule at all, always prompting in Manual mode.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Built-in Bash read-only command allowlist",
+   "behavior": "Claude Code recognizes a built-in set of Bash commands (ls, cat, echo, pwd, head, tail, grep, find, wc, which, diff, stat, du, cd, and read-only git forms) as read-only and runs them without a prompt in every mode.",
+   "limits": "The set is NOT configurable; add an ask or deny rule to require a prompt for one of these. Still prompts for: unquoted globs on commands with write-capable flags, docker pointed at another daemon, file with path-opening flags, network (UNC) paths on Windows, and commands the parser can't fully parse (including any command over 10,000 characters).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Redirection target checked as file write",
+   "behavior": "Claude Code checks the target of an output redirection (>, >>, 2>) as a file write, against Edit allow/deny rules, protected paths, and working directories. A rule like Bash(git commit *) allows the command, not its redirect target.",
+   "limits": "A /dev/null target isn't checked. A target starting with ~ or containing a glob character needs approval regardless of allow rules.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Read/Edit path rule syntax and anchoring",
+   "behavior": "Four pattern types: //path (absolute from filesystem root), ~/path (home-relative), /path (relative to the settings source \u2014 e.g. project's primary working directory, or ~/.claude for user settings), path or ./path (relative to current directory). Symlinks: allow rules require BOTH the symlink path and its target to match (else falls back to prompting); deny rules block if EITHER the symlink path or its target matches.",
+   "limits": "Read deny rules also block Edit/Write on the same path (including new-file creation) but NOT NotebookEdit \u2014 needs a separate Edit deny. Path rules for Write, NotebookEdit, Glob, or MultiEdit are silently accepted but NEVER consulted (except a Glob rule in --allowedTools) \u2014 use Edit(path) and Read(path) instead. Read/Edit deny rules apply only to Claude's built-in file tools and Bash file commands (cat, head, tail, sed) it recognizes \u2014 NOT to arbitrary subprocesses (e.g. a Python/Node script) that read/write files themselves; OS-level enforcement requires the sandbox.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "WebFetch domain permission rules",
+   "behavior": "WebFetch(domain:example.com) matches the hostname (case-insensitive, supports * wildcards, strips trailing dot). WebFetch(domain:*.example.com) matches any subdomain at any depth but not the bare domain. A bare WebFetch rule (no domain:) and WebFetch(domain:*) both cover every URL but behave differently: only the domain: form also adds the domain to the sandbox's allowed/denied domain list.",
+   "limits": "In allow, a bare WebFetch rule lets Claude fetch without prompting but does NOT change which hosts sandboxed Bash commands (e.g. curl) can reach \u2014 those still prompt or route to the classifier separately. Using WebFetch alone does not prevent Bash-based network access if Bash is allowed.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Agent (subagent) permission rules",
+   "behavior": "Agent(AgentName) rules (e.g. Agent(Explore), Agent(my-custom-agent)) control which subagents Claude can use; add to the deny array or use --disallowedTools to disable specific agents.",
+   "limits": "N/A beyond standard deny/ask/allow mechanics.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Cd permission rules",
+   "behavior": "Cd rules control which directories the /cd command can move the session to. A bare Cd deny disables /cd entirely; Cd(<path-pattern>) deny blocks matching targets (checked against every symlink hop). Adding any Cd allow rule switches /cd to allowlist mode, where the resolved target must match an allow rule.",
+   "limits": "Cd is not a model-invocable tool \u2014 Claude can't call it; rules apply only when the human user runs /cd. With no Cd rules configured, /cd keeps default behavior (prompts to trust an unfamiliar directory).",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Extending permissions with PreToolUse hooks",
+   "behavior": "PreToolUse hooks run before the permission prompt for every tool except EndConversation. Hook decisions do NOT bypass permission rules: Claude Code still evaluates deny/ask rules regardless of what the hook returns, preserving deny-first precedence including managed-settings deny rules. A blocking hook (exit 2) DOES take precedence over allow rules \u2014 it stops the call before rules are evaluated.",
+   "limits": "MCP tools marked requiresUserInteraction and org-set-to-ask connector tools still prompt even when a hook returns \"allow\".",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Working directories and additionalDirectories",
+   "behavior": "By default Claude has file access to the directory it was launched in. Extend via --add-dir (startup), /add-dir (mid-session), or permissions.additionalDirectories in settings (persistent). Files in additional directories follow the same permission rules as the original working directory.",
+   "limits": "Directories in permissions.additionalDirectories grant FILE ACCESS ONLY and load none of the .claude/ configuration types (skills, commands, subagents, settings, CLAUDE.md); directories added via --add-dir/`/add-dir` DO load skills (with live reload), commands (no live reload), and subagents (no live reload) as exceptions, plus enabledPlugins/extraKnownMarketplaces settings keys, and CLAUDE.md only if CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 is set.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Sandboxing interaction with the bare Bash ask rule",
+   "behavior": "When sandboxing is enabled and autoAllowBashIfSandboxed defaults to true, sandboxed Bash commands run without prompting even if permissions include a bare Bash ask rule (or equivalent Bash(*)) \u2014 the sandbox boundary substitutes for that whole-tool prompt. Content-scoped ask rules (e.g. Bash(git push *)) and explicit deny rules still apply regardless, as does the regular flow for rm/rmdir targeting a critical path.",
+   "limits": "In plan mode, this substitution is SKIPPED (Claude Code does not substitute the sandbox boundary for the ask prompt there); before v2.1.212 the substitution applied in plan mode too. Sandboxing itself applies only to the Bash tool and its child processes, not to other tools.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Project allow rules gated by workspace trust",
+   "behavior": "permissions.allow rules and permissions.additionalDirectories entries in a project's .claude/settings.json apply only after the user accepts the workspace trust dialog for that folder (which lists the rules/directories first). deny and ask rules are NOT gated by trust since they only restrict.",
+   "limits": "Trust is keyed on the git repository root (or the worktree's main checkout root); shown only in interactive sessions \u2014 a claude -p run or SDK session never shows the dialog and never treats an untrusted project's allow rules as trusted (they're skipped, with a stderr warning in -p mode).",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permissions.md"
+  },
+  {
+   "feature": "Settings file scopes",
+   "behavior": "Four scopes plus managed: User (~/.claude/settings.json, every project on this machine, personal), Shared project (.claude/settings.json, everyone in the folder, committed for teammates), Project local (.claude/settings.local.json, this project only, kept out of git automatically), Managed (managed-settings.json/MDM/console, everyone the org deploys to, overrides everything except a few security-sensitive exceptions).",
+   "limits": "Claude Code writes ~/.claude/settings.json automatically on first /config change it stores there, and .claude/settings.local.json on first standing permission approval; it never auto-creates the shared project file.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "Settings precedence stack",
+   "behavior": "Highest to lowest: (1) Managed settings \u2014 nothing overrides them, not even --settings or model flags (though /model can still switch among org-allowed models unless availableModels constrains it); (2) Command line arguments (--settings, per-key flags, env vars) for one session; (3) Project local settings (.claude/settings.local.json); (4) Shared project settings (.claude/settings.json); (5) User settings (~/.claude/settings.json).",
+   "limits": "Environment variables are NOT a level in this stack \u2014 whether an env var or a settings key wins is decided per-key-pair, not by level (e.g. ANTHROPIC_MODEL always overrides the model key from any file, while ANTHROPIC_DEFAULT_MODEL only applies when no file sets model).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "Lists merge across settings files instead of overriding",
+   "behavior": "When the same list key (e.g. permissions.allow) is set in more than one file, Claude Code COMBINES the lists rather than picking one, so each file can add entries without removing another's.",
+   "limits": "Four keys follow their own non-merging rules instead: fallbackModel (whole ordered chain taken from highest-precedence file), modelPicker (whole list from highest of managed/--settings/user only, ignored in project/local, requires v2.1.242+), availableModels (managed list, if present, applied as-is ignoring lower entries; merges normally across non-managed scopes), and modelSettings (resolved per-model together with effortLevel).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "Exceptions to managed-settings precedence (stricter-value-wins keys)",
+   "behavior": "For a small set of security-sensitive keys, Claude Code honors a RESTRICTIVE value from a lower scope even over a looser managed value: disableClaudeAiConnectors (true from any scope), enableArtifact (false/disableArtifact:true from any scope, nothing turns it back on, v2.1.242+), isolatePeerMachines (true from any scope), remoteControlAtStartup (false from project/local settings, honored even over managed true), crossSessionInbound (stricter value on accept<hold<refuse ladder from project/local), useAutoModeDuringPlan (false from managed/--settings/user/local), syncClaudeAiSkills (false from managed/--settings/user/local).",
+   "limits": "These are the ONLY exceptions; every other key follows the normal managed-always-wins rule.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "Settings reach into cloud sessions",
+   "behavior": "A cloud session (Claude Code on the web, or claude --cloud) runs on a fresh clone, not the local machine. Shared project settings (.claude/settings.json) ARE read since they're part of the clone. User and project-local settings are NOT read \u2014 both stay on the local machine. Only server-managed settings reach a cloud session; a local managed-settings.json or MDM profile does not (a self-hosted environment also reads its runner image's managed settings file).",
+   "limits": "/config on the web opens the claude.ai settings UI instead of changing a value directly; to change a cloud session's settings, set an environment variable on the cloud environment or commit the key to the repo's .claude/settings.json.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "When settings edits take effect (live reload vs restart)",
+   "behavior": "Claude Code watches settings files and reloads them without restart for most edits, including permissions, hooks, and credential helpers like apiKeyHelper; it fires the ConfigChange hook per settings-file change detected (not for MDM/console-delivered managed settings). Keys read only once at session start (edits don't reach the running session) include model (use /model to switch live instead), effortLevel/modelSettings (use /effort), outputStyle (applies after /clear or restart), and admin-side keys like requiredMinimumVersion.",
+   "limits": "Managed settings arriving via MDM or claude.ai console reach a running session on a schedule (not on save) per the delivery table, not immediately.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "Broken settings file handling",
+   "behavior": "Invalid JSON or a schema-rejected value in a user/project/local file produces a \"Settings Error\" dialog at interactive session start (fix with Claude's help, exit, or continue without the broken settings); a malformed individual entry (e.g. one bad permission rule) produces only a \"Settings Warning\" and the rest of the file still applies. A corrupted ~/.claude.json produces a \"Configuration error,\" is backed up to ~/.claude/backups/, and the user is asked to fix by hand or reset.",
+   "limits": "A claude -p run shows NO dialog: it silently skips the broken file/values and continues \u2014 run claude doctor afterward to see what was dropped.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/settings.md"
+  },
+  {
+   "feature": "Managed settings delivery mechanisms",
+   "behavior": "Four mechanisms: (1) Server-managed settings from the claude.ai admin console or a self-hosted Claude apps gateway, fetched at startup and polled hourly; (2) MDM/OS-level policy (macOS config profile, Windows HKLM registry), read at startup and checked every 30 minutes; (3) File-based managed-settings.json (+ managed-settings.d/ drop-ins), read at startup and reloaded on file change; (4) Windows/WSL HKCU registry fallback, read at startup and checked every 30 minutes, used only when no higher-priority source delivers a policy key.",
+   "limits": "A managed settings file/MDM profile/console policy applies ONE policy to everyone it reaches; the console can't target a group yet (a self-hosted gateway can, per IdP group).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Managed settings file locations by OS",
+   "behavior": "macOS: /Library/Application Support/ClaudeCode/managed-settings.json. Linux and WSL: /etc/claude-code/managed-settings.json. Windows: C:\\Program Files\\ClaudeCode\\managed-settings.json.",
+   "limits": "Claude Code does NOT read the legacy Windows path C:\\ProgramData\\ClaudeCode\\managed-settings.json.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "managedSourcesBehavior: first-wins vs merge across managed sources",
+   "behavior": "Default \"first-wins\": Claude Code uses only the highest-ranked managed source that delivers at least one policy key (remote > MDM/OS > managed-settings file(s) > HKCU) and ignores the rest (apart from a fixed cross-source key list), with NO warning for skipped sources. \"merge\" (v2.1.242+): every admin source that delivers a policy key is applied and combined per kind of key (lists union, locks take the strictest value, restriction allowlists take the highest-ranked source whole, everything else takes the highest-ranked source's value).",
+   "limits": "managedSourcesBehavior itself is read ONLY from the highest-ranked source that carries it or a policy key \u2014 a lower source can't opt itself into merging. The user-writable HKCU registry never merges with another source under either setting.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Cross-source keys read from every admin managed source",
+   "behavior": "A fixed set of keys is read from EVERY admin source (not just the selected one) even under first-wins: sandbox.network.allowManagedDomainsOnly / sandbox.filesystem.allowManagedReadPathsOnly (true from any source turns the lock on and unions the relevant allowlist across sources), allowAllClaudeAiMcps, sandbox.bwrapPath/socatPath/ripgrep, sandbox.filesystem.disabled, sandbox.network.strictAllowlist, useAutoModeDuringPlan/syncClaudeAiSkills (false from any admin source turns the behavior off), enableArtifact (false from any admin source turns it off, nothing turns it back on, v2.1.242+), commit-trailer opt-out in attribution/includeCoAuthoredBy, forceRemoteSettingsRefresh, and env (merged per-variable across admin sources, v2.1.223+).",
+   "limits": "This cross-source scanning excludes the user-writable HKCU registry.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Split managed policy across teams via managed-settings.d/",
+   "behavior": "Multiple teams can each own a file in managed-settings.d/ next to managed-settings.json in the same system directory. Claude Code merges managed-settings.json first, then every *.json file in the directory in alphabetical order (numeric prefixes control order). Merge rules: single values \u2014 later file wins; lists \u2014 combined with duplicates removed; nested blocks (env, sandbox) \u2014 merged key by key; fallbackModel/extraKnownMarketplaces/modelPicker \u2014 later file's whole value replaces the earlier.",
+   "limits": "Claude Code ignores hidden files and files not ending in .json in that directory.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "policyHelper (computed managed settings)",
+   "behavior": "A policyHelper is an executable named by the MDM policy or managed-settings file; Claude Code runs it at startup to compute managed settings. If it emits a managedSettings object, that output becomes the ONLY managed settings for the session (including for keys normally read from every admin source), except forceRemoteSettingsRefresh which is still checked in every admin source before the helper runs.",
+   "limits": "Claude Code selects the managed source at startup, and only THAT selection decides whether a helper runs; a schema violation surviving entry-repair in helper output fails the whole helper run and Claude Code refuses to start (same as a helper exiting non-zero) \u2014 stricter than tolerance for other managed sources.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Invalid managed-settings entries: repaired, dropped, or fail-closed",
+   "behavior": "On schema failure, Claude Code first skips individual repairable entries (e.g. one bad permission rule) with a warning, then drops any top-level key whose value still fails, keeping every remaining valid key enforced. A handful of enforcement keys instead FAIL CLOSED to a stricter fallback when invalid: allowedMcpServers\u2192empty allowlist, allowManagedHooksOnly\u2192true, allowManagedMcpServersOnly\u2192true, disableCommandPluginSources\u2192true, availableModels\u2192empty allowlist (only Default model), enforceAvailableModels\u2192true, forceLoginOrgUUID\u2192no org permitted to log in, crossSessionInbound\u2192refuse, deniedMcpServers\u2192valid subset kept (whole-invalid dropped), sandbox.credentials\u2192degraded to mode:\"deny\".",
+   "limits": "requiredMinimumVersion/requiredMaximumVersion FAIL OPEN by design (invalid value dropped, not enforced). This tolerance applies only to managed settings \u2014 user/project/local files remain strict: bad top-level JSON/shape rejects the WHOLE file.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Managed-only settings keys",
+   "behavior": "A defined set of keys can only be set from a managed source \u2014 placing them in user/project files has no effect \u2014 including allowAllClaudeAiMcps, allowedChannelPlugins, allowManagedHooksOnly, allowManagedMcpServersOnly, allowManagedPermissionRulesOnly, blockedMarketplaces, channelsEnabled, disableCommandPluginSources, disableSideloadFlags, forceRemoteSettingsRefresh, managedSourcesBehavior, parentSettingsBehavior, pluginSuggestionMarketplaces, pluginTrustMessage, policyHelper, sandbox.filesystem.allowManagedReadPathsOnly, sandbox.network.allowManagedDomainsOnly, strictKnownMarketplaces, strictPluginOnlyCustomization, wslInheritsWindowsSettings, plus (per the settings reference) gateway login URL, version/browser/mobile-simulator/SSH-host controls, Desktop local-session, sandbox binary path, model pricing, and CLAUDE.md controls.",
+   "limits": "Most are LOCKS on an otherwise-ordinary key (e.g. the permission rules/sandbox allowlist itself can be set anywhere; the lock just restricts which scope Claude Code honors).",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "What a developer can still change despite managed settings",
+   "behavior": "Four exceptions to \"managed always wins\": (1) a managed model key is a default, not a lock \u2014 --model/ANTHROPIC_MODEL can still pick a different model for that session (use availableModels to actually restrict choice); (2) a local machine administrator can edit the managed source itself; (3) the server-managed local cache can be edited but only lasts until the next successful fetch; (4) managed settings bind Claude Code only \u2014 a developer calling the API through another tool isn't bound by them.",
+   "limits": "None beyond the four listed exceptions.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Where and when managed policy applies (cloud/Cowork sessions)",
+   "behavior": "On the local machine (terminal, VS Code/JetBrains extensions, desktop app Code tab, Agent SDK sessions) all managed sources are read. In an Anthropic-hosted cloud session, only server-managed settings apply (no local MDM/file read) \u2014 a self-hosted environment also reads its runner image's managed-settings file. In a Cowork session (Claude Desktop), server-managed console settings are NEVER fetched; policy comes from the local device's MDM/file UNLESS requireCoworkFullVmSandbox routes it into a VM (no device policy) or it's a remote Cowork session on Anthropic-managed VMs (no device policy either).",
+   "limits": "forceRemoteSettingsRefresh and requiredMinimumVersion are read only at session start (not applied to an already-running long-lived session); server-managed changes needing approval (e.g. a new hook or env var) wait for the user to accept a dialog in interactive sessions.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md"
+  },
+  {
+   "feature": "Hook input common fields & environment",
+   "behavior": "Every hook event JSON includes session_id, prompt_id, transcript_path, cwd, permission_mode, effort, hook_event_name, agent_id, agent_type as applicable. Hooks additionally get environment variables $CLAUDE_EFFORT, $CLAUDE_PROJECT_DIR, $CLAUDE_PLUGIN_ROOT, $CLAUDE_PLUGIN_DATA; $OTEL_* variables are stripped from all hook subprocesses.",
+   "limits": "transcript_path \"may lag current turn.\"",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/hooks.md"
+  },
+  {
+   "feature": "Auto-approve permission prompts via PermissionRequest hook (worked example)",
+   "behavior": "Example pattern: a PermissionRequest hook matched narrowly (e.g. just \"ExitPlanMode\") returns {\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"decision\":{\"behavior\":\"allow\"}}} to answer the prompt on the user's behalf; the transcript shows \"Allowed by PermissionRequest hook.\"",
+   "limits": "Docs explicitly caution: keep the matcher as narrow as possible \u2014 matching .* or an empty matcher would auto-approve EVERY tool permission prompt, including file writes and shell commands.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/hooks-guide.md"
+  }
+ ],
+ "unreachable": [
+  "https://code.claude.com/docs/en/iam.md \u2014 fetched successfully but resolved to the \"Authentication\" page content (login methods, credential management, auth precedence), not IAM/managed-policy-settings content as expected; managed policy settings facts were instead sourced from managed-settings.md (which permissions.md and settings.md both link to for that topic)."
+ ]
+}

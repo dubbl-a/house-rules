@@ -1,0 +1,370 @@
+{
+ "area": "Sessions and resume, worktrees and their cleanup, sandboxing, checkpoints, background tasks, and what carries between sessions in Claude Code (as of 2026-09-02)",
+ "unreachable": [],
+ "facts": [
+  {
+   "feature": "claude --continue",
+   "behavior": "Resumes the most recent interactive session in the current directory",
+   "limits": "Skips background sessions and sessions whose first prompt was /loop; excludes claude -p and Agent SDK sessions from the picker/--continue (resume those via claude --resume <session-id>), unless combined with -p (claude -p --continue includes -p, SDK, and /loop sessions but still skips background sessions)",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "claude --resume",
+   "behavior": "claude --resume with no argument opens the interactive session picker; claude --resume <name> resumes the named session directly if the name matches exactly; claude --resume <session-id> resumes by ID and can be run from any directory",
+   "limits": "Cross-project ID lookup checks the current project + its worktrees first, then every other project on the machine, but only resolves when exactly one other project holds a transcript with messages for that ID \u2014 a duplicate makes it report not-found rather than guess",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "What a resumed session restores",
+   "behavior": "A resumed session restores: full conversation history including tool calls/results; the model it was using; the agent (system prompt, tool restrictions, model) if started with --agent or the agent setting; the permission mode (with documented exceptions); an active goal (turn count/timer/spend baseline reset); and scheduled tasks that haven't expired",
+   "limits": "Model isn't restored when retired, disallowed by availableModels, or overridden by --model/an ANTHROPIC_MODEL-family env var at relaunch; background Bash and monitor tasks are explicitly NOT restored",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Launch flags not restored on resume",
+   "behavior": "Not every configuration flag from the original launch is restored on resume",
+   "limits": "--mcp-config, --settings, --plugin-dir, --fallback-model, and directories added with --add-dir must be passed again explicitly; directories added mid-session with /add-dir aren't restored either (though the picker still uses them to locate the session). Standard settings.json/settings.local.json ARE re-read automatically, so config living there doesn't need to be re-passed",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Permission mode on resume",
+   "behavior": "Terminal resumes (claude --continue, claude --resume <id>, claude --resume <name> matching one session) restore the permission mode the session ended in, except several documented cases (e.g. a session that ended in bypassPermissions or plan mode falls back to whatever mode a new session would start in). Resuming via the session picker or /resume never restores the stored mode \u2014 it starts in whatever mode a new session/the current session is already in",
+   "limits": "Behavior differs by entry path (terminal vs. non-interactive -p vs. VS Code vs. picker vs. /resume); pass --permission-mode or --dangerously-skip-permissions to override",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Resume-from-summary dialog",
+   "behavior": "On a Pro/Max plan, resuming a session inactive for more than ~1 hour and over 100,000 tokens opens a dialog before your first message, offering 'Resume from summary' (runs /compact immediately), 'Resume full session as-is', or 'Don't ask me again'",
+   "limits": "Triggers only when the prompt cache has expired for that inactive/large session; whichever option is picked, the next request reprocesses the full history once",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Session picker scope and widening",
+   "behavior": "By default the picker shows sessions from the current worktree (background sessions marked 'bg') plus sessions elsewhere that added the current directory with /add-dir; Ctrl+W widens to all worktrees of the repository, Ctrl+A widens to every project on the machine, Ctrl+B filters to the current git branch",
+   "limits": "Sessions whose first prompt was /loop never appear in the picker (and claude --continue skips them); running /loop later in a conversation does not hide it",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "/branch (branch a session) and --fork-session",
+   "behavior": "/branch (or claude --continue/--resume --fork-session) copies the conversation so far into a new session ID and switches into it, leaving the original session's transcript unchanged and still in the picker",
+   "limits": "Inherits: conversation history up to the branch point, 'allow for this session' permission grants (only when branching stays in the same process \u2014 a --fork-session into a new process starts without them), in-flight background subagents/Bash (their output lands in the new branch), and the Remote Control connection",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Session naming and duplicate-name handling",
+   "behavior": "Sessions can be named via -n/--name at startup, /rename during a session, Ctrl+R in the picker, or auto-titled on plan-accept; starting or renaming into a name another live session on the machine already holds auto-renames the newcomer to a two-word-suffix variant (e.g. auth-refactor-graceful-unicorn) and tells you",
+   "limits": "Doesn't dedupe AI-generated titles, default display names, or the --name of a background/-p session at startup; can't rename a session running on an older Claude Code version",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Session transcript storage location",
+   "behavior": "Transcripts are stored as JSONL at ~/.claude/projects/<project>/<session-id>.jsonl by default, one JSON object per line (message, tool use, or metadata entry)",
+   "limits": "The entry format is internal and changes between versions, so scripts should use /export, claude -p --output-format json/stream-json, the transcript_path field hooks receive, or the Agent SDK instead of parsing the JSONL directly",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "Session/transcript retention and persistence controls",
+   "behavior": "CLAUDE_CONFIG_DIR moves storage off ~/.claude; cleanupPeriodDays changes the default 30-day retention; CLAUDE_CODE_SKIP_PROMPT_HISTORY suppresses transcript writes in all modes; --no-session-persistence suppresses writes for one non-interactive run",
+   "limits": "--no-session-persistence only works with claude -p",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "/clear",
+   "behavior": "Starts a fresh, empty context; Claude Code saves the previous conversation, resumable via /resume or, within the same process, via the rewind menu's previous-session entry",
+   "limits": "With no argument the new conversation keeps a name set with --name/--rename but not an AI-generated title; naming while clearing (e.g. /clear release-prep) names the conversation being left instead",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "--worktree / -w (create an isolated worktree)",
+   "behavior": "Creates a git worktree and starts Claude in it, by default under .claude/worktrees/<name>/ at the repo root on a new branch named worktree-<name>; omitting a name auto-generates one",
+   "limits": "Requires a git repository (non-git VCS needs a WorktreeCreate hook); interactive runs require prior workspace trust in that directory or --worktree exits with an error; non-interactive -p skips the trust check",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "Worktree cleanup on session exit",
+   "behavior": "On exiting an interactive worktree session, a clean unnamed session's worktree (dir + branch) is removed automatically; a named session prompts first; a worktree containing changed/untracked files or new commits always prompts to keep or remove",
+   "limits": "Non-interactive -p runs get no exit prompt and no cleanup \u2014 the lock taken at creation stays until a later stale-lock sweep releases it; manual cleanup is git worktree remove (git worktree unlock first if locked)",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "Periodic sweep of subagent and background-session worktrees",
+   "behavior": "A periodic sweep removes worktrees Claude created for subagents and background sessions once older than the cleanupPeriodDays setting, following the same retention rules as other cleaned-up data",
+   "limits": "Leaves a worktree in place if it holds changed/untracked files or unpushed commits, if filter drivers can't be determined, if it belongs to a --worktree session not yet backgrounded, or if the user created it themselves with git worktree add; a lock from a killed session is released by the sweep, but a lock the user set manually with git worktree lock never is",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "Worktree isolation enforcement (four checks)",
+   "behavior": "While a session is isolated in a worktree, Claude Code blocks: (1) an Edit/Write/NotebookEdit targeting a path in the main checkout; (2) a Bash/PowerShell/Monitor command whose working directory resolves to, or can't be verified to stay outside, the main checkout; (3) a Bash/Monitor command that redirects git into the main checkout (via git -C, --git-dir, GIT_DIR/GIT_WORK_TREE, or a prior cd); (4) a Bash/Monitor command shape it can't verify stays inside the worktree (e.g. brace expansion, heredocs with unquoted delimiters)",
+   "limits": "Applies to every subagent spawned from the isolated session, foreground or background, interactive or background session; PowerShell only gets check (2). Documentation states plainly: 'You can't turn this check off'",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": ".worktreeinclude",
+   "behavior": "A .gitignore-syntax file at the project root that copies matching gitignored files (e.g. .env, config/secrets.json) into every new worktree Claude Code creates with git",
+   "limits": "Only files that both match a pattern AND are gitignored are copied (tracked files never duplicated); not processed at all when a WorktreeCreate hook replaces the default git logic for non-git VCS \u2014 copy files inside the hook script instead",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "What worktrees share with the main checkout",
+   "behavior": "A worktree gets its own files and branch but shares the repository's .git directory (so git commit etc. work under sandboxing), project-scope plugins installed from the main checkout, and 'don't ask again' permission approvals (saved to the main checkout's .claude/settings.local.json, applying to and surviving past the worktree's removal)",
+   "limits": "On Windows and other cases where Claude Code doesn't use the repo root, an approval instead stays local to that worktree only",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "Resuming a worktree session",
+   "behavior": "Resuming a session that was inside a worktree returns it to that worktree (covers interactive resume, -p --continue/--resume, and the Agent SDK); Claude Code first verifies the worktree is still a separate checkout and declines to re-enter one that fails the check",
+   "limits": "If the worktree directory no longer exists, the session resumes in the launch directory instead and the worktree binding is cleared; --fork-session always starts in the launch directory, leaving the original session's worktree untouched",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "worktree.baseRef setting",
+   "behavior": "Controls which branch new worktrees branch from: 'fresh' (default) branches from the repository's default branch on the remote; 'head' branches from the current local HEAD, carrying unpushed commits/feature-branch state",
+   "limits": "Cannot be set to an arbitrary existing branch name \u2014 create such a worktree with git directly instead",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  },
+  {
+   "feature": "Bash sandbox (sandboxed Bash tool)",
+   "behavior": "Provides OS-level filesystem and network isolation for shell commands so Claude can run most commands without stopping for per-command approval; enabled via the /sandbox panel or the sandbox.enabled setting (project-local by default, or user-wide/org-managed)",
+   "limits": "Built in, runs on macOS, Linux, and WSL2 only; native Windows is not supported (run inside WSL2 instead); on Linux/WSL2 requires the bubblewrap and socat packages",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Sandbox modes (auto-allow vs. regular permissions)",
+   "behavior": "Auto-allow mode runs sandboxable commands inside the sandbox and approves them automatically without prompting; Regular permissions mode routes all Bash commands through the normal permission flow even when sandboxed",
+   "limits": "Even in auto-allow: explicit deny rules always apply, rm/rmdir targeting a critical path still goes through the regular permission flow, content-scoped ask rules like Bash(git push *) still force a prompt, and a bare Bash/Bash(*) ask rule is skipped for sandboxed commands except in plan mode, where it still prompts (including for read-only commands)",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Sandbox default filesystem access",
+   "behavior": "Sandboxed commands get read+write access to the current working directory, any directories added with --add-dir/permissions.additionalDirectories, and the session temp directory; read access to the entire computer except denied paths \u2014 this default still allows reading credential files such as ~/.aws/credentials and ~/.ssh/",
+   "limits": "Cannot write outside those allowed directories without explicit sandbox.filesystem.allowWrite configuration; use sandbox.credentials or denyRead to block credential-file reads, which are NOT blocked by default",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Sandbox protected paths",
+   "behavior": "Inside directories a sandboxed command can otherwise write to, the sandbox always denies writes to Claude Code's own config/code paths: .claude settings files, .claude/skills, .claude/agents, .claude/commands, .claude/hooks, .mcp.json, .claude/workflows, .claude/scheduled_tasks.json, shell startup files (.bashrc/.zshrc), .gitconfig, .vscode/.idea, .git/hooks and .git/config, files that would turn the working dir into a bare git repo, and most of ~/.claude including .claude.json and .credentials.json",
+   "limits": "There is no way to exempt one of these paths \u2014 an allowWrite entry or Edit allow rule covering the path does not lift the protection; the only way to disable it is sandbox.filesystem.disabled, which turns off filesystem isolation entirely for every path",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Sandbox network isolation",
+   "behavior": "Network access goes through a proxy outside the sandbox; Claude Code pre-allows no domains by default. The first time a command needs a new domain it prompts for approval (or the auto-mode classifier decides); approving Yes allows the host for the rest of the session, and 'Yes, and don't ask again' saves a WebFetch(domain:...) allow rule to local settings for future sessions",
+   "limits": "By default the proxy does not terminate or inspect TLS, so encrypted contents aren't examined and a broadly-allowed domain (e.g. github.com) can potentially be abused via domain fronting for exfiltration; strictAllowlist/allowManagedDomainsOnly can deny instead of prompt but only take effect from user/managed/CLI --settings, never from repo .claude/settings.json or settings.local.json",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "dangerouslyDisableSandbox escape hatch",
+   "behavior": "When a command can't run inside the sandbox, Claude Code reports the violation and Claude may retry the command with the dangerouslyDisableSandbox parameter, which runs it outside the sandbox through the normal permission flow (prompt in Manual mode, classifier in auto mode)",
+   "limits": "Can be fully disabled by setting allowUnsandboxedCommands: false ('Strict sandbox mode'), after which the parameter is ignored entirely and every command must run sandboxed or be explicitly listed in excludedCommands",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Sandbox scope \u2014 tools and processes it does NOT cover",
+   "behavior": "The sandbox isolates Bash subprocesses only. Built-in file tools (Read, Edit, Write) go through the permission system directly, not the sandbox. Computer use runs on the real desktop, not an isolated environment, gated only by per-app permission prompts. Subagents run in the same process and inherit the parent session's sandbox configuration",
+   "limits": "Sandboxed Bash commands inherit the parent process environment, including credentials set there, by default unless sandbox.credentials or CLAUDE_CODE_SUBPROCESS_ENV_SCRUB strip them",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Sandboxing is not a complete security boundary",
+   "behavior": "Documentation states directly: 'Sandboxing reduces risk but is not a complete isolation boundary. Review the limitations below before relying on it as a hard security control.' Named risks include no TLS content inspection by default, allowUnixSockets potentially granting host access (e.g. the Docker socket), overly broad filesystem writes enabling privilege escalation, enableWeakerNestedSandbox weakening Linux isolation, and allowAppleEvents removing code-execution isolation on macOS",
+   "limits": "n/a \u2014 this is the documentation's own stated limitation",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/sandboxing"
+  },
+  {
+   "feature": "Automatic checkpoint tracking",
+   "behavior": "Claude Code automatically captures the state of code before each user prompt via its file editing tools; every user prompt creates a new checkpoint, and checkpoints are saved with the conversation so /rewind still works after resuming a session",
+   "limits": "Keeps file snapshots for only the 100 most recent checkpoints in a session; discarding an older checkpoint deletes snapshot files no remaining checkpoint references, except each file's first snapshot (kept for the VS Code extension's session-diff baseline)",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "/rewind menu",
+   "behavior": "Opened via /rewind, or Esc twice on an empty prompt input; lists each prompt sent during the session and offers Restore code and conversation, Restore conversation, Restore code, Summarize from here, Summarize up to here, or Never mind",
+   "limits": "The two code-restore options appear only when the selected checkpoint has tracked file changes to revert; summarizing doesn't change files on disk and the original messages stay in the transcript",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "Checkpoint retention",
+   "behavior": "Claude Code deletes checkpoints along with their sessions after 30 days by default",
+   "limits": "Period is changeable via the cleanupPeriodDays setting",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "Checkpointing limitation \u2014 Bash-modified files untracked",
+   "behavior": "Checkpointing does not track files modified by bash commands such as rm, mv, or cp \u2014 only direct edits made through Claude's file editing tools are tracked",
+   "limits": "Such bash-driven file modifications cannot be undone through /rewind",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "Checkpointing limitation \u2014 subagent edits usually not restored",
+   "behavior": "A subagent's file edits are usually not captured in the parent session's checkpoints. The one exception: a skill with context: fork running in the foreground (background: false, or a case the skills page forces to foreground) edits the working tree during the parent's own turn and IS captured by rewind",
+   "limits": "Every other subagent case \u2014 including a background forked skill (the default) and a background /code-review --fix run \u2014 is NOT restored by rewind; use git to revert those edits",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "Checkpointing limitation \u2014 external, concurrent, and linked-file changes",
+   "behavior": "Checkpointing only tracks files edited within the current session: manual changes made outside Claude Code and edits from other concurrent sessions normally aren't captured unless they touch the same files. Restoring code also skips any tracked path that is a symlink or hard link, showing a 'Restored the code, but skipped N files' warning",
+   "limits": "Skipped symlinked/hard-linked files keep their current contents and must be reverted manually (e.g. by asking Claude to reverse the specific edit)",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "Checkpointing is not a replacement for version control",
+   "behavior": "Documentation states directly: checkpoints 'are designed for quick, session-level recovery. For permanent version history and collaboration, continue using version control, such as Git, for commits, branches, and long-term history.'",
+   "limits": "n/a \u2014 stated design limitation",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/checkpointing"
+  },
+  {
+   "feature": "Background Bash commands",
+   "behavior": "A Bash command can be run in the background (by prompting Claude, or pressing Ctrl+B on a running invocation); Claude Code runs it asynchronously, returns a background task ID immediately, writes output to a file Claude retrieves via the Read tool, and keeps responding to new prompts while it runs",
+   "limits": "Automatically terminated if output exceeds 5GB; on macOS/Linux, terminated on OS memory-pressure signal once the session has been idle 30+ minutes and no turn/subagent is running (disable via CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP); background commands owned by a subagent are instead terminated after 60 minutes by default (configurable via CLAUDE_SUBAGENT_BG_SHELL_MAX_MS), and end when a foreground subagent that owns one gives its final response",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "Background task cleanup on exit",
+   "behavior": "Background tasks are automatically cleaned up when Claude Code exits; backgrounding the session itself (instead of exiting) hands them to the background session, where they keep running",
+   "limits": "To disable background task functionality entirely, set CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "Task list (Ctrl+T)",
+   "behavior": "Claude's to-do checklist persists across context compactions within a session; can be shared across sessions by setting CLAUDE_CODE_TASK_LIST_ID to a named directory under ~/.claude/tasks/",
+   "limits": "On Opus 4.8, Sonnet 5, Fable 5, Mythos 5, and later, Claude tracks multi-step work without a written checklist by default and the tools that fill this list aren't provided, so it stays empty unless CLAUDE_CODE_ENABLE_TODO_TOOLS=1 or another opt-in is set",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "Prompt/command history",
+   "behavior": "Claude Code keeps a history of typed prompts; Up-arrow recall reaches prompts from past sessions of the same project, stored per working directory",
+   "limits": "Running /clear starts a new session for history purposes \u2014 recall then lists the new session's prompts first, with earlier sessions' prompts after; submitting the same prompt twice in a row records only one history entry",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "Session recap",
+   "behavior": "Claude Code shows a one-line recap of what happened in the session, generated in the background once at least 3 minutes have passed since the last completed turn and the terminal is unfocused; /recap generates one on demand, capped at 400 characters",
+   "limits": "Only appears once the session has at least 3 turns, never twice in a row, and never in non-interactive mode; can be turned off via /config",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "Automatic wait/continue at usage limit",
+   "behavior": "When a claude.ai usage limit stops Claude mid-task, an open interactive session (signed in with a claude.ai subscription) waits and automatically continues the task once the limit resets, sending a fixed continuation prompt rather than resending the last message",
+   "limits": "On, by default, in interactive sessions only \u2014 not for background sessions, -p runs, API keys, cloud providers/usage-based billing, or an LLM gateway without a saved claude.ai login; re-arms at most twice in a row on repeated hits before stopping; can be turned off via autoContinueAtUsageLimit setting",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "claude --bg/--background and background-session lifecycle commands",
+   "behavior": "--bg starts an interactive session in the background and returns immediately, printing an id; claude attach <id> reopens it in the terminal, claude agents lists background agents, claude logs <id> prints recent output, claude stop|kill <id> stops one while keeping its conversation resumable, claude rm <id> deletes a background session and its worktree 'when that is safe', claude respawn restarts a background session (or all, with --all) on the current Claude Code version",
+   "limits": "rm and stop/kill work on sessions that have already exited; --resume <session-id> --bg either continues that session in the background under the same ID, or starts a copy and says so if the session is already running",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--fork-session flag",
+   "behavior": "When resuming, creates a new session ID instead of reusing the original; used with --resume or --continue",
+   "limits": "n/a \u2014 see the worktrees/sessions docs for how forking interacts with worktree bindings and permission grants",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--session-id flag",
+   "behavior": "Use a specific session ID for the conversation (must be a valid UUID)",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--no-session-persistence flag",
+   "behavior": "Disables session persistence \u2014 the session will not be saved to disk and cannot be resumed",
+   "limits": "Only works with --print (non-interactive mode)",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--tmux flag",
+   "behavior": "Create a tmux session for the worktree; uses iTerm2 native panes when available, or --tmux=classic for traditional tmux",
+   "limits": "Requires --worktree",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--dangerously-skip-permissions / --allow-dangerously-skip-permissions",
+   "behavior": "Bypass all permission checks; --allow-dangerously-skip-permissions makes bypass available as an option without enabling it by default",
+   "limits": "Per --help, 'Recommended only for sandboxes with no internet access'; per the sandboxing doc, it is blocked when running as root/sudo on Linux/macOS unless inside a recognized sandbox",
+   "enforcement": "none",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--restricted mode",
+   "behavior": "Removes the built-in tools that run commands or code (Bash, PowerShell, REPL, and other code-running tools) and WebFetch unless --tools names them; ignores user, project, and local settings files (managed settings and --settings still apply; add --strict-mcp-config to also skip MCP servers); confines file tools to the working directories (--add-dir included); refuses bypassPermissions",
+   "limits": "Only a person or the configured permission handler can approve writes to settings, git, and tool-configuration files under --restricted",
+   "enforcement": "blocks",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--safe-mode",
+   "behavior": "Starts with all customizations disabled \u2014 CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands and agents, output styles, workflows, custom themes, keybindings, and more \u2014 for troubleshooting a broken configuration; sets CLAUDE_CODE_SAFE_MODE=1",
+   "limits": "Admin-managed (policy) settings still apply; auth, model selection, built-in tools, and permissions work normally",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "--bare mode",
+   "behavior": "Minimal mode: skips hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and CLAUDE.md auto-discovery; sets CLAUDE_CODE_SIMPLE=1",
+   "limits": "Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and keychain are never read); skills still resolve via /skill-name; context (CLAUDE.md, MCP, settings, agents) must be provided explicitly via flags",
+   "enforcement": "automatic",
+   "citation": "claude --help"
+  },
+  {
+   "feature": "Naming the project transcript/memory directory (CLAUDE_CODE_PROJECT_DIR_NAME)",
+   "behavior": "Setting CLAUDE_CODE_PROJECT_DIR_NAME (alongside CLAUDE_CONFIG_DIR) makes Claude Code store that session's transcripts AND its auto memory under a chosen name instead of one derived from the full working-directory path",
+   "limits": "Only takes effect when CLAUDE_CONFIG_DIR is also set; must be 1-64 letters/digits/hyphens/underscores (no Windows device names); must be set in the shell environment that starts claude (an env block in a settings file can't set it)",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sessions"
+  },
+  {
+   "feature": "EnterWorktree / ExitWorktree tools mid-session",
+   "behavior": "Claude can create or switch worktrees mid-session by calling the EnterWorktree tool with a target path, and leave one with ExitWorktree; the previous worktree stays on disk untouched",
+   "limits": "Entering a path outside the repository's .claude/worktrees/ requires user approval first \u2014 an EnterWorktree permission rule or 'don't ask again' does not suppress this prompt; only bypassPermissions mode skips it",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/worktrees"
+  }
+ ]
+}

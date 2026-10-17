@@ -60,6 +60,10 @@
             "path": "docs/handbook/sources/**",
             "why": "package-authored survey material; its tokens describe surveyed repos, not this tree"
           },
+          {
+            "path": "research/**",
+            "why": "point-in-time research records kept verbatim; their tokens describe surveyed repos and past states, not this tree"
+          },
           "docs/handbook/claude-code.md",
           "docs/handbook/conventions.md",
           "docs/handbook/data-pipelines.md",

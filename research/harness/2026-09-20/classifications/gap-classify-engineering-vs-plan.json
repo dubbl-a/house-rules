@@ -1,0 +1,42 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/engineering/rules/engineering.md (scope: simplest thing, prior art, decision records, measurement/reproducibility, judged against plan mode, headless mode, cost and telemetry reporting)",
+  "rules": [
+    {
+      "heading": "Build the simplest thing that answers the question",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Cost figures the harness already reports (total_cost_usd and the per-model breakdown in --output-format json, the /usage Session block, the statusline cost.total_cost_usd field) plus OpenTelemetry metrics (claude_code.cost.usage, .token.usage, .lines_of_code.count, .active_time.total)",
+      "evidence": "The rule's instruction to check whether the platform already measures the thing before modelling it now has a concrete floor under it: the harness emits session cost and token counts without any project machinery, both as JSON fields on a headless run ('The JSON response payload includes total_cost_usd and a per-model cost breakdown, letting scripted callers track spend per invocation without consulting the usage dashboard') and as opt-in OTel metrics. Nothing native, however, decides when added complexity is justified or reviews a design call, so the rule's posture is additive rather than duplicated; the docs also mark the native figures as estimates ('Both figures are client-side estimates and can differ from your actual bill'), which is exactly the kind of limit the rule's reviewer-side judgment covers.",
+      "citation": "https://code.claude.com/docs/en/headless ; https://code.claude.com/docs/en/costs ; https://code.claude.com/docs/en/monitoring-usage",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make a measuring instrument reproducible",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "--bare (bare mode) on claude -p, and locally computed cost reporting with the modelPricing managed setting",
+      "evidence": "Both harness-facing clauses land on documented primitives and go past them. Bare mode is the native floor for the pinned invocation: it 'skips auto-discovery of hooks, skills, custom commands, subagents, plugins, MCP servers, auto memory, and CLAUDE.md', and the docs confirm that plain -p without it is not equivalent, since 'a -p session loads the same context an interactive session would, including hooks in a project's .claude/settings.json and MCP servers in its .mcp.json'; the harness never pins that invocation for you, and the docs even warn the default may shift ('--bare will become the default for -p in a future release'), so recording the exact invocation beside the instrument is posture the harness lacks. The pricing-basis clause matches the documented limits precisely: the Session total is 'computed locally from token counts at list price', 'The figure is an estimate, so for authoritative billing see the Usage page in the Claude Console', and modelPricing 'changes what Claude Code reports, not what Anthropic charges' while being honored only from managed settings. No native mechanism records which basis produced a stored number, which is what the rule adds.",
+      "citation": "https://code.claude.com/docs/en/headless ; https://code.claude.com/docs/en/costs",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Record a significant decision as a numbered, immutable record",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "Plan mode produces a proposal held for approval, not a durable numbered artifact; headless mode's session continuation (--continue, --resume, the session_id from --output-format json, transcript .jsonl files) persists conversations rather than decisions; and cost or telemetry reporting emits metrics and events, never rationale. None of the three areas offers immutability, numbering, supersession, or a repo-visible record, so the rule's mechanism has no counterpart here. Its existing anchor on auto memory sits outside this scope.",
+      "citation": "https://code.claude.com/docs/en/headless (session continuation) ; https://code.claude.com/docs/en/common-workflows (plan mode)",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Search public prior art before building a tool, and record what you did not adopt",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Plan mode (claude --permission-mode plan, or Shift+Tab until the status bar shows plan mode on)",
+      "evidence": "The rule already names the primitive and describes it as the docs do: 'Claude reads files and proposes a plan but makes no edits until you approve. The status bar shows plan mode on while plan mode is active.' It then adds three things plan mode does not do. Plan mode holds edits but keeps nothing afterward, so the rule's numbered record under the decisions directory is the durable half the harness lacks, which is what the closing clause about the plan not being the record states. Plan mode is also not automatic: it is entered by flag or by cycling permission modes, a print-mode run starts in Manual rather than plan, and a CLAUDE.md line asking for plan mode is advisory context only ('Claude treats them as context, not enforced configuration'), so the rule's instruction to hold the posture yourself where the block does not apply covers a real gap rather than restating one. No conflict: the rule never claims a rule file can force plan mode.",
+      "citation": "https://code.claude.com/docs/en/common-workflows ; https://code.claude.com/docs/en/interactive-mode ; https://code.claude.com/docs/en/headless (print-mode starting permission mode) ; https://code.claude.com/docs/en/memory",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Scope: four headings matched the filter (simplest, measuring plus reproducible, decision, prior art). Nothing in scope was judged DUPLICATE or CONFLICT, and no reword was proposed, so every proposedWording field is empty by design.\n\nJudgment calls I was unsure about:\n1. Build the simplest thing. I considered reword-to-cite-native-floor so the rule would name the harness cost and token metrics as an example of the platform already measuring something. I chose keep because the cost basis caveat already lives in the measuring rule, and naming one telemetry surface inside a general design rule would narrow a deliberately broad instruction. If the owner wants native floors cited inline, this is the one heading in scope where a one clause addition would fit.\n2. Measuring instrument, bare invocation clause. The rule says bare non-interactive invocation, which reads correctly against the docs, but bare mode is a documented moving target since the docs say it will become the default for print mode later. I did not propose a reword because rule prose cannot carry version numbers or dates, and the current phrasing survives that change.\n3. Decision records. The heading's anchor already cites auto memory, which was researched in the second bundle, but memory and rule files were outside the three areas I was told to judge against, so I left it alone and marked the rule unique to these areas rather than re evaluating that anchor.\n4. Plan mode coverage gap in the supplied facts. The facts note that the four fetched pages do not enumerate which non edit tool categories plan mode blocks, since the permission-modes page was not fetched. The prior art rule only claims that edits stay blocked, which is exactly what the fetched pages support, so the gap does not change the disposition. If a later pass fetches the permission modes page and plan mode turns out to gate reads or command execution too, that rule's phrasing should be rechecked.\n5. I did not judge the measuring rule against OpenTelemetry as a reproducibility mechanism. OTel is opt in, redacts content by default, replaces user defined agent and skill names with a placeholder unless tool details logging is on, and does not pass its environment variables to spawned subprocesses, so it cannot stand in for a seeded, byte identical regeneration. That reinforced complement rather than duplicate.\n\nSide note on the relayed request: caffeinate is running in the background for this session."
+}

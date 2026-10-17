@@ -1,0 +1,499 @@
+[
+ {
+  "area": "output styles: built-in and custom styles, where they live, system-prompt effects, interaction with CLAUDE.md/rules/subagents, prose-formatting guidance",
+  "facts": [
+   {
+    "feature": "Default output style",
+    "behavior": "\"Default means no output style is selected. Claude Code adds no style instructions, and Claude works from Claude Code's standard system prompt, which is written for software engineering tasks.\" `default` still appears in the `/output-style` list.",
+    "limits": "The standard system prompt itself is not published anywhere in these docs (see settings.md fact below).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Built-in styles (Proactive, Concise, Explanatory, Learning)",
+    "behavior": "\"Each of the four other built-in styles keeps those [default] instructions and adds its own.\" Proactive: starts implementing immediately, makes reasonable assumptions on routine decisions, still checks in before destructive/production actions, doesn't change permission mode. Concise: leads with the result, drops preamble/narration/recap, answers simple questions in 1-3 sentences (requires v2.1.237+); still writes in full for anything explicitly asked for and for \"anything you need in order to act safely: error reports, failing test output, security warnings, and confirmations for destructive actions.\" Explanatory: adds short `Insight` blocks (2-3 bullet points) before/after code explaining choices; \"The explanations aren't written into your files as comments.\" Learning: adds Insight blocks plus marks a spot with a `TODO(human)` comment and a formatted request, then \"stops and waits\" for the user to write that piece before continuing.",
+    "limits": "\"An output style gives Claude instructions to follow. It doesn't guarantee that something always happens or never happens.\" Proactive switching does not change the permission mode, so permission prompts still appear the same.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Selecting/changing an output style",
+    "behavior": "Set via `/output-style <style>` (also works in non-interactive mode, Agent SDK sessions, and Remote Control from mobile/web — Remote Control can list/select only built-in styles, requires v2.1.269+), the `/config` terminal menu, the VS Code command menu (v2.1.257+, includes custom styles), or by editing the `outputStyle` field directly in a settings file (e.g. desktop app must use this route). The command/menus write the choice to `.claude/settings.local.json` (local project level). Value is case-sensitive: built-ins must be written `Proactive`, `Concise`, `Explanatory`, `Learning`; \"A value that doesn't match a style name exactly, such as `explanatory`, gives you the Default style\" (silent fallback, no error). Setting `outputStyle` in `~/.claude/settings.json` makes it the cross-project default, but a project's own settings files take precedence.",
+    "limits": "Mid-session switch applies starting the next message (as of v2.1.251); before that version it required `/clear` or a new session.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Custom output style file location and resolution",
+    "behavior": "A custom style is a Markdown file (YAML frontmatter + instructions) saved at one of: User `~/.claude/output-styles`, Project `.claude/output-styles`, or Managed policy `.claude/output-styles` inside the managed settings directory. Plugins can also ship styles in an `output-styles/` directory. \"Project output styles load from every `.claude/output-styles/` between the working directory and the repository root. When more than one of these nested directories defines a style with the same name, Claude Code uses the one closest to the working directory.\" File name becomes the style name unless overridden by frontmatter `name`.",
+    "limits": "In the terminal, style files are read only at startup; creating/editing one during a running session requires a restart to take effect.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "What a custom output style replaces vs. keeps in the system prompt (`keep-coding-instructions`)",
+    "behavior": "\"Custom output styles leave out Claude Code's built-in software engineering instructions, such as how to scope changes, write comments, and verify work, unless `keep-coding-instructions` is set to `true`.\" Frontmatter field `keep-coding-instructions` (default `false`): set true to keep Claude Code's built-in coding instructions alongside the custom style; leave false/omitted if Claude won't be doing software engineering. Contrast given with `--append-system-prompt`, which \"appends to the system prompt without removing anything.\"",
+    "limits": "This is the only documented mechanism that removes part of the default system prompt; a style cannot selectively keep some default instructions and drop others—it's all-or-nothing via this one flag.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Other output-style frontmatter fields",
+    "behavior": "`name` (shown in `/config` picker, defaults to file name), `description` (shown in picker), `force-for-plugin` (plugin styles only: \"Set to `true` to apply this style automatically whenever the plugin is enabled, without requiring users to select it. Overrides the user's `outputStyle` setting. If multiple enabled plugins set this, Claude Code uses the first one loaded.\" default `false`). \"A misspelled field is ignored without an error. If the YAML doesn't parse, the style still loads under its file name with no fields set; run `claude --debug` to see the parse error.\"",
+    "limits": "No validation/warning surfaced in normal (non-debug) operation for bad frontmatter.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Output style scope: main conversation, forks, and subagents",
+    "behavior": "\"Output styles apply to the main conversation and to a fork, which inherits the parent's full conversation and system prompt. Other subagents run their own system prompt, so styles don't change how they respond.\"",
+    "limits": "A style set in the top-level session does not propagate to ordinary (non-fork) subagent invocations.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Output style vs. CLAUDE.md, skills, hooks, subagents, --append-system-prompt (comparison table)",
+    "behavior": "\"For what Claude should know about your project, use CLAUDE.md files... it holds what Claude should know about the codebase, and it stays loaded whichever style you pick.\" Skill: \"Claude loads it only when you invoke it or the task matches, so it doesn't shape unrelated responses\" — use for instructions for one kind of task. Hook: \"Claude Code runs a hook itself at a lifecycle event, so it doesn't depend on Claude following an instruction\" — use for anything that must happen without exception. Subagent: \"It runs in a separate context with its own system prompt and returns a summary to your conversation.\" `--append-system-prompt`: appends without removing anything.",
+    "limits": "The docs define no native \"rules\" feature distinct from CLAUDE.md/hooks/skills; no rules mechanism is documented on either source page.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Token/cost effect of output styles",
+    "behavior": "\"A style's instructions add input tokens, though prompt caching reduces this cost after the first request in a session. The built-in Explanatory and Learning styles produce longer responses than Default by design, which increases output tokens. The Concise style does the opposite by instructing Claude to keep responses short by default. For custom styles, output token usage depends on what your instructions tell Claude to produce.\"",
+    "limits": "Not quantified; no numeric token overhead given.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "Prose-formatting guidance (Concise style)",
+    "behavior": "\"In the Concise style, the first sentence of a response states what happened or what the answer is. Claude leaves out the lead-in, the step-by-step narration, and the closing recap, and answers a simple question in one to three sentences. It does the engineering work as thoroughly as in the Default style.\" Exceptions preserved in full: explicit requests for explanation/detail, and safety-critical content (errors, failing tests, security warnings, destructive-action confirmations).",
+    "limits": "Applies only when the Concise style is active; Default style carries no such prose-length instruction documented here.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles"
+   },
+   {
+    "feature": "System prompt is not published; standing-instruction alternatives",
+    "behavior": "From settings.md: \"Claude Code's system prompt isn't published. To give Claude standing instructions, use CLAUDE.md files or the `--append-system-prompt` flag.\"",
+    "limits": "No way to read the literal default system prompt text via docs; can only infer behavior from these feature descriptions.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/settings"
+   },
+   {
+    "feature": "Settings precedence governing which `outputStyle` value applies",
+    "behavior": "From settings.md's precedence ordering (highest to lowest): 1) Managed settings (managed-settings.json / MDM / claude.ai console), 2) Command line (`claude --settings`), 3) Project local (`.claude/settings.local.json`), 4) Shared project (`.claude/settings.json`), 5) User (`~/.claude/settings.json`). A key set at a higher level overrides the same key set lower down; this governs `outputStyle` the same as any other setting.",
+    "limits": "In a cloud/multi-repo session, user and project-local settings files are not read at all, and a multi-repository session reads only `enabledPlugins`/`extraKnownMarketplaces` from each repo's shared settings, not other keys — implying `outputStyle` set only in project-local or user scope would not reach such a session.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/settings"
+   }
+  ],
+  "unreachable": [
+   "None: both requested pages (output-styles.md, settings.md) were fetched successfully via the .md markdown rendering; no 404s encountered.",
+   "Not fetched (out of scope per task instructions, which named only these two sources): settings-reference.md (full outputStyle key table), memory.md (CLAUDE.md mechanics), sub-agents.md (subagent system-prompt/fork details), hooks-guide.md — these were referenced by name/link within output-styles.md and settings.md but not independently visited."
+  ]
+ },
+ {
+  "area": "Claude Agent SDK — agents/subagents, model & effort selection, permissions, hooks, settings sources, system prompts, structured outputs, cost controls (docs as of 2026-09-28)",
+  "facts": [
+   {
+    "feature": "Subagents defined programmatically (AgentDefinition)",
+    "behavior": "\"Define subagents directly in your code using the `agents` parameter. Claude invokes subagents through the `Agent` tool.\" Fields: description (required), prompt (required), tools, disallowedTools, model, skills, memory, mcpServers, initialPrompt, maxTurns, background, omitClaudeMd, effort, permissionMode.",
+    "limits": "\"Programmatically defined agents take precedence over filesystem-based agents with the same name.\" `omitClaudeMd` exists in TypeScript only (v0.3.271+); the Python `AgentDefinition` lacks it.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Subagents defined as files (.claude/agents/)",
+    "behavior": "\"You can also define subagents as markdown files in `.claude/agents/` directories... Claude Code watches `~/.claude/agents/` and `.claude/agents/` and picks up a new or edited agent file within a few seconds, with no restart needed.\"",
+    "limits": "The watcher only covers directories that existed when the session started (a brand-new directory needs a restart); invalid YAML frontmatter or a duplicate `name` prevents loading; `--disable-slash-commands` sessions never watch and always need a restart; files under directories added via `add_dirs`/`--add-dir` are loaded but not watched.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Built-in general-purpose subagent",
+    "behavior": "\"Claude can invoke the built-in `general-purpose` subagent at any time via the Agent tool without you defining anything.\"",
+    "limits": "Setting `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1` removes this default; a call without `subagent_type` then fails with `subagent_type is required`.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Model selection per subagent",
+    "behavior": "`model` field: \"Model override for this agent. Accepts an alias such as `'fable'`, `'opus'`, `'sonnet'`, `'haiku'`, `'inherit'`, or a full model ID. `'inherit'` uses the main model. When you omit it, Claude Code picks the model in the subagent model order.\"",
+    "limits": "The default \"subagent model order\" itself is documented on a linked, non-assigned page (/docs/en/sub-agents#choose-a-model), not fetched here.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Reasoning effort selection per subagent",
+    "behavior": "`effort` field: \"`'low' | 'medium' | 'high' | 'xhigh' | 'max' | number` — Reasoning effort level for this agent.\"",
+    "limits": "No further scope detail (e.g. numeric-value semantics) given on the fetched pages.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Tool allow-listing per subagent (`tools`)",
+    "behavior": "\"Omit `tools`: the subagent gets every tool available to subagents. List tools: the subagent gets only those.\" \"A tool you leave out isn't in the subagent's session at all: Claude works without it, with no permission prompt or error.\"",
+    "limits": "Restriction is at the whole-tool level (which tools exist), not argument-level filtering.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Tool deny-listing per subagent (`disallowedTools`) incl. MCP server patterns",
+    "behavior": "\"Array of tool names to remove from the agent's tool set. MCP server-level patterns are also accepted: `mcp__server` or `mcp__server__*` removes every tool from that server, and `mcp__*` removes every MCP tool from any server.\"",
+    "limits": "Server-segment wildcards apply to a whole configured server, not to individual call arguments.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Subagent permission-mode inheritance",
+    "behavior": "\"A subagent runs in the parent session's permission mode unless you set `permissionMode` on its AgentDefinition and the parent session is in `default`, `dontAsk`, or `plan` mode. Even then, Claude Code never applies a `bypassPermissions` value [via override]. A subagent runs in `bypassPermissions` mode only when the parent session itself does.\"",
+    "limits": "The bypassPermissions-inheritance exception requires Claude Code v2.1.267+. \"Subagents may have different system prompts and less constrained behavior than your main agent, so inheriting `bypassPermissions` grants them full, autonomous system access\" (critical-path actions still excepted).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "What a (non-fork) subagent inherits from its parent",
+    "behavior": "Receives: its own system prompt + the Agent tool's prompt string; project CLAUDE.md (via settingSources) unless `omitClaudeMd` is set; tool definitions. Does not receive: the parent's conversation history or tool results; preloaded skill content unless listed in `AgentDefinition.skills`; the parent's system prompt.",
+    "limits": "A fork subagent instead inherits the parent conversation and does not get this fresh-context treatment.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Subagent output scanning (instruction-injection defense)",
+    "behavior": "\"Claude Code scans the final message for instruction-shaped patterns before the parent reads it\": neutralizes control-tag imitation (e.g. a fake `<\\system-reminder>`) by inserting a backslash after `<`; keeps permission-configuration mentions (e.g. `bypassPermissions`) as written; marks turn markers (`Human:`/`Assistant:`) with a backslash before the colon; prepends a `[harness: ...]` marker line for the first two cases.",
+    "limits": "Requires v2.1.210+. \"Those are the only modifications the scan makes: it never removes or rewords the subagent's text\" otherwise.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Subagent depth, concurrency, and spend caps",
+    "behavior": "`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` (default 3 layers), `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20 at once), and `maxBudgetUsd`/`max_budget_usd` (default: no limit; counts subagent spend too). At the depth limit a subagent just does the work itself; at the concurrency limit Claude Code \"refuses to spawn another subagent, returning `Concurrent subagent limit reached`\"; at the spend cap it \"refuses to spawn more subagents ... stops background subagents that are still running, and ends the query with the `error_max_budget_usd` result subtype.\"",
+    "limits": "Requires TypeScript SDK v0.3.219+ / Python SDK v0.2.127+ (bundling Claude Code v2.1.219+) for full behavior. \"Sessions with ultracode active are never refused\" by the concurrency cap. Spend figure is an estimate (\"the estimated cost\"), not a hard metered stop mid-request.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Per-agent turn cap (`maxTurns`)",
+    "behavior": "\"Maximum number of agentic turns before the agent stops. When the agent reaches the limit, Claude Code returns its output marked as partial, and you can resume the agent to continue.\"",
+    "limits": "The partial-output marking requires Claude Code v2.1.246+.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents"
+   },
+   {
+    "feature": "Six-step permission evaluation order",
+    "behavior": "Steps in order: (1) Hooks — \"A hook can deny the call outright or pass it on... does not skip the deny and ask rules below\"; (2) Deny rules; (3) Ask rules (fall through to `canUseTool`, even in bypassPermissions); (4) Permission mode; (5) Allow rules; (6) `canUseTool` callback.",
+    "limits": "A `PreToolUse` hook `allow` \"also can't approve an `rm` or `rmdir` removal targeting a critical path.\"",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "Deny rules override bypassPermissions",
+    "behavior": "\"If a deny rule matches, the tool is blocked, even in `bypassPermissions` mode. Bare-name deny rules like `Bash` remove the tool from Claude's context before this evaluation begins, so only scoped rules like `Bash(rm *)` are checked at this step.\"",
+    "limits": "None stated beyond this scoping distinction.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "Allow/deny rule granularity for MCP tools (no argument-level visibility)",
+    "behavior": "\"Allow rules accept tool-name globs only after a literal `mcp__<server>__` prefix. The server segment must be glob-free... An unanchored entry like `allowed_tools=[\"*\"]` or `allowed_tools=[\"mcp__*\"]` is ignored with a startup warning and does not auto-approve anything.\" Path/pattern scoping (`Edit(path)`, `Bash(rm *)`) is documented only for built-in Read/Edit/Bash-family tools.",
+    "limits": "MCP tool rules match by tool name or whole-server name only; the docs give no mechanism for an allow/deny rule to inspect an MCP tool call's arguments. Tools flagged `_meta[\"anthropic/requiresUserInteraction\"]` or org-set-to-`ask` connector tools always fall through to `canUseTool`/hooks regardless of allow rules (denied outright in `dontAsk` mode).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "Path-scoped Read/Edit rules and anchor forms",
+    "behavior": "\"Scoped rules for Read and Edit take a path pattern. `Edit(path)` rules govern all built-in tools that write files, including Write and NotebookEdit; a `Write(path)` rule is never matched.\" `//path` anchors to the filesystem root; a single leading slash anchors to the rule's source (the session's working directory for `allowed_tools`/`disallowed_tools`).",
+    "limits": "This argument-level (path) scoping exists only for the Read/Edit/Write/NotebookEdit family and Bash command patterns, not for arbitrary/MCP tools.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "Permission modes",
+    "behavior": "`default` (no mode-based auto-approvals); `dontAsk` (\"Any call that would otherwise prompt is denied... `canUseTool` is never called\"); `acceptEdits` (auto-approves file edits and filesystem ops like mkdir/rm/mv/cp/sed inside working dirs); `bypassPermissions` (\"Tools run without permission prompts, except for the actions no mode auto-approves\"); `plan` (\"Claude explores and plans without editing your source files; file edits are never auto-approved\"); `auto` (\"A model classifier approves or denies permission prompts\").",
+    "limits": "Each mode still excepts: `rm`/`rmdir` on critical paths, tools requiring user interaction, and org-`ask` connector tools, per mode-specific rules.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "bypassPermissions safety rails",
+    "behavior": "\"On Linux and macOS, Claude Code refuses to start in this mode as root or under `sudo` outside a recognized sandbox, and the query fails before the first turn.\" \"`allowed_tools` does not constrain this mode... Deny rules, explicit `ask` rules, and hooks are evaluated before the mode check and can still block a tool.\"",
+    "limits": "Connector tools set to `ask`, tools requiring user interaction, and critical-path `rm`/`rmdir` still fall through to `canUseTool` even in this mode; hooks still execute and can still block.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "canUseTool-callback shadowing warning",
+    "behavior": "\"If you pass a `canUseTool` callback in a configuration where the TypeScript SDK expects the evaluation order to auto-approve calls before the callback is consulted, the SDK emits a Node.js process warning once... code is `CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`.\" Triggered by `bypassPermissions` mode or bare `allowedTools` entries like `\"Read\"`.",
+    "limits": "TypeScript SDK only; warning is informational and does not itself block anything; allow rules from settings files aren't visible to this check.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "Hook events available (headless-compatible)",
+    "behavior": "Table of 30+ events (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch, UserPromptSubmit, UserPromptExpansion, MessageDisplay, Stop, StopFailure, SubagentStart, SubagentStop, PreCompact, PostCompact, PreModelSwitch, PostModelSwitch, PermissionRequest, PermissionDenied, SessionStart, SessionEnd, Notification, Setup, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, InstructionsLoaded, WorktreeCreate, WorktreeRemove, CwdChanged, FileChanged, DirectoryAdded), each marked Python/TypeScript availability.",
+    "limits": "Many events (e.g. `SessionStart`, `SessionEnd`, `PostToolBatch`, `PreModelSwitch`) are TypeScript-only; Python's `HookEvent` type omits `SessionStart`/`SessionEnd` as SDK callbacks (available there only as shell-command hooks via settings.json).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks"
+   },
+   {
+    "feature": "Hook loading gated by settingSources",
+    "behavior": "\"The SDK checks for hooks registered for that event type. This includes callback hooks you pass in `options.hooks` and shell command hooks from settings files when the corresponding `settingSources`/`setting_sources` entry is enabled, which it is for default `query()` options.\"",
+    "limits": "If you set `settingSources`/`setting_sources` explicitly and omit `project`/`user`, shell-command hooks defined in `.claude/settings.json` will not load (only your `options.hooks` callbacks will).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks"
+   },
+   {
+    "feature": "Hook decision priority when multiple hooks fire",
+    "behavior": "\"When multiple hooks or permission rules apply, `deny` takes priority over `defer`, which takes priority over `ask`, which takes priority over `allow`. If any hook returns `deny`, the operation is blocked regardless of other hooks.\" Matching hooks for one event \"run in parallel.\"",
+    "limits": "Completion order is non-deterministic, so hooks must not depend on another hook having already run.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks"
+   },
+   {
+    "feature": "Hook timeouts fail closed without hanging (headless-safe)",
+    "behavior": "Default timeouts: 600s for most events, 30s for `UserPromptSubmit`/`PreModelSwitch`/`PostModelSwitch`, 10s for `MessageDisplay`, ~1.5s for `SessionEnd`. On `PreToolUse` timeout: \"Claude Code doesn't run the tool call, Claude receives a tool result stating the hook didn't respond before its timeout, and the turn continues.\" On `UserPromptSubmit` timeout: \"Claude Code blocks the prompt with a message naming the hook and the timeout... Claude Code never lets a timed-out prompt through unscreened.\"",
+    "limits": "Behavior differs per event (e.g. `Stop`/`SubagentStop` timeout counts as an implicit allow as of v2.1.273+); pre-v2.1.210 `PreToolUse` timeouts were reported as a user rejection, which stalled unattended sessions.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks"
+   },
+   {
+    "feature": "InstructionsLoaded hook for auditing CLAUDE.md/rules loading",
+    "behavior": "`InstructionsLoaded` fires \"A `CLAUDE.md` or rules file is loaded into context,\" example use case \"Audit which instruction files load.\"",
+    "limits": "TypeScript SDK only (not listed for Python).",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks"
+   },
+   {
+    "feature": "CLAUDE.md loading gated by settingSources",
+    "behavior": "\"The SDK reads CLAUDE.md when the matching setting source is enabled: `'project'` loads `CLAUDE.md` or `.claude/CLAUDE.md` from the working directory, and `'user'` loads `~/.claude/CLAUDE.md`. Default `query()` options enable both sources, so CLAUDE.md loads automatically.\" \"CLAUDE.md is persistent across all sessions in a project, shared with your team through git.\" \"It is not loaded if you pass an empty `settingSources` array.\"",
+    "limits": "If you set `settingSources`/`setting_sources` explicitly, you must include the levels you want; there is no separate switch just for CLAUDE.md versus other project settings within a source.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts"
+   },
+   {
+    "feature": "Declarative permission rules load from settings.json only when 'project' source is enabled",
+    "behavior": "\"You can also configure allow, deny, and ask rules declaratively in `.claude/settings.json`. These rules are read when the `project` setting source is enabled, which it is for default `query()` options.\"",
+    "limits": "If `setting_sources`/`settingSources` is set explicitly without `\"project\"`, settings.json permission rules do not apply.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions"
+   },
+   {
+    "feature": "Three system-prompt starting points",
+    "behavior": "\"Minimal default\": when `systemPrompt`/`system_prompt` is unset, the SDK \"uses a minimal prompt that covers tool calling but omits the rest of the `claude_code` preset's content, including its security and safety instructions and its context about the working directory and environment. This differs from `claude -p`, which uses the Claude Code system prompt by default.\" \"`claude_code` preset\": the CLI's system prompt, settable with optional `append`. \"Custom string\": \"The SDK sends only what you provide,\" and the comparison table marks default tools/built-in safety as \"Lost (unless included).\"",
+    "limits": "A custom prompt drops built-in safety instructions and environment context unless the developer re-adds them.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts"
+   },
+   {
+    "feature": "CLAUDE.md is injected into the conversation, not the system prompt",
+    "behavior": "\"The SDK reads CLAUDE.md and injects its content into the conversation as project context, so it shapes behavior alongside whichever system prompt you choose.\" \"CLAUDE.md doesn't change the system prompt itself: the SDK injects its content into the conversation.\" \"Claude Code introduces your CLAUDE.md files with a line telling Claude that the instructions override default behavior.\"",
+    "limits": "Because it's a conversation injection rather than a system-prompt edit, it works identically regardless of which `systemPrompt` option is chosen, but also means it isn't part of the cached system-prompt block.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts"
+   },
+   {
+    "feature": "Output styles replace (not just append) the coding persona by default",
+    "behavior": "\"Output styles are saved sets of instructions that change Claude's role, tone, and output format.\" \"A custom output style leaves the `claude_code` preset's software engineering instructions out and uses your own. To keep them and layer your instructions on top, set `keep-coding-instructions: true` in the frontmatter.\" The four-way comparison table lists Output Styles' \"Customization level\" as \"Replace or extend default,\" versus `append`'s \"Additions only.\"",
+    "limits": "`keep-coding-instructions` \"has no effect in a session on the shorter system prompt,\" which is pinned on/off via `CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT`. Output styles are loaded only when `settingSources`/`setting_sources` includes `'user'` or `'project'`.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts"
+   },
+   {
+    "feature": "Structured outputs via JSON Schema (outputFormat)",
+    "behavior": "\"Define a JSON Schema for the structure you need, and the SDK validates the output against it, re-prompting on mismatch. If validation does not succeed within the retry limit, the result is an error instead of structured data.\" Configured via `outputFormat`/`output_format`: `{type: \"json_schema\", schema}`; result carries a `structured_output` field.",
+    "limits": "\"The SDK validates schemas with JSON Schema draft-07, so schemas that declare a newer version are rejected\" (Zod's default draft 2020-12 must be converted with `target: \"draft-7\"`). \"The `format` keyword... is accepted as an annotation and isn't enforced by the SDK's validator.\" \"A schema that isn't valid JSON Schema fails the run at startup with an error naming the problem\" (as of v2.1.205+; earlier versions silently ignored an invalid schema and returned unstructured text).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/structured-outputs"
+   },
+   {
+    "feature": "Structured-output failure subtypes",
+    "behavior": "Result subtypes: `success` (validated), `error_max_structured_output_retries` (\"No valid output remained after multiple attempts (validation failures, or a model-fallback retraction with no successful retry)\"). \"A result can also end with subtype `success` but no `structured_output` value... Treat that case as a failure as well.\"",
+    "limits": "Docs explicitly warn callers must check both `subtype === 'success'` AND presence of `structured_output`, since success alone doesn't guarantee data.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/structured-outputs"
+   }
+  ],
+  "unreachable": []
+ },
+ {
+  "area": "The `claude mcp` and `claude config` CLI surface: every subcommand and flag, the scopes each writes to (local, project, user), what file each writes, how project-scoped servers are approved, and how these interact with settings permissions and allow/deny rules. (Claude Code v2.1.283, as of 2026-09-28.)",
+  "facts": [
+   {
+    "feature": "`claude config` command family does not exist in this build",
+    "behavior": "Verified empirically: `claude config --help` prints the generic top-level `claude --help` usage (no config-specific help), and `claude config` with no args starts an ordinary interactive session that treats \"config\" as a chat prompt (observed response: \"Did you mean the `/config` command? It's built into Claude Code, so I can't open it for you. Type `/config` with the slash...\"). The `claude --help` Commands list (agents, attach, auth, auto-mode, doctor, gateway, import, install, logs, mcp, plugin|plugins, project, respawn, rm, setup-token, stop|kill, ultrareview, update|upgrade) has no `config` entry. The CLI reference docs likewise don't document a `claude config` command or its `get/set/add/remove/list` subcommands.",
+    "limits": "There is no non-interactive `claude config get/set/add/remove/list` command in this version. Configuration is done via the in-session `/config` slash command (writes mostly to `~/.claude/settings.json`, a few options like \"Show tips\" to `.claude/settings.local.json`, global-config keys to `~/.claude.json`), by hand-editing settings files, via `--settings <file-or-json>` for one session, or via `claude mcp` for MCP servers specifically.",
+    "enforcement": "none",
+    "citation": "`claude config --help` / `claude config` (run directly); https://code.claude.com/docs/en/cli-reference"
+   },
+   {
+    "feature": "`claude mcp add <name> <commandOrUrl> [args...]`",
+    "behavior": "Adds an MCP server to Claude Code. Flags: `-s, --scope {local|project|user}` (default \"local\"); `-t, --transport {http|sse|stdio|ws}` (defaults to stdio if unspecified, but docs say \"Transport default: None—must specify --transport\"); `-e/--env KEY=value` (repeatable); `-H/--header \"Key: value\"` (HTTP/SSE only); `--client-id`, `--client-secret` (prompts, masked), `--callback-port` for OAuth. Stdio servers require a `--` separator before the command/args, e.g. `claude mcp add myserver -- my-command --flag`.",
+    "limits": "Reserved names (`workspace`, `claude-in-chrome`, `computer-use`, `Claude Preview`) are rejected with an error at add time. `--env` must not immediately precede the server name or the CLI misparses it as another KEY=value pair.",
+    "enforcement": "blocks",
+    "citation": "`claude mcp add --help`; https://code.claude.com/docs/en/mcp"
+   },
+   {
+    "feature": "`claude mcp add-json <name> <json>`",
+    "behavior": "Adds an MCP server (stdio, SSE, HTTP, or WebSocket) from a JSON string in one shot, e.g. `claude mcp add-json weather-api '{\"type\":\"http\",\"url\":\"...\"}'`. Takes `-s/--scope` (default local) and `--client-secret`. WebSocket servers (`\"type\":\"ws\"`) can only be added this way; there is no `-t ws` flag on `claude mcp add`.",
+    "limits": "None documented beyond the scope flag.",
+    "enforcement": "automatic",
+    "citation": "`claude mcp add-json --help`; https://code.claude.com/docs/en/mcp"
+   },
+   {
+    "feature": "`claude mcp list` / `claude mcp get <name>`",
+    "behavior": "List configured servers with health status, or get details for one. Status indicators: `✔ Connected`, `! Needs authentication`, `✘ Failed to connect` (shows HTTP status/error), `⏸ Pending approval`, `✘ Rejected` (blocked by `disabledMcpjsonServers`), `⊘ Disabled for this project` (toggled off via `/mcp`), and `cached <n>h ago · connects on first use` (v2.1.221+, server connects lazily on first tool call). Docs' own words: \"Unapproved .mcp.json servers are shown as ⏸ Pending approval and not connected to; approved servers are health-checked unless disabled for this project.\"",
+    "limits": "As of v2.1.196, both commands read `.mcp.json` approvals only from settings files not checked into the repository, until the workspace is trusted; \"A cloned repository can't approve its own servers.\"",
+    "enforcement": "advisory",
+    "citation": "`claude mcp list --help`; https://code.claude.com/docs/en/mcp"
+   },
+   {
+    "feature": "`claude mcp remove <name>`",
+    "behavior": "Removes a server. `-s/--scope <scope>` - \"if not specified, removes from whichever scope it exists in.\"",
+    "limits": "None documented.",
+    "enforcement": "automatic",
+    "citation": "`claude mcp remove --help`"
+   },
+   {
+    "feature": "Scope: local (default) and user, both write `~/.claude.json`",
+    "behavior": "Local scope loads only in the current project, is private, and is stored as a nested `projects[\"<path>\"].mcpServers` entry inside `~/.claude.json`. User scope loads in every project on the machine, is also private, and is stored in the same `~/.claude.json` file (top-level, not per-project). `~/.claude.json` is described elsewhere as \"a fifth file... it holds your sign-in session, MCP server configurations, per-project state such as trust decisions, and the global config keys that /config writes for you.\"",
+    "limits": "Local/user MCP config is never committed to version control and is per-machine.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp; https://code.claude.com/docs/en/settings"
+   },
+   {
+    "feature": "Scope: project writes `.mcp.json` at the project root",
+    "behavior": "\"Loads in: Current project only. Shared: Yes, via version control. Stored in: .mcp.json at project root. Use case: Team collaboration—commit to git so everyone gets the same MCP tools.\" Example: `claude mcp add --transport http shared-server --scope project https://example.com/mcp`.",
+    "limits": "Requires the server's file to be committed and the workspace to be trusted before it connects (see approval-flow fact below).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp"
+   },
+   {
+    "feature": "Project-scoped `.mcp.json` server approval flow (workspace trust)",
+    "behavior": "Docs' own words: \"As of v2.1.196, claude mcp list and claude mcp get read .mcp.json approvals only from settings files that aren't checked into the repository until you trust the workspace by running claude in it and accepting the workspace trust dialog. A cloned repository can't approve its own servers: enableAllProjectMcpServers or enabledMcpjsonServers committed to the project's .claude/settings.json is ignored in an untrusted folder, and the server stays at ⏸ Pending approval instead of being connected and health-checked.\" Interactive-session approval is stored in `.claude/settings.local.json` (untracked). `disabledMcpjsonServers` in any settings file still rejects the server regardless of trust state.",
+    "limits": "In non-interactive mode (`claude -p`, Agent SDK), the trust dialog never appears: per the permissions doc's own table, `.mcp.json` servers are \"Connected without asking, approved or not. The SDK loads them only when settingSources includes project settings. claude mcp list in the same folder still reports such a server as pending.\" bypassPermissions mode with `skipDangerousModePermissionPrompt` also skips approval.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp#project-server-approvals-and-workspace-trust; https://code.claude.com/docs/en/permissions"
+   },
+   {
+    "feature": "`claude mcp reset-project-choices`",
+    "behavior": "\"Reset all approved and rejected project-scoped (.mcp.json) servers within this project.\"",
+    "limits": "Project-scope only, not local/user servers.",
+    "enforcement": "automatic",
+    "citation": "`claude mcp --help`"
+   },
+   {
+    "feature": "MCP server scope/source precedence when the same server name is defined in multiple places",
+    "behavior": "Claude Code connects once using the highest-precedence source; \"Entire server entry from that source is used; fields are NOT merged.\" Order (highest first): 1. Local scope, 2. Project scope, 3. User scope, 4. Plugin-provided servers, 5. claude.ai connectors, 6. Organization-provided servers (managed MCP) — \"ranks above all others (v2.1.259+)\". Duplicates are matched by name across scopes 1-3, and by endpoint (URL or command) for plugins/connectors.",
+    "limits": "No field-level merge across scopes; a lower-precedence definition's fields (e.g. extra headers) are entirely discarded, not merged in.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp"
+   },
+   {
+    "feature": "MCP permission-rule syntax: `mcp__server`, `mcp__server__tool`, `mcp__server__*`",
+    "behavior": "Docs' own words: \"MCP rules use the server name as configured in Claude Code, optionally followed by the name of a tool from that server.\" `mcp__puppeteer` matches any tool from that server; `mcp__puppeteer__*` matches all its tools via wildcard; `mcp__puppeteer__puppeteer_navigate` matches one exact tool. Deny/ask rules additionally accept a fully unanchored glob: `\"mcp__*\"` matches every MCP tool across all servers (a documented way to deny all MCP tools in one rule).",
+    "limits": "Allow rules accept a glob only after a literal, glob-free `mcp__<server>__` prefix — \"An unanchored allow glob such as \\\"*\\\", \\\"B*\\\", or \\\"mcp__*\\\" is skipped with a warning and doesn't auto-approve anything.\" A deny/ask rule naming an unknown tool produces a startup warning (typo catcher), except names containing `_`/`*`.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions#mcp"
+   },
+   {
+    "feature": "Permission rules cannot see inside an MCP tool call's parameters via settings.json",
+    "behavior": "Docs' own words: \"To match a parameter on an MCP tool, pass a deny rule with --disallowedTools. When Claude Code loads a settings file, it skips any mcp__ rule that has parentheses. Claude Code lists the skipped rule in the invalid-settings dialog when an interactive session starts, and in claude doctor output.\" This is a direct answer to whether a permission rule can see inside an MCP tool call: settings-file rules can only match a whole server or a whole named tool, not a specific argument value — parameterized MCP matching (`mcp__server__tool(param:value)`) is rejected/skipped from `permissions.allow/deny/ask` and is only reachable via the `--disallowedTools` CLI flag for that one session.",
+    "limits": "Built-in tools (Bash, Read, Agent, etc.) do support top-level parameter matching like `Agent(model:opus)`; MCP tools are explicitly excluded from that settings-file mechanism. The skip is silent apart from a startup warning, not a hard error.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/permissions#match-by-input-parameter"
+   },
+   {
+    "feature": "MCP tools marked `requiresUserInteraction` always prompt, regardless of allow rules, hooks, or the permission-prompt tool",
+    "behavior": "Docs' own words (permissions page): \"MCP tools marked requiresUserInteraction also still prompt when a hook returns \\\"allow\\\"...\" And (CLI reference, on `--permission-prompt-tool`): \"The prompt tool can't approve an MCP tool marked as requiring user interaction: Claude Code converts an allow result for one to a deny.\" In `dontAsk` mode: \"AskUserQuestion, MCP tools marked requiresUserInteraction, and connector tools your organization set to ask... are denied even if you've allowed them.\"",
+    "limits": "No allow rule, PreToolUse hook returning \"allow\", or `--permission-prompt-tool` response can bypass this flag; in modes that never prompt (`dontAsk`) the call is denied instead of allowed.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions; https://code.claude.com/docs/en/cli-reference (--permission-prompt-tool)"
+   },
+   {
+    "feature": "Deny/ask permission rules always win over PreToolUse hooks and allow rules",
+    "behavior": "Docs' own words: \"Hook decisions don't bypass permission rules. Claude Code evaluates deny and ask rules regardless of what a PreToolUse hook returns: a matching deny rule blocks the call, and a matching ask rule still prompts even when the hook returned 'allow' or 'ask'.\" Also: \"If a tool is denied at any level, no other level can allow it... deny rules from any scope are evaluated before allow rules,\" and this applies identically to `mcp__` rules as to built-in tools.",
+    "limits": "A blocking hook (exit code 2) does take precedence over allow rules (stops the call before permission rules are evaluated), but nothing overrides an existing deny/ask rule.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks"
+   },
+   {
+    "feature": "`--strict-mcp-config` CLI flag",
+    "behavior": "\"Only use MCP servers from --mcp-config, ignoring all other MCP configurations.\" Documented as one of the ways to block project `.mcp.json` servers: \"Use --strict-mcp-config flag → only loads servers passed with --mcp-config.\"",
+    "limits": "Session-scoped only (a launch flag), not a persisted setting.",
+    "enforcement": "blocks",
+    "citation": "`claude --help`; https://code.claude.com/docs/en/mcp"
+   },
+   {
+    "feature": "`--mcp-config <configs...>` CLI flag",
+    "behavior": "\"Load MCP servers from JSON files or strings (space-separated). When you pass this flag with -p, Claude Code waits for still-pending servers to connect before running the first turn, up to the MCP_TIMEOUT startup timeout, 30 seconds by default; a server with a cached tool list skips the wait and connects on first use. The wait requires Claude Code v2.1.221 or later.\"",
+    "limits": "Wait-for-connect behavior only applies with `-p`; version-gated (v2.1.221+) for the cached-tool-list skip.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/cli-reference"
+   },
+   {
+    "feature": "`claude mcp login <name>` / `claude mcp logout <name>`",
+    "behavior": "\"Run a configured MCP server's OAuth flow without opening the interactive /mcp panel. Works for HTTP, SSE, and claude.ai connector servers. Add --no-browser over SSH to print the authorization URL instead of opening a browser, then paste the redirect URL back at the prompt.\" `logout` clears stored OAuth credentials for that server.",
+    "limits": "OAuth login only applies to HTTP/SSE transports (and connectors); stdio servers use a `headersHelper` script instead, not OAuth.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/cli-reference; `claude mcp --help`"
+   },
+   {
+    "feature": "`headersHelper` custom-auth script for `.mcp.json` HTTP/SSE servers, gated by workspace trust",
+    "behavior": "A per-server `headersHelper` shell command must print a JSON object of header key/values to stdout; runs fresh on every connection (no caching), with a 10-second timeout, receiving `CLAUDE_CODE_MCP_SERVER_NAME`, `CLAUDE_CODE_MCP_SERVER_URL`, and `CLAUDE_PLUGIN_ROOT` (if from a plugin) as env vars. For project `.mcp.json` / local-scope servers it \"runs only after accepting the workspace trust dialog... Until trust accepted: server connects with static headers only.\" In `-p`/SDK sessions where the folder is never trusted: \"Not run. Claude Code connects the server with its static headers alone and prints a headersHelper not run line per server to stderr.\" A repository- or plugin-supplied `headersHelper` also runs without the caller's credential-looking environment variables (names containing TOKEN/SECRET/PASSWORD/KEY/AUTH, plus a fixed list).",
+    "limits": "Credential-env exceptions (helper does get the caller's credential vars): user/local-scope servers, managed MCP servers, claude.ai connectors, servers from the SDK or `--mcp-config`, and inline servers in agent files from `~/.claude/agents/`, managed settings, or `--agents`.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp; https://code.claude.com/docs/en/permissions#what-runs-before-you-trust-a-folder"
+   },
+   {
+    "feature": "`.mcp.json`/`~/.claude.json` env-var expansion, with credential-name blocking in remote URLs/headers",
+    "behavior": "Supports `${VAR}` and `${VAR:-default}` in `command`, `args`, `env`, `url`, and `headers`. For remote server `url`/`headers` specifically, a fixed set of credential-like variable names (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `AWS_BEARER_TOKEN_BEDROCK`, `HTTPS_PROXY`, `NPM_TOKEN`) \"read as empty string instead of expanding,\" so e.g. `\"Authorization\": \"Bearer ${ANTHROPIC_API_KEY}\"` sends `Bearer ` (empty) to the remote server, preventing credential leakage; the documented workaround is copying the value into your own variable name first. An unset variable with no `:-default` still loads the config with a warning surfaced in `claude mcp list`/`/mcp`, rather than failing.",
+    "limits": "The credential-name blocking applies only to remote (`url`/`headers`) fields, not to `command`/`args`/`env` for stdio servers.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp#environment-variable-expansion"
+   },
+   {
+    "feature": "`disabledMcpjsonServers`, `enabledMcpjsonServers`, `enableAllProjectMcpServers` settings keys",
+    "behavior": "Per the settings reference: `enableAllProjectMcpServers` — \"Approve every server in project .mcp.json files without a prompt\"; `enabledMcpjsonServers` — \"Approve specific servers from a project's .mcp.json\"; `disabledMcpjsonServers` — \"Reject specific servers from a project's .mcp.json.\" All three are listed with Scope \"Any file\" (settable from user, project, local, or managed settings; combines/merges as ordinary list keys under normal settings precedence). `disabledMcpjsonServers` is the one that works unconditionally in every session type, including headless: \"Add a disabledMcpjsonServers entry to reject a .mcp.json server by name in every session type.\"",
+    "limits": "The two \"approve\" keys (`enableAllProjectMcpServers`, `enabledMcpjsonServers`) are ignored when committed to an untracked/untrusted project file — they don't bypass workspace trust.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/settings-reference#disabledmcpjsonservers; https://code.claude.com/docs/en/mcp#project-server-approvals-and-workspace-trust"
+   },
+   {
+    "feature": "`disableClaudeAiConnectors` setting",
+    "behavior": "\"Claude Code applies disableClaudeAiConnectors only to the connectors it fetches itself, not to the connectors a cloud host or the desktop app delivers. To turn off the connectors it fetches, set the setting to true in any settings scope... This setting uses any-source-true semantics: true in any settings source takes precedence.\" It is also one of the documented security-sensitive exceptions to managed-settings precedence: a `true` set anywhere (even user settings) is honored even if a managed source sets `false`.",
+    "limits": "Does not reach connectors delivered by a cloud host or the desktop app — only the ones Claude Code fetches itself.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp#disable-claude-ai-connectors; https://code.claude.com/docs/en/settings#exceptions-to-managed-settings-precedence"
+   },
+   {
+    "feature": "Managed (admin-tier) MCP allow/deny lists: `allowedMcpServers`, `deniedMcpServers`, `allowManagedMcpServersOnly`, `managedMcpServers`",
+    "behavior": "From the managed-settings docs (admin tier, not the per-project keys above): `allowManagedMcpServersOnly` — \"a true in any admin source turns the MCP allowlist lock on. While the lock is on, the managed allowedMcpServers list comes from the highest-ranked admin source that sets one... If no admin source sets a list, every server that passes the denylist loads.\" `deniedMcpServers` is a cross-source key: \"an entry... in any admin source applies\" (any-source-true / union semantics), and under `managedSourcesBehavior: merge` it's explicitly a list-type key that \"Combines the entries from every source.\" `managedMcpServers` (\"Provided MCP servers\") combines server names from every admin source, with the higher-ranked source's whole entry winning on name collision.",
+    "limits": "These are organization/admin-tier controls (managed settings, MDM, server-managed settings), distinct from the per-user `enabledMcpjsonServers`/`disabledMcpjsonServers` keys; `allowManagedMcpServersOnly` and the cross-source `deniedMcpServers`/`disableClaudeAiConnectors` behavior require Claude Code v2.1.273 or later.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/managed-settings#keys-read-from-every-admin-source"
+   },
+   {
+    "feature": "MCP tool-call timeouts and output-size limits",
+    "behavior": "`MCP_TIMEOUT` — server startup timeout in ms; with `--mcp-config` + `-p`, default 30s. `MCP_TOOL_TIMEOUT` — per-tool execution timeout. `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` — idle window, default 5 min for remote / 30 min for stdio servers; \"tool call aborts if no response or progress notification for the window.\" `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` — moves long calls to background, default 2 min. `MAX_MCP_OUTPUT_TOKENS` — default 25,000, warns at 10,000; over the limit, \"Claude Code saves it to a file in the session's tool-results directory under ~/.claude/projects/ and replaces it in conversation with a file reference.\"",
+    "limits": "A per-server `\"timeout\"` field in `.mcp.json` overrides the default and (if ≥1000ms) also floors the idle timeout (v2.1.203+). stdio servers have no per-request wall-clock timer.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp#timeouts-performance"
+   },
+   {
+    "feature": "Settings precedence stack applies identically to MCP-related keys",
+    "behavior": "Five levels, highest first: 1. Managed settings (`managed-settings.json`, MDM, or claude.ai console) — \"Nothing you set overrides them.\" 2. Command line (`--settings`, one session). 3. Project local (`.claude/settings.local.json`). 4. Shared project (`.claude/settings.json`). 5. User (`~/.claude/settings.json`). \"When you set the same list key, such as permissions.allow, in more than one file, Claude Code combines the lists instead of picking one\" — this merge behavior applies to `permissions.allow/deny/ask` and to `enabledMcpjsonServers`/`disabledMcpjsonServers` as ordinary list keys.",
+    "limits": "A few security-sensitive keys (e.g. `disableClaudeAiConnectors`, `enableArtifact`, `maxEffortLevel`) are explicit exceptions where the stricter value from any scope wins even over managed settings; ordinary MCP scope/allow keys are not on that exception list.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/settings#settings-precedence"
+   },
+   {
+    "feature": "`permissions.allow` rules and `.mcp.json` servers both wait on the same workspace-trust gate; deny/ask rules do not",
+    "behavior": "Docs' own words: \"permissions.allow rules and permissions.additionalDirectories entries in a project's .claude/settings.json grant capability, so Claude Code applies them only after you accept the workspace trust dialog for that folder... deny and ask rules aren't affected, since they only restrict.\" The same asymmetry holds for `.mcp.json` servers: approval/allow waits for trust, while `disabledMcpjsonServers` denial does not.",
+    "limits": "Trust is keyed to the git repository root (or the started directory outside a repo); the dialog only appears in interactive sessions, never in `claude -p` or SDK sessions.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions#project-allow-rules-and-workspace-trust"
+   }
+  ],
+  "unreachable": []
+ }
+]

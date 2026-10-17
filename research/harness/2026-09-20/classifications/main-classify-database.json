@@ -1,0 +1,78 @@
+{
+  "item": "plugins/house/modules/database/rules/database.md",
+  "rules": [
+    {
+      "heading": "Write forward-only numbered idempotent migrations, each opening with what and why",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Worktree creation and background-session worktree isolation (--worktree, .claude/worktrees, subagent isolation: worktree)",
+      "evidence": "The harness itself manufactures the sibling checkouts this rule guards against, because every background session moves into an isolated worktree under .claude/worktrees/ before editing files and --worktree/subagent isolation create more of the same, while nothing native coordinates a number taken in an uncommitted file in one of them.",
+      "citation": "https://code.claude.com/docs/en/worktrees ; https://code.claude.com/docs/en/agent-view",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Take the next number from the ledger, the committed files, and every sibling checkout's uncommitted files, because the harness puts background sessions and worktree runs in their own checkouts under the repo's worktree directory, so a number claimed there appears in no commit this checkout can see. Its isolation keeps writes off the main checkout but coordinates nothing about a shared database, so the ledger plus a sweep of sibling checkouts is the control."
+    },
+    {
+      "heading": "Back up before a destructive migration, and diff after it",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Checkpointing and /rewind (Bash-modified files not tracked; checkpointing is not version control)",
+      "evidence": "Checkpointing does not track files modified by Bash commands and is documented as session-level recovery rather than version control, so the Anchor's claim that the session cannot restore a database is exactly right and the rule adds the backup and post-migration diff the harness has no notion of.",
+      "citation": "https://code.claude.com/docs/en/checkpointing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Treat provenance columns as behavior",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No supplied fact covers database row provenance, writer column ownership, or sync overwrite behavior; the harness's only adjacent surface is advisory instruction loading, which it states is context and not enforced configuration.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Let row lifecycle decide a new table, never ownership",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the supplied harness facts reaches schema design, table grain, row churn, or column-scoped grants; the harness stops at tool permission and sandbox boundaries and never inspects what a script does to a database.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Add the table registry line in the same PR as the migration",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Managed Code Review customization via CLAUDE.md (doc-staleness flagged at nit severity) and Code Review does not gate merges",
+      "evidence": "Managed Code Review reads repository CLAUDE.md files and flags docs made outdated by a change, but caps those findings at nit severity and always completes with a neutral conclusion so it never blocks a merge, and it is a Team and Enterprise research preview, which is precisely the floor the Anchor names before demanding a schema invariant instead.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Store money as integer cents and reconcile against the books",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No supplied fact covers column types, money representation, provider fee records, or reconciliation against an external statement; the harness offers no gate of this kind at any enforcement level.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Give each initiative its own least-privilege role",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Permission rule evaluation and Bash wildcard matching, plus sandbox scope (Read, Edit and Write go through permissions, not the sandbox; the sandbox isolates subprocess filesystem and network only)",
+      "evidence": "Permission rules match the command text Claude typically produces and are documented as not a security boundary around the program, and the sandbox confines a subprocess's filesystem and network rather than the queries a script issues once running, so the rule's runtime guard and role assertion sit exactly where the harness stops.",
+      "citation": "https://code.claude.com/docs/en/permissions.md ; https://code.claude.com/docs/en/sandboxing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Never let a write script pick its target from a dotfile",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Bash wildcard rule matching (wrapper stripping and leading env-var assignments) and permission rules enforced on command text",
+      "evidence": "The harness strips only a fixed set of known-safe wrappers and leading env-var assignments before matching, and matches on command text alone, so a dotfile loader such as direnv survives the match and no rule can see which database the run resolves to, which is what the rule's exported-environment requirement closes.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "No rule in this file duplicates or conflicts with documented harness behavior. The harness has no database concept at all, so the domain rules (provenance, table lifecycle, money) came out UNIQUE, and the four rules that already reach for a native boundary (checkpoints, managed Code Review, permission rules, the sandbox) state that boundary accurately against the supplied facts, so they are COMPLEMENT with no rewording needed.\n\nRules I was unsure about:\n\n1. \"Write forward-only numbered idempotent migrations\" was the only close call. Its substance (forward-only, ledger, idempotency, baseline squashing) is plainly UNIQUE, but one clause, taking the next number from every sibling checkout's uncommitted files, guards a condition the harness itself creates: background sessions move into .claude/worktrees/ before editing, and --worktree and subagent isolation add more checkouts. I chose COMPLEMENT over UNIQUE because citing that floor makes the clause read as a consequence of how the harness runs work in parallel rather than as an unexplained caution, and because the harness's worktree isolation protects the main checkout's files while coordinating nothing about a shared database. If the owner prefers dispositions keyed to a rule's dominant subject rather than its strongest clause, this one flips to UNIQUE with action keep.\n\n2. \"Add the table registry line in the same PR as the migration\" could be read as CONFLICT-adjacent, since it asks for a blocking schema invariant while managed Code Review already notices stale docs. It is not a conflict: that review caps CLAUDE.md-derived findings at nit severity, completes with a neutral conclusion so it never blocks a merge, and is a Team and Enterprise research preview unavailable in many orgs. The Anchor already says all three, so it stays COMPLEMENT and unchanged.\n\n3. For the three UNIQUE rules I cited memory.md and permissions.md as the nearest boundary facts rather than a fact about databases, since none exists. The citation there is evidence of absence, not of coverage.\n\n4. The \"Don't\" section was excluded per the task. Worth noting that its closing Anchor line claims every prohibition is caught by the anchor of the rule it inverts, which is untrue for the two prohibitions inverting \"Back up before a destructive migration\" (\"Don't call a migration successful because it exited zero\", \"Don't run a destructive migration without a backup you could restore\"), because that rule's Anchor is explicitly none. That is an internal consistency issue rather than a native-behavior one, so it produced no row above."
+}

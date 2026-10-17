@@ -1,0 +1,30 @@
+main	research:agents-models	facts/main-research-agents-models.json
+main	research:plugins	facts/main-research-plugins.json
+main	research:memory-rules	facts/main-research-memory-rules.json
+main	research:skills-commands	facts/main-research-skills-commands.json
+main	research:sessions-worktrees	facts/main-research-sessions-worktrees.json
+main	research:evals	facts/main-research-evals.json
+main	research:git-github	facts/main-research-git-github.json
+main	research:hooks-permissions	facts/main-research-hooks-permissions.json
+main	classify:database	classifications/main-classify-database.json
+main	classify:data-pipelines	classifications/main-classify-data-pipelines.json
+main	classify:deployment	classifications/main-classify-deployment.json
+main	classify:docs	classifications/main-classify-docs.json
+main	classify:testing	classifications/main-classify-testing.json
+main	classify:github	classifications/main-classify-github.json
+main	classify:claude-code	classifications/main-classify-claude-code.json
+main	classify:llm-output	classifications/main-classify-llm-output.json
+main	classify:engineering	classifications/main-classify-engineering.json
+main	classify:mechanisms	classifications/main-classify-mechanisms.json
+main	verify:mechanisms:PreToolUse branch guard:doc-accuracy	verifications/main-verify-mechanisms-PreToolUse-branch-guard-doc-accuracy.json
+main	verify:mechanisms:PreToolUse branch guard:enforcement	verifications/main-verify-mechanisms-PreToolUse-branch-guard-enforcement.json
+main	completeness critic	main-completeness-critic.md
+main	synthesize report	main-synthesize-report.md
+gap	research:styles-plan	facts/gap-research-styles-plan.json
+gap	research:mcp	facts/gap-research-mcp.json
+gap	research:headless-observability	facts/gap-research-headless-observability.json
+gap	classify:docs-skipped-rule	classifications/gap-classify-docs-skipped-rule.json
+gap	classify:engineering-vs-plan	classifications/gap-classify-engineering-vs-plan.json
+gap	classify:guard-vs-mcp	classifications/gap-classify-guard-vs-mcp.json
+gap	classify:llm-output-vs-styles	classifications/gap-classify-llm-output-vs-styles.json
+gap	addendum	gap-addendum.md

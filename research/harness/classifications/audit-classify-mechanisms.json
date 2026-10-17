@@ -1,0 +1,204 @@
+{
+ "item": "house-rules native-harness overlap audit: PreToolUse branch guard, the five skills, the checker's ten families, render/vendor, lock file, deviations and ratchets, upstream-first sync, carryover-issue handoff, and the eval suite",
+ "rules": [
+  {
+   "heading": "PreToolUse branch guard",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "PreToolUse hook (deny via hookSpecificOutput.permissionDecision) and multi-hook result combination",
+   "evidence": "The harness supplies the pre-execution block and states a deny applies in every permission mode, but it has no notion of a protected branch, a repo manifest, or a carve-out glob, and it merges sibling hooks most-restrictively rather than letting one hook supersede another, which is the semantics this hook's repo-local deference assumes.",
+   "citation": "https://code.claude.com/docs/en/hooks.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: the plugin's PreToolUse hook, the only harness point that refuses a Bash call before it runs and that applies in every permission mode. Every matching PreToolUse hook still runs and the most restrictive decision wins, so deferring to a repo-local guard is a deliberate migration choice here, not something the harness requires."
+  },
+  {
+   "heading": "bootstrap skill",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Plugin skills with disable-model-invocation, plus the /init command",
+   "evidence": "The harness gives the skill container and the frontmatter flag that keeps a side-effecting workflow out of Claude's own reach, and /init already generates or improves a CLAUDE.md, so bootstrap adds only the manifest proposal, the dry run before apply, and the vendoring the harness has no component for.",
+   "citation": "https://code.claude.com/docs/en/skills.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Bootstrap writes only the house half of CLAUDE.md, as a separate skeleton file, and never edits an existing one. Leave the codebase-derived half to the harness's own init command, which generates a starting CLAUDE.md or suggests improvements to the one already there."
+  },
+  {
+   "heading": "sync skill",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": ".claude/rules/ directory (project rules); plugins cannot ship rules or CLAUDE.md as project context",
+   "evidence": "Because a plugin has no rules component, the rule files have to be copied into the project rules directory to load at all, and the harness offers nothing that re-copies them, compares them to their source, or bumps a consumer's pin.",
+   "citation": "https://code.claude.com/docs/en/plugins-reference",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "conventions skill",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Path-specific rules (paths frontmatter)",
+   "evidence": "Vendored house rules all carry paths frontmatter, so the harness loads a rule only once Claude reads a matching file, and the index lookup answers a question about a rule that has not loaded without pulling every rule body into context.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "revise-docs skill",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Auto memory (MEMORY.md index plus topic files)",
+   "evidence": "Auto memory already captures what a session learned, but it is machine-local, is not shared across machines, and deliberately skips anything CLAUDE.md already says, so the checked-in half of a learning has no native home.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The harness already writes its own machine-local memory notes for what a session learned, and skips what the instruction files already say. This skill routes the shareable, checked-in half instead: a rule goes to the rule file whose paths cover the surface it touches, an incident goes to the repo archive."
+  },
+  {
+   "heading": "handoff skill",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "disable-model-invocation (skill frontmatter)",
+   "evidence": "The harness blocks model invocation of a skill flagged this way and removes its description from context, which is exactly the posture a skill that opens and closes GitHub issues needs, and the skill adds the fixed issue shape the harness has no equivalent for.",
+   "citation": "https://code.claude.com/docs/en/skills.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "drift family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hosted Code Review reading CLAUDE.md (bidirectional staleness flagging)",
+   "evidence": "The hosted reviewer flags a CLAUDE.md statement a pull request makes outdated, but only for newly introduced violations, only at nit severity, only on Team and Enterprise orgs, and never as a local gate over every scanned doc's anchor tokens.",
+   "citation": "https://code.claude.com/docs/en/code-review.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: node .house/check.mjs --only=drift. The hosted reviewer already flags a documented claim that a pull request makes outdated, at nit severity and only for a newly introduced violation, so this family is the deterministic local floor that resolves every anchor token in every scanned doc before the push."
+  },
+  {
+   "heading": "todo family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "CLAUDE.md instruction-quality guidance and /doctor trim proposal",
+   "evidence": "The harness advises that instructions be concrete enough to verify and proposes trims to a checked-in CLAUDE.md, but nothing mechanically refuses an unfinished marker sitting in a file that loads every session.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "tamper family",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness has no concept of a vendored rule file with an upstream source, so nothing native notices that a project rule's body no longer matches what produced it or that a managed file was deleted.",
+   "citation": "https://code.claude.com/docs/en/plugins-reference",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "behind family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Plugin version pinning and update detection",
+   "evidence": "The harness tracks and updates the installed plugin's own version, and warns that an un-bumped version leaves users on a stale cached copy, but a consumer repo's pin against the loaded plugin is invisible to it because vendoring is not a harness concept.",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "shape family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "claude plugin validate (frontmatter and manifest validation); path-specific rules",
+   "evidence": "Native validation parses frontmatter and manifests and a bad paths pattern simply matches nothing with no warning, so nothing native checks that a rule file's body has an imperative heading, an anchor, and a closing section, or that public prose stays free of banned punctuation.",
+   "citation": "https://code.claude.com/docs/en/skills.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "lengths family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "MEMORY.md load limit measurement; CLAUDE.md size limit and length guidance",
+   "evidence": "The harness measures its own memory index after each write and reminds or errors there, and caps how large a CLAUDE.md it will load, but it has no per-file line ceiling, no ratchet, and no recorded raise, so this family is a second surface for the memory index and the only surface for everything else.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: node .house/check.mjs --only=lengths. The harness already measures its own auto-memory index when Claude writes it and warns or errors there, so this family's memory warning is a second surface for a machine-local file no repo gate can see, never the primary limit."
+  },
+  {
+   "heading": "coload family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Path-specific rules loading on read; skill listing context budget",
+   "evidence": "The harness loads every rule whose paths match the file Claude touched and budgets only the skill listing, so nothing native notices that several rules collide on one path and load together past a sane ceiling.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "manifest family",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "house.json is not a file the harness reads, and the harness documents no automatic detection of conflicting or unjustified instruction settings, so validating the manifest and demanding a ledger entry for each policy departure has no native counterpart.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "minutes family",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "GitHub Action cost controls",
+   "evidence": "The documented levers for Action cost are opt-in configuration the repo owner adds and nothing caps spend automatically, so an estimate of scheduled workflow minutes against a declared budget adds a check the harness never performs.",
+   "citation": "https://code.claude.com/docs/en/github-actions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "guard family",
+   "disposition": "CONFLICT",
+   "nativeFeature": "Multi-hook result combination; disableAllHooks and safe or bare sessions",
+   "evidence": "Certifying a repo as protected because some repo-local PreToolUse hook exists assumes a precedence the harness does not have, since every matching hook runs and the most restrictive decision wins, and a recorded plugin guard is not protection in a session where hooks are disabled at the settings level or customizations are skipped entirely.",
+   "citation": "https://code.claude.com/docs/en/hooks.md",
+   "action": "resolve-conflict",
+   "proposedWording": "Anchor: node .house/check.mjs --only=guard. Every matching PreToolUse hook runs and the most restrictive decision wins, so count a repo-local hook as this repo's guard only when it actually refuses a git call, and report a recorded plugin guard as armed only for a session that loads plugin hooks at all."
+  },
+  {
+   "heading": "render and vendor step",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Plugins cannot ship rules or CLAUDE.md as project context; .claude/rules/ with paths frontmatter",
+   "evidence": "The plugin component list has no rules or CLAUDE.md entry and a CLAUDE.md at a plugin root is explicitly not loaded as project context, so writing rendered rule files into the project rules directory is the only route by which house rules load at all.",
+   "citation": "https://code.claude.com/docs/en/plugins-reference",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "A plugin has no native component that ships rule files or instruction content as project context, so house renders its rules into the project rules directory, where the harness loads them like any other project rule and scopes them by their paths frontmatter."
+  },
+  {
+   "heading": "lock file",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Nothing native records a per-file body hash for instruction files or a one-time scaffold ledger; the closest native record is the plugin cache keyed on the plugin's own version, which says nothing about the copies written into a repo.",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "deviations ledger and ratchets",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness documents no automatic detection or resolution of conflicting or outdated instructions and offers no way to record why a project departs from a convention, so a dated ledger entry gating a policy departure and a raise gating a limit are entirely additive.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "upstream-first sync",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness has no managed instruction file and therefore no refusal path for a locally edited one; the nearest native control is excluding an instruction file by path, which drops it rather than routing the edit anywhere.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "carryover-issue handoff",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Session resume and auto memory storage",
+   "evidence": "Resume restores a conversation on the machine that holds the transcript and auto memory is explicitly machine-local and not shared across machines, so a single open issue that supersedes and closes its predecessor is the only tier that carries state to another machine or another person.",
+   "citation": "https://code.claude.com/docs/en/sessions",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Session resume and the harness's own memory carry state on one machine only. The carryover issue is the shared tier, so it records what a resumed session and a memory file cannot hand to another machine or another person, and nothing a re-run can regenerate."
+  },
+  {
+   "heading": "eval cases",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "claude plugin eval (prompt.md plus graders/*.md case format, with and without ablation)",
+   "evidence": "The cases are authored in the runner's own layout and rely on its ablation arm and per-case repetition, adding the behavior cases and grader ladder the runner ships no content for, though the runner itself is gated to early access and refuses to run for this account.",
+   "citation": "claude plugin eval --help",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "Uncertain calls, and why.\n\n1. Overlapping headings. The task names both the sync skill and the upstream-first sync, and both the handoff skill and the carryover-issue handoff. I split them: the skill entries judge the invocation posture (dry run, disable-model-invocation, plan before apply), the other two judge the policy (three exits for a locally modified managed file; the supersession chain and what the issue carries). If the parent wants one entry per pair, merge sync into upstream-first and handoff into carryover-issue; the dispositions do not change.\n\n2. guard family as CONFLICT was the hardest call. The core mechanism is complementary, and the deference is implemented consistently in both the hook and the checker, so nothing is currently broken by accident. I called it a conflict because the design assumes one PreToolUse hook can supersede another, which the harness does not do: every matching hook runs and the most restrictive decision wins. The practical cost is that an unrelated repo-local PreToolUse hook (a logging or secret-scanning hook) both disarms the plugin hook and satisfies the checker, which is the exact failure mode issue 27 named. A reasonable reviewer could call this COMPLEMENT with a caveat instead.\n\n3. The branch guard entry carries the same merge-semantics point in its reword rather than a second conflict verdict, to avoid double-counting one root cause across two headings.\n\n4. lengths is the closest thing to a duplicate in the set. The harness measures its own memory index on write and warns or errors there, with stronger enforcement than a warning from a repo gate. I kept it COMPLEMENT because the index is machine-local and outside git, the house check is warning-only and silent when the file is absent, and the rest of the family (per-glob ceilings, ratchets, recorded raises) has no native counterpart at all. If the owner wants a stricter reading, that single sub-check is the one to declare an intentional duplicate.\n\n5. behind and minutes sit near the line between COMPLEMENT and UNIQUE. Both attach to something native (plugin version and update detection; Action cost levers), but neither native surface knows about the thing being measured. I chose COMPLEMENT so each cites a floor rather than claiming novelty.\n\n6. manifest, tamper, lock file, deviations and ratchets, and upstream-first sync are all UNIQUE because they operate on house.json and vendored copies, neither of which the harness reads. If a future harness ships a rules component for plugins, tamper, the lock file, and upstream-first sync are the three that would need re-judging first.\n\n7. The eval entry is judged against CLI help text only. The runner refused to execute in this environment (early access gate), so the format claims come from its help output and the case files in the repo, not from an observed run."
+}

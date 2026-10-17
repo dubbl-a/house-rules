@@ -1,0 +1,15 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/docs/rules/docs.md",
+  "rules": [
+    {
+      "heading": "Don't document a command that does not exist",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "Nothing in the three newly researched areas resolves a documented command, script, or environment-variable token against a repo's script list or hooks. MCP facts cover server config, scopes, approval and tool-name permission matching; output-style, plan-mode and memory facts cover instruction loading and response shaping; headless facts cover -p flags, output formats, cost fields, statusline and telemetry. The nearest adjacent fact runs the other way and supports the rule's design rather than duplicating it: instruction files are advisory, since \"Claude treats them as context, not enforced configuration. To block an action regardless of what Claude decides, use a PreToolUse hook instead,\" and \"Settings rules are enforced by the client regardless of what Claude decides to do. CLAUDE.md instructions shape Claude's behavior but are not a hard enforcement layer.\" The rule does not rest on Claude reading an instruction file at all; its anchor is a build-time checker (`npm run check:docs`), which is the layer the native stack leaves empty for document content. No native mechanism is contradicted either: nothing native encourages writing a command into a doc ahead of its existence, and no researched feature reads, validates, or rewrites document prose.",
+      "citation": "https://code.claude.com/docs/en/memory (CLAUDE.md and auto memory are context, not enforced configuration; managed settings vs managed CLAUDE.md)",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Two judgment calls worth flagging. First, the rule's body says to \\\"walk each documented command against the repo's script list and its hooks,\\\" which brushes the hooks surface, but the researched hook facts are all about intercepting tool calls (PreToolUse, PermissionRequest, mcp_tool hooks), not about verifying that a name written in a document resolves to anything; I read that as a shared noun, not a shared mechanism, so it does not lift the rule to COMPLEMENT. Second, I considered whether the bare/safe-mode facts (--bare and --safe-mode skip CLAUDE.md, hooks, skills, commands and MCP servers entirely) argue for rewording to cite a native floor, but they cut the other way: they are a reason a document-content gate must live in the build rather than in session context, which the rule already does, so no reword is warranted. Unresolved in the supplied facts, and not load-bearing here: whether PreToolUse/PermissionRequest hooks fire in claude -p sessions. I did no research beyond the supplied facts, as instructed."
+}

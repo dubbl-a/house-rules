@@ -3,3 +3,5 @@ node_modules/
 plugins/house/evals/results/
 .claude/worktrees/
 .superpowers/
+# research/launch: raw workflow run output, kept local
+research/launch/

@@ -1,0 +1,216 @@
+{
+ "area": "Claude Code plugin eval runner (`claude plugin eval` / `claude plugin eval init`) \u2014 case format, graders, runs, ablation, thresholds, reports, and availability, as observed 2026-09-02",
+ "facts": [
+  {
+   "feature": "Case discovery: two file layouts",
+   "behavior": "\"Run eval cases (<eval dir>/**/case.yaml or prompt.md + graders/*.md; the eval dir is evals/ unless --eval-dir or the manifest says otherwise) against a plugin and report scored results.\" The command scans the eval dir recursively for either a self-contained case.yaml or a folder pair of prompt.md plus a graders/ directory of *.md files.",
+   "limits": "Only these two layouts are recognized. In this repo's own suite (plugins/house/evals/**, 12 cases) every case uses prompt.md + graders/*.md; no case.yaml file exists anywhere in the tree, so the case.yaml layout was not independently observed in a real file.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Target resolution and automatic baseline arm",
+   "behavior": "\"Target is a path, a plugin name, or a `plugin@marketplace` id \u2014 installed and skills-dir plugins both resolve (and add a no-plugin baseline arm)\".",
+   "limits": "The no-plugin baseline arm is only added when the target actually resolves to a real installed or skills-dir plugin; this is the same condition that flips --ablation's default (see ablation fact).",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Eval directory default and results path",
+   "behavior": "\"--eval-dir <dir> Directory name (below the plugin) that holds the eval cases; results go to <plugin>/<dir>/results/ \u2014 for an installed-plugin target, ./<dir>/results/ with this flag, else ./evals/results/ (default dir: the manifest's experimental.evals value, else evals/)\".",
+   "limits": "The results path shape differs depending on whether the target is an installed plugin vs. a local path target.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "prompt.md case-level frontmatter",
+   "behavior": "Real case files in this repo carry YAML frontmatter with max_turns, timeout_seconds, allowed_tools (a bracketed tool list), and runs, e.g. plugins/house/evals/branch-and-pr/prompt.md: `max_turns: 20`, `timeout_seconds: 300`, `allowed_tools: [Bash, Write]`, `runs: 3`, followed by the free-text prompt body. Observed max_turns ranged 15-30 and timeout_seconds 300-600 across the 12 cases in this repo.",
+   "limits": "Only max_turns, timeout_seconds, allowed_tools, and runs were directly observed in real files. A repo secondary source (docs/handbook/sources/testing-sweep.md, a dated 2026-08-24 survey, not independently verified here) additionally lists name, tags, plugins, model, and env as accepted frontmatter keys, with defaults runs:3, max_turns:10, timeout_seconds:300 when a case omits them \u2014 this default-value claim was not confirmed against primary CLI output.",
+   "enforcement": "automatic",
+   "citation": "plugins/house/evals/branch-and-pr/prompt.md (read directly); default values per docs/handbook/sources/testing-sweep.md, unverified against primary source"
+  },
+  {
+   "feature": "case.yaml format \u2014 ambiguous scope",
+   "behavior": "The CLI's own --help phrases case.yaml and \"prompt.md + graders/*.md\" as two alternative complete case formats (\"case.yaml or prompt.md + graders/*.md\"). A repo secondary source instead describes case.yaml as an *optional supplementary* file alongside prompt.md + graders/*.md, holding `context.scaffold_script` / `history_file` / `add_dirs` config, i.e. additive rather than an alternative full format.",
+   "limits": "These two characterizations were not reconciled \u2014 no case.yaml file exists anywhere in this repo to confirm either reading, so its exact schema (whether it embeds the prompt text itself, or only scaffold/context config) is unconfirmed.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help (\"or\" framing); docs/handbook/sources/testing-sweep.md (additive framing, unverified secondary source)"
+  },
+  {
+   "feature": "scaffold_script execution gating",
+   "behavior": "\"--scaffold Run each case's scaffold_script (runs author-supplied bash as you; off by default \u2014 only use on case files you authored)\"; \"--no-scaffold Explicitly skip scaffold_script\"; \"--keep-temp Preserve scaffold dirs for debugging\".",
+   "limits": "scaffold_script never runs unless --scaffold is explicitly passed, and it then executes as the invoking user's own shell \u2014 the CLI's own text is an explicit trust warning, not just a feature note.",
+   "enforcement": "blocks",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Grader types \u2014 regex",
+   "behavior": "Instantiated repeatedly in real grader files, e.g. plugins/house/evals/branch-and-pr/graders/no-local-merge-back-onto-main.md: `type: regex`, `target: trace`, `pattern: git\\\\s+(merge|rebase)\\\\b`, `match: not_contains`, `weight: 0.5`. `target` is also seen as `last_message` or `{source: file, path: \"repo/package.json\"}`; `match` is seen as `contains` or `not_contains`; an optional `flags: i` was seen for case-insensitive matching.",
+   "limits": "Schema fields confirmed only for target \u2208 {trace, last_message, file-source object}, pattern, match, flags, weight \u2014 no other match modes were observed.",
+   "enforcement": "automatic",
+   "citation": "plugins/house/evals/*/graders/*.md (multiple files read directly, e.g. no-local-merge-back-onto-main.md, no-env-var-bypass-added.md)"
+  },
+  {
+   "feature": "Grader types \u2014 llm",
+   "behavior": "Instantiated repeatedly, e.g. plugins/house/evals/not-evaluable-verdict/graders/verdict-is-not-evaluable.md: `type: llm`, `focus: last_message`, `weight: 1`, followed by a free-text body instructing the judge model with explicit \"Score HIGH when...\" / \"Score LOW when...\" criteria. `focus` is also seen as `trace` or a `{source: file, path: ...}` object.",
+   "limits": "The judge model used to score `llm` graders defaults to Haiku (see judge-model fact) and is described elsewhere as noisy on long inputs (see grader-ladder fact).",
+   "enforcement": "automatic",
+   "citation": "plugins/house/evals/not-evaluable-verdict/graders/verdict-is-not-evaluable.md (read directly), and other llm graders in the same tree"
+  },
+  {
+   "feature": "Grader types \u2014 tool_used, incl. Skill-firing check",
+   "behavior": "Instantiated e.g. plugins/house/evals/positive-and-negative-control/graders/check-invoked-more-than-once.md: `type: tool_used`, `tool: Bash`, `input_match: check-unique-ids|check:unique-ids`, `min: 2`, `weight: 0.5`; and plugins/house/evals/explicit-model-tier/graders/every-subagent-call-sets-a-model.md uses `tool: Task`, `input_match: model`, `min: 3`. The CLI's own --help confirms `tool_used: Skill` specifically as the mechanism for detecting whether a plugin's skill fired: graders \"marked with-only, incl. `tool_used: Skill`, are a plugin-fired indicator rather than part of the score\" under ablation.",
+   "limits": "Confirmed fields: tool, input_match (regex), min, weight; `max` is named in --help/secondary docs but not observed in a real file in this repo.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help (tool_used: Skill as ablation indicator); plugins/house/evals/positive-and-negative-control/graders/check-invoked-more-than-once.md (schema fields, read directly)"
+  },
+  {
+   "feature": "Grader types \u2014 tool_order, file_exists, baseline",
+   "behavior": "Not instantiated in any file in this repo's own eval suite. A repo secondary source lists a total of six grader types \u2014 regex, tool_used, tool_order, file_exists (\"a glob over created paths\"), llm, baseline. The CLI's own --help independently corroborates that `llm` and `baseline` are grouped as \"paid graders (llm/baseline)\" that get skipped on a cost-ceiling overrun while other (free/deterministic) graders keep scoring.",
+   "limits": "tool_order and file_exists field-level schemas are not confirmed from any primary source or real file \u2014 only their names and one-line descriptions, from a secondary survey document.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help (\"paid graders (llm/baseline)\" phrase, confirming the llm/baseline split); docs/handbook/testing.md and docs/handbook/sources/testing-sweep.md for the full six-type list and tool_order/file_exists names, unverified against a real case file"
+  },
+  {
+   "feature": "Per-grader weight and combination",
+   "behavior": "Every grader file observed carries a `weight` field (values seen: 1, 0.5, 0.25) alongside its type-specific fields.",
+   "limits": "No source found (CLI help, docs pages, or repo files) states how per-grader weights combine into a case's overall score (e.g. weighted average vs. weighted sum vs. normalization) \u2014 not documented anywhere reachable in this research.",
+   "enforcement": "automatic",
+   "citation": "plugins/house/evals/*/graders/*.md (weight field observed across ~25 grader files, e.g. docs-ride-along/graders/readme-explains-what-it-does.md)"
+  },
+  {
+   "feature": "Per-case repetition (runs)",
+   "behavior": "\"--runs <n> Override per-case runs (default: case.runs ?? 3)\".",
+   "limits": "The default is the case's own `runs` frontmatter value if set, else 3; every real case in this repo explicitly sets `runs: 3` itself, matching the fallback default.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Pass/fail threshold and exit code",
+   "behavior": "\"--threshold <0..1> Exit 1 if any case score is below this threshold (default: 1.0)\".",
+   "limits": "The default of 1.0 requires a perfect score on every case to exit 0; the check is per-case (\"any case score\"), not an aggregate across the suite.",
+   "enforcement": "blocks",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Ablation mode (with-without baseline)",
+   "behavior": "\"--ablation <mode> Run a no-plugin baseline arm and report the score delta (none | with-without; default: with-without whenever a plugin resolves \u2014 by name, or from the target path \u2014 and none when nothing does; under with-without, graders marked with-only, incl. `tool_used: Skill`, are a plugin-fired indicator rather than part of the score)\".",
+   "limits": "Defaults to none (no baseline arm, no delta) when the target does not resolve to an identifiable plugin; with-only graders are explicitly excluded from the scored total in with-without mode and instead only indicate whether the plugin fired.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Hard cost ceiling",
+   "behavior": "\"--max-cost-usd <usd> Optional hard cost ceiling; abort and report partial results if hit (exit 2). Overrun is bounded to one agent run \u2014 when that run breaches, paid graders (llm/baseline) are skipped while free graders still score it. Runs are already bounded by max_turns and timeout_seconds \u2014 only set this when you need a strict budget\".",
+   "limits": "Unset by default \u2014 the only built-in cost bound absent this flag is max_turns/timeout_seconds per case, not a dollar ceiling. On overrun only the paid (llm/baseline) graders are skipped for that run; free graders still run and score it, and results are reported as partial rather than discarded entirely.",
+   "enforcement": "blocks",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "MCP server mocking",
+   "behavior": "\"--mocks <mode> Mock stand-ins for MCP servers, from <eval dir>/mocks/ (record | off; default: record \u2014 off spawns the real servers, gated by --allow-tools as usual)\".",
+   "limits": "Scoped specifically to a plugin's declared MCP servers; even with --mocks off, real MCP tool calls (mcp__*) still go through the same --allow-tools gate as any other gated tool.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Gated-tool operator grant",
+   "behavior": "\"--allow-tools <tools...> Operator grant for gated tools (Bash, Write, Edit, WebFetch, mcp__*). Supports Tool(pattern:*) syntax\".",
+   "limits": "The gated-tool set is fixed and named explicitly: Bash, Write, Edit, WebFetch, and any mcp__* tool. This session could not observe the actual denial behavior for an ungranted gated tool during a live run, since every run/init invocation was blocked by the early-access gate before reaching tool execution.",
+   "enforcement": "blocks",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Model overrides \u2014 agent vs. judge",
+   "behavior": "Two separate override flags exist: \"--model <model> Override model for all cases\" (the model the agent-under-test runs as) and \"--judge-model <model> Override LLM-grader model (default: haiku)\" (the model scoring `llm`-type graders).",
+   "limits": "--model applies uniformly across every case in a run \u2014 no per-case model override flag is documented. The judge-model default of haiku is the cheapest tier, consistent with cost-conscious grading.",
+   "enforcement": "advisory",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Case filtering by glob and tag",
+   "behavior": "\"--case <glob> Filter cases by name glob\" and \"--tag <tag...> Filter cases by tag (repeatable)\".",
+   "limits": "Tag filtering requires cases to declare a `tags` field in frontmatter; this field was not observed in any real case file in this repo (all use max_turns/timeout_seconds/allowed_tools/runs only), so it is unconfirmed as actually populated in practice here, only documented as an accepted key by a secondary source.",
+   "enforcement": "advisory",
+   "citation": "claude plugin eval --help (flags); docs/handbook/sources/testing-sweep.md (tags frontmatter key, unverified)"
+  },
+  {
+   "feature": "Full JSON result output",
+   "behavior": "\"--json [path] Print the full run result (prompts, graders, per-run scores) as JSON to stdout, or write it to this .json file\".",
+   "limits": "Distinct from the always-written aggregate-result.json in the results dir (see output-dir fact) \u2014 this flag is for a fuller, opt-in dump including prompts and grader definitions, not just scores.",
+   "enforcement": "advisory",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "HTML report and claude.ai publishing",
+   "behavior": "\"--report <path> Write the self-contained HTML report (scores, prompts, grader verdicts) to <path> instead of the results dir\"; \"--no-publish Keep the HTML report local only; skip publishing it to claude.ai\"; \"--publish-report Also require publishing the report to claude.ai (already the default when your account supports it); explains why if unavailable\".",
+   "limits": "Publishing to claude.ai is the default only when the invoking account supports it; when it doesn't, the CLI states why rather than silently skipping or failing.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Results directory and aggregate-result.json",
+   "behavior": "\"--output-dir <dir> Directory for aggregate-result.json (default: ./<eval dir>/results/<timestamp>/)\".",
+   "limits": "Timestamped subdirectory per run by default, so successive runs don't overwrite each other's results.",
+   "enforcement": "automatic",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Verbose trace logging",
+   "behavior": "\"--verbose Log per-message trace events to the debug log (use --debug-file to read them)\".",
+   "limits": "Writes to the general debug log, not a dedicated eval log file; requires the separate --debug-file mechanism to read.",
+   "enforcement": "advisory",
+   "citation": "claude plugin eval --help"
+  },
+  {
+   "feature": "Eval-suite authoring interview (`init`)",
+   "behavior": "\"claude plugin eval init [options] [name] \u2014 Author an eval suite under the eval dir (evals/ unless --eval-dir or the manifest says otherwise) via an interview that sources inputs and designs graders. Use --bare <name> for a blank single-case template.\" Options: `--bare` (\"Write a blank template (prompt.md + graders/criteria.md) instead of running the interview\"), `--eval-dir <dir>`, `-i, --interactive` (\"Run the authoring interview (already the default in a terminal); requires an interactive terminal\").",
+   "limits": "The full interview mode requires an interactive terminal; this session's own non-interactive attempt to run `claude plugin eval init demo-case --bare` was intercepted by the early-access gate before the interactive-terminal requirement could be independently exercised, so its exact non-interactive failure message (absent gating) is not directly observed here.",
+   "enforcement": "advisory",
+   "citation": "claude plugin eval init --help"
+  },
+  {
+   "feature": "Availability: early-access gate blocks every real invocation",
+   "behavior": "Live in this session: `claude plugin eval` (bare) and `claude plugin eval init demo-case --bare` both printed only \"`plugin eval` is currently in early access\" and exited with code 1 \u2014 no files were written, no interview ran, no cases executed. `claude plugin eval --help` and `claude plugin eval init --help`, run in the same session, printed their full usage text with no gating message.",
+   "limits": "The gate applies to every actual action (run, init/interview, init --bare) but not to --help text itself. This session's account/session specifically does not have the feature enabled \u2014 it is described (by the tool's own listing) as \"early access\" and gated at an organizational rollout level, not a global unavailability.",
+   "enforcement": "blocks",
+   "citation": "claude plugin eval and claude plugin eval init demo-case --bare (both run live in this session; exit code 1)"
+  },
+  {
+   "feature": "No dedicated public docs page as of 2026-09-02",
+   "behavior": "The plugins-reference and plugins pages were fetched successfully but contain zero occurrences of \"eval\", \"grader\", \"case.yaml\", \"ablation\", \"threshold\", \"scaffold_script\", or \"mocks\" anywhere in their text. The docs site's own llms.txt index lists no page dedicated to plugin evals under Testing & Evaluation (only common-workflows.md and self-hosted-environments-testing.md, neither eval-runner-specific). Guessed slugs (plugin-evals.md, evals.md, eval.md, plugin-eval.md, plugin-testing.md, testing-plugins.md, agent-evals.md) all returned HTTP 404.",
+   "limits": "This shows the feature isn't linked from the docs' own index or reachable at guessed URLs, not that no such page exists anywhere on the site under an unguessed path.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/plugins-reference.md ; https://code.claude.com/docs/en/plugins.md ; https://code.claude.com/docs/llms.txt (all fetched successfully, none mention the eval runner)"
+  },
+  {
+   "feature": "Anthropic guidance: three grader classes",
+   "behavior": "\"Code-based graders\" are \"fast, cheap, objective, reproducible\" but brittle to valid variations (string matching, binary tests, static analysis, outcome verification). \"Model-based graders\" are flexible for open-ended tasks but \"non-deterministic, more expensive than code, requires calibration with human graders.\" \"Human graders\" provide \"gold standard quality\" but are expensive/slow, best reserved for calibration.",
+   "limits": "This is general Anthropic engineering guidance for building agent evals broadly, not documentation of `claude plugin eval` specifically \u2014 the plugin eval runner's own regex/tool_used/llm/baseline split (see grader-type facts) maps onto this three-class framing but isn't stated as being derived from it.",
+   "enforcement": "advisory",
+   "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+  },
+  {
+   "feature": "Anthropic guidance: pass@k vs pass^k, task count, isolation, balance",
+   "behavior": "pass@k measures \"the likelihood that an agent gets at least one correct solution in k attempts\"; pass^k measures \"the probability that all k trials succeed,\" called out as critical for customer-facing agents. \"20-50 simple tasks drawn from real failures is a great start.\" Each trial should start from a clean/isolated environment to avoid shared-state correlated failures. \"Test both the cases where a behavior should occur and where it shouldn't. One-sided evals create one-sided optimization.\" \"It's often better to grade what the agent produced, not the path it took\" \u2014 avoid checking specific tool-call sequences so creative-but-valid approaches aren't punished.",
+   "limits": "General guidance for agent evals, not a statement about `claude plugin eval`'s own defaults, though it aligns with observed defaults (runs default 3 maps to a small-k regime; the file_exists/outcome-grading style maps to \"grade what was produced\").",
+   "enforcement": "advisory",
+   "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+  },
+  {
+   "feature": "skill-creator blog: comparator/benchmark tooling (a separate tool from `claude plugin eval`)",
+   "behavior": "Describes comparator agents for blind A/B testing (\"two skill versions, or skill vs. no skill. They judge outputs without knowing which is which\"), a \"benchmark mode\" tracking \"eval pass rate, elapsed time, and token usage\" after model updates, regression detection (\"Running evals against a new model gives you an early signal\"), and multi-agent parallel eval runs (\"each in a clean context with its own token and timing metrics. Faster results, no cross-contamination\").",
+   "limits": "This describes the skill-creator plugin's own bundled eval scripts (run_eval.py / run_loop.py / aggregate_benchmark.py per this repo's own secondary survey, docs/handbook/sources/testing-sweep.md), which is a distinct tool bundled inside one specific official plugin \u2014 not the general-purpose `claude plugin eval` CLI command documented elsewhere in this report. The blog post itself does not name `claude plugin eval`.",
+   "enforcement": "advisory",
+   "citation": "https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills"
+  },
+  {
+   "feature": "Grader ladder guidance (deterministic before judge)",
+   "behavior": "A repo secondary source attributes to \"the built-in runner's own guidance\" the line: \"Prefer deterministic graders for long artifacts; llm judges are noisy on long inputs.\"",
+   "limits": "This exact quote was not independently located in `claude plugin eval --help`, `claude plugin eval init --help`, or either of the two fetched Anthropic docs pages \u2014 it may originate from the gated interactive `init` interview flow (which requires an interactive terminal this session did not have) or from case/grader authoring guidance not reachable here. Reported as unverified secondary-source content, not confirmed primary-source text.",
+   "enforcement": "advisory",
+   "citation": "docs/handbook/testing.md (quoting an unverified source; not independently located in the CLI help or fetched docs pages)"
+  }
+ ],
+ "unreachable": []
+}

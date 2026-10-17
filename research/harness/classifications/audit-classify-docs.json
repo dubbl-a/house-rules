@@ -1,0 +1,105 @@
+{
+ "item": "plugins/house/modules/docs/rules/docs.md",
+ "rules": [
+  {
+   "heading": "Anchor every claim to a grep-able token",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Write effective instructions (size/structure/specificity guidance)",
+   "evidence": "The harness only advises writing instructions concrete enough to verify and never resolves a claim against the repo, so a checker that fails on a renamed token is enforcement the harness has no counterpart for.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Run the docs gate before pushing and in the build",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "CLAUDE.md delivery mechanism and compliance guarantee (use a hook for anything that must run at a fixed point)",
+   "evidence": "The memory docs say instruction files are advisory with no guarantee of strict compliance and that an instruction which must run at a specific point, such as before every commit, belongs in a hook instead.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the hook and the pull-request check be the net."
+  },
+  {
+   "heading": "Give every rule file a paths list whose first segment resolves",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Path-specific rules (paths frontmatter)",
+   "evidence": "The harness loads a rule with no paths field unconditionally at project-CLAUDE.md priority and silently matches nothing for a pattern that resolves to no files, so nothing native warns that a scope is dead.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Put a fact where its litmus test says it belongs",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "CLAUDE.md files (general) routing guidance, plus the /doctor CLAUDE.md trim proposal",
+   "evidence": "The harness already tells you to keep always-true facts in CLAUDE.md, move a multi-step procedure to a skill and a path-bound entry to a path-scoped rule, and to cut content it can derive from the codebase.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule, and it trims what it can derive from the code. This rule carries that split out to the README, the changelog, and the archive, where nothing native reaches."
+  },
+  {
+   "heading": "State a rule as imperative, why, anchor, receipts",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Write effective instructions (markdown headers and bullets, specificity)",
+   "evidence": "The harness asks only that instructions be concise, grouped under headers, and specific enough to verify, and defines no required shape for a rule, so the imperative heading with why, anchor, and receipt is posture plus a gate on top of that floor.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Move dates, names, and measured numbers out of rule prose",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Auto memory (overview)",
+   "evidence": "Auto memory is where the harness parks dated observations and decisions it cannot derive from code, but it is machine-local per repository and never shared, so a checked-in archive is the team-visible home for the evidence a rule leaves behind.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Keep files under budget, and raise a ceiling only with a written reason",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Write effective instructions (line target) and CLAUDE.md file size limit",
+   "evidence": "The harness offers a soft line-count target for a CLAUDE.md and a hard skip only for a file past its multi-megabyte cap, with no budget at all for rule files, the README, or skill bodies, and no ratchet.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter."
+  },
+  {
+   "heading": "Cut, don't append, and trim on a fixed cadence",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "/doctor CLAUDE.md trim proposal and the periodic-review guidance on conflicting instructions",
+   "evidence": "The checkup proposes trims for a checked-in CLAUDE.md and the docs advise reviewing rule files periodically to remove outdated or conflicting instructions, but neither sets a cadence nor stops a trimmed file from growing back.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The harness proposes trims when asked and advises a periodic review, but it sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, delete at least one section across the root file and the rule files each time, and let the ratchet hold the floor."
+  },
+  {
+   "heading": "Split a file only when splitting narrows what loads",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Imports (@path/to/import syntax) and path-scoped rules",
+   "evidence": "The docs state that splitting into imports helps organization but does not reduce context because imported files still load at launch, and that path-scoped rules are the way to make instructions load only for matching files, which is exactly the premise this rule enforces with a co-load budget the harness has no counterpart for.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Opt a point-in-time doc out with a file-level reason",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "HTML comment stripping in CLAUDE.md",
+   "evidence": "The one native mechanism this rule leans on is block-level HTML comments being stripped before context injection, which it cites correctly, while nothing native scans an archive tier for drift or honors a file-level opt-out marker.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Ship the docs and changelog edit in the same PR as the change",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hosted Code Review CLAUDE.md customization (bidirectional docs-drift flag)",
+   "evidence": "Hosted Code Review reads CLAUDE.md and flags a change that leaves a documented statement outdated, but only as a nit-level finding on a check run that never blocks the merge, and only for orgs where the hosted reviewer runs.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#claudemd",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit and only where it runs, so the docs edit ships in the same pull request and the template's binary is what holds it."
+  }
+ ],
+ "notes": "Nothing in this file reads as DUPLICATE or CONFLICT under a strict reading; every rule lands on a native primitive that is advisory-only or absent, and adds a gate, a scope, or a document tier the harness never touches.\n\nThree I was unsure about:\n\n1. \"Put a fact where its litmus test says it belongs\" is the closest thing here to a DUPLICATE. Its first clause restates the harness's own routing advice almost move for move (always-true facts to the root file, procedures to a skill, path-bound facts to a path-scoped rule), and \"restate neither the code nor the package manifest\" is the /doctor trim rule. I kept it as COMPLEMENT only because the README, changelog, handbook, and archive tiers, and the four-modes split, have no native counterpart. If the owner wants the file shorter, this rule's opening clause is the first thing to trade out in favor of a pointer to the native floor, which is why I proposed the reword rather than a keep.\n\n2. \"Run the docs gate before pushing and in the build\" is the nearest thing to a CONFLICT. The memory docs are explicit that an instruction which must run at a fixed lifecycle point should be a hook, not prose, since prose is advisory with no compliance guarantee. I did not call it a conflict because the rule asks for CI wiring as well as the local run, and this plugin already ships a PreToolUse hook per `claude plugin details`, so the posture and the mechanism are aligned rather than fighting. The reword just makes the hook layer visible so a reader does not mistake the prose for the enforcement.\n\n3. \"Move dates, names, and measured numbers out of rule prose\" overlaps auto memory's job of holding dated observations. I left it as keep because auto memory is machine-local per repository and never shared across the team, so it cannot serve as the repo's archive. Worth citing that difference if the owner prefers every complement to name its floor.\n\nOne accuracy note: the HTML-comment claim inside \"Opt a point-in-time doc out with a file-level reason\" is correct against the harness, with one unstated limit worth knowing rather than writing into the rule prose, namely that comments inside code blocks are not stripped.\n\nI did not classify \"## Don't\" per the instruction; its lines mirror the rules above and inherit their dispositions."
+}

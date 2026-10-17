@@ -1,0 +1,159 @@
+{
+ "item": "plugins/house/modules/github/rules/github.md",
+ "rules": [
+  {
+   "heading": "Gate every PR on checks that need no credential, and name what is not gated",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hosted Code Review check run never blocks merge",
+   "evidence": "The harness's own review \"always completes with a neutral conclusion so it never blocks merging through branch protection rules,\" and gating on its findings requires the repo owner to build their own CI parsing, so the credential-free gate and its named gaps are entirely the package's contribution.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#check-run-output",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: the rendered `.github/workflows/pr-checks.yml`, whose wall-time target and concurrency policy ship with the pr-checks.yml template; `npm run check:house` runs the same set locally. A hosted agent review posts a neutral check that never blocks a merge, so it is one of the gaps to name rather than a gate to lean on."
+  },
+  {
+   "heading": "Give a workflow read-only permissions and pin every action by SHA",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The only workflow-permission fact in the harness is the GitHub App's own fixed permission set, which \"GitHub does not let you accept a subset\" of, and nothing in the harness reads a workflow's `permissions:` block, pins an action by SHA, or inspects `run:` interpolation.",
+   "citation": "https://code.claude.com/docs/en/github-actions.md#github-app-permissions",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Budget Actions minutes as account-wide money",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "GitHub Action cost controls",
+   "evidence": "The harness documents only opt-in levers (`--max-turns`, workflow timeouts, concurrency) and states that \"nothing caps cost automatically at the Action level,\" so the account-wide pool framing and the local minutes estimator are the package's addition.",
+   "citation": "https://code.claude.com/docs/en/github-actions.md#manage-costs",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's own spending budget is the hard stop. An agent workflow caps nothing on its own, and its runner minutes draw on the same account pool as every other job."
+  },
+  {
+   "heading": "Open an issue instead of failing a scheduled run, and comment out a cron with its reason",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness's only statement about scheduled runs is that they skip the write-access trigger check, and it has no notion of what a scheduled run should do when it finds a problem.",
+   "citation": "https://code.claude.com/docs/en/github-actions.md#who-can-trigger-runs",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Turn on push protection, head-branch deletion, and grouped dependency updates",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness's repository-facing surface is limited to the GitHub App's permission set and the workflows it installs; it never reads or sets repository security settings or dependency-update configuration.",
+   "citation": "https://code.claude.com/docs/en/github-actions.md#github-app-permissions",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Make the PR template force a docs-check answer",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hosted Code Review CLAUDE.md customization",
+   "evidence": "Hosted review reads CLAUDE.md bidirectionally and \"flags that the docs need updating,\" but only as a nit-level, non-blocking finding on newly introduced violations, so a mandatory binary answer in the template is strictly more than the harness asks for.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#claudemd",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit on newly introduced drift, so the template is what makes the answer mandatory."
+  },
+  {
+   "heading": "Never put a closing keyword beside an issue number you do not mean to close",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness links a session to a pull request when Claude creates it with `gh pr create` or works an existing PR, but it never parses or validates the PR body's issue references.",
+   "citation": "https://code.claude.com/docs/en/common-workflows.md#create-pull-requests",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Ship phased work as commits on one PR",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "PR creation from a session is a direct request Claude fulfills with `gh pr create`, with no harness opinion on how many PRs a multi-phase change should become or on re-targeting a stack's children.",
+   "citation": "https://code.claude.com/docs/en/common-workflows.md#create-pull-requests",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Stage explicit paths, never everything at once",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Bash wildcard rule matching in the permission system",
+   "evidence": "A Bash permission rule's `*` \"matches any text including spaces,\" so a rule broad enough to permit staging permits the sweep-everything form too, and the harness's approval prompt draws no line between a path and a wildcard add.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: the `pre-commit` template refuses a staged secret, which is the backstop for a wide add and not a licence to make one. A permission rule broad enough to allow staging allows the sweep-everything form too, so the approval prompt is no filter on what one add pulls in."
+  },
+  {
+   "heading": "Classify a merged branch by its PR state, not by merge detection",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Periodic sweep of subagent and background-session worktrees",
+   "evidence": "The harness's sweep decides from local state alone, leaving a worktree in place when it \"still holds changed/untracked files or unpushed commits,\" and never consults the pull request, so under squash merging it can neither confirm nor refute a merge.",
+   "citation": "https://code.claude.com/docs/en/worktrees.md#clean-up-subagent-and-background-session-worktrees",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: `scripts/house/cleanup-worktree.sh`, which classifies from PR state through the platform CLI before it deletes anything. The harness's own worktree sweep reads local state only and never asks the platform, so it can neither confirm nor refute a squash merge."
+  },
+  {
+   "heading": "Never delete the branch from the worktree being merged",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Worktree cleanup on session exit",
+   "evidence": "The harness removes a clean worktree and its branch automatically only when an interactive worktree session exits, and prompts otherwise, so any deletion ordered mid-session is unsequenced by the harness.",
+   "citation": "https://code.claude.com/docs/en/worktrees.md#clean-up-worktrees",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: `scripts/house/cleanup-worktree.sh`, run from the main checkout after the PR merges. The harness clears a clean worktree and its branch only as the session exits, so a deletion ordered before that is still yours to sequence."
+  },
+  {
+   "heading": "Keep credentials out of the repo, the commit, and the chat",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Sandbox default filesystem access and credential handling",
+   "evidence": "The sandbox's default read access \"still allows reading credential files such as ~/.aws/credentials and ~/.ssh/\" and sandboxed commands inherit the parent environment's credentials unless a credential setting or env scrub strips them, so nothing local keeps a key out of a session by default.",
+   "citation": "https://code.claude.com/docs/en/sandboxing",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; the remote is the guard, the hook is the backstop. Credential files stay readable to a session, and a subprocess inherits the session environment, unless a credential setting or deny-read rule says otherwise, so nothing local keeps a key out of the chat for you."
+  },
+  {
+   "heading": "Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Sandbox scope and subprocess environment inheritance",
+   "evidence": "The harness states that \"sandboxed Bash commands inherit the parent process environment, including credentials set there, by default\" unless a credential setting or env scrub strips them, and it never inspects build output, so the scrub-then-scan-with-canary loop is the package's own.",
+   "citation": "https://code.claude.com/docs/en/sandboxing",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: `scripts/house/scan-dist-secrets.mjs --self-test` as a CI step after the build, with the canary written before it and removed after. A build run from a session inherits that session's environment unless it is scrubbed, so the same scrub before scan applies off CI."
+  },
+  {
+   "heading": "Give a restricted key exactly one writable scope",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Harness permission rules govern which tools and paths Claude may reach and are \"enforced by Claude Code, not the model,\" with no reach into a vendor key's scopes or a live probe of them.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Never log a vendor object",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Read and Edit deny rules \"apply only to Claude's built-in file tools and Bash file commands... NOT to arbitrary subprocesses,\" so the harness has no view at all into what the shipped application's logger emits.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Treat a preview URL as production for exposure",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "WebFetch domain rules and the sandbox proxy govern which hosts a session may reach, not which routes a deployed preview host exposes to the world.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Label a non-secret as a non-secret",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness's credential controls only hide or deny reads of secret material and offer no way to annotate a value as deliberately public, so nothing native prevents a reflexive redaction.",
+   "citation": "https://code.claude.com/docs/en/sandboxing",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "No DUPLICATE and no CONFLICT found in this file. The harness's GitHub surface is the Claude GitHub App, the Action, hosted Code Review, local /code-review, PR-session linking, and worktree lifecycle; none of it decides CI gate composition, workflow permissions, action pinning, cron failure policy, repo security settings, issue-closing keywords, PR granularity, staging scope, vendor key scopes, application logging, or preview-host auth. Rules I was unsure about: (1) \"Give a workflow read-only permissions and pin every action by SHA\" \u2014 I nearly made it COMPLEMENT citing the GitHub App's fixed, non-subsettable permission set, since installing the app grants broad repo read/write regardless of any workflow's permissions block, but that fact concerns the app install rather than the workflow token, so I left it UNIQUE; if the owner wants that adjacency surfaced, this is the one rule to revisit. (2) \"Scan the built output...\" \u2014 the native env-inheritance fact describes sandboxed Bash in a session, not a CI runner, so the floor I proposed applies only to local builds; it is the weakest of my COMPLEMENT calls and could reasonably be UNIQUE/keep. (3) \"Stage explicit paths\" \u2014 the floor rests on wildcard rule matching semantics rather than a documented statement about `git add` specifically, so the citation is inferential though the matching behavior itself is stated plainly. (4) For the UNIQUE rules I cited the nearest fact that demonstrates absence rather than a fact about the rule's subject, since the citation field is required."
+}

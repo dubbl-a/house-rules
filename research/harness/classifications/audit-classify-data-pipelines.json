@@ -1,0 +1,96 @@
+{
+ "item": "plugins/house/modules/data-pipelines/rules/data-pipelines.md",
+ "rules": [
+  {
+   "heading": "End every pipeline run with a retro of invariants, deltas, and proposals",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness's lifecycle events fire once per session, once per turn, or per tool call and never on an external pipeline's run, so nothing native produces, prints, or gates a per-run retro of invariants and deltas.",
+   "citation": "https://code.claude.com/docs/en/hooks.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Make a pipeline idempotent and resumable, and log the idempotency rather than assume it",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The nearest native recovery mechanism, checkpointing, does not track files modified by bash commands and is documented as session-level recovery rather than durable history, so nothing native gives a pipeline a run row, a content hash, or a re-run contract.",
+   "citation": "https://code.claude.com/docs/en/checkpointing",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Write nothing when a record is unchanged",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Permission rules decide whether a write is attempted and apply only to Claude's built-in file tools and recognized Bash file commands, never to whether a script's written content actually differs from what is stored.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Default to a dry run and require an explicit flag to write",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Permission system tiers and Read/Edit path rules (file modification always requires approval, but rules do not reach subprocess writes)",
+   "evidence": "Read and Edit deny rules apply only to Claude's built-in file tools and the Bash file commands the harness recognizes, and not to an arbitrary Python or Node subprocess that writes on its own, so the harness's write gate stops exactly at the script boundary this rule covers.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Make the dry run the default and `--apply` the opt-in, because the harness gates the file tools Claude calls directly but cannot see what a script writes once it is running, so the first run of a new script is a plan a human reads rather than a change nobody asked for."
+  },
+  {
+   "heading": "Brake a prune at a share of the table, and unit-test the brake",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Sandbox auto-allow mode and the regular permission flow for rm and rmdir on a critical path",
+   "evidence": "Even in sandbox auto-allow mode a destructive filesystem command targeting a critical path still goes through the regular permission flow, but that brake covers the harness's own tool calls and never a row delete issued from inside a script.",
+   "citation": "https://code.claude.com/docs/en/sandboxing",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Refuse to delete more than a set share of a table in one run and require an explicit `--force` to override, because the harness routes a destructive filesystem command through a permission prompt but never sees a row delete a script issues, and the run that empties the table looks exactly like the run that clears a few stale rows until the count comes back."
+  },
+  {
+   "heading": "Drive writes from a policy registry that fails closed on an unknown policy",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness fails closed on its own invalid enforcement keys in managed settings, but that behavior governs Claude Code configuration and says nothing about which fields a repo's writer is allowed to touch.",
+   "citation": "https://code.claude.com/docs/en/managed-settings.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Make unmapped input loud",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Nothing native inspects a repo's data inputs; the closest reading the harness does is a diff review that flags newly introduced convention violations at nit severity and never blocks a merge.",
+   "citation": "https://code.claude.com/docs/en/code-review.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Archive first, parse second, and write the ledger row in the same transaction",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness's own durable artifacts are session transcripts and auto memory under a retention sweep, and it offers no provenance ledger or content-addressed archive for bytes a pipeline fetches.",
+   "citation": "https://code.claude.com/docs/en/sessions",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Reconcile a vendor's success response against an independent count",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness treats another agent's report as untrusted input that still passes through permission checks, which is the same posture but scoped to agent messages, and nothing native verifies a third-party API's claim that a batch landed.",
+   "citation": "https://code.claude.com/docs/en/sub-agents",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Name, don't act, on ambiguous data",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness can hold for a human through permission prompts and interactive question tools, but that gate is per tool call and carries no notion of holding an ambiguous record in a review queue rather than guessing an identity.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "This module is almost entirely outside the harness's subject matter: the native facts cover memory files, hooks, permissions, plugins, skills, sessions, subagents, and git/GitHub surfaces, and none of them govern how a repo's own data scripts acquire, transform, or publish data. So no rule here duplicates or conflicts with native behavior, and the file's habit of anchoring each rule to a package script, unit test, or CI gate rather than to prose lines up with the documented fact that instruction files are advisory and that hard blocking belongs in an enforcement layer.\n\nTwo calls I was unsure about. First, \"Default to a dry run\" and \"Brake a prune at a share of the table\" could be argued as UNIQUE, since the harness has no concept of a table or an --apply flag; I classified both COMPLEMENT because the harness does own a real write and delete gate for its own tool calls, and the documented gap (permission rules do not reach an arbitrary subprocess that writes or deletes on its own) is precisely the seam these two rules cover. Naming that floor makes the rules read as extensions rather than as reinventions. If the owner prefers a narrower reading of COMPLEMENT, both revert cleanly to UNIQUE with the anchors unchanged.\n\nSecond, the phrase \"a per-run hook\" in the retro rule is likely to be read as a Claude Code hook by anyone arriving from the harness docs, when it means the pipeline's own run hook. There is no conflict either way, since native hook events fire on session, turn, and tool boundaries and would not fire on a rarely-run pipeline anyway, but the handbook receipt is the right place to disambiguate the word if the confusion ever surfaces.\n\nI also considered whether \"Make a pipeline idempotent and resumable\" should complement checkpointing, since /rewind explicitly cannot undo bash-driven or subprocess file changes and idempotency is the repo's substitute undo. I left it UNIQUE because the rule is about run ledgers and re-ingest contracts inside a data store, not about reverting a session's edits, and citing checkpointing would invite a false equivalence."
+}

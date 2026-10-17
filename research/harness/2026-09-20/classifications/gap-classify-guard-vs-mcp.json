@@ -1,0 +1,87 @@
+{
+  "item": "plugins/house/modules/claude-code/rules/claude-code.md (hooks, permissions, settings, model, subagent, peer-session, git-state headings) plus plugins/house/hooks/no-direct-master.sh",
+  "rules": [
+    {
+      "heading": "Keep the auto-memory index to hooks, and hold it under its cap",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "Neither the MCP permissioning area nor the headless area says anything about the auto-memory index, its per-line shape, or its load ceiling. The only adjacent fact is that bare mode skips auto memory altogether, which is about whether memory loads, not about how the index is written or capped, so it leaves the rule untouched.",
+      "citation": "https://code.claude.com/docs/en/headless (--bare: skips auto-discovery of ... auto memory)",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Disable model invocation on a skill with side effects",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Slash commands / skills inside -p prompts (headless), plus the auto permission mode's classifier in print mode",
+      "evidence": "The headless facts confirm the rule's premise exactly: a skill named in a print-mode prompt string is expanded by Claude Code before the turn runs, so no prompt is ever shown to a person, and print mode's auto setting has a classifier review most actions rather than a human. Neither primitive offers any way to mark a skill as caller-only; disable-model-invocation plus explicit opt-in gates for later phases is posture the harness does not supply.",
+      "citation": "https://code.claude.com/docs/en/headless (Slash commands / skills inside -p prompts; Permission modes in print mode)",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Set the model explicitly on every subagent and workflow agent",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "--max-budget-usd (print mode only), and the client-side cost figure it is compared against",
+      "evidence": "The rule already points a scripted run at the print-mode budget ceiling flag, which the harness does enforce as a hard stop and only in print mode. What the rule does not carry is the flag's documented limit: the running total it compares against is a client-side estimate that can differ from the actual bill, so the ceiling constrains the session's own accounting rather than spend.",
+      "citation": "https://code.claude.com/docs/en/headless and https://code.claude.com/docs/en/costs (--max-budget-usd; 'Both figures are client-side estimates and can differ from your actual bill.')",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "State the tier a procedure requires and stop when the session is below it, and give a scripted run the print-mode budget ceiling flag so a cost constraint is enforced rather than only stated, remembering that the figure it enforces against is the session's own estimate of spend and not the bill."
+    },
+    {
+      "heading": "Make a must-hold rule a hook, fail it closed, and test it with real payloads",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse hook decision versus permission rules, and the PermissionRequest event that does not honor a failing exit",
+      "evidence": "The rule's floor line is confirmed: a deny rule is evaluated whatever the hook returns, a blocking exit takes precedence over allow rules, and bare, safe, and restricted sessions never load project hooks. The gap is the sibling event. On the permission-request event a nonzero exit is not honored and the flow proceeds unchanged, so a guard that fails closed by crashing there fails open; only the structured decision object denies. That also matters for unattended runs, where permission-request hooks are one of the only things that can answer a call nothing else resolves.",
+      "citation": "https://code.claude.com/docs/en/hooks.md and https://code.claude.com/docs/en/permissions.md (PermissionRequest: 'Exit code 2 isn't honored for this event and the permission flow proceeds unchanged. Deny through the decision object instead.')",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, because a silent exit reads as no decision and never as approval. Know where that exit stops binding: only the pre-tool event reads a failing exit as a block, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead."
+    },
+    {
+      "heading": "Run adversarial review in a fresh subagent with a named lens",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Background subagents at print-mode exit, and the idle ceiling that drops a partial result",
+      "evidence": "Headless documents that a background subagent keeps a print-mode run open until its work completes, but that the wait ends after a documented span of continuous idle waiting, at which point Claude Code stops what is still running and drops the partial result; a termination signal likewise leaves the turn with no recorded result. That is the mechanism behind the rule's recovery line, and nothing native hands the finished work back, so reading it out of the transcripts is posture the harness lacks.",
+      "citation": "https://code.claude.com/docs/en/headless (Background Bash tasks / subagents at -p exit; SIGTERM handling)",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Treat git state as shared across sessions",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "The MCP permissioning and headless areas carry no notion of branch state, checkout ownership, or merge strategy. The nearest fact is that a termination signal in a print-mode run kills the process tree of a still-running shell command, which can leave a git operation half-finished, but it neither advises nor enforces anything the rule asks for.",
+      "citation": "https://code.claude.com/docs/en/headless (SIGTERM ... terminates the process tree of any still-running Bash command)",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep the committed settings narrow and the local settings local",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "MCP tool naming and permission-rule matching, and project server loading in non-interactive mode",
+      "evidence": "Every mechanical claim in the rule checks out: a deny rule takes a full tool-name glob across every server while an allow glob is only honored after a literal server prefix and is otherwise skipped with a warning, a parenthesized parameter rule on a server tool is skipped when a settings file loads it, permission lists merge across scopes instead of overriding, and a print-mode run connects the project's servers with no approval prompt. What the rule does not name is the deny-side key that binds in every session type even in an untrusted checkout, nor the strict server-config flag that confines a scripted run to the servers it was handed.",
+      "citation": "https://code.claude.com/docs/en/permissions.md and https://code.claude.com/docs/en/mcp.md (allow globs require a glob-free server segment; settings-file mcp__ rules with parentheses are skipped; disabledMcpjsonServers rejects a server regardless of trust; --strict-mcp-config)",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Allow-list network fetches per domain rather than blanket, and pin the servers and services the project enables by name rather than inheriting whatever is installed, because a print-mode run loads the project's servers with no approval prompt at all. Pin them from the deny side too, since the disable list is the one that binds in every session type including a checkout nobody has trusted, and give a scripted run the strict server-config flag so it connects only the servers it was handed."
+    },
+    {
+      "heading": "Check for a peer session before driving shared external state",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Background sessions and the agents listing that enumerates them",
+      "evidence": "The harness can list running background sessions, which is the primitive the rule's first line stands on, but the listing only enumerates sessions; nothing in it records which checkout, database, or deploy target a session owns, and nothing refuses a second driver. The ownership posture and the merged-worktree deploy rule are entirely the rule's own.",
+      "citation": "claude --help (claude agents lists running background sessions; attach, logs, stop, rm)",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "PreToolUse branch guard",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse firing on MCP tool calls, and the absence of any settings-file rule that can inspect an MCP tool's arguments",
+      "evidence": "The guard's own header already states its reach correctly against these areas: bare, safe, and restricted sessions load no project hooks, a print-mode run without bare mode does load them, and a git operation routed through a server tool arrives as an MCP tool call that a Bash matcher never sees, leaving a whole-tool deny rule as the only floor. The facts go one step further in the guard's favor: pre-tool hooks do fire on MCP tool calls when the matcher names the server with a trailing wildcard, and a settings-file rule cannot gate a server tool on its arguments at all, so a hook inspecting the tool input is the only mechanism that could ever read a refspec out of a server-side git call. The deny-with-exit-zero decision shape, the deny floor it cannot override, and the note that every matching pre-tool hook runs with the most restrictive decision winning all match documented behavior, so nothing here conflicts.",
+      "citation": "https://code.claude.com/docs/en/hooks.md and https://code.claude.com/docs/en/permissions.md (MCP server tools appear as regular tools in PreToolUse; settings-file mcp__ rules with parentheses are skipped, leaving --disallowedTools or a hook as the only parameter-level control)",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Scope calls: I took headings matching the listed keywords literally, which pulled in \"Keep the auto-memory index to hooks\" on the word hooks even though it is a memory-budget rule; it lands UNIQUE either way. I judged only against the MCP-permissioning and headless fact sets as instructed, and deliberately did not use the third fact set (output styles, plan mode, CLAUDE.md) even though it would have bitten on the hook rule's \"a rule file is advisory context\" line, which that set confirms verbatim.\n\nUnresolved in the evidence itself, and therefore load-bearing for two of my calls: the fact bundle flags that no fetched page states whether pre-tool or permission-request hooks fire during print-mode or SDK sessions for ordinary tool calls, while the headless page separately says a print-mode run without bare mode runs the hooks in a project's settings file. I treated the headless page as the stronger statement for the branch guard entry, but a reader wanting certainty on hook parity in SDK sessions should verify rather than lean on my COMPLEMENT there.\n\nThe permission-request decision object's field schema was not retrieved, so my proposed reword for the hook rule says \"decision object\" without naming its fields; that is deliberate, not an omission I can fix from this evidence. The requiresUserInteraction section was also unretrieved and only cross-referenced, but nothing I judged depends on it.\n\nI considered marking the settings rule DUPLICATE on the strength of the native allow-glob and parenthesized-rule behavior, and rejected it: the harness enforces those mechanics but never tells anyone to shape a list deny-first, prune on a cadence, or keep the wide list out of the commit, which is the rule's actual content. Similarly I considered CONFLICT on \"only a pre-tool hook stops the action\", since a managed deny rule stops it too, but the rule's very next line states that floor, so the sentence reads as ordering rather than a contradiction.\n\nThe budget-ceiling reword is the one place where I am adding a caveat the owner may consider noise: the flag does hard-stop a run, so \"enforced rather than only stated\" is not wrong; I proposed the estimate clause because a cost gate compared against a client-side figure is exactly the kind of near-miss this rule set tends to want named."
+}

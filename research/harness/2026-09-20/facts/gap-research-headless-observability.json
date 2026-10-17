@@ -1,0 +1,197 @@
+{
+  "area": "Claude Code — headless/programmatic use (claude -p, output formats, Agent SDK, bare mode, hooks/rules headless) plus cost reporting, statusline, and telemetry, as of 2026-09-20",
+  "facts": [
+    {
+      "feature": "-p / --print (headless mode)",
+      "behavior": "Add -p (or --print) to any claude command to run non-interactively. Without --bare, a -p session loads the same context an interactive session would, including hooks in a project's .claude/settings.json and MCP servers in its .mcp.json, even in a folder you've never trusted. A -p session shows no workspace trust dialog and no per-server approval prompt.",
+      "limits": "Not every CLI option combines with -p: Claude Code rejects --bg outright, and rejects --cloud with a task description (both with an error naming the conflict); --cloud with a session ID plus -p instead queues a message into that cloud session and exits.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "--output-format (text / json / stream-json)",
+      "behavior": "text (default) is plain text. json returns structured JSON with result, session_id and metadata, and (with --json-schema) a structured_output field. stream-json emits newline-delimited JSON events in real time; the last line is a result message with final text, cost, and session metadata.",
+      "limits": "--include-partial-messages, --verbose, --include-hook-events, --forward-subagent-text and --replay-user-messages only take effect with stream-json; --input-format stream-json only works with --print.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "--json-schema (structured output)",
+      "behavior": "With --output-format json and --json-schema, the response's structured_output field conforms to the given JSON Schema. Claude Code accepts the format keyword (e.g. \"format\":\"email\") but treats it only as an annotation, not enforced.",
+      "limits": "If the value isn't a valid JSON Schema, claude exits with 'Error: --json-schema is not a valid JSON Schema' plus the validator's diagnostic (as of v2.1.205+; earlier versions silently ignored an invalid schema and returned unstructured text).",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "--bare (bare mode)",
+      "behavior": "Minimal mode: skips auto-discovery of hooks, skills, custom commands, subagents, plugins, MCP servers, auto memory, and CLAUDE.md. Sets CLAUDE_CODE_SIMPLE=1. Never reads OAuth credentials or the system keychain; for the Anthropic API you must set ANTHROPIC_API_KEY or an apiKeyHelper. In bare mode Claude still has Bash, file-read and file-edit tools, and skills still resolve via /skill-name from a --add-dir's .claude/skills/.",
+      "limits": "A hook in ~/.claude or an MCP server in .mcp.json won't run because bare mode never reads them. --add-dir loads skills from that directory's .claude/skills/ but still skips its .claude/commands/ and .claude/agents/. Docs note --bare 'will become the default for -p in a future release.'",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "Hooks/settings reach in -p (headless) without --bare",
+      "behavior": "A -p session runs the hooks in a project's .claude/settings.json and connects the servers in its .mcp.json, with no workspace-trust dialog and no per-server approval prompt gating them. SessionEnd hooks run on SIGTERM exit; SessionStart and Setup hooks stream hook_started/hook_progress/hook_response events ahead of the system/init event.",
+      "limits": "This reach applies only when --bare is not passed; --bare skips hooks entirely (see bare mode fact). PermissionRequest and Elicitation hooks are the only things that can override a --permission-prompts none denial.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "Permission modes in print mode",
+      "behavior": "The built-in starting permission mode for -p is Manual on every plan (not auto-approving), so scripts must pass a mode explicitly: auto has a classifier review most actions; dontAsk denies every call that would otherwise prompt (but still allows read-only commands, file reads in working dirs, and anything an --allowedTools/permissions.allow rule covers); acceptEdits writes files without prompting and auto-approves mkdir/touch/mv/cp.",
+      "limits": "Under dontAsk, AskUserQuestion, connector tools an org set to 'ask', and MCP tools marked requiresUserInteraction are still denied even when an allow rule matches.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "--permission-prompts none",
+      "behavior": "For unattended runs (e.g. a scheduled job) with no host to answer prompts: anything that would prompt is denied unless a PermissionRequest hook allows it, and Claude is told nobody can approve the request and not to retry. Removes the AskUserQuestion tool from Claude entirely; any MCP elicitation request that no Elicitation hook answers is cancelled. With stream-json, denials appear as permission_denied system messages and are listed in the final result's permission_denials.",
+      "limits": "Permission rules, PermissionRequest hooks, and the active permission mode still decide every call first; the flag only denies what nothing else resolves. Requires Claude Code v2.1.259+ (earlier versions reject it as an unknown option).",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "--restricted mode",
+      "behavior": "Removes the built-in tools that run commands or code (Bash, PowerShell, REPL, other code-running tools) and WebFetch unless --tools names them; ignores user, project and local settings files (managed settings and --settings still apply; --strict-mcp-config also skips MCP servers); confines file tools to the working directories (--add-dir included); refuses bypassPermissions; and lets only a person or the configured permission handler approve writes to settings, git, and tool-configuration files.",
+      "limits": "Not documented on the fetched headless/cli-reference pages beyond what's listed; interacts with --tools to re-admit specific named tools.",
+      "enforcement": "blocks",
+      "citation": "claude --help / https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "Piped stdin in headless mode",
+      "behavior": "Non-interactive mode reads stdin, so data can be piped in (e.g. cat file | claude -p '...'). If Claude Code can't read stdin (e.g. the launching process disconnected its end), it prints a warning to stderr and continues with the prompt from the command line.",
+      "limits": "Piped stdin is capped at 10MB; exceeding the cap makes Claude Code exit with a clear error and non-zero status. (Before v2.1.211, unreadable stdin on Windows crashed the session or exited silently.)",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "SIGTERM / SIGINT handling of a -p run",
+      "behavior": "SIGTERM exits with code 143, leaves the in-progress turn unfinished with no recorded result, terminates the process tree of any still-running Bash command, then runs SessionEnd hooks and exits, starting no new tool call, model request, or other hook. SIGINT (or the Agent SDK's interrupt()) ends the turn cleanly instead. Resuming the session continues the turn SIGTERM left unfinished.",
+      "limits": "If waiting on a permission prompt when SIGTERM arrives, the prompt is left unanswered; only closing the session through the Agent SDK cancels the prompt cleanly (by ending input before any signal).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "Background Bash tasks / subagents at -p exit",
+      "behavior": "A background Bash task (e.g. a dev server) started during claude -p is terminated ~5 seconds after Claude's final result and stdin closes. A background subagent or workflow instead keeps claude -p open until that work completes, because its result is part of the final output.",
+      "limits": "The wait for a background subagent/workflow ends after 10 minutes of continuous idle waiting by default (CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS to change it, 0 for no limit); at that point Claude Code stops what's still running and drops the partial result. A Monitor watch times out after 5 minutes by default, waiting until that timeout or the 10-minute cap, whichever comes first.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "Exit codes",
+      "behavior": "Claude Code exits with code 0 on success and a non-zero code when the run fails. An invalid flag is reported to stderr before the run starts; a failure inside the run (e.g. missing authentication) is printed as the result on stdout. SIGTERM produces exit code 143.",
+      "limits": "Not documented: a full table mapping failure types to specific non-zero codes beyond 143 for SIGTERM.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "--max-budget-usd",
+      "behavior": "'Maximum dollar amount to spend on API calls (only works with --print).' Claude Code compares its running session-cost figure against this value.",
+      "limits": "The cost figure it's compared against is a client-side estimate and can differ from the actual bill (see cost fields below).",
+      "enforcement": "blocks",
+      "citation": "claude --help / https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "--max-turns",
+      "behavior": "Limits the number of agentic turns in a headless run.",
+      "limits": "Not elaborated further (e.g. whether it counts subagent turns) on the fetched pages.",
+      "enforcement": "blocks",
+      "citation": "claude --help / https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "Agent SDK — what it is",
+      "behavior": "'The Agent SDK gives you the same tools, agent loop, and context management that power Claude Code.' Available as Python and TypeScript libraries for full programmatic control ('Build production AI agents with Claude Code as a library'), and as a CLI (claude -p) for scripts/CI. 'The SDK is available as a library for Python and TypeScript only. To drive the same agent loop from another language, run the CLI as a subprocess with the -p flag and --output-format json.'",
+      "limits": "No SDK library for other languages; 'Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK' — API key auth is required instead.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/sdk (404; docs nav resolved to https://code.claude.com/docs/en/agent-sdk/overview)"
+    },
+    {
+      "feature": "Agent SDK capabilities surface",
+      "behavior": "The SDK exposes: built-in tools (read/write/edit files, run commands, search the web); hooks (run custom code at key lifecycle points); subagents; MCP (external tools/data via Model Context Protocol); permissions (control which tools auto-run vs. need approval); sessions (maintain, resume, or fork context); skills, commands, and memory (load automatically from project .claude/ and ~/.claude/, same as the Claude Code CLI); and plugins (package skills/agents/hooks/MCP servers, loaded by local path).",
+      "limits": "Overview page names each capability but defers the mechanics (e.g. exact hook payloads, permission callback shape) to separate SDK pages not fetched in this pass.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/agent-sdk/overview"
+    },
+    {
+      "feature": "Session continuation in headless mode",
+      "behavior": "--continue continues the most recent conversation; --resume <id> continues a specific one, findable from any project on this machine (not just the original directory, since v2.1.223+). A session ID can be captured from --output-format json's session_id field and reused: session_id=$(claude -p ... --output-format json | jq -r '.session_id'); claude -p ... --resume \"$session_id\". --resume also accepts an absolute path to a session's .jsonl transcript file.",
+      "limits": "On v2.1.257+, passing --continue opens a background session that has finished, not one still running.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "Slash commands / skills inside -p prompts",
+      "behavior": "User-invoked skills and custom commands work: include /skill-name in the prompt string and Claude Code expands it before running. /model, /effort, /fast, /color, and /rename accept the value as an argument (e.g. '/model sonnet'); /mcp with no argument prints a text summary of server status; /config key=value changes a setting; /output-style <style> switches output styles (v2.1.269+).",
+      "limits": "Built-in commands that only run in the terminal interface, such as /login, aren't available in -p mode.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "MCP server loading/validation in headless mode",
+      "behavior": "With --mcp-config passed to -p, Claude Code waits for still-pending servers before running the first turn, up to the MCP_TIMEOUT startup timeout (30s default; v2.1.221+). Claude Code validates each --mcp-config entry at startup and skips entries that fail validation (e.g. a url entry with no type); the run continues and exits cleanly. The system/init stream event reports mcp_servers (name+status) and mcp_server_errors (name/type/message), so a CI gate can fail on a non-empty errors array (v2.1.219+).",
+      "limits": "A remote server with a cached tool list skips the wait, shows 'pending' in system/init, and connects lazily on its first tool call. When stderr is redirected/captured (as in CI), Claude Code prints no interactive startup warning — only the mcp_server_errors field reports skipped entries.",
+      "enforcement": "warns",
+      "citation": "https://code.claude.com/docs/en/headless"
+    },
+    {
+      "feature": "Cost figures inside --output-format json",
+      "behavior": "The JSON response payload includes total_cost_usd and a per-model cost breakdown, letting scripted callers track spend per invocation without consulting the usage dashboard.",
+      "limits": "'Both figures are client-side estimates and can differ from your actual bill.'",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/headless ; https://code.claude.com/docs/en/costs"
+    },
+    {
+      "feature": "/usage command and session cost tracking",
+      "behavior": "The Session block at the top of /usage shows token usage and a Total cost computed locally from token counts at list price, unless an admin-set modelPricing table is in effect (in which case the line adds the note 'at your organization's configured rates'). Totals reset when /clear starts a new session (since v2.1.211; before that they accumulated for the process lifetime). Also reports a Prompt cache (main) line (request count, % of input from cache, misses, warm/cold) after the main conversation's first API response, v2.1.251+.",
+      "limits": "'The figure is an estimate, so for authoritative billing see the Usage page in the Claude Console.' The Session cost figure isn't meaningful for Max/Pro subscribers (subscription-included usage); prompt-cache stats cover the main conversation only, not subagents.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/costs"
+    },
+    {
+      "feature": "modelPricing managed setting",
+      "behavior": "Lets an organization make cost figures in /usage, the status line, and OpenTelemetry reflect contracted rates instead of list price, via a multiplier and/or per-model per-token overrides.",
+      "limits": "'The setting changes what Claude Code reports, not what Anthropic charges.' Must be delivered via managed settings (server-managed settings, MDM policy, managed-settings.json, or a policy helper) — Claude Code ignores the key in user, project, and local settings and in --settings. Requires v2.1.242+.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/costs"
+    },
+    {
+      "feature": "Statusline",
+      "behavior": "A customizable bar configured via a statusLine field ({type:\"command\", command:<script or inline shell>}) in settings.json. It receives a JSON blob on stdin (model, cwd/workspace, cost.total_cost_usd, context_window.*, rate_limits.*, prompt_cache.*, session_id, pr.*, worktree.*, etc.) and displays whatever the script prints to stdout. It runs once at session start/resume, then again on: a new assistant message, /compact finishing, a permission-mode change, a vim-mode toggle, a change to the statusLine command itself, an optional refreshInterval timer, a rate-limit window's resets_at passing, or a warm prompt cache's expires_at passing. Updates are debounced at 300ms (except a command change, which skips debounce and runs immediately); an in-flight script is cancelled if a new update fires.",
+      "limits": "'The status line runs locally and does not consume API tokens.' Claude Code captures the script's stdout rather than connecting it to the terminal, so tput cols and language-level width detection can't read terminal size from inside the script — read COLUMNS/LINES env vars instead. It temporarily hides during autocomplete, the help menu, and permission prompts. This is a TUI/interactive-session feature; the fetched page gives no statement about it rendering in a -p (headless) run.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/statusline"
+    },
+    {
+      "feature": "OpenTelemetry (OTel) telemetry",
+      "behavior": "Exports metrics (e.g. claude_code.session.count, .cost.usage, .token.usage, .lines_of_code.count, .pull_request.count, .commit.count, .code_edit_tool.decision, .active_time.total), events (claude_code.user_prompt, .assistant_response, .tool_result, .tool_decision, .api_request, .api_error) and traces (beta, span hierarchy interaction→llm_request/hook/tool). Enabled with CLAUDE_CODE_ENABLE_TELEMETRY=1 plus exporter selection (OTEL_METRICS_EXPORTER, OTEL_LOGS_EXPORTER, OTEL_TRACES_EXPORTER=otlp/console/prometheus/none) and an OTLP endpoint.",
+      "limits": "Telemetry is opt-in only, off by default. Content is redacted by default: prompts need OTEL_LOG_USER_PROMPTS=1, responses need OTEL_LOG_ASSISTANT_RESPONSES=1, tool params need OTEL_LOG_TOOL_DETAILS=1, tool output needs OTEL_LOG_TOOL_CONTENT=1; default content truncation is 60KB (UTF-16 units), raised via CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH. Claude Code does NOT pass OTEL_* env vars to spawned subprocesses (Bash tool, hooks, MCP servers, language servers) — those must configure their own exporters. Thinking content is redacted in traces by default. User-defined agent/skill names and user-configured MCP server names are replaced with \"custom\" in metrics unless OTEL_LOG_TOOL_DETAILS=1. Repository (vcs.*) attributes are never sent to Anthropic.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/monitoring-usage"
+    },
+    {
+      "feature": "Managed-settings lock on telemetry destination",
+      "behavior": "An admin configures telemetry for all users via managed settings (an env block setting CLAUDE_CODE_ENABLE_TELEMETRY and OTEL_* endpoint/headers). Setting OTEL_EXPORTER_OTLP_ENDPOINT in managed settings removes all developer-set per-signal endpoints; setting OTEL_EXPORTER_OTLP_PROTOCOL removes developer per-signal protocols; setting credentials in managed settings removes developer-set endpoints entirely, preventing redirection of telemetry data.",
+      "limits": "Not documented beyond this override behavior on the fetched page.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/monitoring-usage"
+    },
+    {
+      "feature": "claude --bg / background sessions (CLI, not -p)",
+      "behavior": "--bg/--background starts an interactive-equivalent session in the background and returns immediately, printing a short id that `claude attach`, `claude logs`, `claude stop`, and `claude rm` take; `claude agents` lists running background sessions. With --resume <session-id> it continues that session in the background under the same ID, or starts a copy if the session is already running.",
+      "limits": "claude -p (print/headless mode) rejects --bg outright with an error, per the headless docs — --bg is a separate, non-headless background mode and cannot be combined with -p.",
+      "enforcement": "none",
+      "citation": "claude --help output"
+    },
+    {
+      "feature": "--safe-mode",
+      "behavior": "Starts a session with all customizations disabled: CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands and agents, output styles, workflows, custom themes, and keybindings — 'useful for troubleshooting a broken configuration.' Sets CLAUDE_CODE_SAFE_MODE=1. Admin-managed (policy) settings still apply; auth, model selection, built-in tools, and permissions work normally.",
+      "limits": "Does not disable admin-managed/policy settings.",
+      "enforcement": "automatic",
+      "citation": "claude --help output"
+    }
+  ],
+  "unreachable": [
+    "https://code.claude.com/docs/en/sdk — 404 Not Found; the headless/CLI docs page itself links to /docs/en/agent-sdk/overview as the Agent SDK's actual landing page, and that page was fetched successfully and used as the SDK source instead."
+  ]
+}

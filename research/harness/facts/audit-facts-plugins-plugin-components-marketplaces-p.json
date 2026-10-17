@@ -1,0 +1,335 @@
+{
+ "area": "Plugins, plugin components, marketplaces, plugin validate, plugin details/token cost, and whether plugins can ship rules or CLAUDE.md \u2014 Claude Code as of 2026-09-02",
+ "facts": [
+  {
+   "feature": "Plugin = self-contained directory, manifest optional",
+   "behavior": "\"A plugin is a self-contained directory extending Claude Code with custom functionality.\" The manifest at .claude-plugin/plugin.json is optional; Claude Code auto-discovers components in default locations (skills/, commands/, agents/, hooks/hooks.json, .mcp.json, etc.) if the manifest is omitted or omits a component field.",
+   "limits": "Only plugin.json goes inside .claude-plugin/; all other component directories (commands/, agents/, skills/, hooks/, bin/, etc.) must sit at the plugin root, never inside .claude-plugin/. The plugin root is the plugin's own directory (or --plugin-dir target), never ~/.claude/ \u2014 e.g. a .mcp.json placed at ~/.claude/.mcp.json is not read.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins ; https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "plugin.json manifest schema \u2014 required field",
+   "behavior": "The only required field is \"name\": a unique kebab-case identifier used for namespacing components (skills invoke as /plugin-name:skill-name).",
+   "limits": "Missing name fails validation outright (tested: `claude plugin validate` on a manifest with no \"name\" returns \"\u2718 Found 1 error: name: Invalid input: expected string, received undefined\" and \"\u2718 Validation failed\", exit code 1). Malformed JSON in plugin.json likewise fails with a JSON-syntax error and exit code 1.",
+   "enforcement": "blocks",
+   "citation": "claude plugin validate <path> (tested against a manifest missing \"name\" and against invalid JSON)"
+  },
+  {
+   "feature": "plugin.json metadata fields",
+   "behavior": "Optional fields: displayName, version (semver; pins the plugin so updates only apply when bumped), description, author {name,email,url}, homepage, repository, license, keywords, metadata (free-form, ignored by Claude Code), defaultEnabled (default true), $schema.",
+   "limits": "metadata is explicitly ignored by Claude Code at runtime (pass-through only). defaultEnabled: false requires opt-in; user setting takes precedence over it.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Unrecognized/unknown plugin.json fields",
+   "behavior": "Claude Code ignores unrecognized manifest fields at load time (tested: `unknownField` produced \"unknownField: Unknown field 'unknownField'. Claude Code ignores it at load time.\").",
+   "limits": "Under `claude plugin validate --strict`, the same unknown field (plus missing version/author) becomes a reported warning that fails validation (\"\u2718 Validation failed (--strict treats warnings as errors)\", exit 1) even though the plugin would still load fine at runtime.",
+   "enforcement": "warns",
+   "citation": "claude plugin validate --help ; tested with `claude plugin validate` and `claude plugin validate --strict` against a manifest containing an unknown field, no version, no author"
+  },
+  {
+   "feature": "Component path fields in plugin.json",
+   "behavior": "skills, commands, agents, hooks, mcpServers, outputStyles, lspServers, experimental.themes, experimental.monitors let a manifest point at custom paths instead of the defaults. skills and hooks/mcpServers/lspServers *merge* with default-location discovery; commands, agents, outputStyles, experimental.themes, experimental.monitors *replace* the default location if set.",
+   "limits": "Plugins cannot reference files outside their own directory via ../ paths \u2014 rejected with a \"path escapes plugin directory\" error.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Skills component",
+   "behavior": "Skills live under skills/<name>/SKILL.md (structured) or as flat .md files under commands/ (legacy). \"Skills are auto-discovered when the plugin is installed.\" A plugin shipping exactly one skill may place SKILL.md directly at the plugin root instead of creating skills/. Skills are always namespaced as /plugin-name:skill-name to prevent collisions.",
+   "limits": "Without a skills/ directory and no skills manifest field, only a root-level SKILL.md loads (single skill). Frontmatter name controls the invocation name; without it Claude Code uses the install-directory name.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins ; https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Agents component \u2014 restricted frontmatter",
+   "behavior": "Agents live in agents/*.md. Supported frontmatter: name, description, model, effort, maxTurns, tools, disallowedTools, skills, memory, background, isolation (only valid value \"worktree\").",
+   "limits": "\"Security note: hooks, mcpServers, and permissionMode are not supported for plugin agents.\" A file with no name and unparseable frontmatter loads with a filename-derived name and ignores its fields (for plugin agents); the equivalent project/user/managed agent is skipped instead. Project/user .claude/agents/ definitions override same-named plugin agents.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Hooks component",
+   "behavior": "hooks/hooks.json (or inline plugin.json \"hooks\") defines event matchers/actions, merged with any other hook sources. Supported hook types: command, http, mcp_tool, prompt, agent. A large fixed list of lifecycle events is supported (PreToolUse, PostToolUse, SessionStart, Stop, InstructionsLoaded \u2014 \"When CLAUDE.md or .claude/rules/*.md loaded\" \u2014 WorktreeCreate/Remove, PreCompact, ConfigChange, etc.).",
+   "limits": "Plugin-bundled MCP tools must be matched in hooks with the scoped name mcp__plugin_<plugin-name>_<server-name>__<tool>; an mcp_tool hook's server field must use plugin:<plugin-name>:<server-name>.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "MCP servers component",
+   "behavior": ".mcp.json (or inline \"mcpServers\") at plugin root defines MCP servers using standard MCP config. \"Plugin MCP servers start automatically when plugin is enabled\" and appear as normal MCP tools. On /reload-plugins mid-session, servers whose configuration is unchanged keep their live connection.",
+   "limits": "Can be configured independently of user-level MCP servers; still subject to the same per-server trust/approval as project .mcp.json.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "LSP servers component",
+   "behavior": ".lsp.json maps language servers to configs (command, args, extensionToLanguage required; transport, env, initializationOptions, settings, workspaceFolder, startupTimeout, shutdownTimeout, restartOnCrash [default true, v2.1.205+], maxRestarts, diagnostics [default true] optional). Given multiple servers registered for the same extension, only the first-registered handles files.",
+   "limits": "\"You must install the language server binary separately\" \u2014 not bundled with the plugin; a missing binary surfaces as \"Executable not found in $PATH\" in the /plugin Errors tab. Invalid LSP configs are skipped (others still start); run `claude --debug` to see why.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/plugins ; https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Monitors component (experimental)",
+   "behavior": "monitors/monitors.json is a JSON array of {name, command, description, when?} background processes. \"Claude Code starts each monitor automatically when the plugin is active.\" Each stdout line from command is delivered to Claude as a session notification. when defaults to \"always\" (start at session/reload) or \"on-skill-invoke:<skill-name>\".",
+   "limits": "Cannot reference ${user_config.*} values (plugin is rejected with an error if attempted, since the command runs through a shell). Processes do not receive CLAUDE_PLUGIN_OPTION_<KEY> env vars. Runs only in interactive CLI sessions, unsandboxed at hook trust level, and is skipped on hosts where the Monitor tool is unavailable. Monitors don't stop if the plugin is disabled mid-session \u2014 only at session end. Not loaded at all for skills-directory (project-scope) plugins.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Themes component (experimental)",
+   "behavior": "themes/*.json ({name, base, overrides}) appear in /theme alongside built-ins. They are read-only in the plugin; pressing Ctrl+E on one copies it to ~/.claude/themes/ for editing. Selecting one saves custom:<plugin-name>:<slug> in config.",
+   "limits": "Read-only as shipped; editing requires the user's own copy.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Output styles component",
+   "behavior": "output-styles/ (or manifest field outputStyles) defines custom output formatting definitions shipped with the plugin.",
+   "limits": "Listed as a component type with default location output-styles/; the reference gives no further detail beyond location/purpose.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Plugin default settings.json",
+   "behavior": "A settings.json at plugin root applies default settings when the plugin is enabled. \"Currently, only the agent and subagentStatusLine keys are supported.\" Setting agent activates one of the plugin's custom agents as the main thread (its system prompt, tool restrictions, and model), changing default behavior when the plugin is enabled.",
+   "limits": "Settings from settings.json take priority over settings declared inline in plugin.json. \"Unknown keys are silently ignored.\"",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugins"
+  },
+  {
+   "feature": "bin/ executables",
+   "behavior": "Executables placed in bin/ at plugin root are added to the Bash tool's PATH while the plugin is enabled.",
+   "limits": "Plugins distributed through claude.ai organization settings cannot include a top-level bin/ directory \u2014 use scripts/ instead.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference ; https://code.claude.com/docs/en/plugins"
+  },
+  {
+   "feature": "Plugins cannot ship rules or CLAUDE.md as project context",
+   "behavior": "\"A CLAUDE.md file at the plugin root is NOT loaded as project context. Plugins contribute context through skills, agents, and hooks.\" No plugin.json component field, default directory, or marketplace plugin-entry field exists for a rules/ or CLAUDE.md-equivalent directory; the component list is limited to skills, agents, hooks, MCP servers, LSP servers, monitors, themes, and output styles.",
+   "limits": "The only place \".claude/rules/*.md\" is mentioned at all in this area is as a trigger condition on the InstructionsLoaded hook event (\"When CLAUDE.md or .claude/rules/*.md loaded\") \u2014 i.e. a plugin hook can react to rules/CLAUDE.md being loaded from the *project*, but a plugin has no native mechanism to author or ship rule files / CLAUDE.md content that gets loaded as project instructions itself.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Plugin path fields cannot escape the plugin directory",
+   "behavior": "\"Plugins cannot reference files outside their own directory via ../ paths.\" Attempting this is \"Rejected with path escapes plugin directory error.\"",
+   "limits": "Applies to component path fields inside plugin.json / marketplace entries.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Symlink handling in cached marketplace plugins",
+   "behavior": "\"Symlinks within plugin resolve when cached. Symlinks to other marketplace plugins dereferenced; to outside marketplace, skipped (security).\"",
+   "limits": "Only symlinks pointing outside the marketplace are skipped; intra-plugin and cross-marketplace-plugin symlinks are followed/dereferenced.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Plugin dependencies field",
+   "behavior": "plugin.json dependencies declares required plugins with semver constraints (e.g. [{\"name\": \"secrets-vault\", \"version\": \"~2.1.0\"}]); dependent plugins are auto-installed/auto-enabled transitively.",
+   "limits": "A marketplace can restrict which other marketplaces a plugin's dependencies may resolve from via allowCrossMarketplaceDependenciesOn.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference ; https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "userConfig (user configuration prompts)",
+   "behavior": "plugin.json userConfig declares fields (type: string|number|boolean|directory|file, title, description, sensitive, required, default, multiple, min/max) that Claude Code prompts the user for when the plugin is enabled. Non-sensitive values are usable as ${user_config.KEY} in MCP/LSP configs and skill/agent content, and exported as CLAUDE_PLUGIN_OPTION_<KEY> env vars to hook/monitor/MCP/LSP processes.",
+   "limits": "sensitive values are masked and stored in secure storage instead of settings.json (not usable as ${user_config.*} substitutions). required:true fails validation on an empty value. ${user_config.*} substitution is explicitly NOT supported in shell-form hook/monitor commands (\"would let shell run arbitrary code\"). Non-sensitive values persist under pluginConfigs[<plugin-id>].options.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "channels field",
+   "behavior": "plugin.json channels is an array of message-channel declarations ({server, userConfig?}) for content-injection style integrations (e.g. Telegram/Slack/Discord). server must match a key already defined in the plugin's mcpServers.",
+   "limits": "userConfig on a channel is optional and uses the same schema as the top-level userConfig.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Plugin environment variable substitutions",
+   "behavior": "${CLAUDE_PLUGIN_ROOT} (absolute path to the plugin's install dir), ${CLAUDE_PLUGIN_DATA} (persistent dir surviving updates, at ~/.claude/plugins/data/{id}/), and ${CLAUDE_PROJECT_DIR} (project root) are substituted in skill/agent content, hook/monitor commands, MCP server command/args/env (and url/headers for http/sse/ws servers), and LSP server command/args/env/workspaceFolder.",
+   "limits": "CLAUDE_PLUGIN_DATA is \"auto-deleted on last-scope uninstall\" but persists across plugin updates. Shell-form commands should double-quote the substitution; exec-form should use an args array.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "Plugin installation scopes",
+   "behavior": "Four scopes: user (~/.claude/settings.json, personal, default), project (.claude/settings.json, shared via VCS), local (.claude/settings.local.json, gitignored), managed (managed settings, read-only/update-only).",
+   "limits": "`claude plugin install` defaults to scope \"user\" if -s/--scope is not given.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference ; claude plugin install --help"
+  },
+  {
+   "feature": "Skills-directory plugins (auto-load, no marketplace)",
+   "behavior": "Any folder under a skills directory containing .claude-plugin/plugin.json loads as <name>@skills-dir on the next session, with no marketplace registration or install step. `claude plugin init <name>` scaffolds one at ~/.claude/skills/<name>/.",
+   "limits": "Personal-scope (~/.claude/skills/) loads in every project. Project-scope (<cwd>/.claude/skills/) loads only after accepting the workspace-trust dialog, and only from the session's primary working directory (does not walk up to repo root). Within these, MCP servers still need per-server approval, LSP servers need workspace trust, and background monitors \"do not load\" at all. SKILL.md edits apply live; other component changes (hooks, .mcp.json, agents, output-styles) need /reload-plugins or a restart.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference ; https://code.claude.com/docs/en/plugins"
+  },
+  {
+   "feature": "Synced plugins from claude.ai",
+   "behavior": "In Cowork and cloud sessions, Claude Code downloads enabled claude.ai plugins to ~/.claude/plugins/synced/ and loads them as <name>@synced, with no marketplace or install record.",
+   "limits": "\"Not loaded in: Your own terminal sessions.\" Can be turned off per-session (`claude plugin disable <name>@synced`), globally via the claude.ai account, or per-project by setting \"<name>@synced\": false in .claude/settings.json. If a same-named plugin exists from another source, that one loads and the synced copy is not loaded.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "--plugin-dir flag (local plugin testing)",
+   "behavior": "`claude --plugin-dir ./my-plugin` loads a plugin directly for that session without installation; can be repeated for multiple plugins; also accepts a .zip archive path. When a --plugin-dir plugin shares a name with an installed marketplace plugin, the local copy takes precedence for that session.",
+   "limits": "Cannot override plugins that managed settings force-enable or force-disable. Not applied automatically to future sessions \u2014 it's a per-invocation flag.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins"
+  },
+  {
+   "feature": "--plugin-url flag (remote zip plugin testing)",
+   "behavior": "`claude --plugin-url <url-to-zip>` fetches a packaged .zip archive at startup and loads it for that session only; repeatable or space-separated for multiple URLs.",
+   "limits": "If Claude Code can't fetch the archive, or the archive is invalid, it starts without the plugin and records a plugin load error visible in the /plugin manager's Errors tab. Same trust considerations as any plugin source apply \u2014 \"only point this flag at archives you control or trust.\"",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/plugins"
+  },
+  {
+   "feature": "/reload-plugins",
+   "behavior": "Reloads plugins, skills, agents, hooks, plugin MCP servers, and plugin LSP servers without a full restart, to pick up changes made during development.",
+   "limits": "MCP servers with unchanged configuration keep their live connection across a reload rather than restarting.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugins ; https://code.claude.com/docs/en/plugins-reference"
+  },
+  {
+   "feature": "marketplace.json schema \u2014 required fields",
+   "behavior": "A marketplace is `.claude-plugin/marketplace.json` with required fields name (kebab-case, public-facing identifier used as plugin@marketplace-name), owner ({name required, email/url optional}), and plugins (array of plugin entries). Optional: description, version, metadata.pluginRoot (v2.1.239+, resolves bare plugin source names), allowCrossMarketplaceDependenciesOn, renames.",
+   "limits": "Reserved marketplace names that third parties cannot use: claude-code-marketplace, claude-code-plugins, claude-plugins-official, claude-plugins-community, anthropic-marketplace, anthropic-plugins, agent-skills, knowledge-work-plugins, claude-for-legal, claude-for-financial-services, healthcare, life-sciences.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Plugin sources in a marketplace entry",
+   "behavior": "Each plugins[] entry's `source` can be a relative path string (\"./plugins/x\", resolved to the marketplace root, not .claude-plugin/), or an object of type github ({repo, ref?, sha?}), url ({url, ref?, sha?}), git-subdir ({url, path, ref?, sha?} \u2014 sparse clone of a monorepo subdir), npm ({package, version?, registry?}), archive ({url, sha256?}, v2.1.224+ zip over HTTPS), or command ({command, timeout?, mode?}, v2.1.229+, runs a local command to produce the plugin path).",
+   "limits": "metadata.pluginRoot lets entries use a bare name instead of a ./ prefix by resolving against that root directory.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Marketplace strict mode per plugin entry",
+   "behavior": "strict (default true) controls authority over component definitions: true means plugin.json is authoritative and the marketplace entry can only supplement with additional components; false means the marketplace entry is the entire definition, and any components also declared in plugin.json cause a conflict error.",
+   "limits": "Intended for cases where \"the marketplace operator controls component definitions fully.\"",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Marketplace renames field",
+   "behavior": "renames maps former plugin names to current names, or to null if removed, so existing users \"automatically migrate.\" Docs instruct treating renames as append-only \u2014 keep old entries even after migration.",
+   "limits": "Advisory practice only (append-only is a recommendation, not something the tooling enforces per the docs text).",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Archive source authentication (headers / headersHelper)",
+   "behavior": "A plugin entry with an archive source can add static headers (v2.1.238+) or a headersHelper command that must print one JSON object of header name/string-value pairs, exit 0 within 10 seconds, and be at most 500 characters of printable ASCII.",
+   "limits": "headersHelper commands (and marketplace-declared install commands generally) prompt for confirmation unless `-y/--yes` is passed (required outright when stdin/stdout isn't a TTY, per `claude plugin install --help`). disableCommandPluginSources (managed setting) can block command-sourced plugins entirely.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces ; claude plugin install --help"
+  },
+  {
+   "feature": "Version management / update detection",
+   "behavior": "\"For git-based sources without explicit version, Claude Code uses the resolved commit SHA, so users get updates when commits change.\" If plugin.json sets version and new commits are pushed without bumping it, \"users keep the cached copy\" \u2014 the docs warn to bump version on every release or omit it.",
+   "limits": "This is a documented pitfall, not a blocked state \u2014 an un-bumped version silently leaves users on the stale cached copy rather than erroring.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Release channels via separate marketplaces",
+   "behavior": "Teams can create separate marketplaces pointing at different refs (e.g. a \"stable-tools\" marketplace pinned to ref: \"stable\") and assign each to user groups via per-group managed settings or gateway policies.",
+   "limits": "This is a usage pattern the docs describe, not a distinct enforced mechanism beyond normal source/ref resolution.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Managed marketplace restrictions",
+   "behavior": "Administrators restrict marketplaces via managed settings: strictKnownMarketplaces (an allowlist by source/repo or hostPattern regex; an empty array \"blocks\" all marketplaces), blockedMarketplaces (explicit blocklist), disableCommandPluginSources (blocks command-sourced plugins), disableSideloadFlags (rejects CLI sideload flags like --plugin-dir/--plugin-url).",
+   "limits": "These are managed-settings-only controls (org/enterprise administration), not something an individual user or plugin author can set for themselves.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Requiring marketplaces/plugins for a team via project settings.json",
+   "behavior": "A project's .claude/settings.json can declare extraKnownMarketplaces (registers a marketplace source) plus enabledPlugins (e.g. \"code-formatter@company-tools\": true) so a team's plugins load automatically for anyone opening that project (subject to workspace trust).",
+   "limits": "Documented as a project-configuration mechanism; scoped to whatever directory the settings.json lives in.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Private marketplace repositories",
+   "behavior": "Claude Code uses existing git credentials (gh auth login, Keychain, or git-credential-store) to fetch private marketplace repos. For background auto-updates on private repos, docs recommend `git config --global url.\"https://x-access-token:TOKEN@github.com/...\".insteadOf ...` with a read-only token; plain GITHUB_TOKEN env vars work only through configured credential helpers (e.g. `gh auth setup-git`).",
+   "limits": "No native token-injection mechanism outside git credential configuration; this is an advisory setup procedure, not an enforced runtime check.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Distribution via claude.ai organization settings",
+   "behavior": "For Team/Enterprise plans distributing through Organization settings > Plugins: the marketplace repository must be private/internal; plugin sources must be github, url, git-subdir, or relative ./ paths; private plugins are allowed only if they share the marketplace's owner on GitHub (or are on the org's GitHub Enterprise host); all other sources must be public; and the plugin must not include a top-level bin/ directory (use scripts/ instead).",
+   "limits": "This is an org-distribution-specific constraint set, distinct from general marketplace hosting on GitHub/GitLab/etc.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "Pre-populating plugins for containers (seed dir)",
+   "behavior": "Setting CLAUDE_CODE_PLUGIN_SEED_DIR to a directory mirroring ~/.claude/plugins (known_marketplaces.json, marketplaces/<name>/..., cache/<marketplace>/<plugin>/<version>/...) lets a container start with plugins pre-populated. Build the seed by running Claude Code once with CLAUDE_CODE_PLUGIN_CACHE_DIR pointed at the seed path while adding marketplaces/installing plugins.",
+   "limits": "Documented as an ops/build-time procedure for container images, not something enforced or validated automatically at runtime.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "`claude plugin validate` \u2014 command",
+   "behavior": "\"Validate a plugin or marketplace manifest, or the skills, agents, and commands in a directory.\" Prints \u2714 Validation passed / \u2714 Validation passed with warnings / \u2718 Validation failed with a list of errors or warnings, and sets a non-zero exit code on failure (confirmed: exit 1 on a missing-required-field or malformed-JSON manifest, and exit 1 under --strict with only warnings present).",
+   "limits": "Plain `claude plugin validate` treats warnings as non-fatal (exit 0, \"passed with warnings\"); only `--strict` \"treat[s] warnings as errors (exit 1)\" \u2014 described for CI use to fail on \"unrecognized fields, missing metadata, and other issues that the runtime tolerates.\" The same underlying check is what the community-marketplace submission review pipeline runs on every submission.",
+   "enforcement": "warns",
+   "citation": "claude plugin validate --help ; tested via `claude plugin validate` and `claude plugin validate --strict` against sample manifests ; https://code.claude.com/docs/en/plugins ; https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "`claude plugin details` \u2014 component inventory and token cost",
+   "behavior": "\"Show a plugin's component inventory and projected token cost.\" Tested output for house-rules@house-rules lists description/source, a component inventory (counts of Skills/Agents/Hooks/MCP servers/LSP servers, noting e.g. \"Hooks (1) PreToolUse (harness-only \u2014 no model context cost)\"), a \"Projected token cost\" Always-on total (\"~359 tok added to every session\"), and a per-component table of rounded always-on vs on-invoke token estimates, with the caveat \"On-invoke cost is paid each time a skill or agent fires. Token counts are estimates and may differ from actual usage.\"",
+   "limits": "Costs are explicitly labeled estimates (\"may differ from actual usage\"); hook-only cost is called out as harness-only with no model context cost.",
+   "enforcement": "advisory",
+   "citation": "claude plugin details --help ; tested via `claude plugin details house-rules@house-rules`"
+  },
+  {
+   "feature": "`claude plugin marketplace` subcommands",
+   "behavior": "add <source> (--scope user|project|local, --sparse <paths...> for monorepos) registers a marketplace from a GitHub repo, git URL, local path, or marketplace.json URL; list [--json]; remove/rm <name>; update [name] (updates all if no name given).",
+   "limits": "Scope defaults to \"user\" for add if not specified.",
+   "enforcement": "automatic",
+   "citation": "claude plugin marketplace --help ; https://code.claude.com/docs/en/plugin-marketplaces"
+  },
+  {
+   "feature": "`claude plugin install/uninstall/enable/disable/update/list/prune`",
+   "behavior": "install|i <plugin> (--config key=value repeatable for userConfig, -s/--scope, -y/--yes to accept a displayed marketplace-declared command or headersHelper archive fetch without prompting); uninstall|remove|rm (-s/--scope, --keep-data, --prune, -y/--yes); enable/disable (-s/--scope, disable also takes -a/--all); update (-s/--scope incl. managed, -y/--yes; \"restart required to apply\"); list (--json, --available requires --json); prune|autoremove (-s/--scope, --dry-run, -y/--yes) removes auto-installed dependencies no longer needed.",
+   "limits": "-y/--yes for install \"required when stdin or stdout is not a TTY\" for command-sourced or headersHelper-authenticated installs.",
+   "enforcement": "automatic",
+   "citation": "claude plugin --help ; claude plugin install --help"
+  },
+  {
+   "feature": "`claude plugin init`/`new` \u2014 scaffold a plugin",
+   "behavior": "Scaffolds a new plugin at ~/.claude/skills/<name>/, auto-loading next session as <name>@skills-dir with no marketplace or install step. Options: --description, --author (default git config user.name), --author-email (default git config user.email), --with <components...> (skills, agents, hooks, mcp, lsp, output-style, channel), -f/--force to overwrite an existing .claude-plugin/.",
+   "limits": "Always targets the skills directory location (~/.claude/skills/<name>/), not an arbitrary path.",
+   "enforcement": "automatic",
+   "citation": "claude plugin init --help"
+  },
+  {
+   "feature": "`claude plugin tag` \u2014 release git tag",
+   "behavior": "\"Create a {name}--v{version} git tag for a plugin release, validating that plugin.json and any enclosing marketplace entry agree.\" Options: --dry-run, -f/--force (skip dirty-working-tree and tag-exists checks), -m/--message <msg> (%s for version), --push, --remote <name> (default origin).",
+   "limits": "Requires plugin.json's version to agree with any enclosing marketplace entry's declared version before tagging (validation step implied by the command description).",
+   "enforcement": "blocks",
+   "citation": "claude plugin tag --help"
+  },
+  {
+   "feature": "`claude plugin eval` \u2014 run eval cases against a plugin",
+   "behavior": "Runs eval cases (<eval dir>/**/case.yaml or prompt.md + graders/*.md; default eval dir evals/) against a plugin target (path, plugin name, or plugin@marketplace) and reports scored results, adding a no-plugin baseline arm via --ablation (default with-without whenever a plugin resolves). Supports --threshold (exit 1 if any case score is below it, default 1.0), --max-cost-usd, --runs, --tag, --case, --json, --report, --judge-model, --mocks (record|off), --scaffold (author-supplied bash, off by default), and a `plugin eval init` subcommand to author a suite via interview.",
+   "limits": "--scaffold explicitly warns: \"runs author-supplied bash as you; off by default \u2014 only use on case files you authored.\" --mocks defaults to \"record\" (mocked MCP servers); real servers only spawn under --mocks off, gated by --allow-tools.",
+   "enforcement": "blocks",
+   "citation": "claude plugin eval --help"
+  }
+ ],
+ "unreachable": []
+}

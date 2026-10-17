@@ -1,0 +1,69 @@
+{
+ "item": "plugins/house/modules/deployment/rules/deployment.md",
+ "rules": [
+  {
+   "heading": "Deploy manually after the merge, because a merge is not a production update",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Nothing in the harness models the difference between a merged default branch and a live surface: the GitHub surfaces documented only create, review, and comment on pull requests, and none of them observe or assert production state after a merge.",
+   "citation": "https://code.claude.com/docs/en/common-workflows.md#create-pull-requests",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Chain the deploy guards before building anything, and give them one named escape hatch",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "GitHub Action CI triggering on Claude's commits (empty check-run list)",
+   "evidence": "The harness documents that GitHub does not trigger workflows on commits made with the default token, which is exactly the condition that makes a tip commit show an empty list of check runs, so the rule's fail-closed reading of an empty list builds directly on that native pitfall.",
+   "citation": "https://code.claude.com/docs/en/github-actions.md#ci-not-running-on-claudes-commits",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because a push made with the default workflow token starts no run at all and leaves the tip genuinely unchecked."
+  },
+  {
+   "heading": "Migrate before deploying the code that reads the schema",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness has no notion of schema state or deploy ordering; its only ordering primitives are hook lifecycle events fired around tool calls, which say nothing about migrations preceding the code that reads them.",
+   "citation": "https://code.claude.com/docs/en/hooks.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Invoke a deploy only through its named script",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Permission rule evaluation order and bare tool-name deny rules",
+   "evidence": "Permission rules are evaluated deny, then ask, then allow, and are enforced by Claude Code rather than the model, so an allowlist that merely omits the platform CLI does not refuse it while a deny rule on that CLI does.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script, because an allow entry alone just skips a prompt while a deny rule is the layer the harness enforces regardless of what the model decides."
+  },
+  {
+   "heading": "Verify the deployed URL against the built file with the cache bypassed",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "WebFetch is governed only by domain permission rules and sandbox proxy approval, and nothing in the harness compares a built artifact against a live response or reasons about edge caching.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Repoint and deploy the consumer before dropping the producer's column",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "No documented harness feature tracks producer and consumer contracts or gates a destructive schema change on a consumer having shipped; the closest native gate is an advisory review that never blocks a merge.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#check-run-output",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Restore a backup before calling it a backup",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness's only restore-shaped feature is session checkpointing, which the docs explicitly scope to session-level recovery and disclaim as a replacement for durable version history, so repository backup and restore drills are entirely outside it.",
+   "citation": "https://code.claude.com/docs/en/checkpointing",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "Two calls I was least sure of. (1) \"Chain the deploy guards before building anything\": the guard chain could equally be tied to the PreToolUse hook floor, since the memory docs say that to block an action regardless of what Claude decides you need a hook rather than prose. I judged the stronger and more specific tie to be the documented GitHub pitfall that pushes made with the default workflow token trigger no workflows, which is the concrete cause of the empty check-run list the rule already guards against; the guard-script-as-first-step design itself has no native counterpart, so only that one clause needs the citation. (2) \"Invoke a deploy only through its named script\": I considered CONFLICT, because the Anchor claims an allowlist that names the deploy script and never the platform CLI is what refuses a direct CLI call, and the permissions docs say allow rules only skip prompts while deny rules are what block, with deny evaluated first. I settled on COMPLEMENT plus a reword rather than CONFLICT because the rule's intent matches the harness and only the Anchor's enforcement claim overstates it; if the owner wants the stricter reading, resolve-conflict on the same Anchor line would carry identical wording. Also worth flagging: the wrapper-stripping facts mean a prefix allow rule can match more than intended for runner-style commands, which is a further reason the deny half of the pair carries the weight. Lower-confidence UNIQUE calls: \"Migrate before deploying\" mentions scheduled runs and lane ordering, and \"Restore a backup\" states a cadence, both of which brush against native scheduled tasks and routines, but neither rule depends on that machinery, so I did not treat scheduling as the native feature they build on."
+}

@@ -1,0 +1,286 @@
+{
+  "area": "Claude Code plugin eval runner (`claude plugin eval` / `claude plugin eval init`) as of 2026-09-20: eval case format, grader types, run/scoring mechanics, no-plugin ablation, thresholds, reports (HTML/JSON/publishing), sandboxing/security/availability, plus Anthropic's general agent-eval guidance (demystifying-evals blog) and skill-creator's own eval/ablation tooling (skill-creator blog).",
+  "facts": [
+    {
+      "feature": "Eval case directory layout",
+      "behavior": "\"An eval suite lives in a directory called evals/ inside your plugin... Each case is its own subdirectory with a prompt and one or more graders.\" \"A case is a directory under the plugin's eval directory that contains a prompt.md, a case.yaml, or both.\"",
+      "limits": "Only prompt.md or case.yaml is required for a case to exist. Nesting under a non-case directory groups cases. This case format is separate from the evals/evals.json file the skill-creator plugin uses, and plugin eval does not check plugin manifest syntax/schema (that is claude plugin validate).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals"
+    },
+    {
+      "feature": "Eval directory location override",
+      "behavior": "Default directory is evals/; customizable via the plugin manifest's experimental.evals field (\"Directory below the plugin root that holds the plugin's eval cases, when it isn't the default evals/\") or the --eval-dir flag.",
+      "limits": "Must be a relative path of plain directory names (e.g. qa or quality/evals). An absolute path or one containing .. is rejected: as a flag value it errors (blocks), as a manifest value it prints a Warning: and falls back to evals/ (warns). If both are set, the flag wins.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#use-a-different-eval-directory"
+    },
+    {
+      "feature": "claude plugin eval init (suite scaffolding)",
+      "behavior": "\"asks you about your plugin, proposes the cases and graders, tries them, and writes the files.\" An interactive Claude Code session interviews the author. --bare <name> instead \"writes a case named first-case with a placeholder prompt.md and one placeholder grader, and runs nothing.\"",
+      "limits": "Recommended but not required path; needs a terminal to ask its questions. In CI, use `claude plugin eval init --bare <name>` for the blank template.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#write-and-refine-cases"
+    },
+    {
+      "feature": "What happens in a run",
+      "behavior": "\"For each run of a case, Claude Code starts a fresh, isolated non-interactive session with only your plugin loaded, sends the prompt, and lets Claude work until it finishes or hits the case's turn or time limit. Each grader then checks the final reply, the transcript, or a file Claude created, and passes or fails.\"",
+      "limits": "Only the target plugin is loaded; no personal/project config.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#how-an-eval-run-works"
+    },
+    {
+      "feature": "Default run count and case scoring",
+      "behavior": "\"each case runs three times by default... A run's score is the fraction of its graders that passed, weighted if you set weights, and the case's score is the mean across its runs.\" prompt.md field `runs` defaults to 3, range 1-50, overridable with --runs.",
+      "limits": "Per-case per-arm; runs field capped at 50.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#how-a-case-is-scored"
+    },
+    {
+      "feature": "Threshold / pass condition",
+      "behavior": "\"A case passes when its score meets the --threshold, 1.0 by default.\" \"A case passes when its with-arm score is at least this. Any case below it makes the command exit 1\".",
+      "limits": "Range 0..1; only checked against the with-arm score.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#command-options"
+    },
+    {
+      "feature": "No-plugin baseline (ablation)",
+      "behavior": "\"each case's runs are repeated with no plugin loaded by default, and you get two scores, WITH and W/OUT. Their difference, Δ, is what the plugin contributed.\" --ablation with-without is the default whenever a plugin resolves; --ablation none runs a single arm and \"halves the cost\".",
+      "limits": "with-without requires a plugin to resolve for the case (via auto-detection or the `plugins` field); otherwise it fails with \"ablation requested but no plugin resolved\".",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline"
+    },
+    {
+      "feature": "With-only / both grader-arm scoring exclusion",
+      "behavior": "\"In a two-arm run, some graders are reported with scored: false... Claude Code excludes such graders from the score in both arms and reports them in the with-arm as pass/fail indicators only. That includes: Every tool_used grader whose tool is Skill; Any grader you mark arm: with-only.\" \"Set arm: both on a grader to score it in both arms regardless.\"",
+      "limits": "\"If every grader in a case is one of these, they're scored normally instead\"; under --ablation none, nothing is excluded, so absolute scores can differ between ablation modes for the same suite.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#compare-against-a-no-plugin-baseline"
+    },
+    {
+      "feature": "Grader types (six, no custom code)",
+      "behavior": "Table of six types: regex (JS regex match/not_contains/count:N over a target), tool_used (call count of a tool matching input_match between min/max), tool_order (before-tool call precedes after-tool call), file_exists (created-file path glob), llm (judge votes PASS on a rubric, \"at least two of three votes\"), baseline (judge compares run to a reference .jsonl transcript). \"There are no custom-code graders.\"",
+      "limits": "regex/tool_used/tool_order/file_exists are computed from transcript/files and cost nothing; llm and baseline call a judge model and add cost.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#grader-types"
+    },
+    {
+      "feature": "Judge model for llm/baseline graders",
+      "behavior": "\"The judge for llm and baseline graders is a small fast model by default. Pass --judge-model sonnet or a full model ID to use a stronger one for nuanced rubrics.\" Each llm/baseline grader costs \"three short judge calls... per run\" (majority vote).",
+      "limits": "Only affects llm/baseline grader type; does not change the agent-under-test model.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#grade-the-result"
+    },
+    {
+      "feature": "Grader weighting",
+      "behavior": "Grader frontmatter `weight` (default 1, \"Any positive number\") sets \"Relative weight in the run's score.\"",
+      "limits": "Applies per grader file; combined with pass/fail to compute the run's fractional score.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#grader-frontmatter"
+    },
+    {
+      "feature": "What a grader can look at (target/focus)",
+      "behavior": "regex takes `target`, llm takes `focus`; values: last_message (default), trace (JSON per message; regex sees all, llm judge sees only \"the first 12 and the last 12\"), files (created paths only, not contents, excludes scaffold-created or edited-only files), {source:file, path} (file contents; images shown to llm judge, other binaries like pptx/PDF refused), mock_calls.",
+      "limits": "llm judge \"refuses other binary files such as .pptx or PDF; render them to an image or write them out as text and grade that\".",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#what-a-grader-can-look-at"
+    },
+    {
+      "feature": "Concurrency",
+      "behavior": "\"-j, --concurrency <n>: Run up to this many agent runs at once, from 1 to 8. They share your account's rate limit, so this shortens wall-clock time rather than raising throughput past that limit. Results keep case order.\"",
+      "limits": "Range 1-8; default 1; bounded by shared account rate limit, not a throughput increase.",
+      "enforcement": "automatic",
+      "citation": "claude plugin eval --help"
+    },
+    {
+      "feature": "Tool grants / read-only default allowlist",
+      "behavior": "\"Built-in tools that need a grant you didn't give, such as Bash, Write, Edit, WebFetch, and WebSearch, are removed from the session, so Claude can't call them at all. The allowlist is the read-only tools the case lists in allowed_tools, from Read, Glob, Grep, NotebookRead, Skill, Agent, TodoWrite, and the task tools TaskCreate, TaskGet, TaskList, TaskUpdate, TaskStop, and TaskOutput, plus whatever you grant with --allow-tools.\"",
+      "limits": "\"A case's allowed_tools and a skill's own allowed-tools frontmatter can't widen any of them\" beyond operator-granted flags (--allow-tools, --scaffold, --allow-real-servers/--mocks off).",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#grant-tools"
+    },
+    {
+      "feature": "OS-level sandbox for Bash grants",
+      "behavior": "\"When you grant Bash in any form, every command runs under Claude Code's OS-level sandbox. Writes are confined to the run's workspace, your home directory and Claude Code configuration are unreadable, and network access is limited to domains you grant with --allow-tools WebFetch(domain:example.com).\"",
+      "limits": "\"If you grant Bash or PowerShell on a machine with no sandbox backend, Claude Code refuses each run rather than running it unconfined... Native Windows has no backend, so run shell-granting suites under WSL2; on Linux, install bubblewrap and socat first.\"",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#grant-tools"
+    },
+    {
+      "feature": "Run isolation (what's absent inside a run)",
+      "behavior": "\"Each run gets a throwaway home directory, working directory, and Claude Code configuration... Nothing personal or project-level loads. Your user settings, hooks, CLAUDE.md files, MCP servers, other installed plugins, memory, and skills are absent, and no project-scoped .claude/ or .mcp.json above the sandbox is read.\" \"The Artifact tool is off.\" \"The case definitions are hidden from the agent.\"",
+      "limits": "\"Managed policy can still restrict a run\" (managed settings still apply). \"No network sandbox outside shell commands... the plugin's own hooks and any real MCP servers you start can reach any host.\" Most of the shell environment is withheld except an allowlist plus EVAL_* vars.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#how-runs-are-isolated"
+    },
+    {
+      "feature": "Trust prompt for plugin directories",
+      "behavior": "\"The first time you run claude plugin eval against a directory, Claude Code asks 'Trust this plugin directory?' before it loads anything from it... When stdin or stdout isn't a terminal, or under --json, the run can't ask and is refused with exit 1; pass --trust-plugin to assert the trust yourself, only for a plugin you'd run on your own machine.\"",
+      "limits": "\"A target you name rather than give as a path, meaning an installed plugin or a skills-directory plugin, skips the prompt.\" --trust-plugin \"Does not imply --scaffold, --allow-tools or --mocks off\" (per CLI help).",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#security"
+    },
+    {
+      "feature": "Scaffold scripts",
+      "behavior": "\"context.scaffold_script: A Bash script in the case directory that runs in the empty workspace before Claude starts, to create fixture files or a git repository. It runs only when you pass --scaffold.\" Per CLI help: \"runs author-supplied bash as you; off by default — only use on case files you authored\".",
+      "limits": "Off by default; requires explicit --scaffold flag per run; runs as you, outside the agent's sandbox.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#add-setup-or-history-with-case-yaml"
+    },
+    {
+      "feature": "MCP server mocking",
+      "behavior": "\"A run never starts your plugin's real MCP servers unless you ask. Claude Code registers a stand-in under each server's own name. Tools with a mock file answer from it and are allowed without an --allow-tools grant, and a tool with no mock file isn't available to Claude.\" Mock files support {{input.field}}, {{file:fixtures/...}}, an `expect:` input guard, `error: true`, and `type: agent`.",
+      "limits": "Default --mocks record starts no real servers; --mocks off ignores mocks and starts every declared server; --allow-real-servers starts real servers only for unmocked ones. Real servers \"run as you, outside the OS sandbox\" and need an --allow-tools grant.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#mock-mcp-servers"
+    },
+    {
+      "feature": "Mock expect: guard aborts a run",
+      "behavior": "\"The expect: block guards the input. If a call violates it, the run aborts with score 0 and records why, so a case can assert what your plugin asked the server to do.\"",
+      "limits": "Only applies to calls against mocked MCP tools with an expect: block defined.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#mock-mcp-servers"
+    },
+    {
+      "feature": "Agent mock replay",
+      "behavior": "\"A type: agent mock answers with a call to the --judge-model, so its output varies between runs and changes if you change the judge... Claude Code saves each answer an agent mock gave under the results directory in mock-recordings/... After you copy a recording there, later runs answer the identical call from it with no model call.\"",
+      "limits": "Applies only to type: agent mocks; adoption is a manual copy step from ADOPT.txt into mocks/.replay/<server>/.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#replay-agent-mock-answers"
+    },
+    {
+      "feature": "Cost ceiling",
+      "behavior": "\"--max-cost-usd <usd>: A ceiling on the run's list-price cost estimate, not on plan usage. Checked before each run starts. Once spent, nothing further starts; runs already in flight finish, so spend can pass the ceiling by those runs. If any run is left unstarted, the command exits 2 with partial results.\"",
+      "limits": "No ceiling by default; the figure is a list-price estimate, not a hard plan-usage cap.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#command-options"
+    },
+    {
+      "feature": "HTML report",
+      "behavior": "\"report.html is a single self-contained file that makes no external requests, so you can attach it to a CI job or open it from disk.\" Contains a verdict line, five summary tiles (suite score, ablation Δ, baseline score, cases passing threshold, perfect runs), per-case cards with Δ/score bar (regressions get a red left edge), per-run grader pass/fail chips with explanations and judge votes, and the prompt/grader text.",
+      "limits": "Written automatically for every run with at least one case, to <eval dir>/results/<timestamp>/report.html.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#html-report"
+    },
+    {
+      "feature": "Report publishing to claude.ai",
+      "behavior": "\"If you're signed in with a claude.ai subscription and artifacts are available for your account, Claude Code also publishes the report as a private artifact and prints Published: <url>. Pass --no-publish to keep it local. If no Published: line appears, such as with API-key authentication, the local file is the report.\" A run started from inside a Claude Code session stays local by default (\"Report: ... kept local\") unless --publish-report is passed.",
+      "limits": "Requires a claude.ai subscription with artifacts available; never publishes under API-key authentication.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#html-report"
+    },
+    {
+      "feature": "JSON result document",
+      "behavior": "\"aggregate-result.json, and --json output, is a versioned document with schemaVersion: 1 for CI scripts to parse. Field names are camelCase and new fields are added without renaming existing ones.\" Key fields: partial/partialReason, aggregates.overallScore, casesPassed/casesTotal, meanDelta, cases[].aggregates.score/delta, arms.with[].error/aborted/skippedPaidGraders, costUsd, durationSeconds, claudeVersion.",
+      "limits": "--json makes the run quiet: \"no progress lines or summary table\"; target must precede --json or the path must end in .json (\"--json output path must end in .json\" error otherwise).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#json-result"
+    },
+    {
+      "feature": "CI exit codes",
+      "behavior": "0 = every case at/above --threshold and every case file loaded; 1 = a case scored below threshold, a case file failed to load, no cases were found, a run couldn't start, the plugin directory isn't trusted without --trust-plugin, or an option was invalid; 2 = partial run (--max-cost-usd ceiling hit, or credential rejected before/at the first run) with results.json still written as partial: true; 130 = interrupted (partial results written); 143 = terminated (e.g. CI timeout).",
+      "limits": "\"Problems writing or publishing the HTML report never change the exit code.\"",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#run-evals-in-ci"
+    },
+    {
+      "feature": "Availability / version requirement",
+      "behavior": "Requires \"Claude Code v2.1.269 or later.\" \"Every eval run and every judge grader is a real model call on your account, counted against your plan's usage or your API bill.\" Error states: \"plugin eval is currently in early access\" (run claude update) and \"plugin eval is currently unavailable\" (\"Anthropic has switched the command off server-side. Nothing on your machine turns it back on\").",
+      "limits": "Gated by client version and a server-side feature switch outside local control; costs always count against the account's plan/API usage.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#requirements"
+    },
+    {
+      "feature": "Target resolution",
+      "behavior": "Table: a plugin root path (e.g. `.`) runs every case under its eval directory; a single prompt.md/case.yaml runs that case; an installed plugin by `name` or `name@marketplace` runs the installed copy's cases (results under ./evals/results/ in the current directory); `name@skills-dir` does the same for a skills-directory plugin; an omitted target defaults to the current directory as a path.",
+      "limits": "For a named (non-path) target, results land relative to the caller's cwd rather than the plugin's own directory.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#choose-what-to-evaluate"
+    },
+    {
+      "feature": "Distinct scope boundary: claude plugin validate",
+      "behavior": "\"To check a plugin's files for syntax and schema errors rather than its behavior, use claude plugin validate.\"",
+      "limits": "plugin eval never checks manifest/schema correctness; it only scores behavior via cases and graders.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/plugin-evals"
+    },
+    {
+      "feature": "Distinct scope boundary: skill-creator's evals/evals.json",
+      "behavior": "\"Its case format is separate from the evals/evals.json file the skill-creator plugin uses.\"",
+      "limits": "prompt.md/case.yaml/graders format applies only to `claude plugin eval`; skill-creator's own benchmark tooling uses a different file.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/plugin-evals"
+    },
+    {
+      "feature": "Model pinning for CI stability",
+      "behavior": "\"--model <model>: Model for the agent under test. Pin it in CI so a model rollout isn't mistaken for a plugin regression.\"",
+      "limits": "Default is the case's own `model` field, else ANTHROPIC_MODEL env var, else Claude Code's default.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#command-options"
+    },
+    {
+      "feature": "--keep-temp debugging flag",
+      "behavior": "\"--keep-temp: Preserve scaffold dirs for debugging\" / \"Keep every run's sandbox directory and print its path, for debugging what Claude produced.\"",
+      "limits": "Off by default; only affects local temp-directory retention, not scoring or reports.",
+      "enforcement": "advisory",
+      "citation": "claude plugin eval --help"
+    },
+    {
+      "feature": "Anthropic guidance: three grader-type taxonomy",
+      "behavior": "\"Code-based\" graders are \"Fast, cheap, objective, reproducible, easy to debug\" but \"Brittle to valid variations that don't match expected patterns exactly\"; \"Model-based (LLM-as-judge)\" graders are \"Flexible, scalable, captures nuance, handles open-ended tasks\" but \"Non-deterministic, expensive, requires calibration with human graders\"; \"Human\" grading is the \"Gold standard quality\" but \"Expensive, slow, requires access to experts at scale.\"",
+      "limits": "General cross-tool eval-design guidance, not a description of any specific runner's enforced behavior.",
+      "enforcement": "advisory",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    },
+    {
+      "feature": "Anthropic guidance: pass@k vs pass^k",
+      "behavior": "\"pass@k: Measures the likelihood that an agent gets at least one correct solution in k attempts.\" \"pass^k: Measures the probability that all k trials succeed.\" \"At k=1, they're identical (both equal the per-trial success rate). By k=10, they tell opposite stories: pass@k approaches 100% while pass^k falls to 0%.\"",
+      "limits": "A general interpretive framework for multi-run/non-deterministic results; not itself a runner feature.",
+      "enforcement": "advisory",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    },
+    {
+      "feature": "Anthropic guidance: capability vs regression eval suites",
+      "behavior": "Capability evals \"should start at a low pass rate, targeting tasks the agent struggles with\"; regression evals \"should have a nearly 100% pass rate\" to catch backsliding; as agents improve, capability evals can \"graduate\" into regression suites.",
+      "limits": "General suite-design guidance.",
+      "enforcement": "advisory",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    },
+    {
+      "feature": "Anthropic guidance: starting dataset size",
+      "behavior": "\"20-50 simple tasks drawn from real failures is a great start,\" because \"in early agent development, each change to the system often has a clear, noticeable impact, and this large effect size means small sample sizes suffice.\"",
+      "limits": "A starting-point heuristic, not a hard requirement.",
+      "enforcement": "advisory",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    },
+    {
+      "feature": "Anthropic guidance: 0% pass-rate diagnostic",
+      "behavior": "\"a 0% pass rate across many trials (i.e 0% pass@100) is most often a signal of a broken task, not an incapable agent,\" citing SWE-bench tasks unsolvable due to unspecified filepaths and CORE-Bench's \"rigid grading that penalized valid numerical formats.\"",
+      "limits": "Debugging heuristic for interpreting eval results generally.",
+      "enforcement": "advisory",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    },
+    {
+      "feature": "Anthropic guidance: avoid rigid tool-call-sequence grading",
+      "behavior": "Avoid checking \"that agents followed very specific steps like a sequence of tool calls in the right order\" since this produces \"overly brittle tests, as agents regularly find valid approaches that eval designers didn't anticipate\"; instead \"Grade what the agent produced, not the path it took.\"",
+      "limits": "General grader-design guidance; directly relevant to when a `tool_order`/`tool_used` grader is the wrong choice.",
+      "enforcement": "advisory",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+    },
+    {
+      "feature": "Skill-creator ablation (with-skill vs without-skill)",
+      "behavior": "\"The framework supports comparing skills against baseline scenarios: With skill... Without skill... This 'ablation' approach reveals whether a skill genuinely adds value or if underlying model improvements have made it redundant.\"",
+      "limits": "This is the skill-creator plugin's own benchmark tooling, conceptually similar to but distinct from `claude plugin eval`'s --ablation with-without flag.",
+      "enforcement": "automatic",
+      "citation": "https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills"
+    },
+    {
+      "feature": "Skill-creator benchmark mode and comparator agents",
+      "behavior": "\"Benchmark Mode tracks three key metrics: Eval pass rate (percentage of tests passed), Elapsed time per evaluation, Token usage across runs.\" Supports running evals in parallel with independent agents, each with clean/isolated context; \"Comparator Agents enable A/B testing by judging outputs 'without knowing which is which.'\"",
+      "limits": "Specific to the skill-creator plugin's own eval/benchmark workflow, separate from the plugin-eval case format.",
+      "enforcement": "automatic",
+      "citation": "https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills"
+    }
+  ],
+  "unreachable": []
+}

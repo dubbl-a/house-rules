@@ -1,0 +1,169 @@
+{
+ "area": "Claude Code (code.claude.com/docs) \u2014 output styles, plan mode, and CLAUDE.md/rules guidance on planning, as of 2026-09-02",
+ "facts": [
+  {
+   "feature": "Output styles modify the system prompt directly",
+   "behavior": "\"Output styles change how Claude responds, not what Claude knows. They modify the system prompt to set role, tone, and output format.\" \"Output styles directly modify Claude Code's system prompt... Claude Code adds the output style's custom instructions to the system prompt... When you select a style other than Default, Claude Code also reminds Claude of the style during the conversation.\"",
+   "limits": "\"For instructions about your project, conventions, or codebase, use CLAUDE.md instead.\" Scope is the main conversation only: \"a subagent runs its own system prompt, so styles don't change how subagents respond. A fork is the exception, because it inherits the parent's full system prompt.\" Takes effect only after /clear or a new session, since the system prompt is read once at session start.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/output-styles"
+  },
+  {
+   "feature": "Five built-in output styles",
+   "behavior": "Default = existing system prompt for software-engineering tasks. Proactive = \"Claude executes immediately, makes reasonable assumptions instead of pausing for routine decisions, and prefers action over planning... it works without changing your permission mode, so your permission mode still decides what runs without asking you.\" Concise = \"leads with the result, skips preamble and narration, and keeps responses short by default... Claude always keeps the complete content of error reports, security warnings, and confirmations for destructive actions.\" Explanatory = adds educational \"Insights\" between engineering work. Learning = collaborative; adds `TODO(human)` markers for the user to implement.",
+   "limits": "Concise requires Claude Code v2.1.237+. Explanatory/Learning increase output tokens by design; Concise reduces them.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/output-styles"
+  },
+  {
+   "feature": "keep-coding-instructions frontmatter (custom output styles)",
+   "behavior": "\"Custom output styles leave out Claude Code's built-in software engineering instructions, such as how to scope changes, write comments, and verify work, unless keep-coding-instructions is set to true.\" Default: false.",
+   "limits": "Applies only to custom (not built-in) output styles.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/output-styles"
+  },
+  {
+   "feature": "Output style file locations, precedence, and switching",
+   "behavior": "Custom styles are Markdown files (frontmatter + instructions) at ~/.claude/output-styles (user), .claude/output-styles (project), or the managed policy dir; plugins can ship an output-styles/ directory too. \"Project output styles load from every .claude/output-styles/ between the working directory and the repository root. When more than one of these nested directories defines a style with the same name, Claude Code uses the one closest to the working directory.\" Selected via /config \u2192 Output style (saved to .claude/settings.local.json) or by setting the `outputStyle` field directly.",
+   "limits": "The standalone `/output-style` command was deprecated in v2.1.73 and removed in v2.1.91.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/output-styles"
+  },
+  {
+   "feature": "force-for-plugin frontmatter",
+   "behavior": "\"Plugin output styles only: apply this style automatically whenever the plugin is enabled, without requiring users to select it. Overrides the user's outputStyle setting. If multiple enabled plugins set this, Claude Code uses the first one loaded.\"",
+   "limits": "Plugin-scoped only; default false. Overrides the user's own manual selection.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/output-styles"
+  },
+  {
+   "feature": "Output styles vs. CLAUDE.md vs. --append-system-prompt vs. Agents vs. Skills",
+   "behavior": "Comparison table: Output styles \"Modifies the system prompt\" and applies to every response. CLAUDE.md \"Adds a user message after the system prompt.\" `--append-system-prompt` \"Appends to the system prompt without removing anything\" for a one-off invocation. Agents \"Runs a subagent with its own system prompt, model, and tools.\" Skills \"Loads task-specific instructions when invoked or relevant.\"",
+   "limits": "Only output styles rewrite the base system prompt; CLAUDE.md is a separate, later-injected user message, not part of the system prompt itself.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/output-styles"
+  },
+  {
+   "feature": "Plan mode: what it is and what it blocks",
+   "behavior": "\"Plan mode tells Claude to research and propose changes without making them. Claude reads files, runs shell commands to explore, and writes a plan, but does not edit your source. Except in sessions with bypass permissions available, edits stay blocked until you approve the plan.\" Status bar shows `\u23f8 plan mode on`.",
+   "limits": "In sessions where bypass permissions is available, plan mode's blocks are NOT enforced: \"Claude is still instructed to plan without editing, but a file edit or shell command it attempts during planning runs without prompting.\" Only explicit ask rules and rm/rmdir on critical paths still prompt in that case \u2014 so the block collapses to advisory-only guidance in that configuration.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode"
+  },
+  {
+   "feature": "Plan mode's handling of exploratory shell commands",
+   "behavior": "\"When auto mode is available and the useAutoModeDuringPlan setting is on, which it is by default, the classifier reviews shell commands during planning instead of prompting you. Approved commands run, and rejected ones are blocked.\" Read-only commands always run without prompting.",
+   "limits": "\"Otherwise, commands outside the built-in read-only set prompt for approval, including when the sandbox's auto-allow mode is enabled.\" In sessions with bypass permissions available, neither the classifier nor a prompt applies to planning commands at all.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode"
+  },
+  {
+   "feature": "Entering and exiting plan mode",
+   "behavior": "Enter via `Shift+Tab` (cycles default \u2192 acceptEdits \u2192 plan \u2192 default), prefixing a single prompt with `/plan`, or `claude --permission-mode plan`. \"Press Shift+Tab again to leave plan mode without approving a plan.\" Also settable as project default with `defaultMode: \"plan\"` in `.claude/settings.json` (terminal sessions only; the VS Code extension needs `claudeCode.initialPermissionMode` instead, since it doesn't read project settings for starting mode).",
+   "limits": "The VS Code extension's own mode-indicator pick for Plan applies to that conversation only, not as a lasting default.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode ; https://code.claude.com/docs/en/common-workflows#plan-before-editing"
+  },
+  {
+   "feature": "Reviewing and approving a plan",
+   "behavior": "When ready, Claude presents the plan with three choices: \"Yes, and use auto mode\" (reads \"Yes, auto-accept edits\" if auto mode unavailable, or the bypass-permissions phrasing if the session started with bypass enabled), \"Yes, manually approve edits\", or \"No, keep planning\". \"Approving a plan exits plan mode and switches the session to the permission mode each approve option describes.\" `Ctrl+G` opens the proposed plan in the user's default text editor to edit directly before Claude proceeds.",
+   "limits": "Accepting a plan also auto-generates a session title from the plan unless already named. This is a user decision point, not an automated enforcement step.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/permission-modes#review-and-approve-a-plan"
+  },
+  {
+   "feature": "Plan mode interaction with protected paths",
+   "behavior": "Table: writes to protected paths (.git, .claude, .vscode, shell rc files, etc.) in `plan` mode are \"Allowed in sessions with bypass permissions available. Otherwise, routed to the classifier when auto mode is available during planning, and prompted when it isn't.\"",
+   "limits": "permissions.allow rules in settings files do not pre-approve protected-path writes in any mode, including plan mode \u2014 the safety check runs before allow rules are evaluated.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/permission-modes#protected-paths"
+  },
+  {
+   "feature": "Plan mode interaction with critical-path rm/rmdir",
+   "behavior": "Table: in `plan` mode, a critical-path removal (filesystem root, home dir, working dir and parents, etc.) \"Asks you to approve it. With auto mode available during planning and no bypass permissions available, sends it to the classifier instead.\"",
+   "limits": "\"Claude Code never lets a permissions.allow rule or a PreToolUse hook that returns 'allow' approve an rm or rmdir command that targets a critical path, even in modes that skip other prompts\" \u2014 this circuit breaker applies in every mode including plan and bypassPermissions, so it can never be silently auto-approved.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/permission-modes#critical-paths"
+  },
+  {
+   "feature": "Shift+Tab permission-mode cycle (Interactive mode reference)",
+   "behavior": "\"Shift+Tab... Cycle permission modes... Cycle through default (labeled Manual in the mode indicator), acceptEdits, plan, and, when available, bypassPermissions and then auto. From auto, the first press switches to default.\"",
+   "limits": "Alt+M is the Windows fallback only when the Node/Bun runtime doesn't enable VT input mode. This is a UI mechanism, not itself an enforcement behavior.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/interactive-mode"
+  },
+  {
+   "feature": "Prompt suggestions are suppressed in plan mode",
+   "behavior": "Interactive-mode doc lists conditions where Claude Code skips next-prompt suggestions, including: \"While you're in plan mode.\"",
+   "limits": "One of several suppression conditions (cold cache, near usage limit, agent-team teammate sessions, etc.); not a restriction on tools or edits.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/interactive-mode#when-claude-code-skips-suggestions"
+  },
+  {
+   "feature": "CLAUDE.md and auto memory are context, not enforcement",
+   "behavior": "\"Both are loaded at the start of every conversation. Claude treats them as context, not enforced configuration. To block an action regardless of what Claude decides, use a PreToolUse hook instead. The more specific and concise your instructions, the more consistently Claude follows them.\"",
+   "limits": "No guarantee of compliance, \"especially for vague or conflicting instructions.\"",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/memory#claude-md-vs-auto-memory"
+  },
+  {
+   "feature": "CLAUDE.md file locations and load order",
+   "behavior": "Four scopes, loaded broadest\u2192narrowest: managed policy (org-wide, e.g. /etc/claude-code/CLAUDE.md), user (~/.claude/CLAUDE.md), project (./CLAUDE.md or ./.claude/CLAUDE.md), local (./CLAUDE.local.md, gitignored). \"CLAUDE.md and CLAUDE.local.md files in the directory hierarchy above the working directory are loaded at launch.\" \"All discovered files are concatenated into context rather than overriding each other... instructions closer to where you launched Claude are read last.\" Nested subdirectory CLAUDE.md files load on demand when Claude reads files there.",
+   "limits": "Concatenation means conflicting instructions across files don't override each other automatically \u2014 \"if two rules contradict each other, Claude may pick one arbitrarily.\"",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/memory#how-claude-md-files-load"
+  },
+  {
+   "feature": "CLAUDE.md size guidance and limits",
+   "behavior": "\"Size: target under 200 lines per CLAUDE.md file. Longer files consume more context and reduce adherence.\" \"Claude Code skips a file over 4 MiB.\" Splitting into @path imports \"helps organization but doesn't reduce context, since imported files load at launch\" (max recursive import depth: 4 hops).",
+   "limits": "This is the CLAUDE.md limit specifically; the separate MEMORY.md auto-memory index is capped at first 200 lines or 25KB, whichever comes first, with content beyond that dropped at load. The 4 MiB skip is automatic; adherence below that size is not guaranteed.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/memory#write-effective-instructions"
+  },
+  {
+   "feature": ".claude/rules/ path-scoped rule files",
+   "behavior": "Rules directory files (e.g. testing.md) can carry YAML frontmatter `paths:` globs; \"These conditional rules only apply when Claude is working with files matching the specified patterns.\" \"Rules without a paths field are loaded unconditionally... Path-scoped rules trigger when Claude reads files matching the pattern, not on every tool use.\" Rules without `paths` load at launch with the same priority as .claude/CLAUDE.md; user-level rules (~/.claude/rules/) load before project rules.",
+   "limits": "A rule's whole `paths` list shares a budget of 1,000 expanded patterns and 4 MiB (brace expansion); patterns exceeding the budget are used unexpanded and match nothing literally. Like CLAUDE.md, this is context injection, not enforcement.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/memory#organize-rules-with-claude-rules"
+  },
+  {
+   "feature": "Hooks are the actual enforcement mechanism, unlike CLAUDE.md",
+   "behavior": "\"If the instruction is something that must run at a specific point, such as before every commit or after each file edit, write it as a hook instead. Hooks execute as shell commands at fixed lifecycle events and apply regardless of what Claude decides to do.\" Also: \"Settings rules are enforced by the client regardless of what Claude decides to do. CLAUDE.md instructions shape Claude's behavior but are not a hard enforcement layer.\"",
+   "limits": "Applies to instructions needing guaranteed timing/blocking; CLAUDE.md instructions can't guarantee this on their own.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/memory#claude-isnt-following-my-claude-md"
+  },
+  {
+   "feature": "Example of a plan-mode instruction placed in CLAUDE.md",
+   "behavior": "The AGENTS.md-import pattern doc shows CLAUDE.md content that instructs Claude to use plan mode: \"@AGENTS.md\\n\\n## Claude Code\\n\\nUse plan mode for changes under `src/billing/`.\" This is the documentation's own worked example of Claude-specific guidance layered after an imported AGENTS.md.",
+   "limits": "This is illustrative example text in the docs, not a built-in enforced rule; like all CLAUDE.md content it is advisory only (per the CLAUDE.md-vs-auto-memory enforcement statement) \u2014 Claude Code has no mechanism that forces plan mode from CLAUDE.md text alone; a hook or defaultMode setting would be needed for actual enforcement.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/memory#agentsmd"
+  },
+  {
+   "feature": "Common-workflows \"Plan before editing\" recipe",
+   "behavior": "\"For changes you want to review before they touch disk, switch to plan mode. Claude reads files and proposes a plan but makes no edits until you approve. The status bar shows \u23f8 plan mode on while plan mode is active.\" Example: `claude --permission-mode plan`. Also: \"You can also press Shift+Tab mid-session until the status bar shows \u23f8 plan mode on.\"",
+   "limits": "Points to the permission-modes doc for \"the approval flow and editing the plan in your text editor\" \u2014 common-workflows itself only summarizes, doesn't define the restriction mechanics.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/common-workflows#plan-before-editing"
+  },
+  {
+   "feature": "Delegate research to subagents (contrast with plan mode)",
+   "behavior": "\"Exploring a large codebase fills your context with file reads. Delegate the exploration so only the findings come back... The subagent reads files in its own context window and reports a summary.\"",
+   "limits": "A subagent runs its own system prompt (per the output-styles doc) and its own context, separate from plan mode's single-conversation restriction on edits. This is a workflow pattern, not an enforced restriction.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/common-workflows#delegate-research-to-subagents"
+  },
+  {
+   "feature": "Proactive output style vs. auto mode / permission mode",
+   "behavior": "\"This is stronger autonomous-execution guidance than auto mode applies, and it works without changing your permission mode, so your permission mode still decides what runs without asking you.\" Cross-referenced from the permission-modes doc: \"For stronger autonomous behavior in a mode that still prompts you, set the Proactive output style instead.\"",
+   "limits": "Proactive changes tone/behavior guidance only; it does not itself bypass permission prompts \u2014 the active permission mode (default/plan/auto/etc.) still governs what executes without asking.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/output-styles#built-in-output-styles ; https://code.claude.com/docs/en/permission-modes#eliminate-prompts-with-auto-mode"
+  }
+ ],
+ "unreachable": [
+  "None of the four requested URLs were unreachable \u2014 all four (output-styles, common-workflows, interactive-mode, memory) fetched successfully via WebFetch (interactive-mode's output was large and was read from its persisted-output file). A fifth page, https://code.claude.com/docs/en/permission-modes, was additionally fetched because it is the page both common-workflows and interactive-mode link to as the authoritative source for plan mode's actual restriction mechanics \u2014 the four requested pages describe plan mode only briefly (a keyboard shortcut and a short recipe) and defer the full behavior (blocking rules, classifier interaction, protected/critical-path handling, approval flow) to permission-modes."
+ ]
+}

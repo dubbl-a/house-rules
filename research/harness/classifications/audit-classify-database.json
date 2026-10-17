@@ -1,0 +1,78 @@
+{
+ "item": "plugins/house/modules/database/rules/database.md",
+ "rules": [
+  {
+   "heading": "Write forward-only numbered idempotent migrations, each opening with what and why",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Nothing in the harness fact set touches schema migrations, ledger tables, filename ordering, or baseline dumps; the closest native instruction surface is CLAUDE.md, which is explicitly advisory context rather than any migration mechanism.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Back up before a destructive migration, and diff after it",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Checkpointing limitation \u2014 Bash-modified files untracked (and checkpointing is not a replacement for version control)",
+   "evidence": "The harness's own undo path stops well short of this rule: checkpointing \"does not track files modified by bash commands such as rm, mv, or cp\" and is documented as \"designed for quick, session-level recovery\" rather than durable history, so nothing in the session can restore a dropped table.",
+   "citation": "https://code.claude.com/docs/en/checkpointing",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: none, because the backup lands outside the repo and the session cannot restore it either: checkpoints do not track what a Bash command changed and are not a substitute for version control, so the runbook step and the pasted post-migration diff are the control."
+  },
+  {
+   "heading": "Treat provenance columns as behavior",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "No fact in the harness set concerns row provenance, sync writers, or column ownership in a database; the harness's only memory-of-origin concept is auto memory's frontmatter type field, which records why Claude saved a note and has no bearing on stored rows.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Let row lifecycle decide a new table, never ownership",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Table grain, row churn, and column-scoped grants have no counterpart anywhere in the harness facts, which cover instruction files, permissions, plugins, sessions, and subagents only.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Add the table registry line in the same PR as the migration",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hosted Code Review CLAUDE.md customization, plus the Code Review check run that never blocks merge",
+   "evidence": "Hosted Code Review does notice documentation drift, since \"if your PR changes code in a way that makes a CLAUDE.md statement outdated, Claude flags that the docs need updating too,\" but it surfaces that only as a nit-level finding and \"the check run always completes with a neutral conclusion so it never blocks merging,\" and it is unavailable to orgs outside Team or Enterprise.",
+   "citation": "https://code.claude.com/docs/en/code-review.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy, because the hosted review that notices a doc going stale raises it as a non-blocking nit and is not available in every org."
+  },
+  {
+   "heading": "Store money as integer cents and reconcile against the books",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Column types, provider fee records, and external-statement reconciliation appear nowhere in the harness facts; the only native cost surface is Claude Code's own token spend reporting, which is unrelated to stored money columns.",
+   "citation": "https://code.claude.com/docs/en/costs",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Give each initiative its own least-privilege role",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Read/Edit path rule enforcement scope, plus Sandbox scope (tools and processes it does not cover)",
+   "evidence": "The harness enforces at the tool boundary and stops there: deny rules \"apply only to Claude's built-in file tools and Bash file commands it recognizes, NOT to arbitrary subprocesses that read/write files themselves,\" and the sandbox \"isolates Bash subprocesses only,\" so neither can see a query a running pipeline issues against a sensitive table.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Enforce the firewall with a runtime guard and not only with a grant whenever the build itself runs as a privileged role, since a grant that permits the read cannot stop it and the harness stops at the tool boundary: permission rules and the sandbox never reach inside a script's own database queries."
+  },
+  {
+   "heading": "Never let a write script pick its target from a dotfile",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Bash wildcard rule matching, plus the fixed list of Bash command wrappers stripped before matching",
+   "evidence": "The permission layer matches command text and nothing beyond it, and the docs warn that argument-constraining Bash patterns are \"fragile, bypassable via option ordering, protocol changes, redirects, variables, or extra spaces,\" while environment runners such as direnv exec are not in the stripped-wrapper list, so no rule can tell which database a run resolves to.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Read the connection string for any write path from the exported environment, never from a dotfile some tool loads on your behalf, because permission rules match only the command text and cannot see which database a run resolves to, and an environment runner like direnv is not stripped before that match."
+  }
+ ],
+ "notes": "Whole-file read at plugins/house/modules/database/rules/database.md; eight \"## \" headings plus \"## Don't\", which I excluded per instructions. No rule in this file is a DUPLICATE or a CONFLICT: the harness fact set has no database surface at all, so nothing here restates or fights a native mechanism.\n\nRules I was unsure about, all three on the COMPLEMENT versus UNIQUE line rather than on substance:\n\n- \"Back up before a destructive migration, and diff after it\": the subject matter (database backups) is entirely outside the harness, which argues UNIQUE. I called it COMPLEMENT because the checkpointing facts state plainly that bash-driven changes are untracked and that checkpoints are not version control, and a reader who assumes /rewind covers a destructive run is exactly the reader this rule needs to reach. If the owner reads a native cite here as reaching too far, downgrade to UNIQUE and keep the anchor line as written.\n\n- \"Add the table registry line in the same PR as the migration\": hosted Code Review's bidirectional doc-staleness check is genuinely adjacent, but it is nit-level, non-blocking, and Team/Enterprise research-preview only. That combination is what makes the cite worth adding rather than a reason to delete the rule. The risk is that adopters without Code Review find the cite irrelevant, so the proposed wording names the floor as a reason for the invariant rather than as a dependency.\n\n- \"Never let a write script pick its target from a dotfile\": the direnv-not-stripped fact is a strong match for the dotfile-loader failure shape, but the rule's real subject is process discipline in the app's own code, not permission-rule design. I judged the cite worth making because it explains why no allowlist can substitute for the fail-fast check. UNIQUE would also be defensible.\n\nThe four keeps (migrations, provenance, row lifecycle, money) are clean UNIQUE calls with no near-miss native feature worth naming."
+}

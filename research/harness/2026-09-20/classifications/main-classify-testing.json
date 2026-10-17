@@ -1,0 +1,123 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/testing/rules/testing.md",
+  "rules": [
+    {
+      "heading": "Give the agent a check it can run before you walk away",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "CLAUDE.md as advisory context loaded at launch, plus /init's generated build and test instructions",
+      "evidence": "The harness loads CLAUDE.md at the start of every conversation and treats it as context rather than enforced configuration, and /init writes build commands and test instructions into it, so the harness gives a place to name the command but never supplies the one-command non-zero-exit gate itself.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Scale the pyramid to the repo you have, and route what the PR gate cannot afford",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the harness facts describes test tiers, suite speed budgets, or routing credentialed tests off the merge gate; the closest native material is GitHub Action cost controls, which are recommendations the workflow author must configure and say nothing about which tier runs where.",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Split deterministic tests from model-behavior evals, and give each its own budget and cadence",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "claude plugin eval cost ceiling (--max-cost-usd) and pass threshold (--threshold), and its model-call billing",
+      "evidence": "The runner supplies a pre-run cost ceiling that stops starting runs and exits with partial results, and a per-case threshold whose breach exits non-zero, while the harness states every eval run and judge grader bills real model calls, so the rule adds the posture of which tier may gate a merge rather than restating a control.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#command-options",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Test the guard itself, as its own CI step",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse hook blocking and hook exit-code semantics",
+      "evidence": "Hooks are the only layer that blocks regardless of what the model decides, yet the harness surfaces a misplaced hook field only under --debug and ships no assertion mechanism for a hook's decision, although the eval runner does load a plugin's own hooks inside an isolated run.",
+      "citation": "https://code.claude.com/docs/en/hooks.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "The harness makes a hook the thing that actually blocks, and the eval runner will load a plugin's own hooks inside an isolated run, yet nothing native asserts that a hook still returns its blocking decision, so the guard's own test is the only standing proof that it still fires."
+    },
+    {
+      "heading": "Feed a real payload through the real wiring, and never re-implement the logic under test",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Hook contract: event JSON on stdin, per-event exit-code semantics, and hookSpecificOutput on stdout",
+      "evidence": "The harness fixes the contract the rule tells the test to assert on, including that exit two blocks only on blockable events and that a field placed outside hookSpecificOutput is silently ignored, so the rule adds the testing discipline the harness never checks.",
+      "citation": "https://code.claude.com/docs/en/hooks.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Ship every gate with a positive control and a negative control",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness has no notion of a committed planted-violation fixture for a repo's own checker; its nearest analogue is the eval runner's no-plugin baseline arm, which compares a plugin's contribution rather than proving a gate can still fail.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Prove an eval can fail, then grade it with the cheapest grader that can",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "claude plugin eval with-without ablation, repeated runs, and its six grader types",
+      "evidence": "The runner already repeats each case and runs a no-plugin arm by default, and offers deterministic grader types alongside judge-backed llm and baseline graders that add model cost, so the rule adds how to read the delta and when to refuse the number.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#grader-types",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Read the snapshot diff before accepting it, because a snapshot is a drift gate",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No harness fact covers snapshot artifacts, re-render-and-diff steps, or snapshot acceptance; checkpointing is session-level file recovery and explicitly not version control or a drift gate.",
+      "citation": "https://code.claude.com/docs/en/checkpointing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Quarantine a flaky test loudly, and never retry it into silence",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the harness facts addresses flaky tests, quarantine lists, or retry wrappers; the only native retry behavior is the eval runner's structured-output revalidation, which is unrelated to a repo's suite.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Treat coverage as a search-light, never as a target",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No harness fact mentions coverage measurement or coverage thresholds anywhere in memory, hooks, permissions, plugins, evals, or the GitHub surfaces.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Mirror the module layout in the test tree, and keep each fixture beside its test",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness prescribes a directory shape only for its own eval cases, where each case is a subdirectory with a prompt and graders and each run gets a throwaway working directory, and says nothing about how a repo lays out its test tree or its fixtures.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#how-runs-are-isolated",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Explain a test-runner config quirk in the config, with the incident that produced it",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness's only comparable guidance is the /doctor trim proposal, which keeps pitfalls and rationale inside a checked-in CLAUDE.md, and it never reaches a test-runner config file or asks for the incident behind a setting.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep a demoted check running, reported, and counted",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness has an advisory finding tier only inside managed Code Review, whose findings are tagged by severity and never block a merge, and it offers nothing for keeping a repo's own demoted checker running with a false-positive tally.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Unsure calls, in order of how close they were.\n\n1) \"Test the guard itself, as its own CI step\" was the only reword I proposed, and I went back and forth on it. The rule's second line asserts that nothing native proves a guard still fires, offering only after-the-fact inspection. That was defensible against the memory and hooks facts, but the plugin-eval facts say a run loads the plugin's own hooks (https://code.claude.com/docs/en/plugin-evals#how-runs-are-isolated), and a regex grader over the trace could in principle observe a denial. That is not a hook-decision assertion mechanism, so the rule is still COMPLEMENT and not DUPLICATE, but the flat claim now overstates the gap. The proposed wording concedes the eval runner exercises hooks while keeping the obligation.\n\n2) \"Give the agent a check it can run before you walk away\" is the nearest thing to a partial duplicate in the file. /init already writes build commands and test instructions into a generated CLAUDE.md (https://code.claude.com/docs/en/memory.md), so the \"name it in the root instruction file\" clause restates something the harness will do unprompted. I kept it because the rule's actual demand is that one command exist, exit non-zero, and chain the suite, the guard tests, and the checker, none of which /init supplies, and because the rule already names the advisory floor and points at hooks for escalation.\n\n3) \"Ship every gate with a positive control and a negative control\" I called UNIQUE rather than COMPLEMENT to the eval runner's with-without ablation. The ablation compares a plugin's contribution across two arms; it does not commit a case the gate must fail. If the owner would rather every control-shaped rule cite the ablation as its floor, this one flips to COMPLEMENT with a reword.\n\n4) \"Mirror the module layout in the test tree\" contains one clause, letting each test build its own throwaway workspace, that has a native analogue in eval run isolation, where every run gets a throwaway home and working directory. The rest of the rule is about the repo's own test tree, which the harness never touches, so I left it UNIQUE rather than splitting the heading.\n\n5) \"Split deterministic tests from model-behavior evals\" and \"Prove an eval can fail\" both already cite the runner's controls generically (\"the runner's own controls\", \"the runner already stands up the with and without arms\"). I read that as citing the native floor without naming the command, which matches the file's existing voice, so I left both as keep. If the owner wants the floor named by command, both take a reword rather than a substantive change.\n\nNo CONFLICT and no DUPLICATE found in this file."
+}
