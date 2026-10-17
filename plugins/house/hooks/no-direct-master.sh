@@ -850,6 +850,7 @@ floor_deny() {
   local armed_hint=''
   # The refusal of a hooks-path spelling names the read-only way to ask whether
   # the floor is armed, so an agent that only wanted to know does not stop here.
+  # shellcheck disable=SC2016 # the backticks are literal text in the message
   case "$1" in
     *[hH][oO][oO][kK][sS][pP][aA][tT][hH]*) armed_hint=' To check whether the floor is armed on this machine, run `node .house/check.mjs --floor-status`; it only reports.' ;;
   esac

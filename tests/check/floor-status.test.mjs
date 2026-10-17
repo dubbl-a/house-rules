@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, chmodSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sandbox, run, houseJson } from './helpers.mjs';
+import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
 
 // `--floor-status` (#266): a read-only answer, in a session where `house` is
 // not on PATH and the guard refuses to scan a hooks-path read, to "is the
@@ -89,4 +90,71 @@ test('floor-status: the ordinary run never reads machine state (ADR 0008)', () =
   const { code, json } = run(dir, ['--only=guard', '--json']);
   assert.equal(code, 0);
   assert.equal(json.floorStatus, undefined);
+});
+
+// Review of the first cut (#266): the contract is "reports, exits 0, on every
+// machine", so these shapes must all answer instead of dying.
+const sh = (cmd, args, cwd) => spawnSync(cmd, args, { cwd, encoding: 'utf8' });
+const status = (dir, extra = []) => sh('node', [CHECK_SRC, '--floor-status', '--json', ...extra], dir);
+
+test('floor-status: the JSON names its basis, so armed is read as lock-relative', () => {
+  assert.equal(run(armedSandbox(), ['--floor-status', '--json']).json.floorStatus.basis, 'lock');
+});
+
+test('floor-status: a hook only group-executable is not runnable, so not armed (access X_OK)', () => {
+  const dir = armedSandbox();
+  execFileSync('git', ['config', 'core.fileMode', 'false'], { cwd: dir });
+  chmodSync(join(dir, '.githooks', 'pre-commit'), 0o654);
+  const { code, json } = run(dir, ['--floor-status', '--json']);
+  assert.equal(code, 0);
+  assert.equal(json.floorStatus.armed, false);
+  assert.deepEqual(json.floorStatus.mismatched, ['.githooks/pre-commit']);
+});
+
+test('floor-status: an executable but unreadable floor file is a mismatch, not a crash', () => {
+  const dir = armedSandbox();
+  execFileSync('git', ['config', 'core.fileMode', 'false'], { cwd: dir });
+  chmodSync(join(dir, '.githooks', 'pre-commit'), 0o311);
+  const { code, json } = run(dir, ['--floor-status', '--json']);
+  assert.equal(code, 0);
+  assert.equal(json.floorStatus.armed, false);
+  assert.deepEqual(json.floorStatus.mismatched, ['.githooks/pre-commit']);
+});
+
+test('floor-status: outside a git repo it reports not armed and exits 0', () => {
+  const r = status(mkdtempSync(join(tmpdir(), 'house-nogit-')));
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).floorStatus.armed, false);
+});
+
+test('floor-status: from inside a bare repo it reports not armed and exits 0', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'house-bare-'));
+  execFileSync('git', ['init', '-q', '--bare'], { cwd: dir });
+  const r = status(dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).floorStatus.armed, false);
+});
+
+function linkedWorktree(arm) {
+  const main = armedSandbox({ arm });
+  const wt = join(mkdtempSync(join(tmpdir(), 'house-wt-')), 'wt');
+  execFileSync('git', ['-c', 'user.email=t@t.com', '-c', 'user.name=t', 'worktree', 'add', '-q', '-b', 'feat', wt], { cwd: main });
+  return wt;
+}
+
+test('floor-status: a linked worktree whose main checkout is armed reads ARMED', () => {
+  const { code, json } = run(linkedWorktree(true), ['--floor-status', '--json']);
+  assert.equal(code, 0);
+  assert.equal(json.floorStatus.armed, true, JSON.stringify(json));
+});
+
+test('floor-status: a linked worktree whose main checkout is unarmed reads NOT ARMED', () => {
+  const { code, json } = run(linkedWorktree(false), ['--floor-status', '--json']);
+  assert.equal(code, 0);
+  assert.equal(json.floorStatus.armed, false);
+});
+
+test('floor-status: a relative hooks path to the repo floor counts as armed', () => {
+  const { json } = run(armedSandbox({ arm: '.githooks' }), ['--floor-status', '--json']);
+  assert.equal(json.floorStatus.armed, true, JSON.stringify(json));
 });
