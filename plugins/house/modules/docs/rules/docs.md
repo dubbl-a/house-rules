@@ -8,7 +8,7 @@ These rules govern the repo's own documents: the root file, the rule files, the 
 Write every claim about the code, interface, or a command so it names a token a reader can grep: a file path, a script, a component, a section id, a class prefix, or an env variable. Free-form prose drifts silently when renamed; an anchored claim fails the gate on that commit.
 Name the page by the file that renders it and the section by its id, not what a reader would see. When a claim cannot be anchored (editorial intent, future tense, an external resource), generalize it to stay true after the next refactor.
 Verify a claimed technology change against the code before writing the rule that describes it; a rule can be wrong on the day it is written.
-Anchor: `npm run check:docs`, which resolves every backticked token in a scanned doc.
+Anchor: `npm run check:docs`, which resolves every backticked token in a scanned doc; an env variable, constant, or class prefix resolves only against the code under `modules.docs.config.haystackDirs`, so an empty list fails them.
 Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 ## Run the docs gate before pushing and in the build

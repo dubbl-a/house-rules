@@ -495,7 +495,7 @@ function dirHasMarkdown(absDir) {
 // Both lists here are proposals -- the operator edits house.json freely
 // before the first render.
 function docsConfigFromProbe(repoRoot) {
-  const haystackCandidates = ['src', 'scripts', 'db', 'public'];
+  const haystackCandidates = ['src', 'lib', 'app', 'api', 'server', 'scripts', 'db', 'public'];
   const haystackDirs = haystackCandidates.filter((d) => existsSync(path.join(repoRoot, d)));
   if (existsSync(path.join(repoRoot, 'package.json'))) haystackDirs.push('package.json');
   if (existsSync(path.join(repoRoot, '.github', 'workflows'))) haystackDirs.push('.github/workflows');
@@ -654,6 +654,13 @@ function cmdInit(args) {
     for (const line of ignoredDestWarningLines(probe.ignoredHouseDests)) console.log(line);
     console.log(JSON.stringify(proposed, null, 2));
     console.log('');
+    const seeded = proposed.modules.docs && proposed.modules.docs.config && proposed.modules.docs.config.haystackDirs;
+    if (Array.isArray(seeded)) {
+      console.log(seeded.length
+        ? `docs: haystackDirs: ${seeded.join(', ')} (code dirs found in this repo; an env variable or constant a doc names resolves only against these, so edit house.json to add the rest)`
+        : 'docs: haystackDirs: none (no conventional code dir found; an env variable or constant a doc names will not resolve until you set modules.docs.config.haystackDirs)');
+      console.log('');
+    }
     for (const line of wiringInstructionLines()) console.log(line);
   }
 
