@@ -3909,6 +3909,8 @@ test('#247 doctor: a declined step the module no longer declares is named, not h
   house.deviations = [{ kind: 'declined-step', module: 'gamma', step: 'gone', what: 'x', why: 'y', decided: '2026-10-15' }];
   writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
   assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /declined steps gamma no longer declares: gone/);
+});
+
 // ── house hook add (#248) ────────────────────────────────────────────────
 
 const REAL_FLOOR_SRC = join(HERE, '..', 'plugins', 'house', 'modules', 'github', 'files', 'githooks');
