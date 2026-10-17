@@ -82,64 +82,43 @@ test('manifest: a carveOut with a matching deviations entry passes', () => {
 });
 
 test('manifest: disabling a default-on module without a deviations entry is a finding', () => {
-  const dir = sandbox({
-    'house.json': houseJson({ modules: { mymod: { enabled: false } } }),
-    'plugins/house/modules/mymod/module.json': JSON.stringify({ name: 'mymod', default: 'on', rules: [] }),
-  });
+  const dir = sandbox({ 'house.json': houseJson({ modules: { testing: { enabled: false } } }) });
   const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
   assert.equal(code, 1, out);
-  assert.match(out, /module `mymod` is default-on but disabled/);
+  assert.match(out, /module `testing` is default-on but disabled/);
 });
 
 test('manifest: disabling a default-on module WITH a matching deviations entry passes', () => {
   const dir = sandbox({
     'house.json': houseJson({
-      modules: { mymod: { enabled: false } },
-      deviations: [{ kind: 'disabled-module', module: 'mymod', what: 'not used here', why: 'single-file repo', decided: '2026-08-24' }],
+      modules: { testing: { enabled: false } },
+      deviations: [{ kind: 'disabled-module', module: 'testing', what: 'not used here', why: 'single-file repo', decided: '2026-08-24' }],
     }),
-    'plugins/house/modules/mymod/module.json': JSON.stringify({ name: 'mymod', default: 'on', rules: [] }),
   });
   const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
   assert.equal(code, 0, out);
 });
 
 test('manifest: disabling a default-OFF module needs no deviations entry', () => {
-  const dir = sandbox({
-    'house.json': houseJson({ modules: { experimental: { enabled: false } } }),
-    'plugins/house/modules/experimental/module.json': JSON.stringify({ default: "off" }),
-  });
+  const dir = sandbox({ 'house.json': houseJson({ modules: { security: { enabled: false } } }) });
   const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
   assert.equal(code, 0, out);
 });
 
-// P8: the disabled-module deviation check reads module defaults from the
-// installed plugin OR the local package tree OR the lock render wrote. When
-// NONE is reachable it used to pass silently, then only warned, so CI (no
-// plugin) passed a commit the local run failed (#244). Render now carries the
-// defaults in the lock, so this case means a lock render did not write: fail
-// closed.
-test('P8: an unreachable defaults sub-check is a FINDING for a disabled module (positive control)', () => {
-  // No plugins/house/modules/ dir, no installed_plugins.json, no lock:
-  // defaults can't be resolved, but there IS a disabled module.
+// #258: module defaults are part of the checker (MODULE_FACTS), so the
+// disabled-module check never depends on a plugin, a modules tree or the lock.
+// A module the checker does not ship is a finding, enabled or not.
+test('P8: a module the checker does not ship is a finding even with nothing else reachable (positive control)', () => {
   const dir = sandbox({ 'house.json': houseJson({ modules: { 'git-workflow': { enabled: false } } }) });
-  const { code, json } = run(dir, ['--only=manifest', '--json'], { CLAUDE_CONFIG_DIR: '/definitely/does/not/exist' });
+  const { code, json } = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
   assert.equal(code, 1, JSON.stringify(json));
-  assert.ok((json.findings || []).some((w) => /could not resolve module defaults/.test(w.message) && /git-workflow/.test(w.message) && /house render --apply/.test(w.message)),
-    'an unverifiable disabled module must fail the gate, not silently pass');
+  assert.ok((json.findings || []).some((w) => /ships no module `git-workflow`/.test(w.message)), 'an unknown module must fail the gate, not silently pass');
 });
 
-test('P8: reachable defaults run the real check and emit no unresolved-defaults warning (negative control)', () => {
-  // A local plugins/house/modules tree makes defaults resolvable, so the real
-  // deviation check runs (default-off module needs no deviation) and the P8
-  // fallback warning must NOT appear.
-  const dir = sandbox({
-    'house.json': houseJson({ modules: { experimental: { enabled: false } } }),
-    'plugins/house/modules/experimental/module.json': JSON.stringify({ default: 'off' }),
-  });
-  const { code, json } = run(dir, ['--only=manifest', '--json'], { CLAUDE_CONFIG_DIR: '/definitely/does/not/exist' });
+test('P8: a shipped default-off module disabled with no plugin reachable is clean (negative control)', () => {
+  const dir = sandbox({ 'house.json': houseJson({ modules: { security: { enabled: false } } }) });
+  const { code, json } = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
   assert.equal(code, 0, JSON.stringify(json));
-  assert.ok(!(json.warnings || []).some((w) => /could not resolve module defaults/.test(w.message)),
-    'resolvable defaults must not emit the P8 fallback warning');
 });
 
 test('manifest: ratchet values must be positive integers', () => {
@@ -288,20 +267,6 @@ test('#18: a --repo that is not a git repository gets one "could not evaluate" w
   assert.equal(w.filter((x) => x.kind === 'untracked').length, 0, 'no per-file untracked verdicts without git');
   assert.equal(w.filter((x) => x.kind === 'unverifiable').length, 1, `one not-evaluable warning: ${JSON.stringify(w)}`);
   assert.match(w.find((x) => x.kind === 'unverifiable').message, /git/);
-});
-
-// Ultra review of v0.2.1: readModuleDefaultsFrom keyed by directory name while
-// readModuleRuleCountsFrom, the CLI's moduleName(), and house.json itself key
-// by module.json `name`; a module whose name differs from its directory made
-// the disabled-module deviation check pass silently.
-test('manifest: a default-on module whose module.json name differs from its directory still needs a deviation when disabled', () => {
-  const dir = sandbox({
-    'house.json': houseJson({ modules: { 'git-workflow': { enabled: false } } }),
-    'plugins/house/modules/branching/module.json': JSON.stringify({ name: 'git-workflow', default: 'on', rules: [] }),
-  });
-  const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
-  assert.equal(code, 1, out);
-  assert.match(out, /module `git-workflow` is default-on but disabled/);
 });
 
 // ── v0.3.0: ADR 0009 shapes ──────────────────────────────────────────────
@@ -669,16 +634,17 @@ test('#244: a default-on module disabled with no deviation is a finding in CI to
   assert.ok(has(r.json.findings, /module `testing` is default-on but disabled with no deviations entry/), r.out);
 });
 
-test('#244: with no plugin and a lock that carries no module record, the gate fails closed', () => {
+test('#244: a lock that carries no module record changes no verdict', () => {
   const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  const before = ciAndLocal(d);
   const lockPath = join(d, '.house/lock.json');
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
   delete lock.modules;
   writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-  gitIn(d, 'commit', '-q', '--allow-empty', '-am', 'a lock render did not write');
-  const ci = ciAndLocal(d);
-  assert.equal(ci.code, 1, ci.out);
-  assert.ok(has(ci.json.findings, /no record of module `database` in \.house\/lock\.json.*house render --apply/), ci.out);
+  gitIn(d, 'commit', '-q', '--allow-empty', '-am', 'a lock written before 0.21.3');
+  const after = ciAndLocal(d);
+  assert.equal(after.code, before.code, after.out);
+  assert.deepEqual(after.json.findings.map((x) => x.message), before.json.findings.map((x) => x.message));
 });
 
 function editLock(d, fn) {
@@ -694,21 +660,21 @@ test('#245: paths set in house.json but not yet rendered are a finding, locally 
   gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
   const r = ciAndLocal(d);
   assert.equal(r.code, 1, r.out);
-  assert.ok(has(r.json.findings, /modules\.testing\.config differs from what the last render used.*house render --apply/), r.out);
-  assert.ok(!has(r.json.warnings, /none of its default paths/), 'the stale lock paths are not reported as the verdict');
+  assert.ok(has(r.json.findings, /module `testing` is enabled but vendored zero rules \(its paths matched nothing in this repo: spec\/\*\*\).*re-render/), r.out);
+  assert.ok(!has(r.json.warnings, /none of its default paths/), 'the default paths are not the verdict once the adopter wrote their own');
 });
 
-test('#244: a module the rendering plugin does not ship is a finding that names the key and re-renders only if the installed plugin ships it, locally and in CI', () => {
+test('#244: a module this checker does not ship is a finding that names the key and re-renders only if the installed plugin ships it, locally and in CI', () => {
   const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   editHouse(d, (h) => { h.modules['retired-mod'] = { enabled: false }; h.modules['old-mod'] = { enabled: true }; });
   rerender(d);
   const r = ciAndLocal(d);
   assert.equal(r.code, 1, r.out);
   for (const name of ['retired-mod', 'old-mod']) {
-    const re = new RegExp(`the plugin that rendered \\.house/lock\\.json ships no module \`${name}\`.*run \`house render --apply\`.*otherwise remove the key or correct its name`);
+    const re = new RegExp(`this checker's module list ships no module \`${name}\`.*run \`house render --apply\`.*otherwise remove the key or correct its name`);
     const f = r.json.findings.find((x) => re.test(x.message));
     assert.ok(f, `${name}: ${r.out}`);
-    assert.doesNotMatch(f.message, /no record of module/, 'a full record that lacks the key is not the stale-lock case, so re-rendering is not the only advice');
+    assert.doesNotMatch(f.message, /no record of module/, 're-rendering is not the only advice');
   }
 });
 
@@ -730,7 +696,7 @@ test('#245: reordering a path-glob slot is not a config change', () => {
   gitIn(d, 'commit', '-q', '-am', 'reordered');
   const r = ciAndLocal(d);
   assert.ok(!has(r.json.findings, /config differs from what the last render used/), r.out);
-  assert.ok(has(r.json.findings, /its paths matched nothing in this repo: spec\/\*\*, specs\/\*\*/), r.out);
+  assert.ok(has(r.json.findings, /its paths matched nothing in this repo: specs\/\*\*, spec\/\*\*/), r.out);
 
   const v = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   editHouse(v, (h) => { h.modules.testing.config.testRoots = ['tests/**', 'test/**']; });
@@ -740,18 +706,77 @@ test('#245: reordering a path-glob slot is not a config change', () => {
   assert.equal(ciAndLocal(v).code, 0, 'a vendoring module with a reordered slot passes');
 });
 
-test('#244: the lock decides over a different installed plugin, which only warns locally', () => {
-  // The lock was rendered by a version where testing was default-off; the
-  // installed plugin says default-on. The verdict follows the lock.
+test('#244: an installed plugin that differs from the checker only warns locally, and the verdict follows the checker', () => {
   const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   editHouse(d, (h) => { h.modules.testing.enabled = false; });
   rerender(d);
-  editLock(d, (l) => { l.modules.testing.default = 'off'; });
-  gitIn(d, 'commit', '-q', '-am', 'rendered by another version');
+  // A plugin whose testing module is default-off, as another version shipped it.
+  const plugin = mkdtempSync(join(tmpdir(), 'house-plugin-'));
+  mkdirSync(join(plugin, 'modules/testing'), { recursive: true });
+  writeFileSync(join(plugin, 'modules/testing/module.json'), JSON.stringify({ name: 'testing', default: 'off', rules: [] }));
+  const cfg = mkdtempSync(join(tmpdir(), 'house-cfg-'));
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', installPath: plugin }] } }));
+  const r = spawnSync('node', ['.house/check.mjs', '--only=manifest', '--json'], { cwd: d, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+  const json = JSON.parse(r.stdout);
+  assert.equal(r.status, 1, r.stdout);
+  assert.ok(has(json.findings, /module `testing` is default-on but disabled with no deviations entry/), 'the checker decides, not the plugin');
+  assert.ok(has(json.warnings, /installed house plugin differs from this checker's module list for module `testing`.*house render --apply/), r.stdout);
+});
+
+// #258: .house/lock.json's `modules` record is no longer read for verdicts, so
+// a hand edit to it changes none. Each case builds a repo with the real CLI,
+// takes the verdict, edits the record the way the issue describes, and asserts
+// the verdict is the same. The first four were silent or downgraded before.
+const verdict = (r) => ({ code: r.code, findings: r.json.findings.map((x) => x.message).sort(), warnings: r.json.warnings.map((x) => x.message).sort() });
+function sameAfterLockEdit(d, edit, expectFinding) {
+  const before = ciAndLocal(d);
+  assert.equal(before.code, 1, `the repo must start with a finding: ${before.out}`);
+  assert.ok(has(before.json.findings, expectFinding), before.out);
+  editLock(d, edit);
+  gitIn(d, 'commit', '-q', '-am', 'hand-edited lock');
+  const after = ciAndLocal(d);
+  assert.deepEqual(verdict(after), verdict(before), 'a hand edit to the lock record changes no verdict');
+}
+
+test('#258: setting an unvendored module record rules to 0 does not silence its zero-rule finding', () => {
+  const d = freshBootstrap();
+  addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
+  sameAfterLockEdit(d, (l) => { l.modules.testing.rules = 0; }, /vendored zero rules, and its default path tests\/\*\* now matches/);
+});
+
+test('#258: pointing an unvendored module record globs at zzz/** does not downgrade its finding to a warning', () => {
+  const d = freshBootstrap();
+  addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
+  sameAfterLockEdit(d, (l) => { l.modules.testing.globs = ['zzz/**']; }, /vendored zero rules, and its default path tests\/\*\* now matches/);
+});
+
+test('#258: an adopter glob in house.json is not downgraded by editing the record globs', () => {
+  const d = freshBootstrap();
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
+  rerender(d);
+  sameAfterLockEdit(d, (l) => { l.modules.testing.globs = ['zzz/**']; }, /its paths matched nothing in this repo: spec\/\*\*/);
+});
+
+test('#258: deleting the whole modules record does not silence a stale-config finding on a vendoring module', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
+  gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
+  sameAfterLockEdit(d, (l) => { delete l.modules; }, /modules\.testing\.config differs from what the last render used/);
+});
+
+test('#258: setting a disabled module record default to match does not silence the disabled-module finding', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
+  editHouse(d, (h) => { h.modules.testing.enabled = false; });
+  rerender(d);
+  sameAfterLockEdit(d, (l) => { l.modules.testing.default = 'off'; }, /module `testing` is default-on but disabled/);
+});
+
+test('#258: a lock written by 0.21.3 (record present, same module facts) checks cleanly, locally and in CI', () => {
+  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   const r = ciAndLocal(d);
   assert.equal(r.code, 0, r.out);
-  const local = vendoredCheck(d, true);
-  assert.ok(has(local.json.warnings, /lock record for module `testing` differs from the installed house plugin.*house render --apply/), local.out);
+  assert.deepEqual(r.json.findings, []);
 });
 
 // #247: a declined at-adoption step is a deviation of kind "declined-step"
