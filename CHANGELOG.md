@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.21.4] - 2026-10-17
+
+A patch release under ADR 0012: checker and CLI fixes. The lock's `modules` record no longer decides any verdict, rendered globs are quoted, the env-anchor finding names its fix, an armed-floor check works from a session, and rule-load logs pool per repo. No heading is renamed, no config slot changes, nothing the guard denies changes (its refusal message is reworded only), and neither the `house.json` nor the `.house/` layout changes. Every vendored rule file's `paths:` frontmatter changes form on this sync, from `- docs/**` to `- "docs/**"`, so expect a diff in each one. Upgrading from 0.21.3: run `/house-rules:sync`.
+
 ### Added
 
 - `node .house/check.mjs --floor-status [--json]` reports whether this machine's git-hook floor is armed, for a session where `house` is not on PATH (#266). It reads the hooks path with `git config` through child_process, so no command text reaches the guard, and says whether the path resolves to the repo's floor, whether the seven floor files match the lock's hashes (the lock, not the installed plugin), whether the hooks directory equals the tree at HEAD, and whether git is 2.28 or newer. It always exits 0, because a CI runner is never armed. The family run still never reads machine state.
