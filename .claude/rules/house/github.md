@@ -4,7 +4,7 @@ paths:
   - .githooks/**
   - .env.example
 ---
-<!-- house-managed v0.21.2 module=github source=modules/github/rules/github.md body-sha256=015d916df83db36dbbe59865056ea071731dd32437647d4523ad09cd6d4b9757 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.3 module=github source=modules/github/rules/github.md body-sha256=015d916df83db36dbbe59865056ea071731dd32437647d4523ad09cd6d4b9757 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
