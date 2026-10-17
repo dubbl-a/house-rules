@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- `node .house/check.mjs --floor-status [--json]` reports whether this machine's git-hook floor is armed, for a session where `house` is not on PATH (#266). It reads the hooks path with `git config` through child_process, so no command text reaches the guard, and says whether the path resolves to the repo's floor, whether the seven floor files match the lock's hashes (the lock, not the installed plugin), whether the hooks directory equals the tree at HEAD, and whether git is 2.28 or newer. It always exits 0, because a CI runner is never armed. The family run still never reads machine state.
+
+### Changed
+
+- The guard's refusal of a hooks-path spelling now names `node .house/check.mjs --floor-status` as the way to check the floor, and the github rule points a session at it beside `house doctor` (#266). What the guard matches, strips and refuses is unchanged.
+
 ### Fixed
 
 - A hand edit to `.house/lock.json`'s `modules` record can no longer change a checker verdict (#258). The checker carries the package-wide module facts itself, as a generated `MODULE_FACTS` constant: each module's default, its rule files with their path lists, and each path slot's declared default. The disabled-module, zero-rule and stale-config verdicts read those facts and the repo's house.json, expanded the way render expands them, and never the lock's record. A module counts as vendored through the rule files its facts name in the lock, not the `module` label of a lock entry. The stale-render verdict compares the expansion with the `paths:` of the vendored rule files, whose hashes the tamper family verifies: a vendored glob the current paths no longer yield, or a current glob that matches a file the rule does not cover (a slot edited or deleted, a directory added since), is a finding that says to re-render. It no longer needs the lock's recorded config. Regenerate the constant with `node scripts/gen-module-facts.mjs`; a test fails when it differs from the module.json files. Render still writes the `modules` record, now informational: nothing reads it, so a lock from 0.21.3, or one without the record, checks the same. A module in house.json that the checker does not ship is a finding, enabled or not, and a local run warns when the installed plugin's defaults or rule counts differ from the checker's.
