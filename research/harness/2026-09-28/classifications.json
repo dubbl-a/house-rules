@@ -1,0 +1,1394 @@
+[
+ {
+  "item": "plugins/house/modules/database/rules/database.md",
+  "rules": [
+   {
+    "heading": "Write forward-only numbered idempotent migrations, each opening with what and why",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Background session and subagent worktree isolation under .claude/worktrees (worktree isolation enforcement)",
+    "evidence": "The harness moves background sessions and isolated subagents into their own worktrees and blocks writes to the main checkout, but that isolation covers files only and does nothing to coordinate a shared database or migration numbering. The rule already says this and adds the ledger plus a sweep of sibling checkouts as the control.",
+    "citation": "https://code.claude.com/docs/en/agent-view ; https://code.claude.com/docs/en/worktrees#how-claude-code-enforces-isolation",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Back up before a destructive migration, and diff after it",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Checkpointing limits (Bash changes not tracked, not a replacement for version control); auto mode classifier default-block on production deploys and migrations",
+    "evidence": "Checkpointing does not track what a Bash command changes and is documented as no substitute for version control, so the harness cannot restore a database. The rule's Anchor already cites that floor and adds the backup and the before-and-after diff, which the harness has no way to do.",
+    "citation": "https://code.claude.com/docs/en/checkpointing#bash-command-changes-not-tracked ; https://code.claude.com/docs/en/checkpointing#not-a-replacement-for-version-control",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Treat provenance columns as behavior",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "None of the harness facts cover row provenance, sync writers, or protecting human edits in data. The areas surveyed are memory, hooks, permissions, plugins, sessions, git, security, and caching, and none of them reaches inside application data.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Let row lifecycle decide a new table, never ownership",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers schema normalization, table churn, or column-scoped grants. This is a data-modeling convention with no native counterpart.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Add the table registry line in the same PR as the migration",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Managed Code Review (CLAUDE.md staleness flagged as a nit, neutral check run, research preview on Team and Enterprise)",
+    "evidence": "Code Review flags a PR that makes a CLAUDE.md statement outdated, never gates the merge, and is only available on Team and Enterprise. The Anchor's phrase \"notices a doc going stale\" is broader than what is documented: a registry outside CLAUDE.md is only checked if REVIEW.md asks for it.",
+    "citation": "https://code.claude.com/docs/en/code-review#claudemd ; https://code.claude.com/docs/en/code-review#check-run-output",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy, because the hosted review flags an outdated CLAUDE.md statement only as a non-blocking nit, reads a registry elsewhere only when a review instructions file asks it to, and is not available in every org."
+   },
+   {
+    "heading": "Store money as integer cents and reconcile against the books",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers column types, money handling, or reconciliation against an external statement.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Give each initiative its own least-privilege role",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission rules and Read/Edit deny scope; Bash sandbox (filesystem and network isolation by host)",
+    "evidence": "Read/Edit deny rules do not reach an arbitrary subprocess that opens files itself, and the sandbox limits files and network hosts but never looks at query contents. The harness therefore cannot stop a privileged script from reading a sensitive table. The rule already names that boundary and adds a runtime guard and a role assertion.",
+    "citation": "https://code.claude.com/docs/en/permissions#read-and-edit ; https://code.claude.com/docs/en/sandboxing#scope",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Never let a write script pick its target from a dotfile",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Bash permission rule matching (wrapper stripping limited to a fixed list); sandbox credential deny; .worktreeinclude",
+    "evidence": "Bash rules match the command text after stripping only a fixed list of wrappers (timeout, time, nice, nohup, stdbuf, command, builtin, noglob), so direnv is not stripped and a rule cannot see which database a run resolves to. The rule already cites that limit and adds a fail-fast check on the environment variable.",
+    "citation": "https://code.claude.com/docs/en/permissions#bash-rule-limits",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "I classified all eight rules and skipped the Don't section as told. Only one rule needs a change. Five rules are COMPLEMENT and already cite the right native limit in their prose or Anchor. Three are UNIQUE, and I kept all of those.\n\nThe one change is to \"Add the table registry line in the same PR as the migration\", reworded to cite the native floor. Its Anchor says the hosted review \"notices a doc going stale\". The docs only say Code Review flags a PR that makes a CLAUDE.md statement outdated, and that REVIEW.md can widen what it checks. A registry kept elsewhere would not be flagged by default, so the current wording overstates what the harness does. The fix is to make the Anchor more precise, not to remove the rule.\n\nRules I was unsure about:\n(1) \"Back up before a destructive migration, and diff after it\": in auto mode the classifier blocks production deploys and migrations by default (permission-modes#what-the-classifier-blocks-by-default). That is a second native floor the rule could cite. It is only a gate, though, with no backup or diff, so the rule still adds something either way. I left it as keep, but adding a clause that auto mode routes a production migration through the classifier would be reasonable.\n(2) \"Never let a write script pick its target from a dotfile\": the sandbox can refuse reads of listed credential files and clear listed environment variables for sandboxed commands (sandboxing#protect-credentials). That could partly enforce \"no dotfile on the write path\". Separately, .worktreeinclude copies gitignored files like .env into new worktrees, which spreads the hazard this rule guards against. Neither overlaps or conflicts with the rule, so I kept it, but the owner may want the Anchor to mention sandbox credential deny as an optional floor.\n(3) \"Give each initiative its own least-privilege role\": the sandbox's network allowlist can restrict which database host a Bash-run script reaches. That is a partial native fence at host level. It sits below the rule's table-level guard and does not contradict the claim that the harness never sees query contents, so I kept the rule."
+ },
+ {
+  "item": "plugins/house/modules/data-pipelines/rules/data-pipelines.md",
+  "rules": [
+   {
+    "heading": "End every pipeline run with a retro of invariants, deltas, and proposals",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The nearest native primitives are the best-practices advice to give Claude a check it can run and the Stop hook or /goal gates (code.claude.com/docs/en/best-practices). Those judge the agent's turn. None of them checks a data pipeline's invariants or run-over-run deltas, and none blocks a publish on them.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Make a pipeline idempotent and resumable, and log the idempotency rather than assume it",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The harness only has session-level recovery: checkpoints cover Claude's own file edits and sessions can resume (code.claude.com/docs/en/checkpointing, code.claude.com/docs/en/sessions). Nothing in the facts covers run ledgers, input hashes, or applied-row markers for application pipelines.",
+    "citation": "https://code.claude.com/docs/en/checkpointing",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Write nothing when a record is unchanged",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers compare-before-write or timestamp churn in the data stores a pipeline writes. The only native change tracking is checkpointing of Claude's own file edits (code.claude.com/docs/en/checkpointing).",
+    "citation": "https://code.claude.com/docs/en/checkpointing",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Default to a dry run and require an explicit flag to write",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Read/Edit permission rules and Bash sandbox filesystem isolation; checkpointing's untracked Bash changes",
+    "evidence": "The rule's premise holds. Read/Edit deny rules do not reach arbitrary subprocesses, and checkpointing does not track files a Bash command modifies (code.claude.com/docs/en/permissions#read-and-edit, code.claude.com/docs/en/checkpointing). One point is imprecise: the sandbox does confine where a script's child processes may write (code.claude.com/docs/en/sandboxing#filesystem-isolation). The native floor should be named exactly.",
+    "citation": "https://code.claude.com/docs/en/permissions#read-and-edit",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Make the dry run the default and `--apply` the opt-in: the harness gates the file tools Claude calls directly, and its sandbox bounds where a script may write, but neither judges what a running script writes to a store, and rewind cannot undo it. So a new script's first run is a plan a human reads, not an unasked change."
+   },
+   {
+    "heading": "Brake a prune at a share of the table, and unit-test the brake",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission prompts, the auto mode classifier, and the critical-path rm circuit breaker",
+    "evidence": "Native protection judges the command. In Manual mode, Bash commands prompt. The auto mode classifier blocks irreversible destruction and mass deletion as it reads the action. The rm circuit breaker covers only filesystem paths (code.claude.com/docs/en/permission-modes). None of these sees how many rows a script deletes. The rule's line saying the harness 'prompts' is imprecise, because under the default auto mode a classifier judges the command instead.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Refuse to delete more than a set share of a table per run and require explicit `--force` to override: the harness's permission check and auto mode classifier judge the command line, never the rows a script deletes once running, so a table-emptying run looks like one clearing a few stale rows until the count returns."
+   },
+   {
+    "heading": "Drive writes from a policy registry that fails closed on an unknown policy",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The harness does fail closed on invalid managed settings keys (code.claude.com/docs/en/managed-settings#invalid-entries-in-managed-settings), but only for its own configuration. Nothing in the facts governs an application's writable field registry.",
+    "citation": "https://code.claude.com/docs/en/managed-settings#invalid-entries-in-managed-settings",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Make unmapped input loud",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers bucket coverage gates or header-based parsing of external tabular sources. The best-practices guidance on verifiable checks is general agent advice and contains no data-parsing rule (code.claude.com/docs/en/best-practices).",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Archive first, parse second, and write the ledger row in the same transaction",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "Native fetch controls cover WebFetch permissions, the domain safety check, and sandbox network allowlists (code.claude.com/docs/en/data-usage#webfetch-domain-safety-check). None of them archives fetched bytes, keeps a provenance ledger, or trips a circuit breaker per source kind.",
+    "citation": "https://code.claude.com/docs/en/data-usage#webfetch-domain-safety-check",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Reconcile a vendor's success response against an independent count",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers checking third-party API responses against what the vendor actually holds. Native verification guidance covers the agent's own work, not vendor state (code.claude.com/docs/en/best-practices).",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Name, don't act, on ambiguous data",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The auto mode classifier judges risky tool actions (code.claude.com/docs/en/permission-modes). It has no concept of entity-resolution ambiguity, hold queues, or statistics that must not decide a row.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#how-the-classifier-evaluates-actions",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Key a projection on its source's whole grain, and prove that grain with a constraint",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers database grain, unique constraints, or projection write keys. The auto mode classifier only blocks production migrations as a category, without reasoning about schema (code.claude.com/docs/en/permission-modes).",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "I classified all 11 headings, leaving out \"## Don't\" as instructed. Two rules make a claim about the harness, and both are COMPLEMENT; I reworded their premise sentence rather than changing what the rule does.\n\n1. \"Default to a dry run\": the rule says the harness \"can't see what a script writes once running\". That is mostly right: Read/Edit deny rules don't reach subprocesses, and rewind can't undo Bash changes. But the Bash sandbox does limit where child processes may write. The reword names both halves of the floor and makes the claim about content written to a store, which is where the rule's value lies.\n\n2. \"Brake a prune\": the rule says the harness \"prompts for a destructive filesystem command\". That holds in Manual mode. Under the default auto mode, a classifier judges the command instead of prompting, and the rm circuit breaker covers only filesystem paths. The reword names the permission check and the classifier.\n\nUncertain calls:\n- The retro rule could be read as a COMPLEMENT to native verification: the Stop hook, /goal, and the best-practices advice to give Claude a check it can run. I chose UNIQUE because the retro checks a data pipeline's own invariants, not the agent's turn.\n- The policy registry rule has a native parallel in managed settings failing closed on invalid entries. That parallel only covers the harness's own configuration, so I kept it UNIQUE.\n- The archive rule touches WebFetch and the sandbox network controls only incidentally, so it is also UNIQUE.\n\nNone of the rules duplicates or conflicts with the harness. The module is almost entirely domain-specific."
+ },
+ {
+  "item": ".claude/worktrees/survey-clean/plugins/house/modules/deployment/rules/deployment.md",
+  "rules": [
+   {
+    "heading": "Deploy manually after the merge, because a merge is not a production update",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (auto mode classifier default-blocked categories are adjacent: production deploys)",
+    "evidence": "The harness facts cover a classifier that holds a production deploy for review (permission-modes#what-the-classifier-blocks-by-default), but nothing native records whether a merge deploys or stops a model from reporting a merged change as live. The Anchor's claim that the harness reviews a deploy command only through auto mode and cannot tell a merge was meant to ship matches that fact.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Chain the deploy guards before building anything, and give them one named escape hatch",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "GitHub Action behavior: CI does not run on commits made with the default GITHUB_TOKEN; auto mode classifier default blocks (production deploys, disabling CI checks)",
+    "evidence": "The docs say 'GitHub doesn't trigger workflows on commits made with the default GITHUB_TOKEN', which is the case this rule's fail-closed reading of an empty check-run list is built on. The harness offers no guard that refuses a build over a dirty checkout, an unpinned account, or a tip outside a merged PR.",
+    "citation": "https://code.claude.com/docs/en/github-actions#ci-not-running-on-claudes-commits",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Migrate before deploying the code that reads the schema",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Auto mode classifier default-blocked categories (production deploys/migrations)",
+    "evidence": "The classifier blocks production migrations by default but has no concept of step order (permission-modes#what-the-classifier-blocks-by-default). The Anchor already says so and adds the ordering the harness lacks through the ship script.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Invoke a deploy only through its named script",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission rule evaluation (deny before ask before allow); Bash permission rule matching limits; workspace trust for project allow rules; auto mode classifier",
+    "evidence": "Deny is evaluated first and holds in every mode, which is what the Anchor relies on. The docs also say a Bash rule 'covers the invocation Claude usually produces and isn't a security boundary around the program': Bash(wrangler *) does not stop an absolute path or bash -c. The docs further say committed allow rules apply only after workspace trust, and never in a -p run. The Anchor's line 'enforces regardless of what the model decides' overstates the floor.",
+    "citation": "https://code.claude.com/docs/en/permissions.md#bash-rule-limits",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script (`npm run deploy`); the harness evaluates that deny before any allow, hook, or mode, but it matches the command text Claude writes rather than the program, so a wrapper or an absolute path gets past it, and the script's own guards remain the real gate."
+   },
+   {
+    "heading": "Verify the deployed URL against the built file with the cache bypassed",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (best-practices guidance to give Claude a check it can run is adjacent)",
+    "evidence": "None of the harness facts cover comparing a built artifact against a cache-busted live fetch or checking what the edge actually serves. The only related native material is advisory best-practices guidance that work should end in a pass or fail check.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Repoint and deploy the consumer before dropping the producer's column",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers contracts between producers and consumers or when to drop a column. The auto mode classifier only holds production migrations in general and does not check dependency order (permission-modes#what-the-classifier-blocks-by-default).",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Restore a backup before calling it a backup",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (checkpointing is session-level recovery and explicitly not a backup or version-control substitute)",
+    "evidence": "The checkpointing docs call checkpoints 'designed for quick, session-level recovery' and not a replacement for version control. Nothing native covers backing up or test-restoring external data stores.",
+    "citation": "https://code.claude.com/docs/en/checkpointing#not-a-replacement-for-version-control",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "I'm confident about 'Invoke a deploy only through its named script': its Anchor overstates what a Bash deny rule enforces. The Don't section's Anchor ('the committed settings deny rule on the raw platform CLI, which are what refuse these in practice') has the same overstatement and needs the same softening. Don't was excluded from classification per the task, but the fix should be applied there too. A related gap: under auto mode, a narrow Bash(npm run deploy) allow stays in effect, but the classifier still reviews a production deploy. So an allow entry does not by itself stop the prompt or classifier review, and the rule could say so.\n\nUnsure: 'Chain the deploy guards...'. Its 'CI green on the tip' guard may collide with managed Code Review, whose check run 'always completes with a neutral conclusion'. If deploy-guards.mjs treats any non-success conclusion as failing, a repo with Code Review enabled could be refused forever. I could not verify this against the script, and it should be checked before keeping the rule unchanged.\n\nUnsure: 'Deploy manually after the merge...'. I classified it UNIQUE, though its Anchor already cites the auto mode classifier, so COMPLEMENT is defensible. Its core ask, documenting deploy surfaces and not reporting a merge as live, has no native counterpart. Its Anchor also says 'the harness only reviews a deploy command in auto mode'. That is broadly accurate, since in manual mode a non-read-only Bash command prompts the user rather than being reviewed by the harness itself.\n\nUnsure: 'Verify the deployed URL...'. The success-marker clause echoes the best-practices advice to give Claude a check it can run, but that advice is advisory, and the rule's substance (built-file versus cache-bypassed live fetch) is unique, so I kept it UNIQUE.\n\nI found no CONFLICT or DUPLICATE dispositions."
+ },
+ {
+  "item": "plugins/house/modules/testing/rules/testing.md",
+  "rules": [
+   {
+    "heading": "Give the agent a check it can run before you walk away",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Best-practices guidance 'give Claude a check it can run' (verification-driven stop), with /goal, Stop hook, and verification subagent as the escalation ladder",
+    "evidence": "The harness's own best-practices page already tells users to give Claude something that produces a pass or fail so the loop closes, but only as advisory prose (https://code.claude.com/docs/en/best-practices); the rule adds the concrete shape (one command, non-zero exit, chaining suite, guard tests, and checker, named in the root file) without saying the harness advises the same thing.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness's own guidance already says to give the agent a check that produces a pass or fail; treat that as the floor and ship it as one command that answers \"did this work\" with nobody watching, because without it you are the verification loop and every change waits on your attention."
+   },
+   {
+    "heading": "Scale the pyramid to the repo you have, and route what the PR gate cannot afford",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact covers test-tier proportions, pre-commit speed, or routing credentialed tests out of a PR gate; the only CI-adjacent native facts concern the GitHub Action and Code Review, neither of which sizes a test suite (https://code.claude.com/docs/en/github-actions).",
+    "citation": "https://code.claude.com/docs/en/github-actions",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Split deterministic tests from model-behavior evals, and give each its own budget and cadence",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval --max-cost-usd and --threshold, plus its exit codes for CI gating",
+    "evidence": "The rule already defers to the runner's own controls, but it says the cost ceiling 'aborts a run', while the docs say the ceiling is checked before each run starts, runs already in flight finish so spend can pass it, and the command exits 2 with partial results (https://code.claude.com/docs/en/plugin-evals#command-options).",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#command-options",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Give the eval tier its own budget using the runner's own controls rather than a promise: set the cost ceiling, which stops new runs once spent and exits with partial results while in-flight runs finish, and the threshold that exits non-zero when a case scores below it, then keep that tier out of the merge gate and on a cadence a person can pause by hand."
+   },
+   {
+    "heading": "Test the guard itself, as its own CI step",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "PreToolUse hooks and exit code 2 blocking; claude plugin eval loading the plugin's own hooks",
+    "evidence": "The rule already names the native floor correctly: hooks are what block (https://code.claude.com/docs/en/hooks.md#exit-code-2), and the eval runner runs a plugin's hooks, but no documented feature asserts that a hook still returns its blocking decision, so the guard's own test adds enforcement the harness lacks.",
+    "citation": "https://code.claude.com/docs/en/hooks.md#exit-code-2",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Feed a real payload through the real wiring, and never re-implement the logic under test",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Hook I/O contract: JSON event on stdin, per-event exit-2 semantics, JSON stdout decisions subject to schema validation",
+    "evidence": "The docs say stdout decides the outcome only when it is valid JSON that passes schema validation, and a parsed object that fails schema validation is a non-blocking error that lets the action proceed (https://code.claude.com/docs/en/hooks.md#exit-code-output); the rule's 'bare JSON object' is looser than that, so a test that only checks the stdout shape could pass a hook the harness would ignore.",
+    "citation": "https://code.claude.com/docs/en/hooks.md#exit-code-output",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning the hooks reference fixes per event, and stdout that decides only when it parses as JSON passing the hook output schema, since a malformed decision is a non-blocking error that lets the action through."
+   },
+   {
+    "heading": "Ship every gate with a positive control and a negative control",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No native feature commits a failing case beside a passing one for a repo's own checkers; the closest facts are the eval runner's no-plugin baseline arm and Anthropic's advisory call for balanced positive and negative eval cases, which cover model evals and not deterministic gates (https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents).",
+    "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Prove an eval can fail, then grade it with the cheapest grader that can",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval no-plugin baseline (ablation), default runs per case, and the six grader types (four free deterministic, llm and baseline judges)",
+    "evidence": "The rule already starts from the runner's native with and without arms and its deterministic grader types, and adds what the runner leaves out: the delta never affects the exit code (https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline), so refusing a non-diverging number and reading transcripts is posture the harness lacks.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Read the snapshot diff before accepting it, because a snapshot is a drift gate",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact describes snapshot testing, re-render-and-diff gates, or accepting snapshot updates; Code Review's default scope explicitly skips formatting and test coverage, so nothing native reviews a snapshot diff (https://code.claude.com/docs/en/code-review#what-code-review-checks).",
+    "citation": "https://code.claude.com/docs/en/code-review#what-code-review-checks",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Quarantine a flaky test loudly, and never retry it into silence",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The only native handling of nondeterminism is the eval runner repeating each case three times by default for model behavior (https://code.claude.com/docs/en/plugin-evals#how-a-case-is-scored); nothing covers quarantining a flaky deterministic test or pinning a live upstream to a fixture.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#how-a-case-is-scored",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Treat coverage as a search-light, never as a target",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact covers coverage measurement or thresholds; Code Review states it does not check missing test coverage by default (https://code.claude.com/docs/en/code-review#what-code-review-checks), so the rule has no native counterpart to duplicate or fight.",
+    "citation": "https://code.claude.com/docs/en/code-review#what-code-review-checks",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Mirror the module layout in the test tree, and keep each fixture beside its test",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact governs a repo's test tree layout; the eval runner's case format puts fixtures and graders inside each case directory (https://code.claude.com/docs/en/plugin-evals#write-and-refine-cases), which agrees with this rule's fixture-beside-test posture for evals, but nothing covers the deterministic suite.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#write-and-refine-cases",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Explain a test-runner config quirk in the config, with the incident that produced it",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact covers commenting test-runner settings; the nearest native mechanism is /doctor trimming derivable CLAUDE.md content while keeping pitfalls and rationale (https://code.claude.com/docs/en/memory.md), which concerns instruction files, not test config.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Keep a demoted check running, reported, and counted",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact covers demoting a repo's own check to advisory while tallying its false positives; the eval runner's grader exclusion reports excluded graders as pass or fail indicators without scoring them (https://code.claude.com/docs/en/plugin-evals#compare-against-a-no-plugin-baseline), which is a loose analogue for evals only.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#compare-against-a-no-plugin-baseline",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "I classified all 13 rules from .claude/worktrees/survey-clean/plugins/house/modules/testing/rules/testing.md. I skipped \"## Don't\" as instructed; its items mirror the rules and add nothing new to classify.\n\nThree rules have concrete reword proposals.\n- **\"Give the agent a check it can run\":** it restates the harness's own best-practices guidance without citing it. The reword names that guidance as the floor.\n- **\"Split deterministic tests from model-behavior evals\":** \"aborts a run\" overstates --max-cost-usd. The docs say in-flight runs finish, spend can pass the ceiling, and the command exits 2 with partial results.\n- **\"Feed a real payload through the real wiring\":** \"a bare JSON object\" is looser than the harness contract. Stdout decides only when it is valid JSON that passes schema validation. A schema-failing object is a non-blocking error, so a test checking only the stdout shape could pass a hook the harness ignores.\n\nWhere I was unsure:\n- **\"Ship every gate with a positive control and a negative control\":** I chose UNIQUE over COMPLEMENT. The only native parallels are the eval runner's baseline arm and Anthropic's advisory call for balanced positive and negative cases, and both cover model evals, not deterministic gates. Someone could fairly call it a COMPLEMENT of the eval baseline because its anchor cites an eval case.\n- **\"Prove an eval can fail\":** I kept it as a well-cited COMPLEMENT. The line \"a judge is noisiest on the long artifacts\" is only loosely backed: the facts say the llm judge sees just the first and last 12 trace messages and refuses non-image binaries. That supports \"weakest on long artifacts\", not \"noisiest\". It is worth a light edit if precision matters.\n- **\"Test the guard itself\":** its claim that the eval runner loads a plugin's own hooks is inferred. The security section says plugin hooks run outside the sandbox, and the isolation section lists only user hooks as absent. I read that as consistent but not stated outright.\n- **Cross-file item (the larger harness update the user mentioned):** the harness's best-practices escalation ladder is prompt, /goal condition, Stop hook, then verification subagent or workflow. The ladder that the check-before-walking-away rule defers to in claude-code.md goes prompt, check, hook, subagent. It leaves out /goal and does not name the Stop hook as the deterministic gate for \"did this work\". That belongs in the claude-code.md review, not this file."
+ },
+ {
+  "item": "plugins/house/modules/github/rules/github.md",
+  "rules": [
+   {
+    "heading": "Gate every PR on checks that need no credential, and name what is not gated",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Code Review check run (neutral conclusion, never blocks merge)",
+    "evidence": "The managed Code Review check always completes neutral and never gates merging, so the credential-free PR gate adds the enforcement the harness deliberately omits, and the rule already names the hosted review as a gap, not a gate.",
+    "citation": "https://code.claude.com/docs/en/code-review#check-run-output",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Give a workflow read-only permissions and pin every action by SHA",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Claude GitHub App permission set and /install-github-app workflow setup",
+    "evidence": "The Claude GitHub App grants one fixed, broad write set that cannot be narrowed and /install-github-app writes the workflow for you, so per-workflow read-only permissions and SHA pins add least privilege the platform setup does not; the anchor already extends the rule to the agent-installed workflow.",
+    "citation": "https://code.claude.com/docs/en/github-actions#github-app-permissions",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Budget Actions minutes as account-wide money",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Claude Code GitHub Action (runs on the repo's Actions minutes); scheduled Action runs",
+    "evidence": "The GitHub Action and its cron automation mode run inside the user's own workflows with no documented minutes cap (Code Review's spend cap covers usage credits, not Actions minutes), so the rule's pool accounting fills a gap and already says the agent workflow caps nothing.",
+    "citation": "https://code.claude.com/docs/en/github-actions#run-on-a-schedule",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Open an issue instead of failing a scheduled run, and comment out a cron with its reason",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Claude Code GitHub Action automation mode and tool gating for plain-text prompts",
+    "evidence": "Automation-mode results land in the run log rather than a comment by default and a plain-text prompt has no GitHub API access until tools are granted, so a scheduled agent audit cannot open the issue this rule asks for unless its prompt and grants allow it.",
+    "citation": "https://code.claude.com/docs/en/github-actions#interactive-and-automation-modes",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: none (because a failure policy is a per-workflow editorial choice no checker can read). A scheduled agent run writes only to its run log unless its prompt directs it to post and its allowed tools include the issue command, so grant those before counting on the issue."
+   },
+   {
+    "heading": "Turn on push protection, head-branch deletion, and grouped dependency updates",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers repository settings for secret scanning push protection, head-branch deletion, or dependency update grouping; the nearest native layers (auto mode blocking secret-leaking pushes) act only on Claude's own actions.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Make the PR template force a docs-check answer",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Code Review CLAUDE.md docs-staleness flagging (nit severity)",
+    "evidence": "Code Review flags a PR that makes a CLAUDE.md statement outdated only as a non-blocking nit and only where the service runs, so a mandatory template answer adds the enforcement the harness lacks, and the anchor already says so.",
+    "citation": "https://code.claude.com/docs/en/code-review#claudemd",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Never put a closing keyword beside an issue number you do not mean to close",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The harness documents PR creation via gh pr create and session-to-PR linking but nothing about parsing closing keywords in PR bodies.",
+    "citation": "https://code.claude.com/docs/en/common-workflows#create-pull-requests",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Ship phased work as commits on one PR",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/batch fan-out and background session worktree isolation",
+    "evidence": "/batch splits a change across many subagents each in its own worktree and background sessions move into their own worktree, so the harness's native fan-out naturally yields many units; the rule adds the one-PR posture, but the provided facts do not confirm that either feature opens a PR per unit as the anchor claims.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: none (because PR granularity is a judgment call; base-retarget confirmation is a look at the open PR list). A fan-out command such as /batch or a background session works each unit in its own worktree, so say which shape phased work takes before launching one."
+   },
+   {
+    "heading": "Stage explicit paths, never everything at once",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Auto mode classifier default block on secret-leaking commits and pushes",
+    "evidence": "Auto mode blocks a commit or push that carries a secret by default, which is a native backstop for a wide add, but it does not stop untracked local-only non-secret files from being swept in, which is what the rule targets.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: the `pre-commit` template refuses a staged secret, and auto mode's classifier blocks a secret-bearing commit by default; both backstop a wide add without licensing one, and neither catches a local-only file that holds no secret. A staging-broad permission rule allows sweep-everything too, so the prompt filters nothing."
+   },
+   {
+    "heading": "Classify a merged branch by its PR state, not by merge detection",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Worktree cleanup on exit and periodic worktree sweep",
+    "evidence": "The harness's cleanup and sweep inspect only local state (changed files, unpushed commits, submodules) and never query PR state, so the rule adds the squash-merge-aware classification, and the anchor already cites the local-only sweep.",
+    "citation": "https://code.claude.com/docs/en/worktrees#clean-up-worktrees",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Never delete the branch from the worktree being merged",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Worktree cleanup on interactive exit",
+    "evidence": "The harness removes a clean unnamed worktree and its branch only at interactive exit and never for -p runs, so sequencing an earlier deletion is left to the user, which the rule and its anchor already state.",
+    "citation": "https://code.claude.com/docs/en/worktrees#clean-up-worktrees",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Keep credentials out of the repo, the commit, and the chat",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Read deny rules, sandbox.credentials deny/mask, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
+    "evidence": "The sandbox reads credential files by default and has no built-in deny list, but the harness does offer Read deny rules, sandbox credential deny or mask, and a subprocess env scrub; the anchor's claim that nothing local keeps a key from the chat is true only until those are configured, so it should name them as the opt-in native layer.",
+    "citation": "https://code.claude.com/docs/en/sandboxing#protect-credentials",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; remote is the guard, hook the backstop. By default credential files stay readable to a session and a subprocess inherits its environment; a Read deny rule, the sandbox's credential deny or mask, and the subprocess scrub variable narrow that, but none is on until configured."
+   },
+   {
+    "heading": "Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB; security-guidance per-edit pattern check",
+    "evidence": "The harness can strip credentials from subprocesses and the security-guidance plugin pattern-matches edits, but neither scans build output or proves itself with a canary, so the rule adds a gate the harness lacks and its anchor already notes a session build inherits the environment unless scrubbed.",
+    "citation": "https://code.claude.com/docs/en/sandboxing#scope",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Give a restricted key exactly one writable scope",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "Harness credential facts cover storage, masking, and scrubbing of keys, not scoping of vendor-issued keys or probing their reach.",
+    "citation": "https://code.claude.com/docs/en/sandboxing#mask-credentials",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Never log a vendor object",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The only native redaction fact concerns Claude Code's own error reports, not application logging of customer or vendor objects.",
+    "citation": "https://code.claude.com/docs/en/data-usage#telemetry-services",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Treat a preview URL as production for exposure",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact addresses deploy preview hosts or route-level auth coverage.",
+    "citation": "https://code.claude.com/docs/en/security",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Label a non-secret as a non-secret",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "Harness secret handling (deny, mask, scrub) has no concept of annotating a deliberately public value.",
+    "citation": "https://code.claude.com/docs/en/sandboxing#protect-credentials",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Ship the community files the platform looks for, and keep issue intake as forms",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The only native security-policy fact is Anthropic's own vulnerability reporting route for Claude Code, not a repository community profile or issue forms.",
+    "citation": "https://code.claude.com/docs/en/security#reporting-security-issues",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "PreToolUse hooks; Bash rule text-matching limits; auto mode default push allowance; --bare/--safe-mode skipping hooks",
+    "evidence": "The docs say a Bash rule matches command text and is not a security boundary, auto mode allows pushes to any branch including the default by default, and bare or safe-mode sessions skip user hooks, so a git-level hook floor with a narrow PreToolUse tamper check follows the harness's own guidance and adds protection it lacks.",
+    "citation": "https://code.claude.com/docs/en/auto-mode-config#common-boundaries",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Keep the PreToolUse hook's job to verifying the floor is intact and refusing its short disable/bypass list, never inferring a branch or tree from text, since the harness documents text-matched rules as no boundary, lets auto mode push to the default branch by default, and loads no project hooks in a bare or safe-mode session while git still runs its own."
+   }
+  ],
+  "notes": "No DUPLICATE or CONFLICT found; the file already cites native gaps in several anchors (Code Review neutral check, local-only worktree sweep, exit-only worktree cleanup). Unsure items: (1) \"Ship phased work as commits on one PR\": the anchor claims a background session opens a draft PR on its own and the parallel-change command opens one PR per unit; the provided facts only show /batch and background sessions using separate worktrees, not opening PRs, so I proposed a reword grounded in the facts. The original claim may be true but is unverified here. (2) \"Keep credentials out of the repo, the commit, and the chat\": the anchor's \"nothing local keeps a key from the chat\" understates opt-in native layers (Read deny, sandbox credential deny/mask, subprocess env scrub). I called it COMPLEMENT with a reword rather than CONFLICT because it is accurate about defaults. (3) \"Open an issue instead of failing a scheduled run\": could be UNIQUE, but the Action's automation mode writes only to the run log without tool grants, which bears directly on a scheduled agent audit, so I called it COMPLEMENT. (4) \"Enforce the branch policy...\": arming core.hooksPath writes .git/config, which the harness treats as a protected path and the sandbox denies. A SessionStart hook runs outside those gates, so I saw no conflict, but whether a session-run `house render --apply` prompts under auto or manual mode is not settled by the facts. (5) \"Stage explicit paths\": the auto mode secret-commit block depends on the mode and the version, so the proposed wording says \"by default\" and not \"always\"."
+ },
+ {
+  "item": "plugins/house/modules/engineering/rules/engineering.md",
+  "rules": [
+   {
+    "heading": "Build the simplest thing that answers the question",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/code-review local command (reuse, simplification, efficiency cleanups) and the /simplify bundled skill",
+    "evidence": "The harness's /code-review \"reports correctness bugs and reuse, simplification, and efficiency cleanups\" on a diff that already exists, so it never asks for the least machinery before the code is written, which is exactly the gap the Anchor names.",
+    "citation": "https://code.claude.com/docs/en/code-review#review-a-diff-locally",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Keep one implementation per computation, and let the gate and the report share it",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No fact covers single-sourcing a computed value across a gate and a report, schema-derived types, or gating published figures; the eval runner's JSON result is the only native report and it computes its own scores.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#json-result",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Prove a check can fail before trusting that it passed",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval no-plugin baseline arm; Anthropic eval guidance on balanced positive and negative cases",
+    "evidence": "The runner's default ablation repeats each case with no plugin and reports the difference, and Anthropic's guidance recommends balanced positive and negative cases, but nothing native requires a known-answer control per check before trusting a clean result.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline ; https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Verify the served artifact, not the source",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (nearest: best-practices verification-driven stop)",
+    "evidence": "Best practices only say to give Claude a check it can run, such as a fixture diff or screenshot comparison; no native feature reads built output bytes or asserts prior content absent.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Validate the body before writing it, because a status code is not a content check",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact addresses validating a fetched payload before a write or reading a stored column type back; the nearest native checks (WebFetch domain blocklist, structured-output schema retries) concern safety and agent output, not a pipeline's fetched data.",
+    "citation": "https://code.claude.com/docs/en/data-usage#webfetch-domain-safety-check",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Never let a gate mint the answer key it grades against",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval isolation (case definitions hidden from the agent) and baseline grader reference transcripts",
+    "evidence": "The runner hides case definitions from the agent under test and grades against an author-supplied reference transcript, but it never checks where a label or reference came from, which is the provenance gate this rule adds and its Anchor already states.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#how-runs-are-isolated",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval partial results and omitted delta",
+    "evidence": "The runner marks results partial only when a cost ceiling, a credential rejection, or an interrupt stops the run, and omits a case's delta when the arms are not comparable, so the current Anchor's phrase \"marks a run partial on failure\" overstates the native behavior.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#json-result",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early and omits a delta when its arms are not comparable, so carrying a could-not-evaluate outcome in every verdict is this repo's addition."
+   },
+   {
+    "heading": "Show the ratio and the sample, because one number is never the accuracy",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval repeated runs per case and pass@k guidance",
+    "evidence": "The runner repeats each case because one run of a non-deterministic agent tells you little and reports a mean score, and Anthropic guidance names pass@k and pass^k as distinct metrics, but nothing native attaches the sample size and estimand to every published rate; the current Anchor cites only vague \"published guidance\".",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#how-a-case-is-scored ; https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); the harness's eval runner repeats each case and reports a mean score, but never states the sample or estimand beside it, so attaching both to every rate is this repo's requirement."
+   },
+   {
+    "heading": "Make a measuring instrument reproducible",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval --model pin advice, agent-mock replay, list-price costUsd and the modelPricing managed setting, --bare mode",
+    "evidence": "The docs only advise pinning --model in CI (the default falls through to the case model, the environment, or the harness default), replay recorded mock answers, and report cost at list price unless a managed pricing table applies, so the current Anchor's claim that the harness \"pins the model\" is inaccurate.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#command-options ; https://code.claude.com/docs/en/costs",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness advises pinning the model, replays recorded mock answers, and reports cost at list price unless a managed pricing table applies, but leaves fixture sampling unseeded, so seeding the fixture and recording the pricing basis are this repo's addition."
+   },
+   {
+    "heading": "Assert an invariant where its state is created, with a why and a remedy",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "CLAUDE.md as context not enforcement; claude plugin eval --max-cost-usd ceiling",
+    "evidence": "The docs say instruction files are context, not enforced configuration, and the only native spend gate is the eval runner's cost ceiling, so asserting invariants, cost limits included, in code where state is created builds on that floor, as the Anchor states.",
+    "citation": "https://code.claude.com/docs/en/memory.md ; https://code.claude.com/docs/en/plugin-evals#command-options",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Make every waiver print its reason, and give an integrity gate none",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "PreToolUse deny holds in every permission mode; disableAllHooks",
+    "evidence": "A PreToolUse deny blocks even in bypassPermissions mode, and disableAllHooks turns hooks off with no reason required, so a reason-carrying, one-run-scoped waiver is an addition the Anchor already names.",
+    "citation": "https://code.claude.com/docs/en/hooks-guide.md#hooks-and-permission-modes",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Read a missing field as missing, because absence is not confidence",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact addresses keeping an explicit false distinct from an absent value in a reporting layer.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Demote a gate that has been wrong before",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Code Review findings never gate merge; Anthropic grader calibration guidance",
+    "evidence": "Managed Code Review always completes with a neutral conclusion and reports advisory severities, and Anthropic advises calibrating graders by reading transcripts, but no native checker carries its own false-positive record into its verdict.",
+    "citation": "https://code.claude.com/docs/en/code-review#check-run-output",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Record a significant decision as a numbered, immutable record",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Auto memory (machine-local, rewritable project notes)",
+    "evidence": "Auto memory keeps project decisions in a machine-local directory that Claude edits, not shared or immutable, so a numbered repo record is the durable, shared layer, as the Anchor states.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Land a build-time guard with the code it protects",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers build-time guards, their ordering against generators, or landing them with the code; the native per-edit pattern check in the security-guidance plugin is a non-blocking warning, not a build gate.",
+    "citation": "https://code.claude.com/docs/en/security-guidance#on-each-file-edit",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Search public prior art before building a tool, and record what you did not adopt",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Plan mode",
+    "evidence": "Plan mode reads and answers without making changes until the plan is approved, and the rule already runs its search there while adding the durable record of rejected candidates that plan mode does not keep.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Pin a framework default your output depends on, with the reason beside it",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact addresses pinning framework or adapter defaults in project config or documenting thresholds, vendor quirks, or flag expiry beside the value.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Enumerate from the system of record, and fail hard on a missing member",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact covers deriving lists from their defining source or failing on an unresolvable member in project tooling.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Normalize against fixed anchors, never against the live population",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact addresses denominator choice or eligibility for published shares.",
+    "citation": "none",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Make an error message teach the fix",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "PreToolUse deny reason passed to Claude",
+    "evidence": "A PreToolUse deny cancels the call and sends the hook's reason to Claude verbatim with no requirement that it be useful, so requiring a remediation in every refusal builds on that primitive, as the Anchor states.",
+    "citation": "https://code.claude.com/docs/en/hooks.md#pretooluse",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Read config from the environment, and keep build, release, and run separate",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Sandbox filesystem read defaults and sandbox.credentials; auto mode default-allowed reading of .env",
+    "evidence": "Sandboxed commands can read the whole machine unless a credential is explicitly listed, and auto mode allows reading a local env file and sending credentials to the matching API by default, so keeping secrets out of the repo and in the environment is posture the harness does not supply.",
+    "citation": "https://code.claude.com/docs/en/sandboxing#filesystem-isolation ; https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "I found no DUPLICATE or CONFLICT rules. Three Anchors state the native floor inaccurately and should be reworded:\n- NOT EVALUABLE: the Anchor says \"marks a run partial on failure\". Per the docs, partial covers only a cost ceiling, a credential rejection or an interrupt.\n- Ratio and sample: the Anchor points at vague \"published guidance\". The eval runner's repeated runs and mean score are the native floor it should name.\n- Reproducible instrument: the Anchor says the harness \"pins the model\". The docs only advise pinning; by default the model falls through to the case, the environment, then the harness default. The native floor also includes mock replay and the modelPricing managed setting.\n\nRules I was unsure about:\n- \"Verify the served artifact\" could be read as a COMPLEMENT to the best-practices advice to give Claude a check it can run (fixture diff, screenshot comparison). I chose UNIQUE because nothing native reads the bytes that ship.\n- \"Validate the body\" is UNIQUE for the same reason: the nearest native checks (WebFetch blocklist, structured-output retries) do something else.\n- \"Land a build-time guard\" asks for one line per guard in the root file. The harness does not contradict that, so it is not a CONFLICT. It may sit uneasily with the /doctor trim check and the sibling claude-code.md rule to keep only non-derivable lines in the root file, if the guard list can be derived from package.json scripts. Worth a look, but not a harness conflict.\n- \"Read config from the environment\" is marked keep. Its Anchor (\"the sandbox treats reading a local env file as ordinary\") is roughly accurate but could also cite the auto-mode classifier's default allowance for reading .env.\n- \"Search public prior art\" relies on plan mode blocking edits. That holds per the facts. I kept it as a COMPLEMENT rather than rewording it.\n\nSeparately, the relayed user request (\"if you look further back you might for a larger update to adapt the repo to the harness\") is outside this per-file classification. I did not act on it."
+ },
+ {
+  "item": "plugins/house/modules/docs/rules/docs.md",
+  "rules": [
+   {
+    "heading": "Anchor every claim to a grep-able token",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/doctor prompt-audit (references to files or commands that don't exist; Group 2 volatile specifics checked against the repo)",
+    "evidence": "The harness's prompt audit looks for references to files or commands that don't exist, but only in instruction files, only when run, and it proposes edits without applying them; this rule makes every claim in every scanned doc checkable by a gate on each commit (https://code.claude.com/docs/en/memory.md, /doctor prompt-audit).",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness's prompt audit catches a reference to a missing file or command in instruction files, but only when someone runs it and only as a proposal; anchoring every claim to a token lets the gate catch that drift in every scanned doc on every commit."
+   },
+   {
+    "heading": "Run the docs gate before pushing and in the build",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No harness fact describes a docs-drift gate wired into a local loop, a build step, or a pull-request workflow; the closest native validator, claude plugin validate, checks plugin manifests and components, not document claims (claude plugin validate --help).",
+    "citation": "claude plugin validate --help",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Give every rule file a paths list whose first segment resolves",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Path-specific rules (paths: frontmatter), rule frontmatter parse fallback, compaction survival",
+    "evidence": "The harness loads a rule without paths at launch with the same priority as .claude/CLAUDE.md, loads a rule whose frontmatter fails to parse as if it had no paths, lets an invalid pattern match nothing with no warning, and drops path-scoped rules on compaction until a matching file is read again (https://code.claude.com/docs/en/memory.md; https://code.claude.com/docs/en/context-window).",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness loads a rule with no `paths:` at launch at project-instruction priority, loads one whose frontmatter fails to parse as if it had none, and says nothing when a glob matches no file, so this check is the only signal. A rule that must hold in every session, or survive compaction, belongs in the root file; everything else gets scoped."
+   },
+   {
+    "heading": "Put a fact where its litmus test says it belongs",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "CLAUDE.md size guidance (move reference content to skills or path-scoped rules) and the /doctor CLAUDE.md trim check",
+    "evidence": "The harness advises keeping CLAUDE.md to broadly applicable content and moving reference material to skills or path-scoped rules, and /doctor proposes cutting content derivable from the codebase, but it has no guidance for the README, changelog, or archive (https://code.claude.com/docs/en/context-window; https://code.claude.com/docs/en/memory.md); the rule's opening says the harness 'routes' facts, which overstates advisory guidance.",
+    "citation": "https://code.claude.com/docs/en/context-window",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness advises keeping only broad facts in the root file, moving procedures to a skill and path-bound facts to a path-scoped rule, and its checkup proposes cutting what the code already says. This rule carries that split to the README, the changelog, and the archive, where nothing native reaches: the README for a landing human, the archive for a dated observation."
+   },
+   {
+    "heading": "State a rule as imperative, why, anchor, receipts",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/doctor prompt-audit (Group 1e prohibitions judged by provenance; Group 1d unenforced instructions; Group 1c prohibition lists)",
+    "evidence": "The prompt audit judges each prohibition by whether it carries a stated reason and flags rules no code path, eval, or reviewer checks, which is what the why and Anchor lines supply, while it also flags bare prohibition lists for rewriting as positive intent, which the mandatory Don't section could trip (https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md).",
+    "citation": "https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The why and the Anchor line are what the harness's prompt audit looks for when it judges a prohibition by its provenance and an instruction by whether anything enforces it; keep each `## Don't` line the negative of a rule above, so it inherits that rule's reason instead of reading as a bare ban."
+   },
+   {
+    "heading": "Move dates, names, and measured numbers out of rule prose",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/doctor prompt-audit (Group 2 volatile specifics and the recency trap; Group 1d fossils)",
+    "evidence": "The prompt audit flags hardcoded versions and paths and one session's stumble encoded as a permanent rule, but those findings are proposed only and never auto-applied, and the audit runs only on request (https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md); this rule turns the same concern into a shape gate.",
+    "citation": "https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness's prompt audit flags volatile specifics and a one-session lesson written as a permanent rule, but only when run and only as a proposal; the shape check makes the same test a gate on every commit."
+   },
+   {
+    "heading": "Keep files under budget, and raise a ceiling only with a written reason",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "CLAUDE.md recommended length, large-file startup and /status warnings, the hard size cap on a CLAUDE.md",
+    "evidence": "The harness warns at startup and in /status when an instruction file passes its recommended length or files together pass a combined limit, and skips only a CLAUDE.md past its hard cap; it never blocks growth (https://code.claude.com/docs/en/memory.md), and the rule's current text omits the warning layer it sits above.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters."
+   },
+   {
+    "heading": "Cut, don't append, and trim on a fixed cadence",
+    "disposition": "CONFLICT",
+    "nativeFeature": "/doctor CLAUDE.md trim check and /doctor prompt-audit (empty diff is a valid outcome; re-audit at every model release)",
+    "evidence": "The native audit states that an audit finding nothing should change nothing and that an empty diff beats a manufactured one, while this rule requires deleting at least one section each pass and in the same breath calls finding no candidate valid (https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md; https://code.claude.com/docs/en/memory.md).",
+    "citation": "https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md",
+    "action": "resolve-conflict",
+    "proposedWording": "Trim on a fixed cadence, looking across the root file and the rule files for a section to delete, and let the ratchet hold the floor. A pass that finds no candidate cuts nothing, since the harness's own audit holds that an empty diff beats a manufactured one, and the prompt to look is what does the work."
+   },
+   {
+    "heading": "Split a file only when splitting narrows what loads",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "@path imports and unscoped .claude/rules/ load at launch; concatenation with arbitrary conflict resolution",
+    "evidence": "The harness documents that splitting into imports helps organization but doesn't reduce context since imported files load at launch, that rules without paths load at launch, and that concatenated files with contradicting rules may be resolved arbitrarily (https://code.claude.com/docs/en/memory.md); the rule adds the co-load cap and escape-valve order the harness lacks but does not cite that floor.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads."
+   },
+   {
+    "heading": "Opt a point-in-time doc out with a file-level reason",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Block-level HTML comment stripping in CLAUDE.md files",
+    "evidence": "The harness strips block-level HTML comments from CLAUDE.md files before injecting them but preserves comments inside code blocks and shows them to the Read tool (https://code.claude.com/docs/en/memory.md); the rest of the rule (scan-by-default, ignore markers, supersession banners) has no native counterpart, and the comment clause is broader than the documented scope.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Maintainer notes belong in block-level HTML comments, which the harness strips from an instruction file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader."
+   },
+   {
+    "heading": "Don't document a command that does not exist",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/doctor prompt-audit (references to files or commands that don't exist)",
+    "evidence": "The prompt audit reads CLAUDE.md, rules, skills, and commands for references to files or commands that don't exist, but it does not read the README or changelog, runs only on request, and changes nothing until asked (https://code.claude.com/docs/en/memory.md); this rule extends the check to every document and makes it a gate.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness's prompt audit flags a command or file that does not exist in instruction files when someone runs it; the gate carries that check to the README, the changelog, and every scanned doc, on every commit."
+   },
+   {
+    "heading": "Ship the docs and changelog edit in the same PR as the change",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Code Review CLAUDE.md influence (flags outdated CLAUDE.md as a nit; neutral check never blocks merge)",
+    "evidence": "Managed Code Review flags a PR that makes a CLAUDE.md statement outdated only at nit severity, and its check run always completes neutral so it never blocks merging (https://code.claude.com/docs/en/code-review#claudemd); the rule already cites this accurately and adds the template binary and changelog discipline the harness lacks.",
+    "citation": "https://code.claude.com/docs/en/code-review#claudemd",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "Unsure about:\n- \"State a rule as imperative, why, anchor, receipts\": the house format itself is unique; I called it COMPLEMENT because the why and Anchor lines map onto the prompt audit's provenance and unenforced-instruction tests. The mandatory `## Don't` section is a possible friction point: the prompt audit flags prohibition lists that carry no reason, so a /doctor prompt-audit run could propose rewriting those lines. The proposed wording heads that off by tying each Don't line to a rule above it. It could fairly be marked UNIQUE/keep instead.\n- \"Cut, don't append...\": I marked this CONFLICT and not COMPLEMENT because \"delete at least one section each time\" is a quota, and it contradicts both its own next clause (\"finding no candidate is valid\") and the native audit's rule that an empty diff beats a manufactured one. It also runs against the owner's memory note about judgment over counts and caps. The other parts of the rule (the ratchet and the bloat smells) are fine COMPLEMENT material.\n- \"Opt a point-in-time doc out...\": the native fact says HTML comments are stripped \"in CLAUDE.md files\". It says nothing about .claude/rules/*.md files, so whether rule files (which open with such a comment) get stripped is unverified. My wording says \"instruction file\", which may still be too broad if rule files keep their comments. Check with /context before finalizing.\n- \"Give every rule file a paths list...\": this is close to a duplicate of \"Give a domain rule a paths list, and never leave a rule file unscoped\" in the claude-code module. The package should either declare that an intentional duplicate or keep one and cross-reference it. Also, \"root-file priority\" is slightly inexact: the docs say rules without paths load with the same priority as .claude/CLAUDE.md.\n- \"Anchor every claim...\" and \"Don't document a command...\": both proposed rewordings cite the same native floor (/doctor prompt-audit's missing-reference check). If repeating one citation across two rules is unwanted, keep the citation on the command rule and leave the anchor rule as keep.\n- \"Run the docs gate...\": marked UNIQUE. No native docs-drift gate exists in the facts."
+ },
+ {
+  "item": "plugins/house/modules/claude-code/rules/claude-code.md",
+  "rules": [
+   {
+    "heading": "Put only what Claude would get wrong without it in the root file",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/doctor CLAUDE.md trim check; large CLAUDE.md startup/status warnings; recommended per-file length",
+    "evidence": "The harness's /doctor checkup proposes cutting derivable content and keeps conventions that differ from defaults, and it shows a length warning at startup and in /status without blocking; the rule's clause that the size guidance is something 'the model may ignore' misses that the native floor is a user-facing warning, while the house length check adds the actual gate.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file."
+   },
+   {
+    "heading": "Keep the auto-memory index to hooks, and hold it under its cap",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "MEMORY.md index and read limits (reminder near the limit, error on a write past it)",
+    "evidence": "The harness measures MEMORY.md after each write, reminds Claude to shorten it near a limit and returns an error past one, but it does not shorten the index itself as the rule claims; the house check adds the cue-length and near-ceiling warning on top.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness reminds Claude to shorten the index after a write that nears its load ceiling and returns an error on one that passes it; treat that as the floor and add what it cannot see."
+   },
+   {
+    "heading": "Give a domain rule a paths list, and never leave a rule file unscoped",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": ".claude/rules/ path-scoped rules (paths frontmatter); compaction behavior for path-scoped rules",
+    "evidence": "The harness loads a rule without paths at launch at the same priority as the project CLAUDE.md and loads a scoped rule only when a matching file is read, and it separately documents that a scoped rule is summarized away at compaction and returns only on the next matching read, a trade-off the rule does not name.",
+    "citation": "https://code.claude.com/docs/en/memory.md ; https://code.claude.com/docs/en/context-window",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Confirm the scoping defers loading before you count on it, and remember a scoped rule is summarized away at compaction and returns only when a matching file is read again, so a rule that must survive compaction belongs in the root file."
+   },
+   {
+    "heading": "Make a procedure a skill, not a rule",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "SKILL.md skills (description-only listing, body on invoke); context-window guidance to move reference content to skills or path-scoped rules; claude plugin eval and skill-creator evals",
+    "evidence": "The context-window docs already say to move reference content 'to skills or path-scoped rules', so the rule's claim that the harness points only to a path-scoped rule is inaccurate, and the advice to write evaluations first has a native runner it should cite.",
+    "citation": "https://code.claude.com/docs/en/context-window ; https://code.claude.com/docs/en/plugin-evals",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness points a growing instruction file to a skill or a path-scoped rule and stops there; what it never says is what a skill then owes you. Write a few evaluations before the prose, with the native plugin eval runner or skill-creator's evals, to fix real gaps, not imagined ones."
+   },
+   {
+    "heading": "Keep a skill body short, its references one level deep, and its name equal to its directory",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Skill body re-injection cap after compaction (head-preserving, oldest dropped first); skill description listing",
+    "evidence": "The harness re-attaches only the opening slice of each invoked skill after compaction and drops the oldest first, which the rule already states accurately, and it enforces no body cap or name-equals-directory check, which the house lengths and shape checks add.",
+    "citation": "https://code.claude.com/docs/en/context-window ; https://code.claude.com/docs/en/skills.md",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Disable model invocation on a skill with side effects",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "disable-model-invocation frontmatter field; auto mode classifier default-blocked production deploys",
+    "evidence": "The harness blocks model-initiated invocation, subagent preloading, and scheduled-task firing for a skill with this field and keeps its description out of context, which the rule cites as the floor while adding the judgment of which effects count as side effects.",
+    "citation": "https://code.claude.com/docs/en/skills.md ; https://code.claude.com/docs/en/permission-modes.md#what-the-classifier-blocks-by-default",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Set the model explicitly on every subagent and workflow agent",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Subagent model resolution order (per-invocation, frontmatter, CLAUDE_CODE_SUBAGENT_MODEL, main model); workflow agent model resolution; availableModels substitution; per-model effort resolution",
+    "evidence": "The harness resolves an omitted model through the subagent model variable before falling back to the session's model, so the rule's opening claim that an omitted model 'silently inherits the session's' is only true without the very variable the rule later tells you to set; the tiering, roster, and fork discipline are additions the harness lacks.",
+    "citation": "https://code.claude.com/docs/en/model-config ; https://code.claude.com/docs/en/sub-agents ; https://code.claude.com/docs/en/workflows",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Name the model on every agent call, because the harness resolves an omitted one through the subagent model variable and then to the session's model, so a wide fan-out otherwise runs at whatever tier you happened to be in."
+   },
+   {
+    "heading": "Make a must-hold rule a hook, fail it closed, and test it with real payloads",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "PreToolUse hooks and exit code semantics (only exit 2 blocks; exit 1 and a timeout do not); PermissionRequest ignores exit 2; deny rules evaluated regardless of hooks; --bare and --safe-mode skip hooks; if-field best-effort",
+    "evidence": "The harness treats any exit other than the blocking one as a non-blocking error and lets a timed-out PreToolUse hook continue through the normal permission flow, so fail-closed is a genuine addition, but the rule names crashes and missing helpers without naming the timeout path that also fails open.",
+    "citation": "https://code.claude.com/docs/en/hooks.md#exit-code-output ; https://code.claude.com/docs/en/hooks.md#timeouts",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout."
+   },
+   {
+    "heading": "Run adversarial review in a fresh subagent with a named lens",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/code-review local command (fresh subagent, background by default, --fix outside checkpoints); best-practices adversarial review guidance",
+    "evidence": "The rule already starts from the bundled /code-review and the documented warning that a prompted reviewer usually reports something, then adds the named lens, the risk-based refuter trigger, and the verdict-based stopping rule the harness does not provide.",
+    "citation": "https://code.claude.com/docs/en/code-review#review-a-diff-locally ; https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Plan when the approach is uncertain, and clear the context after two failed corrections",
+    "disposition": "DUPLICATE",
+    "nativeFeature": "Plan mode guidance (skip when the diff fits one sentence); best-practices 'correcting over and over' fix (/clear after repeated corrections); mid-session CLAUDE.md edits do not reload",
+    "evidence": "The harness's best-practices page already says to skip planning when you could describe the diff in one sentence and to /clear and start fresh after correcting Claude more than twice, at the same advisory strength; only the re-read clause adds something, backed by the fact that an edited root CLAUDE.md does not apply until /clear, /compact, or restart.",
+    "citation": "https://code.claude.com/docs/en/best-practices ; https://code.claude.com/docs/en/prompt-caching",
+    "action": "declare-intentional-duplicate",
+    "proposedWording": "The first two sentences restate the harness's own best-practice guidance, kept because that guidance reaches the user rather than the model's context. Re-read the source of a ruling immediately before you act on it, since an instruction file edited mid-session does not reload until the context is cleared, compacted, or restarted."
+   },
+   {
+    "heading": "Treat git state as shared across sessions",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "--worktree and EnterWorktree/ExitWorktree; worktree isolation enforcement; worktree.baseRef; manual git worktree management",
+    "evidence": "The harness's own worktree path applies its base-branch setting, .worktreeinclude, isolation checks against the main checkout, and cleanup sweep, while a manual git worktree add bypasses those creation defaults and is never swept, so the rule should prefer the native tool rather than present both as equal; the branch guard and merge discipline are additions.",
+    "citation": "https://code.claude.com/docs/en/worktrees#manage-worktrees-manually ; https://code.claude.com/docs/en/worktrees#how-claude-code-enforces-isolation",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Enter a worktree before the first edit or branch as the first step of every plan, preferring the harness's worktree tool, which applies its base-branch, include, and isolation defaults, over a manual `git worktree add -b <branch> <path> origin/<default>`, which skips them; the main checkout is what every peer and the user hold."
+   },
+   {
+    "heading": "Keep the committed settings narrow and the local settings local",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission rule evaluation and list merging across scopes; Bash rule matching limits; workspace trust for project allow rules; auto mode suspension of broad allow rules; sandboxing",
+    "evidence": "The harness merges permission lists across files and documents that a Bash rule is not a security boundary, which the rule builds on, but it also suspends broad allow rules granting arbitrary code execution whenever auto mode is active, now the built-in starting mode, so the 'allow broadly, deny the escape hatches' shape should say the deny side is what binds there and that only the sandbox or a hook enforces independent of command text.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#how-the-classifier-evaluates-actions ; https://code.claude.com/docs/en/permissions.md#bash-rule-limits",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow, auto mode suspends a broad allow in favor of its classifier, and only the sandbox or a hook enforces independent of command text; never grow the deny list chasing completeness."
+   },
+   {
+    "heading": "Read a resume file as a harness artifact, not a handoff",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Session persistence and claude --resume / --continue; transcript format is internal",
+    "evidence": "The harness restores a session through --resume and documents its transcript entry format as internal and version-dependent, so a harness-written resume record is a pointer to resume, not state; the rule adds the interpretive posture and routes handoff to its own skill.",
+    "citation": "https://code.claude.com/docs/en/sessions#export-and-locate-session-data",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Hand off through the repo, not a standing issue",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Auto memory storage location (machine-local, not shared)",
+    "evidence": "The rule correctly cites that auto memory is machine-local and not shared across machines or cloud environments, and adds a repo-based handoff channel and issue hygiene the harness has no counterpart for.",
+    "citation": "https://code.claude.com/docs/en/memory.md",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Check for a peer session before driving shared external state",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Background sessions and agent view (claude agents); parallel sessions via worktrees",
+    "evidence": "The harness can list running background sessions and isolates their edits in worktrees but has no check that a peer owns a shared application, database, or the main checkout before a deploy, which the rule and its deploy guard add.",
+    "citation": "https://code.claude.com/docs/en/agent-view",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "I classified 15 headings and skipped only \"## Don't\", as the task said to. File read: .claude/worktrees/survey-clean/plugins/house/modules/claude-code/rules/claude-code.md.\n\nNo rule is a CONFLICT with the harness. One rule is a DUPLICATE: \"Plan when the approach is uncertain, and clear the context after two failed corrections\". Its first two sentences say almost word for word what the best-practices page says (skip the plan when the diff fits one sentence; /clear after correcting Claude more than twice). I chose declare-intentional-duplicate over delete because that page is written for the user and does not reach the model's context. Only the re-read clause adds anything. If the owner decides the model does not need that best-practice content restated, drop the first two sentences and keep the re-read clause.\n\nWhere I was unsure:\n- Resume file rule: the facts never describe a harness \"checkpoint file\" that carries a session id, snapshot ref and resume command. I only have facts about JSONL transcripts, --resume, and in-session checkpoints. I called it COMPLEMENT to session resume, but it could be UNIQUE.\n- Committed settings rule: the facts cannot check two clauses. First, \"write each deny in both the leading and the interior form\": the harness already applies a deny when any subcommand matches, including inside $() and subshells, so the interior form may partly duplicate that. Second, \"the loader silently skips\" a parameter-scoped server-tool rule: the facts say a malformed entry is silently skipped only in -p runs, and interactive sessions show a Settings Warning.\n- Model tier rule: the facts do not cover the print-mode budget ceiling flag (only plugin eval's --max-cost-usd) or the native deep-research fan-out size. I did not judge those clauses. The step-down claim is only partly accurate: a blocked family alias steps down within its family, but any other blocked value falls back to the inherited model, and the facts document a visible substitution note only for workflows. The native workflowSizeGuideline setting is a possible floor to cite for the fork-depth clause.\n- Hook rule: \"only a pre-tool hook stops the action\" holds for tool calls. Other events can also block with exit 2 (UserPromptSubmit, Stop, TaskCreated, TaskCompleted), so the wording is narrower than the harness. Separately, its \"escalate as autonomy rises\" sentence closely mirrors the best-practices list (a prompt, then /goal, then a Stop hook, then a verification subagent) and could cite it.\n- Skill body rule: the third-person description advice and the name-is-a-display-label claim are not in the facts, so I kept them as written.\n- Procedure rule: \"a skill's description, even truncated by the harness\" is not backed by any fact about description truncation. I left it and fixed only the clearly wrong claim that the harness points only to path-scoped rules.\n\nAll proposed wordings are free of em dashes, dates and numbers, and no heading is changed."
+ },
+ {
+  "item": "plugins/house/modules/llm-output/rules/llm-output.md",
+  "rules": [
+   {
+    "heading": "Quarantine model output until a human moves it",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission system file-modification approval, accept-edits mode, and auto mode as the built-in starting mode",
+    "evidence": "The docs say file-modification approvals last only until session end and accept-edits auto-accepts in-directory edits (permissions.md#permission-system). Auto mode is now the built-in starting mode and auto-approves in-working-directory edits (permission-modes.md#eliminate-prompts-with-auto-mode and #how-the-classifier-evaluates-actions). So the floor the rule cites is thinner than it says, and the structural gate is the right thing to add.",
+    "citation": "https://code.claude.com/docs/en/permissions.md#permission-system ; https://code.claude.com/docs/en/permission-modes.md#how-the-classifier-evaluates-actions",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness floor is its approval prompt on a write, which auto mode, now the built-in starting mode, and accept-edits both waive for edits inside the working directory, and which never outlives the session, so the durable gate must be structural: generate into an untracked directory and let a person move each file into the tracked one; that move is the sign-off, and unlike a review, cannot be skipped."
+   },
+   {
+    "heading": "Keep a deterministic backbone and let the model fill the slots",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Dynamic workflow agent() structured-output schema validation; workflows as script-decided orchestration",
+    "evidence": "A workflow's agent() call checks its schema before the subagent starts, retries non-conforming output, and fails the call when it still does not validate (workflows#agent structured-output). The workflows page also says the script, not the model, decides what runs next. The rule builds on both and adds labeling computed versus judged parts plus unit tests, but the gathered facts never document the print-mode schema the rule anchors on.",
+    "citation": "https://code.claude.com/docs/en/workflows",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor a printed run or a workflow agent on a supplied output schema where one applies, since the harness validates the payload against it, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing."
+   },
+   {
+    "heading": "Report no finding rather than manufacture one",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Prompt audit empty-diff stance; /code-review confidence tiers; best-practices warning on reviewers inventing gaps",
+    "evidence": "The prompt audit says an audit that finds nothing should change nothing, and that an empty diff beats a manufactured one. Best-practices warns that a reviewer prompted to find gaps usually reports some even when the work is sound. The rule already names this as the floor and extends it to every report, with a limitations section and a schema anchor that the harness lacks.",
+    "citation": "https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md ; https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Refute with named lenses, drop by default, and log the drops",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Managed Code Review specialized-agent fleet with a verify stage; best-practices verification subagent",
+    "evidence": "Code Review runs a fleet of specialized agents that find and verify findings (code-review; REVIEW.md section), and best-practices has a fresh model try to refute the result. Neither logs drops with a reason or requires a per-lens verdict. The rule cites the hosted reviewer conditionally ('where it runs'), which matches its Team/Enterprise research-preview limit.",
+    "citation": "https://code.claude.com/docs/en/code-review ; https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Cite or stay silent",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "None of the gathered facts describe a native evidence gate, quote checker, or citation verification. The closest item is WebFetch's separate context window (security page), which is about isolating injection, not about checking citations.",
+    "citation": "https://code.claude.com/docs/en/security",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Gate output on status tags",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission rules and the auto mode classifier; auto mode fallback on repeated blocks",
+    "evidence": "The harness decides tool calls through deny/ask/allow rules and a classifier that reviews actions, not content confidence (permission-modes#how-the-classifier-evaluates-actions). It pauses to prompt after repeated blocks (#when-auto-mode-falls-back). The rule correctly names that floor and adds per-row confidence bands, which the harness cannot see.",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#how-the-classifier-evaluates-actions",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Reword a locked claim, never strengthen it",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in gathered facts (the rule cites a concise built-in output style)",
+    "evidence": "The gathered facts document output styles only as a plugin component and a cache-safe setting (plugins/components; prompt-caching). Nothing in them describes a concise built-in style that preserves error reports, security warnings, or destructive-action confirmations, so the floor the rule cites cannot be confirmed from this evidence. The locked-span diff check and the decision ledger have no native counterpart.",
+    "citation": "https://code.claude.com/docs/en/plugins/components ; https://code.claude.com/docs/en/prompt-caching",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Treat silence as not approval",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Permission prompt; plan mode; agent-teams inter-agent trust rules; teammate plan auto-approval; dontAsk/-p denial",
+    "evidence": "The agent-teams docs say a teammate cannot approve a permission prompt or supply consent on the user's behalf, and auto mode treats a relayed approval as untrusted. They also say a teammate's plan request is approved in the lead's session without the lead reviewing it. So the harness already enforces the 'agent message never substitutes' clause and opens a plan-mode gap the rule does not name.",
+    "citation": "https://code.claude.com/docs/en/agent-teams",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Where the harness gates a write, its permission prompt is the floor, and it already refuses an agent message as consent on a person's behalf; elsewhere, show the diff and wait for an explicit yes before generating a file, since silence is not approval, nor is an unanswered question. Plan mode holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread."
+   },
+   {
+    "heading": "Read agreement with a shown suggestion as anchored, not accurate",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "skill-creator blind comparator agents; managed Code Review finding reactions",
+    "evidence": "The skill-creator comparator judges two versions without knowing which is which. The Code Review docs say reactions and replies to findings change nothing on the PR and document no tuning loop, so the rule's claim that the hosted reviewer feeds agreement marks into its own tuning is not supported by the gathered facts. The native blinding primitive is the better floor to cite.",
+    "citation": "https://claude.com/blog/improving-skill-creator-test-measure-and-refine-agent-skills ; https://code.claude.com/docs/en/code-review#rate-and-reply-to-findings",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness's skill comparator already judges two outputs without knowing which is which; extend that blinding to every human review, since a person's agreement mark on a finding shown to them is an anchored measure, not a quality one."
+   }
+  ],
+  "notes": "I classified all nine rules. No rule is a DUPLICATE and none is a CONFLICT.\n\nRules I was unsure about:\n\n- \"Reword a locked claim, never strengthen it\": the rule treats a concise built-in output style as its floor, one that keeps error reports, security warnings, and destructive-action confirmations intact. None of the gathered facts document that style. I classified the rule UNIQUE and left the wording alone because I cannot show it is wrong. Someone should check that citation against the current output-styles doc before the next release; if the style is gone or behaves differently, the sentence needs a rewrite or a cut.\n\n- \"Keep a deterministic backbone\": the rule says the harness fails a printed run (print mode) on an invalid schema. The facts only confirm schema validation for workflow agent() calls, where the harness validates, retries and then fails. For print mode they list only the plain text, json and stream-json output formats. The rewording widens the anchor to workflow agents, which the facts support. The print-mode schema flag is still unconfirmed and may need its own citation.\n\n- \"Read agreement with a shown suggestion as anchored, not accurate\": the rule says the hosted reviewer feeds agreement marks into its own tuning. The facts say only that reactions and replies change nothing on the PR; they neither confirm nor deny tuning. I reworded it to cite the blind comparator in skill-creator, which is documented. If the maintainer has a separate source for the tuning claim, keep the original and add that citation.\n\n- \"Treat silence as not approval\": the harness already enforces that an agent message is never consent (agent-teams trust rules). That part of the rule restates native behavior, but the rule as a whole adds more, so I rated it COMPLEMENT. The rewording also names a gap the facts show: a teammate's plan is approved in the lead's session without review, which supports this rule directly.\n\n- \"Quarantine model output until a human moves it\": the rewording reflects that auto mode is now the built-in starting mode and auto-approves edits inside the working directory. That makes the write-approval floor even thinner than the rule says, which strengthens the case for the structural gate.\n\n- \"Cite or stay silent\" is UNIQUE; no evidence gate or citation check exists natively.\n\n- \"Report no finding\", \"Refute with named lenses\" and \"Gate output on status tags\" already cite their native floors accurately and are kept.\n\nThe \"Don't\" section was excluded as instructed. Its Anchor line points back at the rules above, so the proposed rewordings do not affect it."
+ },
+ {
+  "item": "house-rules mechanisms vs native Claude Code harness (plugin at .claude/worktrees/survey-clean/plugins/house)",
+  "rules": [
+   {
+    "heading": "PreToolUse branch guard (hooks/no-direct-master.sh via hooks.json)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "PreToolUse hook deny, which holds in every permission mode; auto mode's default push allowance; permissions.ask as a text-matched checkpoint",
+    "evidence": "Auto mode allows pushes to any branch, the default branch included, and the docs say a permissions.ask rule on git push misses git -C or git -c forms and point to a PreToolUse hook for a checkpoint that reads the full command text. The guard is that hook, and it refuses the ways to disarm the git-hook floor that actually enforces branch policy.",
+    "citation": "https://code.claude.com/docs/en/auto-mode-config#common-boundaries ; https://code.claude.com/docs/en/auto-mode-config#add-a-human-checkpoint ; https://code.claude.com/docs/en/hooks-guide.md#hooks-and-permission-modes",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "SessionStart floor arming (hooks/arm-git-hooks.sh)",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (SessionStart hook is only the carrier)",
+    "evidence": "Nothing native sets core.hooksPath or arms a vendored git-hook directory. The closest native protections are sandbox and protected-path write denials on .git and .husky, and neither arms a hook floor.",
+    "citation": "https://code.claude.com/docs/en/sandboxing#protected-paths ; https://code.claude.com/docs/en/permission-modes.md#protected-paths",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "InstructionsLoaded rule-load logger (hooks/instructions-loaded.mjs)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "InstructionsLoaded hook event; /context memory-file listing",
+    "evidence": "/context shows which CLAUDE.md and rule files loaded, but only in the live session. The logger uses the native InstructionsLoaded event to keep durable evidence that house doctor can read back later.",
+    "citation": "https://code.claude.com/docs/en/memory.md (/context command) ; https://code.claude.com/docs/en/hooks.md (event list)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Skill: bootstrap",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/init (and /import); disable-model-invocation",
+    "evidence": "/init generates or improves the codebase-derived CLAUDE.md, and the skill already hands that half to /init while writing only the house manifest and skeleton. It is gated with the native disable-model-invocation field.",
+    "citation": "https://code.claude.com/docs/en/memory.md (/init command) ; https://code.claude.com/docs/en/skills.md (disable-model-invocation)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Skill: conventions",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (closest: /context, path-scoped rule auto-load)",
+    "evidence": "The harness loads path-scoped rules on read, and /context lists what loaded. Nothing native answers which rule covers a topic from an index without loading rule bodies.",
+    "citation": "https://code.claude.com/docs/en/memory.md (path-scoped rules; /context)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Skill: handoff",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "session resume (--continue / --resume, full history restored); auto memory; task list",
+    "evidence": "On one machine, resume already restores the full conversation, and auto memory carries notes across sessions, but auto memory is machine-local and never shared. Handoff adds the checked-in, cross-machine half (issues and recorded decisions). Its opening does not name that native floor.",
+    "citation": "https://code.claude.com/docs/en/sessions#what-a-resumed-session-restores ; https://code.claude.com/docs/en/memory.md (auto memory storage location: machine-local)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness already resumes a session's full history with --continue or --resume and keeps machine-local auto memory, so the snapshot carries only what those cannot: next steps and decisions another machine or person has to find in the repo or its issues."
+   },
+   {
+    "heading": "Skill: revise-docs",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "auto memory; /doctor prompt-audit",
+    "evidence": "Auto memory captures learnings privately and skips what CLAUDE.md already says, and the skill already names that and routes only the shareable, checked-in half to scoped rule files. /doctor prompt-audit only proposes edits to files that already exist.",
+    "citation": "https://code.claude.com/docs/en/memory.md (auto memory overview; /doctor prompt-audit)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Skill: sync",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "plugin update / /reload-plugins",
+    "evidence": "A plugin update refreshes the plugin's own components, but a plugin cannot ship rule context: a root CLAUDE.md is not loaded, and the docs say to use a skill. That leaves the vendored rule files in each repo outside the native update path, and sync is what refreshes them.",
+    "citation": "https://code.claude.com/docs/en/plugins/manifest-reference (CLAUDE.md at plugin root not loaded) ; https://code.claude.com/docs/en/plugins/cli-reference (update, /reload-plugins)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Upstream-first sync (sync's refuse-on-local-edit with the upstream PR exit)",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "Native rules sharing is symlinks or user-level rules. An upstream edit then reaches every linked project at once, with no pin, no refusal of local edits, and no upstream-first route.",
+    "citation": "https://code.claude.com/docs/en/memory.md (symlinked rules across projects; user-level rules)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Render and vendor step",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": ".claude/rules/ with paths: frontmatter; plugin skills with paths: frontmatter; symlinked rules",
+    "evidence": "The harness loads vendored .claude/rules files natively, and a plugin cannot ship rules. A plugin skill with paths: frontmatter is the documented native route for scoped plugin instructions, and ADR 0001's considered options do not weigh it.",
+    "citation": "https://code.claude.com/docs/en/plugins/manifest-reference (instructions must be a skill) ; https://code.claude.com/docs/en/skills.md (paths frontmatter field)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Plugin skills with paths: frontmatter are the harness's own route for shipping scoped instructions in a plugin; they are declined here because every enabled repo takes an update the moment the plugin updates, with no per-repo pin, config, or deviation record."
+   },
+   {
+    "heading": "Lock file (.house/lock.json)",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "Nothing native pins or hashes instruction files per repo. Plugin versioning covers the installed plugin, not files vendored into a repo.",
+    "citation": "https://code.claude.com/docs/en/plugins/cli-reference (install/update scopes)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Deviations ledger (house.json deviations, mirrored in CLAUDE.md)",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (closest: claudeMdExcludes, which skips a file but records no reason)",
+    "evidence": "claudeMdExcludes can drop an instruction file from loading but carries no why, no date, and no ledger.",
+    "citation": "https://code.claude.com/docs/en/memory.md (claudeMdExcludes setting)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Ratchets (ratchet and ratchetRaises, ADR 0003)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "startup and /status length warnings for instruction files, per file and combined",
+    "evidence": "The harness already warns when an instruction file passes the recommended length or the set passes a combined limit. The ratchet adds a per-file ceiling that only tightens and rises only with a recorded reason, and ADR 0003 does not name the native warning.",
+    "citation": "https://code.claude.com/docs/en/memory.md (Large CLAUDE.md startup/status warnings)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness warns at startup and in /status when an instruction file passes its recommended length or the loaded set passes a combined limit; the ratchet adds what that warning lacks, a per-file ceiling that only tightens and rises only with a recorded reason."
+   },
+   {
+    "heading": "Checker family: drift",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "/doctor prompt-audit (references to files or commands that do not exist)",
+    "evidence": "prompt-audit reports dangling file and command references, but only when someone runs it, and it proposes edits without gating. drift makes the same class a deterministic check that runs every time.",
+    "citation": "https://code.claude.com/docs/en/memory.md (/doctor prompt-audit)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Native floor: /doctor prompt-audit reports references to files or commands that do not exist when someone asks for it; drift makes that class a gate that runs on every check."
+   },
+   {
+    "heading": "Checker family: todo",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "Nothing native scans CLAUDE.md for TODO: markers. The /doctor trim check cuts derivable content and does not flag open markers.",
+    "citation": "https://code.claude.com/docs/en/memory.md (/doctor CLAUDE.md trim check)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Checker family: tamper",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No native mechanism compares an instruction file's body against a pinned source hash. Symlinked rules propagate edits instead of detecting them.",
+    "citation": "https://code.claude.com/docs/en/memory.md (symlinked rules)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Checker family: behind",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none (plugin update covers the plugin, not the repo pin)",
+    "evidence": "The native plugin update and 'Not used recently' surfaces track the installed plugin. None of them reports that a repo's vendored pin lags the installed version.",
+    "citation": "https://code.claude.com/docs/en/plugins/measure ; https://code.claude.com/docs/en/plugins/cli-reference",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Checker family: shape",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin validate (skill, agent, and command frontmatter)",
+    "evidence": "claude plugin validate checks a plugin's skill, agent, and command files and can gate CI. It never reads .claude/rules files, so the house rule form (imperative heading, Anchor line, Don't section, em-dash ban) has no native check, and the SKILL.md name check overlaps the validator's scope.",
+    "citation": "claude plugin validate --help ; https://code.claude.com/docs/en/plugins/cli-reference.md",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Native floor: claude plugin validate checks a plugin's skill, agent, and command frontmatter; shape adds the house rule-file form, which no native validator reads, and keeps its SKILL.md check to what the validator is not documented to cover."
+   },
+   {
+    "heading": "Checker family: lengths",
+    "disposition": "CONFLICT",
+    "nativeFeature": "MEMORY.md index read limits with write-time reminder and error; instruction-file length warnings",
+    "evidence": "The header says the auto-memory index is cut at its limit with no notice. The docs say that after Claude writes MEMORY.md, the harness reminds Claude when the file nears a limit and returns an error when it passes one, so the claim contradicts documented behavior. The rule-file length limits themselves complement the native warnings.",
+    "citation": "https://code.claude.com/docs/en/memory.md (MEMORY.md index and read limits)",
+    "action": "resolve-conflict",
+    "proposedWording": "The auto-memory index loads every session only up to the harness's line and byte read limits; the harness reminds Claude when a write nears them and errors when one passes them, and this warning covers the edits it never measures, such as a hand edit."
+   },
+   {
+    "heading": "Checker family: coload",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "combined-length warning at session start",
+    "evidence": "The native combined-limit warning counts files loaded at session start. coload sums the path-scoped rules that load together on a read, which that warning never sees.",
+    "citation": "https://code.claude.com/docs/en/memory.md (Large CLAUDE.md startup/status warnings; path-scoped rules)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Native floor: the harness warns when the files loaded at session start pass a combined length; coload adds the per-path sum of path-scoped rules that load together on a read, which that warning does not count."
+   },
+   {
+    "heading": "Checker family: manifest",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "No native validator reads house.json. claude plugin validate covers plugin.json and marketplace.json only.",
+    "citation": "claude plugin validate --help",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Checker family: minutes",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none",
+    "evidence": "The native cost surfaces (/usage, modelPricing) cover model tokens, not GitHub Actions minutes.",
+    "citation": "https://code.claude.com/docs/en/costs",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Checker family: guard",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "plugin hooks run only while the plugin is enabled; --safe-mode and --bare skip hooks",
+    "evidence": "A plugin's hooks fire only in sessions where the plugin is enabled, and safe and bare modes skip them. The guard family warns when a branchPolicy of pr relies on that plugin hook alone and checks the git-hook floor that runs regardless.",
+    "citation": "https://code.claude.com/docs/en/plugins/components (hooks component) ; claude --help (--safe-mode, --bare)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Pinned agent roster (agents/*.md)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "plugin agents with model, effort and tools frontmatter; subagent CLAUDE.md and path-scoped rule loading",
+    "evidence": "The roster uses only supported plugin-agent fields, and each tools list leaves out Agent, so the harness enforces the no-spawn property. The builder's instruction to read CLAUDE.md and matching rules restates native loading, because subagents load project CLAUDE.md and path-scoped rules load on read.",
+    "citation": "https://code.claude.com/docs/en/plugins/components (agents supported fields) ; https://code.claude.com/docs/en/context-window (subagent startup context; path-scoped rules)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness already loads the repo's CLAUDE.md and each path-scoped rule as you read a matching file, so take them as given; a repo rule wins over this file on conflict."
+   },
+   {
+    "heading": "Orchestration defaults: session-start injection (hooks/session-start.mjs)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "SessionStart hook additionalContext, re-run on compact",
+    "evidence": "A plugin cannot ship CLAUDE.md context, so a SessionStart hook with the startup, clear and compact matchers is the native way to keep this text present, including after compaction. claude plugin details reports hooks as having no model context cost, so the plugin's projected cost leaves this always-on text out.",
+    "citation": "https://code.claude.com/docs/en/plugins/manifest-reference ; https://code.claude.com/docs/en/context-window (what survives /compact) ; claude plugin details --help",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Orchestration defaults: Roles and Delegation",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "subagents for investigation; writer/reviewer pattern",
+    "evidence": "The best-practices page recommends subagents to keep reads out of the main context and a fresh-context reviewer. The house directives add the split between inline and delegated work and the batching posture.",
+    "citation": "https://code.claude.com/docs/en/best-practices",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Orchestration defaults: Workspace (worktree before first edit)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "--worktree / EnterWorktree, worktree.baseRef, .worktreeinclude, worktree isolation enforcement",
+    "evidence": "The directive names the harness's worktree tool first but offers a manual git worktree add as an equal route. The docs say manual creation bypasses the base-branch setting and .worktreeinclude.",
+    "citation": "https://code.claude.com/docs/en/worktrees#manage-worktrees-manually",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Enter a worktree before the first edit or branch through the harness's worktree tool; a manual git worktree add skips the harness's base-branch setting and its copy of gitignored files, so use it only when the tool cannot reach the branch you need."
+   },
+   {
+    "heading": "Orchestration defaults: Model tier (subagent default below the session)",
+    "disposition": "CONFLICT",
+    "nativeFeature": "subagent / teammate / workflow-agent model resolution order; CLAUDE_CODE_SUBAGENT_MODEL",
+    "evidence": "The directive says a subagent, teammate, or workflow agent runs below the session by default. Natively, an agent with no assigned model runs on the main conversation's model unless CLAUDE_CODE_SUBAGENT_MODEL is set, and adopters on other machines will not have that env floor.",
+    "citation": "https://code.claude.com/docs/en/model-config (subagent model resolution order) ; https://code.claude.com/docs/en/workflows (workflow agent model resolution)",
+    "action": "resolve-conflict",
+    "proposedWording": "The harness runs a subagent, teammate, or workflow agent with no assigned model on the session's model unless CLAUDE_CODE_SUBAGENT_MODEL says otherwise, so every off-roster call names a model and effort below the session unless the task needs the session's tier."
+   },
+   {
+    "heading": "Orchestration defaults: Subagents do not spawn subagents",
+    "disposition": "DUPLICATE",
+    "nativeFeature": "Agent tool withheld from subagents by default; spawn depth limit",
+    "evidence": "The harness already leaves the Agent tool out of a subagent's tool set by default, the built-in agents cannot spawn, and the roster's tools lists leave out Agent. The bullet restates enforced behavior to a main session that cannot change it.",
+    "citation": "https://code.claude.com/docs/en/tools-reference (subagent tool scope) ; https://code.claude.com/docs/en/sub-agents (spawn depth limit)",
+    "action": "delete",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Orchestration defaults: Briefs",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "prompt-audit Group 1a (pressure language)",
+    "evidence": "The ban on 'be thorough' and 'think deeply' matches the pressure-language patterns the bundled prompt-audit flags as over-triggering. The six-section brief and output budget are posture the harness does not supply.",
+    "citation": "https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/prompt-audit.md",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Orchestration defaults: Parallelism and large workflows",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "isolation: worktree; workflowSizeGuideline; Large workflow warning",
+    "evidence": "Concurrent writers already get the native isolation field. The 'large workflows stay off, name the agent count' line overlaps the native size guideline and warning without citing them.",
+    "citation": "https://code.claude.com/docs/en/workflows (workflowSizeGuideline; Large workflow warning) ; https://code.claude.com/docs/en/sub-agents (isolation)",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Workflows run only when the user asks; when they do, name the agent count, and treat the harness's workflow size guideline as advice to stay under rather than a target."
+   },
+   {
+    "heading": "Orchestration defaults: Verification",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "verification subagent; /code-review; tools field denying Edit and Write to reviewers",
+    "evidence": "Best practices recommend a fresh-model refutation and warn that reviewers over-report. The house adds a stop on a verdict with no must-fix instead of a round count, a user checkpoint, and a git-status tamper check around read-only agents.",
+    "citation": "https://code.claude.com/docs/en/best-practices (verification subagent; adversarial review step)",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Eval cases (plugins/house/evals/*/prompt.md and graders)",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "claude plugin eval (case format, regex and llm graders, no-plugin baseline arm, OS sandbox on Bash grants)",
+    "evidence": "The cases use the native format. A case's allowed_tools cannot grant Bash or Write, so branch-and-pr runs git only when the command passes --allow-tools, and nothing in the repo records that. The handbook's native-floor lines still say the runner has no docs page and that isolation is not an OS sandbox, while the plugin-evals page now documents the runner and runs Bash grants under the OS sandbox.",
+    "citation": "https://code.claude.com/docs/en/plugin-evals#grant-tools ; https://code.claude.com/docs/en/plugin-evals",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Native floor: claude plugin eval runs these cases against its no-plugin baseline arm; a case's allowed_tools cannot grant Bash or Write, so the suite passes them with --allow-tools, and a Bash grant runs under the harness's OS sandbox."
+   }
+  ],
+  "notes": "I read every named file. The checker is split into one entry per family, and the orchestration defaults into one entry per directive group, because their dispositions differ. The handoff skill gets a single entry, even though the task names it twice.\n\nUnsure calls:\n1. Render and vendor: classified COMPLEMENT, not a DUPLICATE. A plugin skill with paths: frontmatter is a native scoped-delivery route, but it has no per-repo pin or deviation record, and ADR 0001 never weighed it. That is why this entry is a reword and not a keep.\n2. Model tier conflict: the memory note says CLAUDE_CODE_SUBAGENT_MODEL is set on this machine, so the directive happens to hold here. It is false for any other adopter, so I treated it as a conflict.\n3. Lengths: classified CONFLICT, but only on the header's \"cut with no notice\" claim. The family itself complements the native warnings. There is also a possible path mismatch. The harness puts the memory directory at the git repository (worktrees share one), while the checker keys it off the top level of the current checkout, so a run from a linked worktree may look in the wrong place for MEMORY.md. I did not verify this.\n4. Shape: I don't know whether claude plugin validate checks that a SKILL.md name matches its directory, so the wording hedges.\n\nOther observations, not in any entry:\n- The branch guard's PreToolUse timeout is short, and a timed-out PreToolUse hook does not block (hooks.md#timeouts). A slow run on a large repo fails open, and only the git-hook floor covers it.\n- The guard matcher leaves out NotebookEdit and still names MultiEdit, which is not in the current tools reference.\n- The eval runner switches off repository git hooks through GIT_CONFIG_COUNT (plugin-evals, git version requirement). So branch-and-pr measures only the PreToolUse layer, never the floor.\n- CLAUDE_CODE_SUBAGENT_MODEL_FORCE, if set, would silently override every pinned roster model."
+ }
+]

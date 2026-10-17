@@ -1,0 +1,308 @@
+# house-rules versus Claude Code harness: disposition report
+
+**Date:** 2026-09-02
+**Scope:** 9 module rule files plus the package's own mechanisms (branch guard, five skills, ten checker families, render and vendor, lock file, deviations and ratchets, upstream-first sync, carryover handoff, eval suite)
+**Items classified:** 133
+
+---
+
+## 1. Summary
+
+| Disposition | Count |
+| --- | --- |
+| Confirmed duplicates | 0 |
+| Confirmed conflicts | 0 |
+| Complements | 78 (1 of them arrived by downgrade) |
+| Uniques | 55 |
+| Downgraded claims | 1 |
+| Items whose action is a prose reword | 48, plus 1 optional clarification from the downgraded claim |
+
+Nothing in the package duplicates a native Claude Code feature and nothing contradicts one: every item either extends a harness primitive that stops at advice, or covers ground the harness does not model at all. The one conflict filed, against the checker's `guard` family, was refuted by the enforcement skeptic and downgraded to a complement, so the work this audit generates is 48 prose rewords that name the native floor a rule builds on, and no change to any heading, config slot, or hook contract.
+
+---
+
+## 2. Confirmed duplicates
+
+None. No item was classified DUPLICATE by the classifier, and no skeptic vote raised one.
+
+| Item | Heading | Native feature | Citation | Recommended action |
+| --- | --- | --- | --- | --- |
+| _(none)_ | | | | |
+
+The four items that came closest, and that the owner may want to trim on a stricter reading:
+
+| Item | Heading | Why it is close | If you want it shorter |
+| --- | --- | --- | --- |
+| claude-code.md | Keep the auto-memory index to hooks, and hold it under its cap | The harness measures MEMORY.md after each write and returns the same advice the rule gives, and errors over the load ceiling | Cut to the supersession clause alone |
+| docs.md | Put a fact where its litmus test says it belongs | Its opening clause restates the harness's own routing advice move for move | Replace the opening clause with a pointer to the native floor (the reword in section 4 does this) |
+| mechanisms | lengths family | The memory-index sub-check is a second surface for a file the harness already measures on write | Declare that one sub-check an intentional duplicate, and say so in the family's header |
+| testing.md | Prove an eval can fail, then grade it with the cheapest grader that can | The ablation arm and the repeat count are runner defaults, not things the rule needs to arrange | The reword in section 4 already removes the arrangement instructions |
+
+---
+
+## 3. Confirmed conflicts
+
+None survived skepticism.
+
+| Item | Heading | Native feature | Citation | Recommended action |
+| --- | --- | --- | --- | --- |
+| _(none)_ | | | | |
+
+The single claim filed as CONFLICT, `guard` family, is reported in section 6.
+
+---
+
+## 4. Complements worth rewording
+
+These 48 rules keep their substance and gain a sentence naming the native floor they sit on, so a reader arriving from the Claude Code docs sees the rule as an extension rather than a restatement. All are rule prose, minor under ADR 0011.
+
+### plugins/house/modules/claude-code/rules/claude-code.md (7)
+
+**Put only what Claude would get wrong without it in the root file** (floor: the checkup's CLAUDE.md trim proposal and its size guidance)
+> The harness advises this and stops there: its checkup proposes cutting root-file content Claude could derive from the code, and its size guidance is advice the model may ignore. Anchor: `node .house/check.mjs --only=lengths` turns that advice into a gate, holding the root file to a line ceiling and a byte ceiling, and refuses to ratchet it.
+
+**Keep the auto-memory index to hooks, and hold it under its cap** (floor: MEMORY.md index and load limit)
+> The harness already tells Claude to shorten the index after a write and errors once it sits over the load ceiling, so treat that as the floor and add what it cannot see. Keep the newer cue when a later memory supersedes an earlier one, and let the older topic file record the hand-off so the index never carries two answers to the same question.
+
+**Make a procedure a skill, not a rule** (floor: the memory docs' own routing of a multi-step procedure to a skill)
+> The harness already says a multi-step procedure belongs in a skill rather than an instruction file; what it does not say is what the skill then owes you. Give its description one sentence naming its exact inputs and the filter it applies, then disclose the rest on demand: references read when needed, scripts whose output alone enters context.
+
+**Keep a skill body short, its references one level deep, and its name equal to its directory** (floor: SKILL.md frontmatter fields and the listing budget)
+> The harness treats a personal or project skill's frontmatter name as a display label only and still invokes the skill by its directory name, so a mismatch is legal and quietly confusing; here it is an error. Anchor: check.mjs `lengths` caps the skill body, and `shape` fails a frontmatter name that differs from its directory.
+
+**Make a must-hold rule a hook, fail it closed, and test it with real payloads** (floor: PreToolUse hooks; also corrects a factual slip about matchers)
+> The harness itself says a rule that must hold belongs in a pre-tool hook, because an instruction file is advisory context; fail it closed on top of that, so a crash, a missing helper, or an unreadable payload denies rather than passing quietly. Keep the decision in the script rather than in a hook's fine-grained filter, which the harness documents as best-effort and unfit for a hard allow or deny.
+
+**Run adversarial review in a fresh subagent with a named lens** (floor: the bundled local review command)
+> The harness ships a review that already runs in its own subagent over the branch diff, so start there and add what it does not carry: name the lens, and tell the reviewer to flag only correctness and requirement gaps, because a reviewer asked for problems will always return some. Remember that a background review's applied fixes land outside the session's checkpoints, so git is the only way back.
+
+**Hand off through a carryover issue** (floor: auto memory's machine-local storage)
+> Auto memory is the harness's own place for ongoing work, but it is machine-local and never shared, so it cannot be the channel the next session reads. Write the handoff as an issue that supersedes the last one, so the next session starts from state it can diff rather than prose it must trust.
+
+### plugins/house/modules/docs/rules/docs.md (5)
+
+**Run the docs gate before pushing and in the build**
+> A rule file is advisory context, so a run-it-before-pushing instruction holds only when a hook or a build step stands behind it. Keep the local run as the loop, and let the hook and the pull-request check be the net.
+
+**Put a fact where its litmus test says it belongs**
+> The harness already routes always-true facts to the root file, procedures to a skill, and path-bound facts to a path-scoped rule, and it trims what it can derive from the code. This rule carries that split out to the README, the changelog, and the archive, where nothing native reaches.
+
+**Keep files under budget, and raise a ceiling only with a written reason**
+> The harness gives the root instruction file a soft line target and skips only a file past its hard size cap, so hold every document to its configured ceiling instead: the root instruction file, each rule file, the README, each skill body, each handbook chapter.
+
+**Cut, don't append, and trim on a fixed cadence**
+> The harness proposes trims when asked and advises a periodic review, but it sets no cadence and lets a trimmed file grow back. Trim on a fixed cadence, delete at least one section across the root file and the rule files each time, and let the ratchet hold the floor.
+
+**Ship the docs and changelog edit in the same PR as the change**
+> A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit and only where it runs, so the docs edit ships in the same pull request and the template's binary is what holds it.
+
+### plugins/house/modules/engineering/rules/engineering.md (5)
+
+**Prove a check can fail before trusting that it passed**
+> Anchor: `node --test tests/`, which requires a positive and a negative control per check, with the eval case `known-answer-control`; the harness floor is the eval runner's no-plugin baseline arm, which compares one arm against another and never proves the check itself can fail, so the paired control is this repo's requirement.
+
+**Make every waiver print its reason, and give an integrity gate none**
+> Anchor: reason-carrying environment escapes as a repo-wide convention, with the eval case `integrity-gate-no-waiver`; the harness floor is a PreToolUse denial, which holds in every permission mode including bypass but demands no reason from the person overriding, so the printed reason and the one-run scope are this repo's addition.
+
+**Demote a gate that has been wrong before**
+> Anchor: the tally lives in the checker's own header and its verdict prints as advisory, asserted in `tests/`; the harness's own reviewer already reports findings without blocking a merge, and this rule extends that posture by making a checker's record of past false positives visible in the verdict it prints.
+
+**Record a significant decision as a numbered, immutable record**
+> Anchor: numbered files under `docs/decisions/`, and `node .house/check.mjs` fails a link into that directory that does not resolve; the harness's auto memory keeps decision notes machine-local and rewritable, so a decision with measurable architectural effect belongs in a numbered record in the repo instead.
+
+**Make an error message teach the fix**
+> Anchor: every guard's refusal path is exercised in `tests/` and asserts its remediation text; the harness passes a blocking hook's reason or stderr through to the agent verbatim and never requires it to say anything useful, so the remediation a guard prints is what the next reader and the next agent both act on.
+
+### plugins/house/modules/github/rules/github.md (8)
+
+**Gate every PR on checks that need no credential, and name what is not gated**
+> Anchor: the rendered `.github/workflows/pr-checks.yml`, whose wall-time target and concurrency policy ship with the pr-checks.yml template; `npm run check:house` runs the same set locally. A hosted agent review posts a neutral check that never blocks a merge, so it is one of the gaps to name rather than a gate to lean on.
+
+**Budget Actions minutes as account-wide money**
+> Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`; the platform's own spending budget is the hard stop. An agent workflow caps nothing on its own, and its runner minutes draw on the same account pool as every other job.
+
+**Make the PR template force a docs-check answer**
+> Anchor: the rendered `.github/PULL_REQUEST_TEMPLATE.md`. A hosted review flags stale docs only as a non-blocking nit on newly introduced drift, so the template is what makes the answer mandatory.
+
+**Stage explicit paths, never everything at once**
+> Anchor: the `pre-commit` template refuses a staged secret, which is the backstop for a wide add and not a licence to make one. A permission rule broad enough to allow staging allows the sweep-everything form too, so the approval prompt is no filter on what one add pulls in.
+
+**Classify a merged branch by its PR state, not by merge detection**
+> Anchor: `scripts/house/cleanup-worktree.sh`, which classifies from PR state through the platform CLI before it deletes anything. The harness's own worktree sweep reads local state only and never asks the platform, so it can neither confirm nor refute a squash merge.
+
+**Never delete the branch from the worktree being merged**
+> Anchor: `scripts/house/cleanup-worktree.sh`, run from the main checkout after the PR merges. The harness clears a clean worktree and its branch only as the session exits, so a deletion ordered before that is still yours to sequence.
+
+**Keep credentials out of the repo, the commit, and the chat**
+> Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; the remote is the guard, the hook is the backstop. Credential files stay readable to a session, and a subprocess inherits the session environment, unless a credential setting or deny-read rule says otherwise, so nothing local keeps a key out of the chat for you.
+
+**Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires**
+> Anchor: `scripts/house/scan-dist-secrets.mjs --self-test` as a CI step after the build, with the canary written before it and removed after. A build run from a session inherits that session's environment unless it is scrubbed, so the same scrub before scan applies off CI.
+
+### plugins/house/modules/testing/rules/testing.md (5)
+
+**Give the agent a check it can run before you walk away**
+> Name it in the root instruction file, which the harness loads at the start of every session as advisory context and nothing stronger, so an agent finds the command without being told; escalating it from advice to something the harness enforces is a hook, and that ladder is claude-code.md's.
+
+**Split deterministic tests from model-behavior evals, and give each its own budget and cadence**
+> Give the eval tier its own budget using the runner's own controls rather than a promise: set the hard cost ceiling that aborts a run and reports partial results, and the per-case threshold that exits non-zero, then keep that tier out of the merge gate and on a cadence a person can pause by hand.
+
+**Test the guard itself, as its own CI step**
+> The harness makes a hook the thing that actually blocks, yet offers only after-the-fact inspection of one, the transcript view and a debug log, so nothing native proves a guard still fires. Run the guard's own test as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red.
+
+**Feed a real payload through the real wiring, and never re-implement the logic under test**
+> Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning is fixed per event, and stdout that counts as a decision only when it is a bare JSON object. A test that reaches past the entry point proves only that the internals agree with themselves.
+
+**Prove an eval can fail, then grade it with the cheapest grader that can**
+> The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge. Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded.
+
+### plugins/house/modules/database/rules/database.md (4)
+
+**Back up before a destructive migration, and diff after it**
+> Anchor: none, because the backup lands outside the repo and the session cannot restore it either: checkpoints do not track what a Bash command changed and are not a substitute for version control, so the runbook step and the pasted post-migration diff are the control.
+
+**Add the table registry line in the same PR as the migration**
+> Anchor: a schema invariant that fails on an unregistered table and on a stale registry line, run before any publish or deploy, because the hosted review that notices a doc going stale raises it as a non-blocking nit and is not available in every org.
+
+**Give each initiative its own least-privilege role**
+> Enforce the firewall with a runtime guard and not only with a grant whenever the build itself runs as a privileged role, since a grant that permits the read cannot stop it and the harness stops at the tool boundary: permission rules and the sandbox never reach inside a script's own database queries.
+
+**Never let a write script pick its target from a dotfile**
+> Read the connection string for any write path from the exported environment, never from a dotfile some tool loads on your behalf, because permission rules match only the command text and cannot see which database a run resolves to, and an environment runner like direnv is not stripped before that match.
+
+### plugins/house/modules/deployment/rules/deployment.md (2)
+
+**Chain the deploy guards before building anything, and give them one named escape hatch**
+> Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because a push made with the default workflow token starts no run at all and leaves the tip genuinely unchecked.
+
+**Invoke a deploy only through its named script**
+> Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script, because an allow entry alone just skips a prompt while a deny rule is the layer the harness enforces regardless of what the model decides.
+
+### plugins/house/modules/data-pipelines/rules/data-pipelines.md (2)
+
+**Default to a dry run and require an explicit flag to write**
+> Make the dry run the default and `--apply` the opt-in, because the harness gates the file tools Claude calls directly but cannot see what a script writes once it is running, so the first run of a new script is a plan a human reads rather than a change nobody asked for.
+
+**Brake a prune at a share of the table, and unit-test the brake**
+> Refuse to delete more than a set share of a table in one run and require an explicit `--force` to override, because the harness routes a destructive filesystem command through a permission prompt but never sees a row delete a script issues, and the run that empties the table looks exactly like the run that clears a few stale rows until the count comes back.
+
+### plugins/house/modules/llm-output/rules/llm-output.md (3)
+
+**Report no finding rather than manufacture one**
+> Hold a high bar for a finding: the review surfaces already treat a run that reports nothing as a normal outcome, and this repo extends that floor to every generated report, so a real finding becomes a named edit with exact replacement text shipped as a pull request rather than quietly accumulated.
+
+**Refute with named lenses, drop by default, and log the drops**
+> The hosted reviewer already fans out one agent per issue class and verifies candidates before reporting; on that floor, run every draft claim past named refutation lenses, one per failure class, so a reviewer can say which lens caught what instead of trusting a general impression of care.
+
+**Treat silence as not approval**
+> Where the harness gates a write, its permission prompt is the floor and an agent message never substitutes for it; everywhere else, show the diff and wait for an explicit yes before generating a file, because silence is not approval and neither is a question left unanswered.
+
+### Package mechanisms: skills, checker families, and delivery (7)
+
+**PreToolUse branch guard** (docs/handbook/github.md and the hook's own header)
+> Anchor: the plugin's PreToolUse hook, the only harness point that refuses a Bash call before it runs and that applies in every permission mode. Every matching PreToolUse hook still runs and the most restrictive decision wins, so deferring to a repo-local guard is a deliberate migration choice here, not something the harness requires.
+
+**bootstrap skill**
+> Bootstrap writes only the house half of CLAUDE.md, as a separate skeleton file, and never edits an existing one. Leave the codebase-derived half to the harness's own init command, which generates a starting CLAUDE.md or suggests improvements to the one already there.
+
+**revise-docs skill**
+> The harness already writes its own machine-local memory notes for what a session learned, and skips what the instruction files already say. This skill routes the shareable, checked-in half instead: a rule goes to the rule file whose paths cover the surface it touches, an incident goes to the repo archive.
+
+**drift family**
+> Anchor: node .house/check.mjs --only=drift. The hosted reviewer already flags a documented claim that a pull request makes outdated, at nit severity and only for a newly introduced violation, so this family is the deterministic local floor that resolves every anchor token in every scanned doc before the push.
+
+**lengths family**
+> Anchor: node .house/check.mjs --only=lengths. The harness already measures its own auto-memory index when Claude writes it and warns or errors there, so this family's memory warning is a second surface for a machine-local file no repo gate can see, never the primary limit.
+
+**render and vendor step**
+> A plugin has no native component that ships rule files or instruction content as project context, so house renders its rules into the project rules directory, where the harness loads them like any other project rule and scopes them by their paths frontmatter.
+
+**carryover-issue handoff**
+> Session resume and the harness's own memory carry state on one machine only. The carryover issue is the shared tier, so it records what a resumed session and a memory file cannot hand to another machine or another person, and nothing a re-run can regenerate.
+
+---
+
+## 5. Unique mechanisms
+
+Fifty-five items have no native counterpart at all. This is the package's reason to exist, and none of it should be traded away to reduce overlap, because there is no overlap to reduce.
+
+**Build, measurement, and reporting discipline (16, engineering.md).** Build the simplest thing that answers the question. One implementation per computation, shared by the gate and the report. Verify the served artifact, not the source. Validate a response body before writing it. Never let a gate mint its own answer key. Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero. Show the ratio and the sample. Make a measuring instrument reproducible. Assert an invariant where its state is created, with a why and a remedy. Read a missing field as missing. Land a build-time guard with the code it protects. Search public prior art before building, and record what you did not adopt. Pin a framework default your output depends on. Enumerate from the system of record and fail hard on a missing member. Normalize against fixed anchors. Keep build, release, and run separate.
+
+**Package plumbing the harness does not model (5, mechanisms).** The tamper family (a vendored rule whose body no longer matches its source). The manifest family (house.json validation and the deviations ledger). The lock file (per-file body hashes and the scaffold ledger). Deviations and ratchets. Upstream-first sync (three named exits for a locally modified managed file).
+
+**CI, workflow, and secret posture (9, github.md).** Read-only workflow permissions with every action pinned by SHA. Open an issue instead of failing a scheduled run, and comment out a cron with its reason. Push protection, head-branch deletion, grouped dependency updates. No closing keyword beside an issue you do not mean to close. Phased work as commits on one PR. One writable scope per restricted key. Never log a vendor object. Treat a preview URL as production for exposure. Label a non-secret as a non-secret.
+
+**Data stores and pipelines (12, database.md and data-pipelines.md).** Forward-only numbered idempotent migrations. Provenance columns as behavior. Row lifecycle, not ownership, decides a new table. Money as integer cents reconciled against the books. Per-run retro of invariants, deltas, and proposals. Idempotent and resumable runs with a logged run row. Write nothing when a record is unchanged. A policy registry that fails closed on an unknown policy. Make unmapped input loud. Archive first, parse second, ledger row in the same transaction. Reconcile a vendor success response against an independent count. Name, do not act, on ambiguous data.
+
+**Deploy sequencing (5, deployment.md).** Deploy manually after the merge. Migrate before deploying the code that reads the schema. Verify the deployed URL against the built file with the cache bypassed. Repoint and deploy the consumer before dropping the producer's column. Restore a backup before calling it a backup.
+
+**Test suite shape (6, testing.md).** Scale the pyramid to the repo and route what the PR gate cannot afford. Read a snapshot diff before accepting it. Quarantine a flaky test loudly. Coverage as a search-light, never a target. Mirror the module layout in the test tree. Explain a test-runner config quirk with the incident that produced it.
+
+**Generated-content integrity (2, llm-output.md).** Gate output on status tags. Reword a locked claim, never strengthen it.
+
+---
+
+## 6. Downgraded claims
+
+One claim was downgraded.
+
+**`guard` family, filed CONFLICT, downgraded to COMPLEMENT.**
+
+The claim was that the guard family assumes a precedence the harness does not have: certifying a repo as protected because some repo-local PreToolUse hook exists, when in fact every matching hook runs and the most restrictive decision wins, and a recorded plugin guard is not protection in a session where hooks are disabled or customizations are skipped.
+
+The doc-accuracy skeptic did not refute it. It confirmed each fact against hooks.md and headless.md: hooks run in parallel, an explicit deny from another hook takes precedence, `disableAllHooks` can be set at the settings level or on the command line, and bare mode skips hook auto-discovery entirely.
+
+The enforcement skeptic refuted it, and the refutation is the one that decides the disposition. Two points:
+
+1. The design does not depend on precedence. When a repo-local hook is substantive, it denies in parallel on its own, so the plugin hook's exit-0 self-deferral costs nothing. Parallel execution supports the design rather than breaking it.
+2. On the plugin-only path the checker never certifies protection. The guard family emits a warning, not a finding, and clearing that warning requires a dated written reason in `house.json` under ADR 0009. The sync skill's doctor output already separates "recorded" from "enforced", and the handbook already states the hook is fail-fast user experience rather than a guarantee, with server-side protection named as the real backstop.
+
+Disposition after downgrade: COMPLEMENT. No code change is required. The proposed wording from the conflict filing is still worth carrying as a clarifying sentence, because it states the parallel-execution semantics plainly where a reader is most likely to assume precedence.
+
+One residual risk the refutation does not remove, and that the owner should decide on separately: an unrelated repo-local PreToolUse hook, for example a logging or secret-scanning hook, can satisfy the checker's substantive-local-hook test while doing nothing about branches. That is the failure mode issue 27 named. It is a checker precision question, not a conflict with the harness.
+
+---
+
+## 7. PR plan
+
+Every change below is rule or handbook prose. None renames a heading, removes or renames a config slot, changes the layout of `house.json` or the vendored `.house` directory, tightens the guard's deny set, or raises the Node floor, so all five PRs are **minor under ADR 0011**. The one candidate that would be major is called out in PR 5.
+
+Two operational notes that apply to every PR touching an enabled module:
+
+- A reword that adds a sentence adds lines, and the `lengths` family ratchets. Run `node .house/check.mjs --only=lengths` before opening each PR and trade out lines in the same file rather than raising a ceiling; if a ceiling genuinely has to rise, ADR 0003 requires the recorded raise.
+- Each new sentence introduces anchor tokens. Run `npm run check:docs` so the `drift` family resolves them, and `npm run verify` before pushing.
+
+**PR 1: correct the two places a rule misstates the harness.**
+Files: `plugins/house/modules/claude-code/rules/claude-code.md` (Make a must-hold rule a hook), `plugins/house/modules/deployment/rules/deployment.md` (Invoke a deploy only through its named script), `.claude/rules/house/claude-code.md` re-rendered, `.house/lock.json`, `CHANGELOG.md`.
+Why first: these are accuracy fixes, not polish. The first currently blames the event matcher for what the docs say about the `if` filter; the second's anchor claims an allowlist that omits the platform CLI is what refuses it, when only a deny rule blocks. Ship them before anything else so no later PR propagates the wrong statement. Minor.
+
+**PR 2: name the native floor in the two core self-adopted modules.**
+Files: `plugins/house/modules/claude-code/rules/claude-code.md` (remaining 6 rewords), `plugins/house/modules/docs/rules/docs.md` (5 rewords), `.claude/rules/house/claude-code.md` and `.claude/rules/house/docs.md` re-rendered, `.house/lock.json`, `CHANGELOG.md`.
+These two files carry the heaviest overlap with the memory docs, so they gain the most from citing the floor. Minor.
+
+**PR 3: the remaining self-adopted modules.**
+Files: `plugins/house/modules/engineering/rules/engineering.md` (5), `plugins/house/modules/github/rules/github.md` (8), `plugins/house/modules/testing/rules/testing.md` (5), the three matching vendored copies under `.claude/rules/house/`, `.house/lock.json`, `CHANGELOG.md`.
+Largest of the five by line count, but mechanically identical to PR 2. Split github.md out if review gets unwieldy. Minor.
+
+**PR 4: the default-off modules.**
+Files: `plugins/house/modules/database/rules/database.md` (4), `plugins/house/modules/deployment/rules/deployment.md` (1 remaining), `plugins/house/modules/data-pipelines/rules/data-pipelines.md` (2), `plugins/house/modules/llm-output/rules/llm-output.md` (3), `CHANGELOG.md`.
+These four modules are `enabled: false` in this repo's own `house.json`, so there is no vendored copy to re-render and no lock churn. Cheapest PR in the set, and independent of PRs 2 and 3. Minor.
+
+**PR 5: mechanism prose, skills, and the guard clarification.**
+Files: `plugins/house/skills/bootstrap/SKILL.md`, `plugins/house/skills/revise-docs/SKILL.md`, `docs/handbook/conventions.md` (render and vendor step, carryover-issue handoff), `docs/handbook/github.md` (branch guard and guard family: the parallel-execution sentence from section 6), the `drift` and `lengths` family headers in `plugins/house/payload/check.mjs` comments only, `CHANGELOG.md`.
+Ship last so the handbook describes rule files that already read the way the handbook says. Minor.
+
+**Deferred, and major if taken up.** Tightening `localGuardHookIsSubstantive` so that a repo-local hook clears the plugin guard only when it actually refuses a git call would change the guard family's behavior and, read strictly, changes what the guard arrangement denies in practice. Under ADR 0011 that falls in the major class and needs its own ADR plus new cases in `tests/hooks/run.sh`. It is not required by this audit, since the conflict was refuted, and it should be judged on issue 27's merits instead.
+
+---
+
+## 8. Open questions the audit could not settle
+
+1. **The eval runner was never observed.** Its case format, ablation arm, repeat count, cost ceiling, and grader types all come from `--help` output and from the case files in this repo, because the runner is gated to early access and refused to execute for this account. Every eval-related complement rests on that help text.
+2. **Exact wording of PreToolUse hook combination.** The two skeptics read hooks.md differently: one takes "an explicit deny returned by another hook still takes precedence" as documenting most-restrictive-wins, the other notes the page never states that rule verbatim and documents only parallel execution. The practical behavior is the same either way, but any rule prose that quotes the semantics should quote the page rather than paraphrase it.
+3. **No documented resume artifact.** claude-code.md's "Read a resume file as a harness artifact, not a handoff" describes a file carrying a session id, snapshot ref, and resume command that appears nowhere in the fetched docs. The rule is anchored to the documented limits of checkpoints and resume instead, which support its claim but do not name the artifact. Worth confirming the file still exists in the current harness before the next release.
+4. **Hosted Code Review availability.** Four complements cite hosted review as their floor, and it is a Team and Enterprise research preview. If adopters mostly sit outside that, those citations describe a floor their readers do not have, and the wording should say "where it runs" every time it appears.
+5. **Bash wrapper stripping.** The database rule's direnv claim rests on direnv not appearing in the documented list of stripped command wrappers. The list may be non-exhaustive; the docs do not say. If the list is illustrative rather than complete, the claim needs softening.
+6. **The narrow-matcher example.** The docs' worked example for a PermissionRequest auto-approve hook advises keeping the matcher as narrow as possible, which sits awkwardly beside claude-code.md's guidance to keep a deny hook's matcher broad. Both are defensible for their own event, but the package has not stated the split explicitly.
+7. **The GitHub App's fixed permission set.** github.md's workflow-permissions rule was left UNIQUE, but installing the app grants broad repository read and write that no workflow `permissions:` block narrows. Whether to surface that adjacency in the rule is an editorial call the docs cannot make.
+8. **Citation freshness has no policy.** These rewords pin house rules to external harness documentation that changes without notice. Nothing in ADR 0011 or the drift family covers re-verifying a native-floor citation, and the audit could not settle how often that should happen or what fails when a cited behavior changes.

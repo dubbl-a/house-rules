@@ -1,0 +1,195 @@
+{
+  "item": "plugins/house/modules/engineering/rules/engineering.md",
+  "rules": [
+    {
+      "heading": "Build the simplest thing that answers the question",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "/code-review local diff review (reuse, simplification, efficiency cleanups)",
+      "evidence": "The harness ships a reviewer that \"reports correctness bugs and reuse, simplification, and efficiency cleanups\" after code exists, while this rule governs the design call before any code is written, so it adds posture the reviewer cannot supply.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: none (because \"simplest\" is a design call); the harness floor is its own code review, which reports reuse and simplification cleanups after the code exists and never blocks a merge, so reaching for the least machinery up front is this repo's requirement."
+    },
+    {
+      "heading": "Keep one implementation per computation, and let the gate and the report share it",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the harness detects or refuses a second copy of the same computation; the nearest native behavior, Code Review reading repository CLAUDE.md files, \"treats newly introduced violations as nit-level findings\" and never gates a build.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Prove a check can fail before trusting that it passed",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "plugin eval no-plugin baseline (--ablation with-without)",
+      "evidence": "The eval runner repeats each case \"with no plugin loaded by default\" so the delta shows what the plugin contributed, which compares one arm against another and never demonstrates that a check can register a failure at all, exactly as the Anchor already states.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Verify the served artifact, not the source",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No native mechanism inspects built output; eval graders can read a created file's contents via a {source:file, path} target but the runner \"never checks manifest/schema correctness; it only scores behavior\" and nothing compares shipped bytes against source.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Validate the body before writing it, because a status code is not a content check",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness has no payload-validation stage on a fetch path; its closest analogue, structured-output schema checking inside a workflow agent() call, validates a subagent's own reply rather than an upstream response before a write.",
+      "citation": "https://code.claude.com/docs/en/workflows.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Never let a gate mint the answer key it grades against",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "plugin eval run isolation (case definitions hidden from the agent)",
+      "evidence": "The eval runner keeps \"the case definitions hidden from the agent\" so a graded run cannot read its own criteria, but it says nothing about who authored the labels a grader compares against, which is the gap this rule closes.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#how-runs-are-isolated",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: every fixture row carries its label source, and the gate refuses a key written by the tool it grades (`node --test tests/`); the harness floor is an eval run that hides the case definition from the agent under test, which keeps a run from reading its criteria but never asks where the labels came from, so an independently sourced key is this repo's addition."
+    },
+    {
+      "heading": "Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "plugin eval partial results, and the Code Review error check run",
+      "evidence": "The harness already separates \"could not finish\" from \"found nothing\" in two places, writing results with \"partial: true\" when a run is cut short and titling a failed review \"Code review encountered an error\" with no findings posted, but neither requires a repo's own gates to carry that verdict.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#run-evals-in-ci ; https://code.claude.com/docs/en/code-review",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, with the eval case `not-evaluable-verdict`; the harness floor is a run that marks itself partial when it could not finish and a review that reports an error instead of an empty findings list, so carrying that outcome in every verdict a gate prints is this repo's addition."
+    },
+    {
+      "heading": "Show the ratio and the sample, because one number is never the accuracy",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "published agent-eval guidance on pass@k versus pass^k",
+      "evidence": "Anthropic's own guidance shows the same runs reading as near certain or near impossible depending on which pass statistic is meant, which is the argument for attaching the sample and the estimand, but it is advice on a blog rather than anything the harness prints or enforces.",
+      "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: the measurement harness prints n beside every rate and refuses to combine two estimands (`node --test tests/`); the harness floor is published guidance that one set of runs reads as near certain or near impossible depending on which pass statistic is meant, so attaching the sample and the estimand to every published rate is this repo's requirement."
+    },
+    {
+      "heading": "Make a measuring instrument reproducible",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "plugin eval model pinning and run isolation, plus locally computed cost figures",
+      "evidence": "The harness offers a model pin so \"a model rollout isn't mistaken for a plugin regression\" and computes cost \"locally from token counts at list price, unless a modelPricing table is in effect\", which steadies the agent and flags the pricing caveat but never seeds the sampling or records the basis for you.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#command-options ; https://code.claude.com/docs/en/costs.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness floor is an isolated run with a pinned model and a cost figure computed locally at list price, which hold the agent steady but leave the sampling and the pricing basis to move underneath you, so seeding the fixture and recording the basis are this repo's addition."
+    },
+    {
+      "heading": "Assert an invariant where its state is created, with a why and a remedy",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse hook enforcement versus advisory memory files",
+      "evidence": "The harness is explicit that its instruction files are \"context, not enforced configuration\" and that only a hook blocks \"regardless of what Claude decides\", so an invariant that must hold has to be asserted in code rather than written down.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: `npm run retro`, which refuses a check missing its why or remedy and exits non-zero on a hard violation; the harness floor is that written guidance is context rather than enforcement and only a blocking hook stops an action regardless of what the agent decides, so asserting the invariant in code where the state is created is this repo's requirement."
+    },
+    {
+      "heading": "Make every waiver print its reason, and give an integrity gate none",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse hook deny, which holds in bypassPermissions mode",
+      "evidence": "A hook returning deny \"blocks the tool even in bypassPermissions mode or with --dangerously-skip-permissions\", confirming the floor the Anchor already names, while the harness asks nothing of the person who overrides, so the printed reason and one-run scope remain this repo's addition.",
+      "citation": "https://code.claude.com/docs/en/hooks-guide.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Read a missing field as missing, because absence is not confidence",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness has no reporting layer of its own to govern; the nearest native behavior is permission matching, where \"a parameter the model omits is never matched\", which is a rule-evaluation detail rather than guidance on how a repo reports absent data.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Demote a gate that has been wrong before",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "managed Code Review check run with a neutral conclusion",
+      "evidence": "Code Review \"always completes with a neutral conclusion so it never blocks merging\" and filters candidates through a verification step, which is the non-blocking posture the Anchor cites, but nothing native keeps or prints a checker's record of past false positives.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Record a significant decision as a numbered, immutable record",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "auto memory project notes",
+      "evidence": "Auto memory saves \"decisions Claude can't derive from code/git history\" but is \"machine-local\" with files \"not shared across machines or cloud environments\" and freely rewritable, which is exactly the weaker floor the Anchor names.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Land a build-time guard with the code it protects",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness has no build lifecycle to order and nothing that ties a guard's landing to the code it protects; its one adjacent behavior is /doctor proposing trims to a checked-in root file, which keeps \"conventions that differ from tool defaults\" and so tolerates a one-line-per-guard list.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Search public prior art before building a tool, and record what you did not adopt",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "plan permission mode",
+      "evidence": "Plan mode allows \"reads/exploration only, no edits until plan approved\", which is the blocked-edit posture the rule already cites, while the harness neither requires a search nor keeps the rejection anywhere durable once the plan is accepted.",
+      "citation": "https://code.claude.com/docs/en/permission-modes.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Pin a framework default your output depends on, with the reason beside it",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Native pinning covers only the harness's own supply chain, such as a marketplace entry pinned to a commit SHA or an archive refused when it misses its sha256, and nothing governs a framework or adapter default inside the repo's build.",
+      "citation": "https://code.claude.com/docs/en/plugin-marketplaces.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Enumerate from the system of record, and fail hard on a missing member",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness's own loaders fail soft in the opposite direction, for example rejecting one plugin component's path and loading \"the plugin without that component\", and nothing native builds a list from a system of record or refuses an unresolvable member.",
+      "citation": "https://code.claude.com/docs/en/plugins-reference.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Normalize against fixed anchors, never against the live population",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No native mechanism concerns denominators or eligibility pools; the eval runner's fixed comparison is between a with-plugin and a no-plugin arm, not between a numerator and a stable population.",
+      "citation": "https://code.claude.com/docs/en/plugin-evals#the-no-plugin-baseline",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make an error message teach the fix",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse deny reason fed back to the agent",
+      "evidence": "A denial \"cancels and feeds the reason to Claude\" verbatim, which is the pass-through the Anchor cites, and the harness never requires that reason to name a remedy, so the remediation text is this repo's contribution.",
+      "citation": "https://code.claude.com/docs/en/hooks.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Read config from the environment, and keep build, release, and run separate",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "sandbox credential protection and auto mode's default-allowed reads",
+      "evidence": "The sandbox has \"no built-in credential deny list\", protecting only files and variables an operator lists, and auto mode default-allows \"reading .env and sending creds to the matching API\", so nothing native keeps a secret out of a repo that stores one.",
+      "citation": "https://code.claude.com/docs/en/sandboxing ; https://code.claude.com/docs/en/permission-modes.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: the config module throws at startup on a missing key, and `.env.example` lists every key; the harness floor is a sandbox with no built-in credential deny list and an agent that treats reading a local env file as ordinary, so keeping every secret in the environment and out of the repo is this repo's requirement."
+    }
+  ],
+  "notes": "Coverage: all twenty-one \"## \" headings classified; \"## Don't\" excluded as instructed. No rule came out DUPLICATE or CONFLICT. That is the honest read of these facts: every native mechanism that touches this file's territory is either advisory (code review findings, /doctor trims, blog eval guidance) or scoped to the harness's own supply chain (marketplace pins, plugin component loading), while these rules govern the repo's build, gates, and published figures, which the harness does not reach.\n\nRules I was unsure about, and why:\n- \"Show the ratio and the sample\": the only native touchpoint is Anthropic's published agent-eval guidance on pass@k versus pass^k, which is a blog argument rather than harness behavior. I called it COMPLEMENT because the argument is a real, citable floor for why one number is not an accuracy, but UNIQUE with \"keep\" is defensible if the owner restricts floors to things the harness actually executes.\n- \"Never let a gate mint the answer key it grades against\": the eval runner hiding case definitions from the agent is adjacent rather than identical (it stops the graded party reading its criteria; the rule stops the graded party writing the labels). I judged it close enough to name as a floor, but it is the loosest of the complement citations here.\n- \"Land a build-time guard with the code it protects\": classified UNIQUE, but one sub-clause, \"list one line per guard in the root file\", does interact with the native memory system. The root file has a stated line target and /doctor proposes trims that cut content derivable from the codebase. A guard list is arguably derivable, though /doctor is documented to keep conventions that differ from tool defaults, so I read this as tension worth watching rather than a conflict. Worth a follow-up if the root file is near its ceiling.\n- \"Assert an invariant where its state is created\": no conflict today because the Anchor is an npm script, where a non-zero exit is failure. If that check is ever wired as a harness hook, \"exits non-zero\" becomes wrong, since a plain failure exit without schema-passing JSON is treated as a non-blocking error and only the specific blocking exit code stops the call. The proposed reword leaves the npm wording intact and names the hook floor separately, so the trap stays visible.\n- \"Read config from the environment\": the proposed reword shifts the Anchor's emphasis toward credential exposure. If the owner prefers the Anchor to stay purely about the config module, the floor sentence could move into the rule body instead.\n\nVerified as accurate against the supplied facts, so left untouched: the existing floor clauses in \"Prove a check can fail\", \"Make every waiver print its reason\", \"Demote a gate that has been wrong before\", \"Record a significant decision\", \"Search public prior art\", and \"Make an error message teach the fix\". Each one states the native behavior correctly, including that a PreToolUse deny holds in bypass mode, that Code Review completes with a neutral conclusion, and that auto memory is machine-local and rewritable.\n\nSide note on the session request: caffeinate is running in the background (display, idle, disk, and system sleep held off) with a bounded lifetime."
+}

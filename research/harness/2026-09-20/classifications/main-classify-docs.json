@@ -1,0 +1,114 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/docs/rules/docs.md",
+  "rules": [
+    {
+      "heading": "Anchor every claim to a grep-able token",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The only native pressure on doc content is /doctor's trim proposal, which cuts what Claude can derive from the codebase and keeps conventions, and nothing native resolves a backticked token in a document against the repo.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Run the docs gate before pushing and in the build",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "CLAUDE.md and rules are advisory context; only a PreToolUse hook blocks regardless of what Claude decides",
+      "evidence": "The docs state that both memory systems are context, not enforced configuration, and that blocking an action regardless of what Claude decides takes a PreToolUse hook, which is exactly the floor this rule names before adding a local run plus a build step and a pull-request check.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Give every rule file a paths list whose first segment resolves",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Path-specific (path-scoped) rules and the unscoped .claude/rules/ default",
+      "evidence": "The docs confirm the rule's stated floor, that rules without a paths field load at launch with the same priority as .claude/CLAUDE.md, and that an invalid or non-matching glob simply matches nothing without breaking the rule, so the harness never warns that a scoped rule has gone dark.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Put a fact where its litmus test says it belongs",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "CLAUDE.md file scopes plus /doctor CLAUDE.md trim proposals",
+      "evidence": "The rule opens by crediting the native routing and trimming, and the docs back it: scopes load broadest to most specific and /doctor proposes cutting content derivable from the codebase, while nothing native reaches the README, the changelog, or an archive tier.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "State a rule as imperative, why, anchor, receipts",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Adherence guidance for instruction files (specific and concise instructions are followed more consistently)",
+      "evidence": "The docs say the more specific and concise your instructions, the more consistently Claude follows them, but prescribe no shape for a rule file, so the imperative heading, why, anchor, receipts, and required closing section are posture the harness lacks.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Move dates, names, and measured numbers out of rule prose",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Auto memory note types and the modified frontmatter timestamp",
+      "evidence": "The harness has its own home for dated observations, auto memory topic files stamped with a modified time and explicitly skipping anything the CLAUDE.md files already say, but that store is machine-local and never keeps a date out of a checked-in rule file, which is the gap this rule closes with a shared archive.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep files under budget, and raise a ceiling only with a written reason",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "CLAUDE.md size guidance (soft line target) and the hard size cap that skips a larger file",
+      "evidence": "The rule states the native floor correctly, since the docs give a stated best-practice line target for CLAUDE.md and a hard cap past which the file is skipped entirely, with nothing between the two and nothing at all for a README, a skill body, or a handbook chapter.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Cut, don't append, and trim on a fixed cadence",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "/doctor CLAUDE.md trim proposals",
+      "evidence": "The docs describe the trim check as a checkup that proposes cuts when run, an advisory suggestion rather than an automatic rewrite, so the cadence, the delete-at-least-one requirement, and the ratchet that stops regrowth are all added posture.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Split a file only when splitting narrows what loads",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "@path imports and path-scoped rule loading",
+      "evidence": "The docs say splitting into imports helps organization but does not reduce context because imported files still load at launch, and that only a paths-scoped rule defers loading, which is the native fact this rule turns into a co-load budget.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Opt a point-in-time doc out with a file-level reason",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none for the archive posture; the closing line leans on block-level HTML comment stripping",
+      "evidence": "Nothing native scans an archive tier for drift or honors a file-level opt-out marker, and the docs scope comment stripping to instruction files injected into context while noting that comments remain visible when the file is opened with the Read tool, which an archive document always is.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Maintainer notes belong in HTML comments, which the harness strips from an instruction file before it reaches context. A document that is only ever opened with the Read tool keeps its comments visible, so write those for the human who will read them there."
+    },
+    {
+      "heading": "Don't document a command that does not exist",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No documented native behavior resolves a documented command, script, or environment variable against the repo's script list; the nearest native move is /doctor proposing trims of derivable content, which neither checks nor flags a missing command.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Ship the docs and changelog edit in the same PR as the change",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Managed Code Review reading repository CLAUDE.md, with findings that never gate a merge",
+      "evidence": "The rule states the native floor accurately: Code Review reads CLAUDE.md at every directory level and flags a change that leaves a statement outdated, but caps that finding at nit severity and completes with a neutral conclusion so it never blocks merging.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Twelve \"## \" headings, all covered; \"## Don't\" excluded per instructions. No CONFLICT and no DUPLICATE found: every rule that touches a native mechanism already names the native floor in its own prose rather than restating it as if the house invented it.\n\nUnsure calls, and why:\n1. \"State a rule as imperative, why, anchor, receipts\" sits on the COMPLEMENT/UNIQUE line. The harness has no format contract for a rule file at all, which argues UNIQUE; I scored it COMPLEMENT because the whole shape exists to serve the documented adherence property (specific, concise instructions are followed more consistently), so it builds on a native primitive rather than inventing a separate concern.\n2. \"Opt a point-in-time doc out with a file-level reason\" is the only mixed heading. Its substance (archive drift scanning, file-level opt-out markers with a stated reason, the scanArchive posture) has no native counterpart, so UNIQUE. But its closing maintainer-notes line generalizes a native behavior past its documented scope: comment stripping is documented for instruction files injected into context, and the same docs say comments remain visible when a file is opened with the Read tool, which is the only way an archive document is ever read. Hence the reword, which is the single wording change I propose in this file.\n3. \"Move dates, names, and measured numbers out of rule prose\" could read as UNIQUE, since nothing native polices rule prose. I scored COMPLEMENT because auto memory is a real native home for dated observations, with its own modified timestamp and an explicit rule that it skips what CLAUDE.md already says; the house rule's added value is that its destination is checked in and shared while auto memory is machine-local.\n4. \"Give every rule file a paths list whose first segment resolves\" is close to a DUPLICATE of the documented loading behavior in its second paragraph, but the first paragraph adds a resolution check the harness deliberately lacks (a non-matching glob silently matches nothing), so COMPLEMENT stands."
+}

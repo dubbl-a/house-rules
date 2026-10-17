@@ -1,0 +1,168 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/github/rules/github.md",
+  "rules": [
+    {
+      "heading": "Gate every PR on checks that need no credential, and name what is not gated",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Managed Code Review check run (neutral conclusion, never blocks merging)",
+      "evidence": "The hosted reviewer \"always completes with a neutral conclusion so it never blocks merging through branch protection rules,\" so a credential-free required gate plus a named list of gaps is posture the harness does not supply.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Give a workflow read-only permissions and pin every action by SHA",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "/install-github-app quick setup and manual GitHub Action setup (workflow files pushed into .github/workflows/)",
+      "evidence": "The setup command \"pushes a branch with chosen workflow files, and opens a PR to add them,\" so the harness puts workflows in the repo without itself constraining their permissions block or pinning the actions they call.",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: the rendered `.github/workflows/pr-checks.yml` ships the read-only default and the SHA pins; copy it when you add a workflow. A workflow the agent platform's own setup command installs is a workflow in this repo too, so give it the same permissions block and the same SHA pins rather than merging it as shipped."
+    },
+    {
+      "heading": "Budget Actions minutes as account-wide money",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "GitHub Action cost controls (--max-turns, workflow timeouts, concurrency)",
+      "evidence": "The documented cost controls \"are recommendations, not defaults, none is applied unless the workflow author configures it,\" which is the floor this rule's account-wide budgeting and pause-then-re-enable procedure builds on.",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Open an issue instead of failing a scheduled run, and comment out a cron with its reason",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the gathered facts governs whether a scheduled workflow should turn red or open an issue, and the only scheduled-run behavior documented is the trigger-eligibility check that \"rejects any bot actor unless listed in allowed_bots.\"",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Turn on push protection, head-branch deletion, and grouped dependency updates",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness facts cover the Claude GitHub App's own permission set and workflow installation but say nothing about repository secret-scanning push protection, head-branch deletion, or dependency-update grouping.",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make the PR template force a docs-check answer",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Code Review customization via CLAUDE.md (stale-docs findings capped at nit severity)",
+      "evidence": "The hosted reviewer reads CLAUDE.md and \"treats newly introduced violations as nit-level findings,\" flagging outdated docs bidirectionally but never requiring an answer, so the template is what makes the docs check mandatory.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Never put a closing keyword beside an issue number you do not mean to close",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No gathered fact describes the harness reading, writing, or warning about closing keywords in a pull request body; PR creation is described only as \"you can create pull requests by asking Claude directly.\"",
+      "citation": "https://code.claude.com/docs/en/common-workflows",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Ship phased work as commits on one PR",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Background-session git policy (commit, push, draft PR) and /batch parallel worktree automation",
+      "evidence": "A background session \"commits without asking, and pushes the branch when the repository has a remote\" and opens a draft PR \"when the task calls for it,\" while /batch \"spawns one background subagent per unit in an isolated git worktree\" that \"opens a pull request,\" so the single-PR shape has to be stated before work is dispatched that way.",
+      "citation": "https://code.claude.com/docs/en/agent-view ; https://code.claude.com/docs/en/cli-reference",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: none (because PR granularity is a judgment call, and the base-retarget confirmation is a look at the open PR list). A background session commits, pushes, and opens a draft pull request on its own, and the parallel-change command opens one per unit, so say which shape phased work takes before dispatching it that way."
+    },
+    {
+      "heading": "Stage explicit paths, never everything at once",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Bash wildcard permission rule matching",
+      "evidence": "A Bash rule's \"* matches any text including spaces\" and matches only the command form typically produced, so a rule wide enough to allow staging cannot distinguish a path from a sweep, exactly as the Anchor line already states.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Classify a merged branch by its PR state, not by merge detection",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Periodic worktree cleanup sweep and claude rm unpushed-commit refusal",
+      "evidence": "The sweep leaves a worktree in place when it \"still holds changed/untracked files or unpushed commits\" and claude rm blocks on commits \"not reachable from the local default branch,\" which is local state and cannot confirm or refute a squash merge.",
+      "citation": "https://code.claude.com/docs/en/worktrees ; https://code.claude.com/docs/en/agent-view",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Never delete the branch from the worktree being merged",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Worktree cleanup on session exit",
+      "evidence": "On exit \"a clean, unnamed session auto-removes the worktree and its branch\" and a named or dirty one prompts, so any deletion ordered before that point is still the caller's to sequence, as the Anchor line says.",
+      "citation": "https://code.claude.com/docs/en/worktrees",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep credentials out of the repo, the commit, and the chat",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Sandbox credential protection (deny/mask) and default sandbox filesystem read scope",
+      "evidence": "\"There is no built-in credential deny list, only explicitly listed files/vars are protected,\" and the default sandbox read scope \"still includes credential files like ~/.aws/credentials and ~/.ssh/,\" which is the floor the Anchor line already names.",
+      "citation": "https://code.claude.com/docs/en/sandboxing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Subprocess environment inheritance and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB",
+      "evidence": "\"Sandboxed Bash inherits the parent process's environment variables (including credentials) by default unless sandbox.credentials or CLAUDE_CODE_SUBPROCESS_ENV_SCRUB strips them,\" so a build started from a session carries the session environment unless scrubbed.",
+      "citation": "https://code.claude.com/docs/en/sandboxing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Give a restricted key exactly one writable scope",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No gathered fact governs how a vendor API key is scoped or probed; the nearest item is the Claude GitHub App's fixed permission set, which is a platform app rather than a key this rule issues.",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Never log a vendor object",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the gathered facts constrains what application code logs; the only related native behavior is egress-side credential masking to listed hosts, which never inspects log payload shape.",
+      "citation": "https://code.claude.com/docs/en/sandboxing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Treat a preview URL as production for exposure",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The facts cover network egress allowlisting for sandboxed commands but say nothing about deployed preview hosts or route-level auth policy, so there is no native counterpart to lean on.",
+      "citation": "https://code.claude.com/docs/en/sandboxing",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Label a non-secret as a non-secret",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The nearest native behavior judges credential-like files by name when bundling a repo to a cloud session and never reads an in-file justification, so labeling a public value is an editorial practice with no harness equivalent.",
+      "citation": "https://code.claude.com/docs/en/claude-code-on-the-web",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Ship the community files the platform looks for, and keep issue intake as forms",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness reads project instruction files such as CLAUDE.md and AGENTS.md but no gathered fact touches a code of conduct, a security policy, a contributing guide, or issue-form intake.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Three calls I was unsure about. (1) \"Give a restricted key exactly one writable scope\": I marked it UNIQUE, but there is a real adjacent fact worth considering for a future reword, namely that the Claude GitHub App has \"a single permission set covering all of its features\" and \"GitHub doesn't let you accept a subset\" (https://code.claude.com/docs/en/github-actions). That app is the one credential in this repo's orbit that cannot be given one writable scope, so it may deserve naming as a stated gap rather than treated as an exception nobody wrote down. I left it UNIQUE because the rule is about vendor keys the owner issues, not about a platform app whose scopes are fixed by the vendor. (2) \"Label a non-secret as a non-secret\": the cloud-bundling exclusion of credential-like files (.env, *.tfvars, id_rsa, *.pem) is name-based, not content-based, so a value labeled public in such a file is still withheld from an upload. I could not tell from the facts whether .env.example matches that name pattern, so I did not turn the interaction into a reword. (3) \"Ship phased work as commits on one PR\" sits closest to CONFLICT of anything in the file, because the parallel-change command opens a pull request per unit by design. I settled on COMPLEMENT since that command targets independent units and requires plan approval, while this rule governs phases of one change; the reword makes the boundary explicit instead of leaving the reader to infer it. Two other Anchor lines already carry accurate native-floor sentences and needed no change: the worktree-sweep claim in \"Classify a merged branch by its PR state\" is correct for the sweep itself even though agent view does query the platform for a PR-status label, and the hosted-review claims under the gating and PR-template rules match the documented neutral check and nit-level stale-docs finding. No rule in this file duplicates a native floor, and none contradicts one."
+}

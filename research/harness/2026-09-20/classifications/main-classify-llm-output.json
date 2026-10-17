@@ -1,0 +1,87 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/llm-output/rules/llm-output.md",
+  "rules": [
+    {
+      "heading": "Quarantine model output until a human moves it",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "File-modification approval scoping and PreToolUse hook blocking",
+      "evidence": "The harness gates a write with a prompt that acceptEdits auto-approves and that \"lasts until session end, not saved permanently,\" so approval is a per-session prompt rather than a structural promotion step, which is what this rule adds.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "The harness floor is its approval prompt on a write, which an accept-edits mode pre-approves and which lapses with the session, so the durable gate has to be structural: generate into an untracked directory and let a person move each file into the tracked one, because the move is the sign-off and a structural gate cannot be skipped the way a review can."
+    },
+    {
+      "heading": "Keep a deterministic backbone and let the model fill the slots",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the harness decides which parts of a task belong in code versus model judgment; the memory system is explicitly \"context, not enforced configuration,\" and no documented feature labels computed versus judged output.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Report no finding rather than manufacture one",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Code Review check run with no issues found, and /code-review effort levels",
+      "evidence": "The hosted reviewer updates its check run \"to show no issues found\" and low and medium effort \"report only the findings it's most confident in,\" a floor the rule already names before extending an empty result and a limitations section to every generated report.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Refute with named lenses, drop by default, and log the drops",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Managed Code Review multi-agent fan-out and verification step",
+      "evidence": "Managed Code Review runs \"a fleet of specialized agents\" plus \"a verification step\" that filters false positives, which the rule cites as its floor before adding named lenses, stakes-tiered passes, and a logged reason for every drop.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Cite or stay silent",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The only native thing near an evidence gate is a repo-authored REVIEW.md line that can \"require a verification bar (e.g. file:line citations),\" which is the user's own text read solely by the managed service, so the harness enforces no evidence requirement on model claims.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Gate output on status tags",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Permission rules and the auto mode classifier",
+      "evidence": "Auto-approval in the harness works on tool calls through allow rules and an auto mode classifier, and those rules are \"enforced by Claude Code, not by the model,\" so nothing native reads the confidence band of a row this rule governs.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "The harness decides which tool calls proceed through its own allow rules and its auto mode classifier, neither of which can see a row's confidence; on that floor, auto-approve only the confidence band and action set that are safe to auto-approve, carry the rest forward instead of pausing for a click, and surface borderline rejections inline so an override is cheap."
+    },
+    {
+      "heading": "Reword a locked claim, never strengthen it",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No documented harness feature freezes a span of authored text or compares the strength of a claim across drafts; memory files shape behavior but are \"not a hard enforcement layer.\"",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Treat silence as not approval",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Permission prompts, plan mode, and inter-agent consent handling",
+      "evidence": "The harness holds the floor only where it gates a call, since \"a teammate can't approve a permission prompt or supply consent on your behalf\" and the classifier treats a relayed approval claim as untrusted input, while the rule extends the same reading to printed runs and to data where no prompt fires.",
+      "citation": "https://code.claude.com/docs/en/agent-teams.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Read agreement with a shown suggestion as anchored, not accurate",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Code Review reaction counts on shown findings",
+      "evidence": "Each hosted review comment ships with thumbs attached and \"Anthropic collects reaction counts after the PR merges and uses them to tune the reviewer,\" which is agreement measured against a suggestion already shown, exactly the number this rule says is anchored rather than accurate.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "A hosted reviewer already collects agreement marks on the findings it shows and feeds them back into its own tuning, which is this anchored measure and not a quality one. When a reviewer sees the model's suggestion beside the evidence, their agreement measures anchoring rather than accuracy, so that rate is never quotable as a quality number."
+    }
+  ],
+  "notes": "Four calls I was not fully certain about. (1) \"Keep a deterministic backbone\": I marked it UNIQUE, but there is a near-miss native primitive, the hooks split between deterministic command hooks and type:'prompt' hooks for \"judgment-based rather than deterministic decisions\" (hooks-guide.md). That is a config-surface echo of the same posture, not something the rule builds on, so COMPLEMENT felt like overreach; if the owner wants every rule pinned to a native primitive, this is the one to revisit. (2) \"Cite or stay silent\": the REVIEW.md customization pattern lets a repo \"require a verification bar (e.g. file:line citations)\", which is the closest native hook, but it is author-supplied text read only by the managed hosted reviewer and not harness-enforced behavior, so I kept it UNIQUE rather than COMPLEMENT. (3) \"Read agreement with a shown suggestion\": COMPLEMENT versus UNIQUE was the closest call in the file, since the reaction-count fact is a surface where the anti-pattern exists rather than a primitive the rule builds on; I chose COMPLEMENT because naming that surface makes the rule land harder, but a keep is defensible. (4) \"Quarantine model output\": arguably a keep, since the rule's anchor is a git pre-commit hook rather than anything harness-side; I chose the reword because the acceptEdits and bypass modes are precisely why a prompt-based gate is not a promotion gate, and saying so out loud pre-empts the \"the harness already asks me\" objection. Worth noting separately, not a disposition: the quarantine anchor writes a pre-commit config, and the harness never auto-approves writes to pre-commit configs or .husky through allow rules (permission-modes.md protected paths), so setting that hook up will prompt every time regardless of mode. No CONFLICT found anywhere in the file; the plan-mode characterization in \"Treat silence as not approval\" matches the documented carve-out for interactive plan-mode sessions with bypass available."
+}

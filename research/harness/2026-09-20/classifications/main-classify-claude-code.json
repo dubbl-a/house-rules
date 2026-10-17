@@ -1,0 +1,141 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/claude-code/rules/claude-code.md",
+  "rules": [
+    {
+      "heading": "Put only what Claude would get wrong without it in the root file",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "/doctor CLAUDE.md trim proposals; CLAUDE.md size guidance (200 lines)",
+      "evidence": "The harness only proposes trims and states a size target it calls advice (\"target under 200 lines\", \"Longer files consume more context and reduce adherence\"), while this rule turns the same standard into a refusing byte and line gate the model cannot ignore.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep the auto-memory index to hooks, and hold it under its cap",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "MEMORY.md startup read limit (200 lines / 25KB)",
+      "evidence": "The harness reminds Claude to shorten the index after a write and errors once the file is over the limit, but it acts only after the write and says nothing about which fact must move down first or how supersession is recorded, which this rule supplies and the rule already names as the floor.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Give a domain rule a paths list, and never leave a rule file unscoped",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Path-specific (path-scoped) rules; .claude/rules/ directory (unscoped rules)",
+      "evidence": "The harness confirms the rule's premise that \"Rules without paths frontmatter are loaded at launch with the same priority as .claude/CLAUDE.md\" but validates nothing about whether a pattern matches the tree or what the matching rules cost together, which the drift and coload checks add.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make a procedure a skill, not a rule",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "SKILL.md as the extension mechanism; description and when_to_use listing truncation",
+      "evidence": "The facts show only that a skill is listed by its description and when_to_use text and that this listing is truncated to reduce context usage; they contain no harness statement that a multi-step procedure belongs in a skill rather than an instruction file, so that sentence claims a floor the docs do not state.",
+      "citation": "https://code.claude.com/docs/en/skills",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "A skill costs only its listed description and trigger text each session, and the harness truncates even that listing, while an instruction file pays for its whole body every time it loads. What the harness does not say is what the skill then owes you."
+    },
+    {
+      "heading": "Keep a skill body short, its references one level deep, and its name equal to its directory",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "How a skill gets its slash-command name; auto-compaction budget for skills",
+      "evidence": "The harness derives a personal or project skill's command name from its directory while a plugin skill's frontmatter name does set its final command segment, so a check that fails every frontmatter name differing from its directory would fight the plugin path.",
+      "citation": "https://code.claude.com/docs/en/skills",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: check.mjs `lengths` caps the skill body, and `shape` fails a personal or project skill whose frontmatter name differs from its directory, leaving a plugin skill free to name its own command segment."
+    },
+    {
+      "heading": "Disable model invocation on a skill with side effects",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "disable-model-invocation frontmatter field",
+      "evidence": "The harness already documents this field for exactly this case and blocks the call when Claude tries anyway, and also stops the skill firing from a scheduled prompt, so the rule's opening restates a native recommendation without naming it as the floor.",
+      "citation": "https://code.claude.com/docs/en/skills",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "The harness offers this field for exactly this case, blocks a model-initiated call to a skill that sets it, and keeps a scheduled prompt from firing one, so treat that as the floor. What it cannot decide is which effects count as side effects, which is why writing, deploying, and spending are named here and why each later phase of a procedure is an explicit opt-in gate."
+    },
+    {
+      "heading": "Set the model explicitly on every subagent and workflow agent",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Subagent model field and resolution order; workflow model resolution; model availability checking and allowlist substitution",
+      "evidence": "The harness resolves an omitted model down to the main conversation's model and substitutes a blocked one with only a warning in interactive sessions, so nothing makes a fan-out state its tier or fail loudly, which is what this rule and its eval pair add.",
+      "citation": "https://code.claude.com/docs/en/sub-agents.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make a must-hold rule a hook, fail it closed, and test it with real payloads",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "PreToolUse hook blocking; hook exit code semantics; hook 'if' field",
+      "evidence": "The harness says to use a PreToolUse hook to block an action regardless of what Claude decides and warns that the 'if' filter is best-effort and unfit for a hard allow or deny, but exit code 1 without JSON is a non-blocking error, so failing closed and testing the real wiring is posture the harness does not supply.",
+      "citation": "https://code.claude.com/docs/en/hooks.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Run adversarial review in a fresh subagent with a named lens",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "/code-review background execution and checkpoints",
+      "evidence": "The harness runs the review as a background forked subagent over the branch diff and states that its applied fixes land outside the session's checkpoints so git is the only way back, and this rule starts from that and adds the lens and the confirm-only-correctness instruction.",
+      "citation": "https://code.claude.com/docs/en/code-review",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Plan when the approach is uncertain, and clear the context after two failed corrections",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "/clear; CLAUDE.md survival across /compact; plan permission mode",
+      "evidence": "The harness supplies /clear, plan mode, and the fact that an instruction given only in conversation disappears after compaction, but it offers no trigger for when to plan or when a context has gone bad, which this rule sets as a countable threshold.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Treat git state as shared across sessions",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Worktree isolation enforcement (4 checks); background-session worktree isolation",
+      "evidence": "The harness blocks writes into the main checkout only once a session is isolated in a worktree, and background sessions auto-isolate, so an ordinary foreground session on a shared checkout has no native protection and needs the branch guard and the re-read discipline.",
+      "citation": "https://code.claude.com/docs/en/worktrees",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep the committed settings narrow and the local settings local",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "List-key merging across settings scopes; permission rule evaluation order; workspace trust for project allow rules",
+      "evidence": "The harness combines permission lists across every settings file rather than letting one override another and evaluates deny before ask before allow, which is exactly the mechanism this rule shapes a committed allowlist and a deny-the-escape-hatch list around.",
+      "citation": "https://code.claude.com/docs/en/settings.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Read a resume file as a harness artifact, not a handoff",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "claude --resume; what a resumed session restores; export/script access to session data",
+      "evidence": "Resume restores conversation history and session settings but not launch flags, and the docs warn that the transcript format is internal and should not be parsed, so nothing the harness writes on stop is shareable state, which is what this rule stops the reader assuming.",
+      "citation": "https://code.claude.com/docs/en/sessions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Hand off through a carryover issue",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Auto memory storage location and scope",
+      "evidence": "The harness states auto memory is machine-local and \"not shared across machines or cloud environments\", the exact limit this rule cites before routing the handoff to an issue instead.",
+      "citation": "https://code.claude.com/docs/en/memory.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Check for a peer session before driving shared external state",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Background-session worktree isolation; agent view",
+      "evidence": "The harness isolates a background session's file edits into its own worktree but nothing in it guards a shared database, a shared application, or a deploy target that a peer session already owns, so the listing step and the deploy guard chain cover what isolation does not reach.",
+      "citation": "https://code.claude.com/docs/en/agent-view",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Nothing in the file classified as DUPLICATE or CONFLICT against today's facts; every rule builds on a native primitive and adds a gate, a scope decision, or a posture the harness leaves to the author. Three rewords are proposed, all for attribution rather than substance.\n\nRules I was unsure about:\n\n1. \"Make a procedure a skill, not a rule\" — the rule asserts \"The harness already says a multi-step procedure belongs in a skill rather than an instruction file.\" No supplied fact contains that statement. The memory docs point growing instructions at path-scoped rules, not skills. The disposition is still COMPLEMENT, but the cited floor is unsupported, hence the reword to the floor that is documented (a skill costs only its truncated listing until invoked).\n\n2. \"Keep a skill body short...\" — two soft spots. \"Hold the body under the documented cap\" has no matching fact; the only documented skill-size numbers are the description plus when_to_use truncation and the compaction re-attachment budget. More substantively, the name rule is stated for personal and project skills but the `shape` anchor appears to fail any mismatch, and plugin skills legitimately take their command segment from frontmatter name. Since house-rules ships as a plugin and dogfoods itself, that check could fail a legal plugin skill; the proposed Anchor wording scopes it.\n\n3. \"Set the model explicitly...\" — \"give a scripted run the print-mode budget ceiling flag\" implies a cost ceiling flag on print mode. The only cost ceiling in the facts is --max-cost-usd on `claude plugin eval`. The CLI reference facts gathered do not enumerate every -p flag, so I did not call this a conflict, but it is worth verifying against `claude --help` before the next release.\n\n4. \"Keep the committed settings narrow...\" — \"a print-mode run loads the project's servers with no approval prompt at all\" is not covered by the supplied facts. What the facts do say about -p is the opposite direction: a -p run never shows the workspace-trust dialog, so project allow rules and additionalDirectories are NOT used, with a stderr warning. The MCP-server loading claim is unverified either way here; flagging rather than rewording.\n\n5. \"Read a resume file as a harness artifact, not a handoff\" — no supplied fact describes a harness-written file carrying a session id, a snapshot ref, and a resume command. Transcripts are .jsonl under the project directory. The rule's posture still holds against resume semantics, so I kept it, but the artifact it describes could not be confirmed from the facts.\n\n6. \"Make a must-hold rule a hook...\" — \"a session started bare, in safe mode, or in restricted mode never loads project hooks at all\" is supported only obliquely: --restricted ignores project and local settings files, allowManagedHooksOnly blocks project hooks, and disableAllHooks exists. \"Safe mode\" is not a named mode in the facts. Kept, since the practical claim holds, but the mode names may not match the harness's vocabulary."
+}

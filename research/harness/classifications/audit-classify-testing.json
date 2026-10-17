@@ -1,0 +1,123 @@
+{
+ "item": "plugins/house/modules/testing/rules/testing.md",
+ "rules": [
+  {
+   "heading": "Give the agent a check it can run before you walk away",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Project CLAUDE.md loaded every session (advisory) plus hooks as the enforcement layer",
+   "evidence": "The memory docs already tell authors to put a concrete verifiable command in CLAUDE.md (their own example is running the test command before committing) and state plainly that CLAUDE.md is advisory context with hooks as the way to make something run at a fixed point, so the rule's addition is the shape of the command rather than the fact of naming it.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Name it in the root instruction file, which the harness loads at the start of every session as advisory context and nothing stronger, so an agent finds the command without being told; escalating it from advice to something the harness enforces is a hook, and that ladder is claude-code.md's."
+  },
+  {
+   "heading": "Scale the pyramid to the repo you have, and route what the PR gate cannot afford",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Nothing in the harness facts describes a test pyramid, tier routing, or credentialed tests: the closest native material is Claude Code hook timeouts and CI workflow triggers, neither of which speaks to how a repo apportions its own suite.",
+   "citation": "https://code.claude.com/docs/en/hooks.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Split deterministic tests from model-behavior evals, and give each its own budget and cadence",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "claude plugin eval cost ceiling and per-case threshold",
+   "evidence": "The eval runner already supplies the enforcing primitives the rule asks for, a hard cost ceiling that aborts and reports partial results and a per-case threshold that exits non-zero, so the rule's real contribution is the posture that this tier stays out of the merge gate and runs on a cadence a person can pause.",
+   "citation": "claude plugin eval --help",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Give the eval tier its own budget using the runner's own controls rather than a promise: set the hard cost ceiling that aborts a run and reports partial results, and the per-case threshold that exits non-zero, then keep that tier out of the merge gate and on a cadence a person can pause by hand."
+  },
+  {
+   "heading": "Test the guard itself, as its own CI step",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hooks as the blocking enforcement layer, with only after-the-fact debugging",
+   "evidence": "Hooks are the harness's blocking primitive, but the documented way to see whether one fired is the transcript view and a debug log after the fact, so nothing native proves a guard still blocks what it was written to block.",
+   "citation": "https://code.claude.com/docs/en/hooks-guide.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The harness makes a hook the thing that actually blocks, yet offers only after-the-fact inspection of one, the transcript view and a debug log, so nothing native proves a guard still fires. Run the guard's own test as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red."
+  },
+  {
+   "heading": "Feed a real payload through the real wiring, and never re-implement the logic under test",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hook input JSON, exit code semantics, and stdout JSON parsing rules",
+   "evidence": "The harness fixes exactly the contract this rule says to assert on, a documented event JSON on stdin, per-event blocking meaning for exit codes, and stdout treated as JSON only when it is a bare object, which is what makes an entry-point assertion meaningful rather than stylistic.",
+   "citation": "https://code.claude.com/docs/en/hooks.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Assert on the contract the harness itself reads: the documented event payload on stdin, the exit code whose blocking meaning is fixed per event, and stdout that counts as a decision only when it is a bare JSON object. A test that reaches past the entry point proves only that the internals agree with themselves."
+  },
+  {
+   "heading": "Ship every gate with a positive control and a negative control",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Anthropic eval guidance to test both where a behavior should and should not occur",
+   "evidence": "Anthropic's own eval guidance says to test both the cases where a behavior should occur and where it should not because one-sided evals create one-sided optimization, but states it as advice only, while this rule turns it into a committed pair of fixtures run in the same job.",
+   "citation": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Prove an eval can fail, then grade it with the cheapest grader that can",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "claude plugin eval ablation baseline arm, repeated runs, and deterministic grader types",
+   "evidence": "The runner already adds a no-plugin baseline arm by default whenever a plugin resolves, repeats each case by default, and ships deterministic grader types alongside the model judge, so the arrangement is native and what the rule adds is the refusal to trust a flat delta and the obligation to grade the grader.",
+   "citation": "claude plugin eval --help",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The runner already stands up the with and without arms and repeats each case, so the rule is not to arrange the comparison but to read the delta as the measurement and refuse the number when the arms do not diverge. Climb the grader ladder from the runner's deterministic grader types and reach for a model judge only for what none of them can settle, because a judge is noisiest on exactly the long artifacts you most want graded."
+  },
+  {
+   "heading": "Read the snapshot diff before accepting it, because a snapshot is a drift gate",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "No fact in the harness set describes snapshot testing, re-render-and-diff gating, or accepting a regenerated artifact; the nearest native diff surfaces are code review and checkpoints, which restore or comment rather than gate drift.",
+   "citation": "https://code.claude.com/docs/en/code-review.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Quarantine a flaky test loudly, and never retry it into silence",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Nothing native addresses flaky tests, quarantine lists, retry wrappers, or pinning a live upstream to a recorded fixture; the eval runner's MCP mocking is the closest mechanism and it exists for server stand-ins, not for stabilizing a red that turns on someone else's uptime.",
+   "citation": "claude plugin eval --help",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Treat coverage as a search-light, never as a target",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Coverage appears nowhere in the harness facts, which report thresholds only for eval case scores, so there is no native counterpart to duplicate or contradict here.",
+   "citation": "claude plugin eval --help",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Mirror the module layout in the test tree, and keep each fixture beside its test",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The harness prescribes layout only for its own artifacts, such as a case folder holding a prompt beside its graders directory, and says nothing about how a repo names or arranges its test files or per-case workspaces.",
+   "citation": "claude plugin eval --help",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Explain a test-runner config quirk in the config, with the incident that produced it",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The nearest native behavior is the doctor checkup keeping pitfalls and rationale that differ from tool defaults when it trims CLAUDE.md, which concerns instruction files rather than comments living beside a test-runner setting.",
+   "citation": "https://code.claude.com/docs/en/memory",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Keep a demoted check running, reported, and counted",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "claude plugin validate warning tier versus its strict mode",
+   "evidence": "The harness's own validator already separates a warning tier that still passes from errors that fail, with a strict mode that promotes warnings to failures, which is the shape this rule asks a repo checker to keep, while the false-positive tally and the demoted check staying in the suite have no native counterpart.",
+   "citation": "claude plugin validate --help",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "Nothing in this file reads as DUPLICATE or CONFLICT against the harness facts. The file's subject, a repo testing its own checks, sits mostly outside what Claude Code enforces, so most rules land UNIQUE and the complements cluster around two native primitives: hooks (their input JSON, exit-code semantics, and the absence of any native way to test one) and the plugin eval runner (baseline arm, repeated runs, grader types, cost ceiling, threshold).\n\nRules I was unsure about:\n\n- \"Prove an eval can fail, then grade it with the cheapest grader that can\" was the closest call to DUPLICATE. Its ablation clause and its repeat-every-trial clause both describe runner defaults (a no-plugin baseline arm whenever a plugin resolves; runs defaulting to three). I kept it as COMPLEMENT because the surviving obligations, refusing a flat delta, writing cases from failures actually observed, grading the grader, and reading transcripts, are not native. The proposed reword exists specifically to stop the rule reading as instructions to set up something the runner already sets up. Also note the grader-ladder line quoted in the repo handbook (\"prefer deterministic graders for long artifacts\") was flagged by the research as an unverified secondary source, so I did not lean on it as a native fact.\n\n- \"Split deterministic tests from model-behavior evals\" overlaps the runner's cost ceiling and threshold flags heavily. I judged COMPLEMENT rather than DUPLICATE because the harness supplies the flags and takes no position on which tier may block a merge, which is the whole point of the rule.\n\n- \"Mirror the module layout in the test tree\" contains one clause (each case building its own throwaway workspace) that echoes Anthropic's general eval guidance about starting each trial from a clean isolated environment. That guidance is advisory blog material rather than harness behavior, and the rest of the rule has no native analogue, so I called the whole rule UNIQUE rather than splitting it.\n\n- \"Keep a demoted check running, reported, and counted\" maps onto the validator's warning-versus-error tiering only loosely, since that validator judges plugin manifests rather than a repo's own checks. I recorded it as COMPLEMENT with a keep, but a reword citing that tiering would also be defensible if the owner wants the native floor named.\n\n- \"Give the agent a check it can run before you walk away\" is the one rule whose surface the harness genuinely touches, since the memory docs already recommend putting a concrete test command in CLAUDE.md. The reword is meant to make the rule build on that floor (advisory, loaded every session) instead of quietly restating it.\n\nThe \"## Don't\" block was excluded as instructed; its Anchor line states each prohibition inherits the enforcement of the rule above it, so no separate disposition is needed."
+}

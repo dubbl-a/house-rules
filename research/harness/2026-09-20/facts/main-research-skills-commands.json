@@ -1,0 +1,356 @@
+{
+  "area": "Claude Code native support for: skills, slash commands, disable-model-invocation, skill frontmatter, skill-doctor, plugin init scaffolding (as of 2026-09-20)",
+  "facts": [
+    {
+      "feature": "SKILL.md as the extension mechanism",
+      "behavior": "\"Skills extend what Claude can do. Create a SKILL.md file with instructions, and Claude adds it to its toolkit. Claude uses skills when relevant, or you can invoke one directly with /skill-name.\" Skills follow the open Agent Skills standard plus Claude Code extensions (invocation control, dynamic context injection).",
+      "limits": "All frontmatter fields are optional; a SKILL.md with no frontmatter still loads as a skill using the directory name.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Custom commands merged into skills",
+      "behavior": "\"Custom commands have been merged into skills. A file at .claude/commands/deploy.md and a skill at .claude/skills/deploy/SKILL.md both create /deploy and work the same way.\"",
+      "limits": "Legacy .claude/commands/*.md files still work and are treated as skills, not a separate system; only the file-naming convention differs.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/slash-commands"
+    },
+    {
+      "feature": "Built-in commands vs. bundled skills",
+      "behavior": "Built-in commands (e.g. /help, /compact, /login) execute fixed logic directly. Bundled skills (e.g. /debug, /code-review, /batch, /doctor, /loop, /claude-api) are prompt-based: \"they give Claude detailed instructions and let it orchestrate the work using its tools.\"",
+      "limits": "Only bundled skills can be turned off via disableBundledSkills/skillOverrides; true built-in commands are not skills and aren't governed by skill frontmatter or skillOverrides.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/slash-commands"
+    },
+    {
+      "feature": "description frontmatter field",
+      "behavior": "What the skill does and when to use it; Claude uses this to decide automatic invocation. \"Put the key use case first: the combined description and when_to_use text is truncated at 1,536 characters in the skill listing to reduce context usage.\"",
+      "limits": "Only applies when the skill is not disable-model-invocation:true (otherwise the description is excluded from Claude's listing); truncation is a hard 1,536-character cap on description+when_to_use combined.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "when_to_use frontmatter field",
+      "behavior": "Additional context for invocation triggers and example requests; appended to description for Claude's auto-invocation decision.",
+      "limits": "Counts toward the same 1,536-character truncation budget as description.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "disable-model-invocation frontmatter field",
+      "behavior": "Boolean, default false. Setting true means \"Only you can invoke the skill. Use this for workflows with side effects or that you want to control timing, like /commit, /deploy, or /send-slack-message. You don't want Claude deciding to deploy because your code looks ready.\" Explicit /skill-name invocation by the user still runs.",
+      "limits": "Does not remove the skill or block it entirely: it only blocks Claude's own decision to auto-invoke. It also removes the skill's description from Claude's context, prevents preloading into subagents, and (v2.1.196+) blocks the skill from firing when a scheduled task uses it as the prompt.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "disable-model-invocation enforcement when Claude tries anyway",
+      "behavior": "\"Claude Code blocks the call and instructs it not to reproduce the deploy steps another way, so expect Claude to suggest running /deploy yourself.\"",
+      "limits": "This is a runtime block on the Skill tool call, not a lint/warning at edit time; there is no separate warning step before the block.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "user-invocable frontmatter field",
+      "behavior": "Boolean, default true. Setting false: \"Only Claude can invoke the skill. Use this for background knowledge that isn't actionable as a command.\" Effects: hidden from the / menu, user cannot type /skill-name, Claude can still invoke automatically, description stays in context.",
+      "limits": "This is the inverse of disable-model-invocation and only affects user-side invocability, not Claude's ability to auto-invoke or the skill's context cost.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "allowed-tools frontmatter field",
+      "behavior": "Space- or comma-separated string or YAML list of tools/tool-rules Claude can use without prompting during the turn the skill invokes, e.g. \"Read Grep\", \"Bash(git add *)\". \"The grant clears when you send your next message.\"",
+      "limits": "Grant is scoped to the single turn in which the skill is invoked; it does not persist across the conversation and does not override an explicit deny permission rule (deny rules outrank allowed-tools).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "disallowed-tools frontmatter field",
+      "behavior": "Removes named tools from Claude's available pool while the skill is active; clears on the next message.",
+      "limits": "Cannot remove EndConversation while other tools remain.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "model frontmatter field",
+      "behavior": "Overrides which model runs while the skill is active (default: inherit current session model). \"A value excluded by your organization's availableModels allowlist isn't used, and the session keeps its current model.\"",
+      "limits": "Silently falls back to the session's current model if the requested model is outside the org allowlist; no error is raised to the user in that case per the doc's wording.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "effort frontmatter field",
+      "behavior": "Overrides effort level for the skill's execution: low, medium, high, xhigh, max (default: inherit).",
+      "limits": "Scoped to the skill invocation; substitution variable ${CLAUDE_EFFORT} exposes the active value inside skill content.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "context: fork frontmatter field",
+      "behavior": "Runs the skill in an isolated subagent context: \"Skill runs in isolated subagent context. Subagent doesn't see conversation history.\" Default background:true runs it in the background while the user keeps working; result arrives when complete.",
+      "limits": "A forked subagent does not see prior conversation history (unlike a full conversation fork); backgrounded forks get a narrower tool set than the main session unless background:false is set.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "agent frontmatter field (with context: fork)",
+      "behavior": "Chooses which subagent type executes a forked skill: built-in Explore, Plan, general-purpose (default), or a custom agent name from .claude/agents/. \"Explore and Plan skip CLAUDE.md and git status to keep context small.\"",
+      "limits": "Only meaningful when context: fork is set; custom agent names must exist under .claude/agents/.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "background frontmatter field (with context: fork)",
+      "behavior": "Default true. Set to false to wait for the forked skill's result in the current turn instead of running it in the background (v2.1.218+ per fetched doc).",
+      "limits": "Certain conditions force blocking/foreground behavior regardless of this field: non-interactive mode (-p, Agent SDK), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1, re-invoking the same forked skill before the prior run completes, or a scheduled task firing the skill.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "argument-hint frontmatter field",
+      "behavior": "Hint text shown during autocomplete, e.g. [issue-number] or [filename] [format].",
+      "limits": "Display-only; does not validate or enforce that arguments match the hint shape.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "arguments frontmatter field",
+      "behavior": "Declares named positional arguments (space-separated string or YAML list) that become $name substitutions in skill content, e.g. arguments: [issue, branch] with usage /migrate-component SearchBar JavaScript TypeScript binding $component/$from/$to.",
+      "limits": "Positional only; naming is purely for substitution readability and doesn't type-check argument values.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "paths frontmatter field",
+      "behavior": "Comma-separated or YAML list of glob patterns limiting automatic skill activation. \"When set, Claude loads the skill automatically only when working with files matching the patterns.\"",
+      "limits": "Restricts only automatic (Claude-initiated) loading; explicit /skill-name invocation by the user is not restricted by paths.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "shell frontmatter field",
+      "behavior": "Chooses the shell used for injected dynamic-context commands in the skill: bash (default) or powershell.",
+      "limits": "Changes only the execution shell and its exit-code/carveout rules for dynamic context injection, not the skill's tool permissions.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "hooks frontmatter field",
+      "behavior": "YAML map registering hooks on skill invocation (documented as linking to the separate hooks docs).",
+      "limits": "Not detailed further in the fetched page beyond the field's existence and a pointer to /docs/en/hooks.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "license / compatibility / metadata frontmatter fields",
+      "behavior": "Part of the Agent Skills open spec. license names the license covering the skill; compatibility states environment requirements (max 500 chars); metadata holds custom key-value data for external tooling.",
+      "limits": "\"Claude Code accepts but doesn't enforce\" license and compatibility, and \"Claude Code ignores contents\" of metadata — these are spec-compliance fields only, with no runtime effect in Claude Code itself.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Frontmatter parsing requires --- as the literal first line",
+      "behavior": "Claude Code reads YAML frontmatter only when --- is the file's first line; otherwise the entire file, including the --- markers, is treated as plain skill content rather than parsed frontmatter.",
+      "limits": "A skill with leading blank lines or text before --- gets no frontmatter parsed at all (no name/description/disable-model-invocation take effect); there's no partial-parse fallback described.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Boolean frontmatter value parsing",
+      "behavior": "Boolean fields (e.g. disable-model-invocation, user-invocable) accept yes/no/on/off/1/0/true/false in any case.",
+      "limits": "Per the fetched doc, only true/false were recognized before v2.1.218; the broader boolean-truthy set is a version-gated behavior.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Skill discovery location hierarchy",
+      "behavior": "Skills load from, in precedence order: Enterprise (.claude/skills/ in managed settings), Personal (~/.claude/skills/), Project (.claude/skills/ in repo root), Nested (<subdir>/.claude/skills/), Additional dir (via --add-dir, session-only), Plugin (<plugin>/skills/, namespaced), and claude.ai-synced (~/.claude/skills/synced/, for Cowork/cloud/signed-in terminal).",
+      "limits": "Personal skills do NOT load in Cowork sessions, cloud sessions, or signed-in terminal sessions unless separately synced to a claude.ai account; enterprise/personal/project ordering places personal ahead of project for name conflicts per the fetched summary.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Monorepo / nested project-skill loading",
+      "behavior": "\"Claude Code loads project skills from .claude/skills/ in the directory where you start it and in every parent directory up to the repository root, so starting in packages/frontend/ still picks up skills defined at the root.\" Nested skills sharing a name with a root skill both remain available, qualified as /apps/web:deploy vs. plain /deploy; nested-subdirectory skills load lazily on first file access in that directory.",
+      "limits": "Lazy loading means a nested skill is not necessarily available/listed until Claude has touched a file in that subdirectory.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "How a skill gets its slash-command name",
+      "behavior": "Personal/project skills use the directory name; nested clashes get path-qualified as /apps/web:deploy; legacy .claude/commands/ files use the filename (subdirectories become namespace segments); plugin skills use the frontmatter name (falling back to directory name) with a /plugin-name: prefix, also reachable bare as /skill-name if no other command claims that name; skills synced from claude.ai use /anthropic-skills:<name> or bare /<name> if unclaimed.",
+      "limits": "In a plugin skill, frontmatter name only replaces the final command segment, not the plugin-name prefix.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Explicit user invocation of a skill",
+      "behavior": "Type /skill-name in the prompt to invoke directly; this works \"even if disable-model-invocation: true is set.\" Claude Code can expand up to 6 stacked skills at message start, e.g. \"/write-tests /fix-issue 123\", with both loading and receiving 123 as $ARGUMENTS.",
+      "limits": "Stacking stops at subagent-context skills (context: fork, e.g. /code-review) or skills taking complex/slash-prefixed arguments (e.g. /loop); the 6-skill figure is a hard cap on stacked expansion.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Claude's automatic (model-driven) invocation of skills",
+      "behavior": "By default Claude can invoke any skill except those with disable-model-invocation: true, deciding based on the skill's description/when_to_use text, conversation relevance, and any paths restriction. Invocation happens through the Skill tool.",
+      "limits": "Automatic invocation is purely a model decision guided by the description text — there's no described mechanism forcing Claude to invoke a matching skill; it is discretionary, not compulsory.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/slash-commands"
+    },
+    {
+      "feature": "Skill(name) permission rules",
+      "behavior": "Permission rules can allow or deny specific skills, e.g. \"Skill(commit)\" (exact match) or \"Skill(deploy *)\" (prefix match) to deny. \"In user, project, and local settings, Claude Code matches entries against skill names only. If you set an entry for review there, it applies to a skill named review, not to the bundled /code-review through its /review alias.\"",
+      "limits": "Name-matching is literal against the skill's own name, not its command aliases, so a rule targeting an alias won't match the underlying bundled skill.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Permission precedence for skills",
+      "behavior": "Deny rules outrank ask rules, which outrank allow rules, which outrank a skill's own allowed-tools field.",
+      "limits": "Documented only as an ordering; no mechanism is described for a skill to escalate past a deny rule.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "skillOverrides settings states",
+      "behavior": "Set per-skill in .claude/settings.json or .claude/settings.local.json: \"on\" (default, full visibility), \"name-only\" (Claude sees name only, hidden description, still in / menu), \"user-invocable-only\" (hidden from Claude, still typable), \"off\" (fully hidden from both Claude and the / menu). As of v2.1.199+ per the fetched doc, \"off\" also hides the skill from Remote Control/Agent SDK discovery.",
+      "limits": "This is a settings-file override that doesn't require editing the skill's own frontmatter; it operates purely by skill name.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "disableBundledSkills setting",
+      "behavior": "Set true in settings to turn off all bundled skills (e.g. /debug, /code-review, /batch, /loop, /claude-api) at once. /doctor \"stays typable\" / available even with disableBundledSkills: on (v2.1.205+ per fetched doc), unless separately disabled via DISABLE_DOCTOR_COMMAND env var or skillOverrides: {\"doctor\": \"off\"}.",
+      "limits": "Doesn't affect user-authored project/personal/plugin skills, only the bundled set; /doctor is a carve-out exception to the blanket disable.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "disableSkillShellExecution setting",
+      "behavior": "Set true in settings to disable dynamic context injection execution: all !`cmd` and ```! blocks are replaced with the literal text \"[shell command execution disabled by policy]\" instead of running.",
+      "limits": "\"Applies to: User, project, plugin, additional-directory skills (not bundled/managed).\" Bundled and enterprise-managed skills' injected commands are unaffected by this setting.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Dynamic context injection (!`command`)",
+      "behavior": "Shell commands embedded in a SKILL.md with backtick syntax run before the skill content reaches Claude; their output replaces the placeholder in place, so Claude receives the command's actual output rather than the command text itself. Inline form recognized only when ! starts a line or follows whitespace; multi-line form uses fenced ```! blocks. Substitution happens once and is not re-scanned for further placeholders.",
+      "limits": "Runs through the Bash (or PowerShell, per shell field) tool subject to the session's 2-minute default command timeout; stderr is merged into stdout.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Dynamic context injection failure behavior",
+      "behavior": "\"A failed command aborts the entire skill invocation, not just its own placeholder. Claude never sees the skill content for that invocation. The abort shows Shell command failed for pattern \"...\". The error message includes the command's output under [stderr].\" With the default bash shell, search/comparison commands (grep, find, diff, etc.) returning exit code 1 are treated as success; exit codes 2+ fail for all commands. The powershell carveout list differs (includes grep, git diff but not find or diff).",
+      "limits": "This is an all-or-nothing abort: there is no partial-render or warn-and-continue path when an injected command fails.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Permission checks on injected shell commands",
+      "behavior": "\"Injected commands never prompt for permission while the skill renders. Claude Code checks each one against your permission rules first. A command a deny rule matches aborts the invocation...\" In auto mode, a command that would otherwise need approval doesn't abort — the skill loads and Claude's subsequent call goes through normal auto-mode checks (except in forked skills with agent set). Outside auto mode, an unmatched (not pre-approved, not denied) command aborts unless pre-approved via allowed-tools.",
+      "limits": "Never produces an interactive approval prompt during rendering itself — the outcome is always either silent execution, silent abort, or deferral to the normal tool-call approval flow afterward.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Synced (claude.ai account) skills and shell execution",
+      "behavior": "Skills synced from a claude.ai account into ~/.claude/skills/synced/ never execute their embedded shell commands locally: \"Shell commands: Don't execute on local machine; replaced with [shell command execution disabled by policy] placeholder.\" \"Claude Code never runs these commands on your machine when they appear in skills synced from your claude.ai account, regardless of this setting.\"",
+      "limits": "This restriction is unconditional for synced skills — it is not controlled by disableSkillShellExecution and cannot be re-enabled via settings.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/slash-commands"
+    },
+    {
+      "feature": "Synced skills sync cadence and availability",
+      "behavior": "claude.ai-synced skills download to ~/.claude/skills/synced/ automatically, syncing roughly every ~10 minutes while a session runs (non-blocking), and are available in Cowork, cloud sessions, and terminal sessions signed in with a claude.ai account.",
+      "limits": "To make a personal (non-synced) skill available in Cowork/cloud sessions, it must separately be enabled for the claude.ai account — local personal skills don't automatically propagate there.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Skill content persistence in conversation",
+      "behavior": "\"When you or Claude invoke a skill, the rendered SKILL.md content enters the conversation as a single message and stays there across later turns. This persistence applies to the skill's instructions, not its permissions: an allowed-tools grant clears when you send your next message.\"",
+      "limits": "Only the allowed-tools/disallowed-tools grants are turn-scoped; the loaded instructional content itself is not automatically removed from context on the next turn.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Re-invocation deduplication",
+      "behavior": "If a skill is invoked again with content identical to what's already in context, \"Claude Code adds a short note that the skill is already loaded rather than a second copy of the content.\" If content differs (e.g. changed arguments or new dynamic-context output), \"Claude Code appends the full content again.\"",
+      "limits": "Dedup is exact-content based; any difference (including just different injected command output) triggers a full re-append rather than a diff or partial update.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Auto-compaction budget for skills",
+      "behavior": "During auto-compaction, \"Claude Code re-attaches the most recent invocation of each skill after the summary, keeping the first 5,000 tokens of each. Re-attached skills share a combined budget of 25,000 tokens. Claude Code fills this budget starting from the most recently invoked skill, so older skills can be dropped entirely after compaction if you have invoked many in one session.\"",
+      "limits": "Only the most recent invocation of each skill is eligible; only the first 5,000 tokens of that invocation are kept; total across all re-attached skills is capped at 25,000 tokens, with least-recent skills dropped entirely once the budget is exhausted.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Skill name-conflict resolution order",
+      "behavior": "When multiple skills share a name: Enterprise > Personal > Project; a local skill overrides a same-named bundled skill (bundled aliases still invoke the bundled one); a skill takes precedence over a same-named .claude/commands/ file; a project-root skill and a nested skill both load, disambiguated as /dir:name; a synced skill runs as /anthropic-skills:name when a local skill of the same bare name exists.",
+      "limits": "Both nested and plugin variants of a same-named skill remain simultaneously invocable via qualified names rather than one silently winning outright.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "String substitution placeholders in skill content",
+      "behavior": "Supports $ARGUMENTS (all args as typed), $0/$1/$ARGUMENTS[N] (indexed args), $name (named args from the arguments field), and environment-style placeholders ${CLAUDE_SESSION_ID}, ${CLAUDE_EFFORT}, ${CLAUDE_SKILL_DIR}, ${CLAUDE_PROJECT_DIR} (v2.1.196+ per fetched doc), ${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA} (plugin skills only).",
+      "limits": "${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA} only resolve inside plugin skills.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Escaping literal $ in skill content",
+      "behavior": "A backslash escapes a literal dollar sign, e.g. \\$1.00 renders as $1.00 to Claude, while \\\\$1 keeps both backslashes and still expands $1.",
+      "limits": "Only affects rendering of literal currency/variable-like text; doesn't disable substitution elsewhere in the file.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "/doctor bundled skill",
+      "behavior": "Bundled setup-checkup skill, available by default and auto-invocable; \"stays typable\" even with disableBundledSkills: on (as of v2.1.205+ per the fetched doc). Can itself be hidden via the DISABLE_DOCTOR_COMMAND env var or skillOverrides: {\"doctor\": \"off\"}.",
+      "limits": "Before v2.1.205 (per fetched doc) /doctor was a true built-in command rather than a bundled skill, meaning its exemption from disableBundledSkills is a newer behavior.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "/skill-doctor command",
+      "behavior": "\"Run /skill-doctor to see what each of your skills costs and how often it gets used, so you can decide which ones to turn off.\" Output covers each skill's context cost, invocation frequency, flags unused skills, points to where to disable them, and shows plugin usage stats. \"Of the skills it tells you where to turn off, start with the ones that have the highest context cost.\"",
+      "limits": "Requires Claude Code v2.1.252+ per the fetched doc; not available over Remote Control from phone/browser (interactive local session only); the session must be able to fetch feature flags. It reports and recommends — it does not itself disable any skill.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Plugin skill directory scaffolding (structure)",
+      "behavior": "A plugin's skills live under <plugin>/skills/<skill-name>/SKILL.md, each namespaced as /plugin-name:skill-name (also reachable as bare /skill-name if unclaimed). A plugin-root SKILL.md uses a required name frontmatter field to set its command segment. Skills can bundle supporting files (templates/, scripts/) referenced by relative path or via ${CLAUDE_SKILL_DIR}.",
+      "limits": "Live-reload applies to SKILL.md edits (v2.1.200+ per fetched doc); changes to a plugin's hooks/, .mcp.json, agents/, or output-styles/ require running /reload-plugins to take effect.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "Plugin skill marketplace-distribution field restrictions",
+      "behavior": "Skills published to a plugin marketplace must use only Agent Skills spec frontmatter fields (name, description, license, compatibility, metadata, allowed-tools).",
+      "limits": "Claude Code-only fields \"will cause packaging errors\" when included in a marketplace-published skill: disable-model-invocation, user-invocable, context, agent, paths, hooks, and similar fields are listed as unsupported for marketplace packaging.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "feature": "claude plugin init / claude plugin new CLI command",
+      "behavior": "CLI-verified usage: \"claude plugin init|new [options] <name> — Scaffold a new plugin at ~/.claude/skills/<name>/ (auto-loads next session as <name>@skills-dir)\". Options: --author <name> (default: git config user.name), --author-email <email> (default: git config user.email), --description <text> (manifest description), -f/--force (overwrite an existing .claude-plugin/ at the target), --with <components...> to also scaffold additional component types: skills, agents, hooks, mcp, lsp, output-style, channel.",
+      "limits": "Scaffolds into the user's personal ~/.claude/skills/<name>/ directory (a skills-dir-based plugin), not directly into a repo's .claude/ tree; the new plugin only auto-loads starting the next session, not the current one; --with must be one of the listed component kinds.",
+      "enforcement": "automatic",
+      "citation": "claude plugin init --help"
+    },
+    {
+      "feature": "Command name for legacy .claude/commands/ files",
+      "behavior": ".claude/commands/deploy.md becomes /deploy; a subdirectory becomes a namespace segment, e.g. .claude/commands/frontend/component.md becomes /frontend:component. These files are documented as functionally equivalent to an SKILL.md-based skill of the same derived name.",
+      "limits": "No frontmatter fields beyond what skills support are described for these legacy files; they are treated as skills under the hood.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/slash-commands"
+    }
+  ],
+  "unreachable": []
+}

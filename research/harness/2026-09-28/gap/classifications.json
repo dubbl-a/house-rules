@@ -1,0 +1,422 @@
+[
+ {
+  "item": "plugins/house/modules/docs/rules/docs.md, judged against output styles only",
+  "rules": [
+   {
+    "heading": "Anchor every claim to a grep-able token",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "Output styles tell Claude how to shape its conversational responses (role, tone, length, Insight blocks). No built-in style says anything about tying claims in a document to grep-able tokens, and the docs say Explanatory text 'isn't written into your files'. Nothing in a style checks what a document claims.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Run the docs gate before pushing and in the build",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "A style is advisory ('doesn't guarantee that something always happens') and has no lifecycle or CI hook. It cannot stand in for a gate that runs before push and in the build.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Give every rule file a paths list whose first segment resolves",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "Output-style files have their own load path (user, project, managed, and plugin output-styles directories, nearest one wins, read at startup). That is separate from rule-file paths: frontmatter, and the output-styles page does not document rule files at all.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Put a fact where its litmus test says it belongs",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Output-styles comparison table (output style vs CLAUDE.md, skill, hook, subagent, --append-system-prompt)",
+    "evidence": "The output-styles page has its own routing table. Project knowledge goes in CLAUDE.md, which 'stays loaded whichever style you pick'. Instructions for one kind of task go in a skill. Anything that must happen goes in a hook. Role, tone, and output format go in a style. The rule already cites the harness's version of this split and adds what the harness never covers: the README, the changelog, and the archive. The table backs the rule up and does not overlap it. The rule routes facts into repo documents, while a style shapes responses only, never reaches ordinary subagents, and in custom form drops the coding instructions unless keep-coding-instructions is true.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "State a rule as imperative, why, anchor, receipts",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas (checked: built-in and custom output styles)",
+    "evidence": "No built-in style sets rule shape (imperative heading, why, Anchor line, Receipts, a Don't section) or bans em dashes. Default adds no style instructions at all. Styles govern responses in the main conversation and in forks, not file contents or ordinary subagents. They are also advisory, while this rule's shape and em-dash checks are a blocking gate over files. Nothing native already governs this formatting, so there is nothing to duplicate or conflict with.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Move dates, names, and measured numbers out of rule prose",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas (checked: built-in and custom output styles)",
+    "evidence": "No style instruction covers volatile specifics in document prose. Concise and the other built-ins shape how long and how structured a response is, not what goes into a file. The shape check is a gate. A style could only ever advise.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Keep files under budget, and raise a ceiling only with a written reason",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The only size-related fact about output styles is that a style's instructions add input tokens, and prompt caching reduces that cost. That is about the style file itself, not about capping document length.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Cut, don't append, and trim on a fixed cadence",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas (checked: Concise style)",
+    "evidence": "Concise keeps responses short: it drops the lead-in, the step-by-step narration, and the closing recap. That applies to replies while Concise is active, not to repo documents, and it sets no trim cadence or ratchet. Keeping a reply short and keeping a file from growing are different jobs, and the style does not enforce either.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Split a file only when splitting narrows what loads",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The rule says only a path-scoped rule, a nested instruction file, or a skill defers loading. The output-style facts agree: an active style's instructions go into the system prompt on every turn, and a new style file is read only at startup. So a style is not a way to narrow what loads, and the rule does not need to mention it.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Opt a point-in-time doc out with a file-level reason",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "Output styles have nothing to do with scanning the archive tier, opt-out markers, or supersession banners.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Don't document a command that does not exist",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "No output-style fact covers checking documented commands. Commands also fall outside this survey's scope (output styles only).",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Ship the docs and changelog edit in the same PR as the change",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "Output styles have no counterpart for pairing a change with its docs edit or for changelog discipline. Concise still 'writes in full for anything explicitly asked for', so a requested changelog entry is not shortened.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Don't",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas (checked: built-in and custom output styles)",
+    "evidence": "The em-dash line bans em dashes on file surfaces set by modules.docs.config.emDash. No built-in style mentions em dashes. A custom style would only be advisory, would apply to responses rather than files, and would not reach ordinary subagents, which write many of this repo's documents. Nothing native to duplicate or conflict with. The other Don't lines follow from rules above that were also found UNIQUE.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "No output style duplicates or conflicts with any rule in plugins/house/modules/docs/rules/docs.md. Output styles shape Claude's replies in the main conversation and in forks. They do not govern file contents, do not reach ordinary subagents, and only advise. Every rule here governs repo documents and most are enforced by a blocking gate. Only one rule touches the area: 'Put a fact where its litmus test says it belongs' matches the routing table on the output-styles page, so I marked it COMPLEMENT but kept it unchanged. I considered adding 'response tone and format to an output style' to the rule's first sentence. I held back because a reader could then move a document-prose rule such as the em-dash ban into a style. A style would not apply that ban to files or to subagents, and a custom style drops the coding instructions unless keep-coding-instructions is true. The wording would also add length to a file under a ratchet. If the owner wants that citation anyway, it should carry the caveat that a style governs responses, not files. Uncertainties: (1) The facts cover only output-styles.md and settings.md. The full outputStyle settings key, sub-agents.md and memory.md were not fetched, so I cannot rule out an undocumented formatting instruction in the unpublished default system prompt. That prompt is not published, so I cannot confirm or deny whether it says anything about em dashes. (2) A possible idea outside this rule file: the house plugin could ship an output style with force-for-plugin and keep-coding-instructions true, to carry the no-em-dash preference into chat replies. It would override the user's own outputStyle setting and would not reach subagents, so it cuts against 'complement, never fight'. I am flagging it, not recommending it."
+ },
+ {
+  "item": "plugins/house/modules/llm-output/rules/llm-output.md",
+  "rules": [
+   {
+    "heading": "Quarantine model output until a human moves it",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The rule's floor is write approval and the permission modes, which are outside this scope. Output styles and SDK structured outputs or system prompts have no mechanism that holds generated files out of the tracked tree.",
+    "citation": "https://code.claude.com/docs/en/output-styles; https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Keep a deterministic backbone and let the model fill the slots",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent SDK structured outputs (outputFormat json_schema, structured_output result field, error_max_structured_output_retries subtype)",
+    "evidence": "The rule already cites the native schema floor correctly: the SDK validates against the schema, re-prompts on mismatch, fails with error_max_structured_output_retries, and fails at startup on an invalid schema. It misses two documented gaps in that floor. The `format` keyword is accepted as an annotation and is not enforced. A result can also end with subtype `success` and no `structured_output`, which the docs say to treat as a failure. So 'fails the call when the output cannot conform' overstates the SDK case slightly, and a string-format constraint gives a false sense of a checked shape.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor a printed run or a workflow agent on a supplied output schema where one applies, since the harness fails a printed run on an invalid schema and validates a workflow agent's output against its schema, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing, and not every keyword: a format annotation passes unenforced, and a run reported as a success with no structured result is a failure to handle, not an answer."
+   },
+   {
+    "heading": "Report no finding rather than manufacture one",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent SDK structured outputs (schema validation with re-prompting on mismatch)",
+    "evidence": "The anchor is a report schema. Native structured outputs validate against a schema and re-prompt until the output conforms or retries run out. The rule's schema posture (an empty findings list is valid, a missing limitations section is not) is the right fit for that validator. But the rule does not say why it matters: a schema that requires a non-empty findings list, run under a re-prompting validator, keeps pushing the model until it produces a finding. That is exactly the manufacture the rule forbids. Naming the mechanism turns the anchor from a preference into a stated guard against a native pressure.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Anchor: schema. The report schema accepts an empty findings list and rejects a missing limitations section: silence validates, a hollow finding does not; never require a non-empty findings list, since the harness re-prompts a schema-bound run until it conforms and would press a finding out of nothing."
+   },
+   {
+    "heading": "Refute with named lenses, drop by default, and log the drops",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The rule's native reference is the hosted reviewer, which is outside this scope. Output styles and SDK structured outputs or system prompt handling have no lens, refutation, or drop-logging counterpart.",
+    "citation": "https://code.claude.com/docs/en/output-styles; https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Cite or stay silent",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "No output style or SDK feature checks evidence, matches quotes, or verifies citations. The structured-output validator checks shape only and does not enforce `format`, so it cannot stand in for the evidence gate.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Gate output on status tags",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The native mechanisms this rule names (allow rules and the auto-mode classifier) are permissions features, outside this scope. Output styles and structured outputs carry no per-claim status or confidence band.",
+    "citation": "https://code.claude.com/docs/en/output-styles; https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Reword a locked claim, never strengthen it",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Concise built-in output style (and output-style scope limits)",
+    "evidence": "The rule calls the concise built-in style 'the floor'. Per the docs, Concise applies only when that style is selected; Default adds no style instructions, and the docs say Default carries no prose-length instruction. The docs also say a style 'doesn't guarantee that something always happens or never happens', which makes it advisory. It reaches the main conversation and forks only: 'Other subagents run their own system prompt, so styles don't change how they respond.' The value is case-sensitive, and a mismatched value falls back to Default silently. Concise also keeps failing test output and explicitly requested detail in full, which the rule's list leaves out. So the style is a real native counterpart, but not a floor in a default session or in a subagent. The rule adds that protection everywhere.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The concise built-in style is the nearest native counterpart where a session selects it: it compresses a response while keeping in full an error report, failing test output, a security warning, and a destructive-action confirmation, but it is advisory, absent from the default style, and never reaches a subagent that runs its own prompt; every locked claim carries that same protection in every style and every agent."
+   },
+   {
+    "heading": "Treat silence as not approval",
+    "disposition": "CONFLICT",
+    "nativeFeature": "Proactive built-in output style",
+    "evidence": "The Proactive style tells Claude to start implementing immediately and to make reasonable assumptions on routine decisions. It still checks in before destructive or production actions, and it does not change the permission mode. This rule says 'elsewhere, show the diff and wait for an explicit yes before generating a file.' When a person has selected Proactive, the two push opposite ways. House rules load as CLAUDE.md-style context, introduced as overriding default behavior, so the rule would silently override a style the person chose. That may be the right outcome, since a style choice is a pace preference and not a yes to a given file. But the rule never says so, so the override is not declared as intentional.",
+    "citation": "https://code.claude.com/docs/en/output-styles; https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts",
+    "action": "resolve-conflict",
+    "proposedWording": "A selected proactive style tells Claude to proceed on routine decisions without asking; that is the person's standing choice about pace, not a yes to a file this rule gates, so the wait holds under every style."
+   },
+   {
+    "heading": "Read agreement with a shown suggestion as anchored, not accurate",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The rule's native reference is the skill comparator, which is outside this scope. Output styles, including the Explanatory and Learning insight blocks, and SDK structured outputs have no review-blinding mechanism.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Don't",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "Each line restates a rule above. None of them rests on output styles or on SDK structured outputs or system prompts. The silence line stays consistent with the proposed resolution under 'Treat silence as not approval'.",
+    "citation": "https://code.claude.com/docs/en/output-styles",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "Things I was unsure about:\n(1) 'Treat silence as not approval' vs the Proactive style. I labelled it CONFLICT because the rule would silently override a style the person chose. A reviewer could reasonably call it COMPLEMENT instead, since Proactive still checks in before destructive actions and selecting a style is not per-file consent. The proposed sentence makes the precedence intentional either way.\n(2) The facts cover structured outputs only for the Agent SDK. I assumed the 'printed run' and 'workflow agent' schema behavior in the backbone rule shares the SDK validator's gaps (format not enforced, success with no structured_output). The facts do not confirm this for claude -p or the Workflow tool.\n(3) One finding cuts across every rule, so it is not attached to any single heading: in an SDK run, these rules load only when settingSources includes project or user. With the minimal default system prompt or a custom one, the built-in safety instructions are gone too. A custom output style with keep-coding-instructions left false drops the built-in 'verify work' instructions. All of this is documented native behavior, and no rule in this file conflicts with it. But the module assumes it is loaded, and a headless SDK consumer with explicit settingSources would get none of it. The module intro could state that assumption.\n(4) The Concise style needs a version gate that my proposed wording leaves out, following the no-numbers constraint."
+ },
+ {
+  "item": "plugins/house/orchestration/ORCHESTRATION.md sections plus plugins/house/agents/*.md, judged against Agent SDK subagent, permission, hook, and settings-source facts",
+  "rules": [
+   {
+    "heading": "Roles",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The split between what the session keeps and what it delegates is posture. No SDK fact covers when to delegate or what the orchestrating session should keep for itself.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Workspace",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The SDK hook table lists WorktreeCreate and WorktreeRemove as events but says nothing about worktree setup, base branches, or copying gitignored files. The worktree-first and no-checkout-in-main rules have no counterpart in these facts.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Roster",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "AgentDefinition / .claude/agents frontmatter fields `model`, `effort`, `tools` (tool allowlist removes unlisted tools from the session)",
+    "evidence": "The docs say: 'Omit tools: the subagent gets every tool available to subagents. List tools: the subagent gets only those... A tool you leave out isn't in the subagent's session at all.' None of the five agent files lists Agent in `tools`, so the harness enforces 'none can spawn an agent'. Without a tools list, the native default would allow nesting (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH defaults to three layers). The rule is correct and relies on this native primitive, but it states the result without naming the mechanism.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Pinned agents ship with the plugin as `house-rules:<name>`. Each pins its model, effort, and tools in frontmatter. A tool left off that list is absent from the agent's session, and none lists the Agent tool, so none can spawn an agent."
+   },
+   {
+    "heading": "Model tier",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Subagent `model` and `effort` fields; subagent model order; CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH",
+    "evidence": "The docs say `model` 'Accepts an alias such as fable, opus, sonnet, haiku, inherit... When you omit it, Claude Code picks the model in the subagent model order'. `effort` takes low through max. The rule's instruction to name a model and effort on every off-roster call builds directly on these fields. The last bullet, 'Subagents do not spawn subagents', holds for roster agents because their tool allowlists omit Agent. Off-roster agents such as general-purpose have the native default spawn depth of three layers, so for them the rule is advisory only and the rule does not say so.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "- Subagents do not spawn subagents. They report back. Roster agents cannot, since none lists the Agent tool. An off-roster agent can, because the harness's spawn-depth cap allows nesting by default, so its brief forbids it under DO NOT."
+   },
+   {
+    "heading": "Delegation",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS, maxBudgetUsd, maxTurns",
+    "evidence": "The harness caps concurrency ('refuses to spawn another subagent, returning Concurrent subagent limit reached') and spend (maxBudgetUsd, no limit by default). These are ceilings. The rule adds posture the harness lacks: when to spawn, batching fixes into one brief, running workflows only on the user's request, and treating size guidance as a limit to stay under. Nothing here conflicts.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Briefs",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Subagent context inheritance (non-fork subagents get their own prompt plus project CLAUDE.md, not the parent conversation; forks inherit it)",
+    "evidence": "The docs say a non-fork subagent receives its own system prompt, the Agent tool's prompt string, and project CLAUDE.md unless omitClaudeMd is set. It does not receive 'the parent's conversation history or tool results'. They also say 'A fork subagent instead inherits the parent conversation.' 'The agent inherits no conversation' is right for ordinary subagents but not for a fork, and the rule does not say that CLAUDE.md already arrives natively, so a brief need not repeat it.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "- A brief stands alone. A subagent gets its own prompt and the repo's CLAUDE.md, never the conversation; only a fork inherits that. \"As we discussed\" is a bug."
+   },
+   {
+    "heading": "Parallelism",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Subagent `tools` allowlist (refuter lacks Edit/Write); CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS",
+    "evidence": "The refuter's tools (Read, Grep, Glob, Bash) remove Edit and Write from its session, which partly enforces 'Builders build, refuters verify' at the tool level. The docs say restriction is 'at the whole-tool level, not argument-level', so Bash can still write. The rules against two writers on the same files and against one agent both building and verifying are posture with no native counterpart in these facts.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Verification",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Tool allowlist (whole-tool granularity), subagent permission-mode inheritance, maxTurns partial output, subagent output scanning",
+    "evidence": "Refuter and debugger lack Edit, Write, and NotebookEdit, but the allowlist works per tool, so Bash can still change files. Subagents also run in the parent's permission mode, so an acceptEdits or bypass parent auto-approves those writes. The git-status-before-and-after check covers exactly this gap. Native maxTurns returns output 'marked as partial', and maxBudgetUsd 'stops background subagents', which fits 'an absent result is UNKNOWN'. The harness's output scan only neutralizes instruction-shaped text. It does not judge whether a claim is true, so provenance labeling and refute-not-confirm add posture the harness lacks.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents; https://code.claude.com/docs/en/agent-sdk/permissions",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "builder.md",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent file frontmatter `model: sonnet`, `effort: medium`, `tools` allowlist; subagent CLAUDE.md loading via settingSources",
+    "evidence": "The frontmatter uses native fields with valid values. 'The harness loads the repo's CLAUDE.md for you' matches the docs, which say a subagent receives project CLAUDE.md via settingSources unless omitClaudeMd is set. Agent is absent from `tools`, so the builder cannot spawn agents. The body's scope, test-first, and full-command rules are posture layered on top. Path-scoped rules loading on read is outside these facts. The InstructionsLoaded hook exists but only for auditing.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents; https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "debugger.md",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent file frontmatter `model: opus`, `effort: high`, `tools: Read, Grep, Glob, Bash`",
+    "evidence": "Leaving Edit and Write out of the allowlist makes 'does not implement the fix' mostly enforced, but Bash remains and restriction is whole-tool only. The ORCHESTRATION git-status check covers that gap. The method steps are posture with no native counterpart.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "refuter.md",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent file frontmatter `tools` allowlist; non-fork subagents do not receive parent conversation",
+    "evidence": "'You have no Edit or Write tools' is accurate: 'A tool you leave out isn't in the subagent's session at all.' 'You do not read the builder's report' matches native isolation, since a non-fork subagent gets no parent history or tool results. The instruction still matters because an orchestrator could paste the report into the brief. The adversarial checks are posture.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "researcher.md",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent file frontmatter `model: sonnet`, `effort: medium`, `tools: Read, Grep, Glob, WebFetch, WebSearch`",
+    "evidence": "The tool allowlist enforces 'you do not edit code' with no Bash, Edit, or Write. The output contract (ANSWER, EVIDENCE, UNVERIFIED, NOT ASKED, a token budget) is advisory. Native structured outputs (outputFormat) are a query-level SDK option, not an AgentDefinition field, so nothing native can enforce this contract for a subagent.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents; https://code.claude.com/docs/en/agent-sdk/structured-outputs",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "scout.md",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent file frontmatter `model: haiku`, `effort: low`, `tools: Read, Grep, Glob`",
+    "evidence": "The model, effort, and read-only allowlist are native primitives, used correctly. The locations-only output contract and the forty-line cap are advisory posture with no native counterpart.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   }
+  ],
+  "notes": "What I was unsure about:\n1. Model tier's claim that a subagent with no assigned model runs on the session's model unless CLAUDE_CODE_SUBAGENT_MODEL is set. The SDK facts only say omission uses 'the subagent model order', which is on a page nobody fetched (sub-agents#choose-a-model). I cannot confirm or contradict it from these facts, so I left that sentence alone. Someone should check it against the model-order page before the next audit.\n2. A stronger native floor exists for 'Fable never runs on a subagent unless the user asks'. The permissions doc (quoted in the MCP-area facts, not the SDK docs) says built-in tools support parameter matching like `Agent(model:opus)`, so a deny rule `Agent(model:fable)` could enforce it. It would also block the user-requested exception, and it sits outside this task's SDK-only scope, so I did not propose it as wording.\n3. Whether the spawn-depth cap counts the main session as a layer, and so whether setting it low would enforce 'Subagents do not spawn subagents' for off-roster agents. The facts do not say. My Model tier rewording therefore leans on the brief rather than recommending an env value.\n4. Plugin-shipped agents may not honor `permissionMode` in frontmatter. That is not in these facts, so I did not suggest a plan-mode pin for refuter or debugger as a native alternative to the git-status check.\n5. For agent-file headings I used the bare file name (builder.md and so on), since the section headings are verbatim and the agent files have no ## heading of their own.\n6. None of the MCP CLI or output-style facts touch these sections. The one relevant output-style fact is that styles do not reach non-fork subagents, which is consistent with the Briefs rewording and changes nothing.\n\nFiles read: .claude/worktrees/gap-clean/plugins/house/orchestration/ORCHESTRATION.md and .claude/worktrees/gap-clean/plugins/house/agents/{builder,debugger,refuter,researcher,scout}.md"
+ },
+ {
+  "item": "plugins/house/modules/claude-code/rules/claude-code.md (settings, hook, model, subagent, skill, procedure headings) vs MCP/config CLI surface and Agent SDK",
+  "rules": [
+   {
+    "heading": "Keep the auto-memory index to hooks, and hold it under its cap",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The heading matches only on the word 'hooks', used in the sense of a cue line. None of the MCP, config CLI or Agent SDK facts cover auto-memory, its index or its load ceiling. The SDK's settingSources facts cover CLAUDE.md loading only.",
+    "citation": "n/a",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Make a procedure a skill, not a rule",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent SDK AgentDefinition.skills (a subagent receives skill content only when the skill is listed there)",
+    "evidence": "The SDK says a non-fork subagent gets project CLAUDE.md through settingSources but does not get preloaded skill content unless the skill is listed in AgentDefinition.skills. This fits the rule's cost model: rule-file instructions ride into every context, while a skill body loads only on demand. The rule adds authoring posture the harness does not have: a one-sentence description, a hazards section, evals first. Nothing in the new areas contradicts it.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Keep a skill body short, its references one level deep, and its name equal to its directory",
+    "disposition": "UNIQUE",
+    "nativeFeature": "none in the new areas",
+    "evidence": "The MCP/config CLI and SDK facts say nothing about skill body length, reference depth, skill naming or directory resolution.",
+    "citation": "n/a",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Disable model invocation on a skill with side effects",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent SDK permission mode `auto` (a model classifier approves or denies permission prompts)",
+    "evidence": "The SDK permissions doc lists `auto` as the mode where 'A model classifier approves or denies permission prompts'. That matches the rule's line that an automatic mode sends a production deploy through a classifier. The SDK facts do not mention disable-model-invocation, so the rule's posture (effects-based judgment, opt-in gates for later phases) is added on top of the native floor and conflicts with nothing.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/permissions",
+    "action": "keep",
+    "proposedWording": ""
+   },
+   {
+    "heading": "Set the model explicitly on every subagent and workflow agent",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent SDK AgentDefinition `model` and `effort` fields; `maxBudgetUsd`/`max_budget_usd` spend cap that counts subagent spend",
+    "evidence": "The SDK says: 'When you omit it, Claude Code picks the model in the subagent model order', which is consistent with the rule's resolution chain. AgentDefinition takes both model and effort, so the rule's per-call model and effort posture carries over to SDK agents. The rule tells a scripted run to use 'the print-mode budget ceiling flag'. In the SDK the equivalent is the maxBudgetUsd option. That option also counts subagent spend, refuses new spawns and stops background subagents at the cap, and the docs call its figure 'the estimated cost', which matches the rule's 'spend estimate, not the bill'. As written, the rule names only the CLI flag and skips the SDK route.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "State the tier a procedure requires and stop when the session is below it, and give a scripted run its budget ceiling, the print-mode flag or the SDK budget option, which counts subagent spend and refuses further spawns at the cap, so a cost constraint is enforced, not just stated; that figure is a spend estimate, not the bill."
+   },
+   {
+    "heading": "Make a must-hold rule a hook, fail it closed, and test it with real payloads",
+    "disposition": "CONFLICT",
+    "nativeFeature": "Agent SDK hook timeouts (a PreToolUse timeout withholds the tool call); settingSources gating of settings-file hooks and permission rules; deny > defer > ask > allow across parallel hooks",
+    "evidence": "The rule says the harness 'lets a stalled pre-tool hook through on timeout'. The SDK hooks doc says the opposite: 'On PreToolUse timeout: Claude Code doesn't run the tool call, Claude receives a tool result stating the hook didn't respond before its timeout, and the turn continues.' It adds that before v2.1.210 a timeout was reported as a user rejection, which is also not a pass-through. The floor sentence is also missing a case: shell-command hooks and settings.json permission rules load only when settingSources includes project or user, so an SDK run with explicit sources that leave out project never loads project hooks or project deny rules. That supports the rule's prescription of a managed-settings deny rule. Consistent: deny rules are evaluated whatever a hook returns (SDK step order puts hooks first, and the hook 'does not skip the deny and ask rules below'). Also consistent: matching hooks run in parallel and any deny wins.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/hooks; https://code.claude.com/docs/en/agent-sdk/permissions",
+    "action": "resolve-conflict",
+    "proposedWording": "Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a bare, safe-mode, or restricted session, or an SDK run whose setting sources leave out the project, never loads project hooks, so anything that must survive needs a deny rule in managed settings too.\nFail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since the harness reads any exit but the blocking one as no objection; a stalled pre-tool hook is the one failure the harness already holds, withholding the call on timeout, so treat that as the floor and close the rest yourself."
+   },
+   {
+    "heading": "Run adversarial review in a fresh subagent with a named lens",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "Agent SDK non-fork subagent context isolation (no parent history) vs fork subagents (inherit the full conversation); subagent output scanning; maxTurns partial output",
+    "evidence": "The SDK says a non-fork subagent 'Does not receive: the parent's conversation history or tool results ... the parent's system prompt', while 'A fork subagent instead inherits the parent conversation and does not get this fresh-context treatment.' The rule's 'fresh' holds only for an ordinary subagent, and the rule never says to avoid a fork. The SDK also scans a subagent's final message for instruction-shaped patterns before the parent reads it, and a subagent that hits maxTurns returns output marked partial that can be resumed. Both support the rule's advice to recover from transcripts instead of re-running.",
+    "citation": "https://code.claude.com/docs/en/agent-sdk/subagents",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see."
+   },
+   {
+    "heading": "Keep the committed settings narrow and the local settings local",
+    "disposition": "COMPLEMENT",
+    "nativeFeature": "disabledMcpjsonServers; --strict-mcp-config; mcp__ permission-rule syntax (unanchored deny glob allowed, allow glob must follow a literal server prefix); loader skip of parenthesized mcp__ rules; workspace-trust gate on committed allow rules and .mcp.json approvals; list-key merge across settings scopes",
+    "evidence": "Most of the rule already matches these facts. The docs confirm each of the following. Print-mode and SDK runs connect .mcp.json servers 'without asking, approved or not'. disabledMcpjsonServers 'reject[s] a .mcp.json server by name in every session type'. --strict-mcp-config loads only the servers passed with --mcp-config. Deny can use the glob \"mcp__*\" while an 'unanchored allow glob ... is skipped with a warning'. List keys 'combine' across scopes. One claim is inaccurate: the rule says the loader 'silently skips' a parameter-scoped mcp__ rule. The docs say the skipped rule is listed 'in the invalid-settings dialog when an interactive session starts, and in claude doctor output', and they give --disallowedTools as the supported route for matching an MCP parameter. Consistent with the rule: committed permissions.allow and enabledMcpjsonServers/enableAllProjectMcpServers take effect only after workspace trust, while deny rules and disabledMcpjsonServers bind regardless.",
+    "citation": "https://code.claude.com/docs/en/permissions#match-by-input-parameter; https://code.claude.com/docs/en/mcp#project-server-approvals-and-workspace-trust; https://code.claude.com/docs/en/permissions#mcp",
+    "action": "reword-to-cite-native-floor",
+    "proposedWording": "Reach for a deny rule when you want the blanket, since a deny can wildcard every tool of every server while an allow must name its server; keep a parameter-scoped rule on a server tool out of settings, since the loader drops it with only a startup notice and a doctor line, and pass it as the one-session disallowed-tools flag when a scripted run needs it."
+   }
+  ],
+  "notes": "Scope: I judged the eight headings whose text contains settings, hook, model, subagent, skill or procedure. The auto-memory heading qualifies only because its heading says 'hooks' in the sense of a cue line. The Don't section mentions hooks in its body but not in its heading, so I left it out.\n\nMain uncertainty is the hook-timeout CONFLICT. My evidence comes from the Agent SDK hooks page ('On PreToolUse timeout: Claude Code doesn't run the tool call'). Earlier audits against the interactive CLI hooks reference evidently accepted 'lets a stalled pre-tool hook through on timeout'. That page may say something different for command hooks than for SDK callback hooks, or the behavior may have changed at the v2.1.210 boundary the SDK page names. Before rewording, the owner should check this against the CLI hooks reference and ideally against a real stalled-hook payload in tests/hooks/run.sh. If the CLI page still says the call proceeds, the two docs disagree and the rule should name which session type each covers.\n\nThe 'Keep the committed settings narrow...' fix is small: 'silently' overstates how quiet the skip is.\n\n`claude config` does not exist in this build, and none of these rules refer to it, so I found nothing to fix there.\n\nThe output-styles facts were supplied, but they fall outside the named scope (MCP/config CLI and Agent SDK only), so I did not use them. Their comparison table ('Hook ... doesn't depend on Claude following an instruction'; 'Skill ... loads only when you invoke it') supports the hook and skill rules and contradicts neither.\n\nI could not determine from the facts whether a skill with disable-model-invocation can still be preloaded into a subagent through AgentDefinition.skills. That could matter for the side-effects rule and is worth a targeted check.\n\nThe SDK's rule that 'programmatically defined agents take precedence over filesystem-based agents with the same name' could in principle shadow the plugin's pinned roster. I assumed plugin agents are namespaced and so did not flag it."
+ }
+]

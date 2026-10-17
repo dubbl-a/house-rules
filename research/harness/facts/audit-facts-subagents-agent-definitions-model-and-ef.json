@@ -1,0 +1,587 @@
+{
+ "area": "Subagents, agent definitions, model and effort selection, agent teams, and dynamic workflows",
+ "unreachable": [],
+ "facts": [
+  {
+   "feature": "Subagent definition format",
+   "behavior": "Subagents are Markdown files with YAML frontmatter; the body is the subagent's system prompt. Supported frontmatter fields: name and description (required); tools, disallowedTools, model, permissionMode, maxTurns, skills, mcpServers, hooks, memory, background, effort, isolation, color, initialPrompt, experimental (all optional).",
+   "limits": "name must use lowercase letters and hyphens.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Automatic delegation to subagents",
+   "behavior": "Claude automatically delegates tasks based on the task description in your request, the description field in subagent configurations, and current context.",
+   "limits": "description should be brief; combined subagent descriptions are subject to a 15,000-token limit.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent description token budget",
+   "behavior": "Claude Code shows a startup warning when your subagents' combined descriptions pass the 15,000-token limit.",
+   "limits": "15,000 tokens, summed across all loaded subagent descriptions.",
+   "enforcement": "warns",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent tool restriction (tools/disallowedTools)",
+   "behavior": "tools is an allowlist; disallowedTools is a denylist removed from the inherited or specified list. Inherits every tool available to subagents if tools is omitted. Supports MCP patterns like mcp__github (remove all tools from that server) or mcp__* (remove all MCP tools).",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Restrict which subagent types a --agent main thread can spawn",
+   "behavior": "When an agent runs as the main thread with claude --agent, it can spawn subagents using the Agent tool. To restrict which subagent types it can spawn, use Agent(agent_type) syntax, e.g. tools: Agent(worker, researcher), Read, Bash \u2014 'This is an allowlist: only the worker and researcher subagents can be spawned.'",
+   "limits": "applies only when the agent runs as the main thread via claude --agent.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent model resolution order",
+   "behavior": "When the model field is omitted, resolution order is: 1) per-invocation model parameter, 2) subagent definition's model frontmatter (inherit selects the main conversation's model), 3) CLAUDE_CODE_SUBAGENT_MODEL environment variable, 4) main conversation's model. Setting the variable to inherit is the same as leaving it unset. CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 forces all subagents to use that variable regardless of the subagent's own definition.",
+   "limits": "Before v2.1.251, CLAUDE_CODE_SUBAGENT_MODEL came first in this order.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Main-session omitted-model resolution",
+   "behavior": "Selection priority: /model during session > --model at startup > ANTHROPIC_MODEL env var > model field in settings.json > ANTHROPIC_DEFAULT_MODEL for new sessions. When nothing is set, default model behavior by plan: Max, Team Premium, Enterprise, Anthropic API, Claude Platform on AWS, Amazon Bedrock, Google Cloud's Agent Platform default to Opus 5; Pro and Team Standard default to Sonnet 5; Microsoft Foundry defaults to Sonnet 4.5. 'When an organization default model is set, default resolves to that instead.'",
+   "limits": "plan/provider-dependent.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Model aliases",
+   "behavior": "Aliases: default (clears override, reverts to runtime default), best (latest Fable where available, otherwise opus), fable, sonnet, opus, haiku, sonnet[1m], opus[1m], opusplan (Opus for planning, auto-switches to Sonnet for execution). Provider-specific resolution differs: e.g. opus resolves to Opus 5 on Anthropic API/Claude Platform on AWS/Bedrock/GCP but Opus 4.6 on Microsoft Foundry; sonnet resolves to Sonnet 5 on Anthropic API but Sonnet 4.6 or 4.5 elsewhere.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Effort levels",
+   "behavior": "Levels: low (short, latency-sensitive tasks), medium (cost-sensitive work trading some intelligence), high (default on most models), xhigh (deeper reasoning, default on Opus 4.7), max (deepest reasoning, session-only), ultracode (plans dynamic workflows at xhigh reasoning per message).",
+   "limits": "Supported only by Fable 5.1, Fable 5, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Setting effort level",
+   "behavior": "/effort or /effort <level> during a session; --effort at startup; CLAUDE_CODE_EFFORT_LEVEL env var; effortLevel or per-model modelSettings in settings.json; Remote Control effort control (session-only).",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Per-agent model/effort override in frontmatter",
+   "behavior": "Subagent frontmatter accepts model: sonnet, opus, haiku, fable, a full model ID, or inherit, plus effort: low|medium|high|xhigh|max. Skill frontmatter accepts effort: xhigh similarly.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Fallback model chains",
+   "behavior": "claude --fallback-model sonnet,haiku or settings.json fallbackModel array. 'Tries each model in order on server errors; switches only for current turn.'",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Model restriction / allowlist (availableModels)",
+   "behavior": "Managed setting availableModels plus enforceAvailableModels restricts selectable models; matching is by family alias (sonnet), version prefix (claude-sonnet-4-5), or full ID. When blocked: /model is rejected with an error; --model flag, ANTHROPIC_MODEL, or the model setting is substituted with a warning; ANTHROPIC_DEFAULT_MODEL is ignored; a subagent/teammate override falls back to a fallback model.",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Organization-level model configuration",
+   "behavior": "Organization default model (set by admin, resolves the default alias), organization model restrictions (disable models per role), and organization effort limits (cap max effort level per model per role). 'These apply only to Claude Enterprise with organization billing and Anthropic API authentication.'",
+   "limits": "Enterprise + org billing + Anthropic API auth only.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "1M token context window",
+   "behavior": "Available per plan: Max/Team/Enterprise get Opus 1M included; Pro/API/pay-as-you-go get Opus and Sonnet 4.6 1M available; 'Sonnet 5: Always 1M on Anthropic API (no [1m] suffix needed).' Enabled via /model opus[1m] / sonnet[1m].",
+   "limits": "CLAUDE_CODE_DISABLE_1M_CONTEXT=1 disables it, capping at 200K.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Extended thinking / adaptive reasoning",
+   "behavior": "Enabled by default; toggled with Option+T (macOS) / Alt+T; alwaysThinkingEnabled setting; MAX_THINKING_TOKENS sets a fixed thinking budget (0 disables, ignored on Fable 5.1/5); CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1 reverts to a fixed budget on Opus 4.6/Sonnet 4.6 only. 'Disabling thinking is not available on Fable models, which always use extended thinking.'",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "ultrathink keyword",
+   "behavior": "Include 'ultrathink' anywhere in a prompt to request deeper reasoning on that turn only, without changing the session effort setting.",
+   "limits": "per-turn only.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Model string validation on Anthropic API",
+   "behavior": "Claude Code validates model strings on the Anthropic API (v2.1.200+): recognizes model aliases, /model picker entries, names starting with claude-, and custom options from modelOverrides and ANTHROPIC_CUSTOM_MODEL_OPTION. Rejects unrecognized strings with 'Model \"<name>\" is not a recognized model id.' 'No validation on third-party providers (Bedrock, Agent Platform, Foundry).'",
+   "limits": "Anthropic API only.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/model-config"
+  },
+  {
+   "feature": "Subagent scope priority",
+   "behavior": "Subagent files load, in priority order: 1) managed settings (organization-wide), 2) --agents CLI flag (current session), 3) .claude/agents/ (current project), 4) ~/.claude/agents/ (all projects), 5) plugin's agents/ directory (lowest priority). 'When multiple subagents share the same name, Claude Code uses the one from the higher-priority location.'",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Nested project .claude/agents/ directories",
+   "behavior": "Project subagents are discovered by walking up from the current working directory, so every .claude/agents/ between there and the repository root is scanned. As of v2.1.178, when more than one nested directory defines the same name, Claude Code uses the definition closest to the working directory.",
+   "limits": "v2.1.178+ for closest-wins behavior.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Default subagent tool filter",
+   "behavior": "A filter always applied removes Agent (at depth limit), AskUserQuestion, EndConversation, EnterPlanMode, ExitPlanMode (unless permissionMode: plan), ScheduleWakeup, TaskOutput, WaitForMcpServers, and Workflow from a subagent's inherited tool pool.",
+   "limits": "applies to non-fork subagents.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Background-subagent tool filter",
+   "behavior": "A second filter, applied only to background subagents, keeps only Read, Grep, Glob, Bash, PowerShell, Edit, Write, NotebookEdit, WebFetch, WebSearch, TodoWrite, Skill, ToolSearch, EnterWorktree, ExitWorktree, Monitor, TaskStop, SendMessage, Artifact. 'Forks skip both filters and receive main conversation's exact tool pool.'",
+   "limits": "background subagents only.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "CLI-defined subagents (--agents flag)",
+   "behavior": "Pass JSON with --agents defining inline subagents. Accepted fields: prompt, description, tools, disallowedTools, model, permissionMode, mcpServers, hooks, maxTurns, skills, initialPrompt, memory, effort, background, isolation.",
+   "limits": "session-scoped.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Explicit subagent invocation",
+   "behavior": "Three patterns: natural-language mention (Claude decides whether to delegate), @-mention (guarantees the named subagent runs, e.g. @\"code-reviewer (agent)\" or @agent-<name>), and session-wide use via claude --agent <name> or the agent field in .claude/settings.json.",
+   "limits": "n/a",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent context isolation at startup",
+   "behavior": "'Each subagent starts with a fresh, isolated context window. It doesn't see your conversation history, the skills you've already invoked, or the files Claude has already read.' A non-fork subagent receives its own system prompt, environment details, the task message, CLAUDE.md (all levels; skipped by Explore/Plan), a git status snapshot (skipped by Explore/Plan), preloaded skills, and (v2.1.206+) a sibling roster addressable via SendMessage.",
+   "limits": "Never reaches a non-fork subagent: output style, auto memory (unless enabled via the memory field), and the main session's context window size.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Fork subagents (/subtask)",
+   "behavior": "'A fork is a subagent that inherits the entire conversation so far instead of starting fresh.' Started with /subtask (v2.1.212+); forks inherit full conversation history, system prompt, tools, and model; run in background while the main session continues; return only the final result; skip both tool-access filters.",
+   "limits": "requires v2.1.212+.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent nesting depth limit",
+   "behavior": "'By default, a subagent can spawn subagents of its own, up to three layers below the main conversation.' 'At the depth limit, Claude Code withholds the Agent tool from every subagent except a fork.'",
+   "limits": "Default 3; configurable via CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH; set to 1 to disable nesting.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Concurrent subagent limit",
+   "behavior": "'By default, when 20 subagents are running in a session, spawning another with the Agent tool fails with Concurrent subagent limit reached.'",
+   "limits": "Default 20, configurable via CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS; sessions with ultracode active are exempt; resuming bypasses the check by taking a fresh slot.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent turn limit (maxTurns)",
+   "behavior": "'When the subagent reaches the limit, Claude Code returns its output marked as partial, and Claude can resume it to continue.'",
+   "limits": "partial marking requires v2.1.246+.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Built-in Explore subagent",
+   "behavior": "Read-only research subagent; model inherits from the main conversation, capped at Opus on the Claude API; read-only tools only; skips CLAUDE.md and git status.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Built-in Plan subagent",
+   "behavior": "Research-for-planning subagent; model inherits from the main conversation; read-only tools; skips CLAUDE.md and git status.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Built-in general-purpose subagent",
+   "behavior": "Model is CLAUDE_CODE_SUBAGENT_MODEL or the main conversation's model; has every subagent tool; used for complex research and multi-step operations including code modifications.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Disabling built-in Explore/Plan agents",
+   "behavior": "Disable via permissions.deny: [\"Agent(Explore)\", \"Agent(Plan)\"] in settings, or CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS=1 (requires v2.1.198+).",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent permission modes",
+   "behavior": "permissionMode values: default (prompts), acceptEdits (auto-accept edits/filesystem commands), auto (background classifier reviews commands), dontAsk (auto-deny prompts; explicitly allowed tools still work), bypassPermissions (skip prompts), plan (read-only). 'If the parent uses bypassPermissions or acceptEdits, this takes precedence and can't be overridden. If the parent uses auto mode, the subagent inherits auto mode and any permissionMode in its frontmatter is ignored.'",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Foreground vs. background subagent execution",
+   "behavior": "Subagents run in the foreground by default unless: spawned by an in-process agent-team teammate; CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 is set; fork mode is on (default interactive), which runs both forks and non-forks in the background; fork mode is off and Claude needs the result but background: true is set; or a skill sets context: fork. Background subagents use the reduced tool set, surface permission prompts in the main session, can leave commands running past turn end, and return results as a later completion notification.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Resuming/messaging subagents",
+   "behavior": "'Each subagent invocation creates a new instance rather than continuing an earlier one. To continue an existing subagent's work instead of starting over, ask Claude to resume it' via SendMessage(to: agent_id_or_name, message: ...). 'As of v2.1.199, SendMessage checks that a name still refers to the same agent it reached earlier in the conversation.' Built-in Explore/Plan are one-shot and don't return agent IDs.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Messages between agents cannot grant permission approval",
+   "behavior": "Constraints on messages to a subagent: they can't approve permission prompts and can't change permission settings, CLAUDE.md, or configuration. 'Only permission system or user messages grant approval.'",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Persistent subagent memory",
+   "behavior": "Enabled via memory: user|project|local frontmatter. Scopes: user (~/.claude/agent-memory/<name>/, across projects), project (.claude/agent-memory/<name>/, version-controlled), local (.claude/agent-memory-local/<name>/, local only). When enabled: system prompt includes memory instructions, the first 200 lines / 25KB of MEMORY.md is preloaded, and Read/Write/Edit tools are automatically enabled.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "MCP server scoping to a subagent",
+   "behavior": "mcpServers frontmatter field provides servers only to that subagent; inline definitions use the same schema as .mcp.json entries and support stdio, http, sse, and ws types. 'Claude Code loads an inline server from an agent file in your project's .claude/agents/ directory, or in an --add-dir directory's .claude/agents/, only after you trust the folder the agent file came from.'",
+   "limits": "trust requirement applies to project-scoped agent files.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent-scoped hooks",
+   "behavior": "hooks frontmatter defines lifecycle hooks that 'run only while subagent active.' Session-wide hooks in settings.json also fire in subagents; SubagentStart and SubagentStop hook events are available in settings.json for team/subagent lifecycle automation.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent skill preloading",
+   "behavior": "skills frontmatter field: 'The full content of each listed skill is injected into the subagent's context at startup.' Cannot preload skills with disable-model-invocation: true or the bundled /verify skill. The subagent can still invoke unlisted skills via the Skill tool during execution.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent worktree isolation",
+   "behavior": "isolation: worktree runs the subagent's Bash/PowerShell commands inside an isolated git worktree. 'A command whose working directory resolves to your main checkout instead...fails with an error.' Branches from the default branch by default; the worktree is 'automatically cleaned up if the subagent makes no changes.'",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent output scanning (prompt-injection defense)",
+   "behavior": "'Claude Code scans each subagent's final report before Claude reads it.' It inserts backslashes into text imitating Claude Code's output (like <\\system-reminder> tags) and prepends a marker line when a report imitates tags or mentions permission settings, but never removes content. 'The scan doesn't judge whether content is malicious, and it doesn't change what an instruction in a report can do: a tool call the report leads Claude to make still goes through the session's permission checks and sandboxing.'",
+   "limits": "requires v2.1.210+.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Subagent auto-compaction",
+   "behavior": "'Subagents support automatic compaction using the same logic as the main conversation. Compaction triggers under the same conditions, and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE applies to subagents as well.'",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/sub-agents"
+  },
+  {
+   "feature": "Agent teams are experimental and disabled by default",
+   "behavior": "'Agent teams are experimental and disabled by default. Enable them by setting CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in your settings.json or environment. Without that variable, no team is set up at session start, no team directories are written, and Claude does not spawn or propose teammates.'",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Agent-team architecture",
+   "behavior": "A team consists of a team lead (main session that spawns teammates and coordinates), teammates (separate Claude Code instances each in their own context window, communicating directly), a shared task list, and a mailbox (per-agent JSON file at ~/.claude/teams/{team-name}/inboxes/{agent-name}.json).",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Team formation trigger",
+   "behavior": "'Claude launches a teammate when it calls the Agent tool with a name while agent teams are enabled... Claude also names ordinary subagents on its own so it can message them later, and while agent teams are enabled, a named subagent launches as a teammate, so teams can form even when you didn't ask for one.'",
+   "limits": "'Spawning teammates also requires an interactive session. In non-interactive mode with the -p flag, including Agent SDK sessions, Claude doesn't spawn teammates, and a subagent that Claude names runs as an ordinary subagent even with agent teams enabled.'",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Turning off teammate auto-spawn",
+   "behavior": "Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0 to make a named subagent launch as an ordinary subagent again; Claude Code reapplies settings-file env values live and rereads the variable each time Claude spawns a subagent.",
+   "limits": "A user-settings 0 can be overridden by higher-precedence project/local settings, --settings, or managed settings that set it to 1.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Teammate model selection order",
+   "behavior": "Priority: 1) the model your spawn prompt names for that teammate, 2) for a teammate spawned from a subagent definition, the definition's model (inherit selects the lead's model), 3) CLAUDE_CODE_SUBAGENT_MODEL when set to anything other than inherit, 4) the lead's current model. CLAUDE_CODE_SUBAGENT_MODEL_FORCE applies to teammates as well as subagents.",
+   "limits": "Before v2.1.251, CLAUDE_CODE_SUBAGENT_MODEL came first in this order. teammateDefaultModel was removed in v2.1.234 and is ignored.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Teammate model allowlist substitution",
+   "behavior": "Claude Code checks the selected teammate model against the org's availableModels allowlist. A blocked family alias substitutes to the newest permitted version of that family on the Anthropic API/Claude Platform on AWS; any other blocked value (or a family with no permitted version) falls back to the lead's model, trying CLAUDE_CODE_SUBAGENT_MODEL first if set.",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Teammate effort inheritance",
+   "behavior": "'Teammates inherit the lead's effort level.' /effort while viewing a teammate applies to that teammate's later turns; /model and /fast while viewing a teammate change only the lead's settings (a teammate's model and fast mode are fixed when it spawns).",
+   "limits": "Effort passthrough to split-pane teammates applies only from v2.1.186+.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Teammate plan-mode auto-approval",
+   "behavior": "A teammate Claude spawns while the lead is in plan mode works read-only until its plan is ready, then sends a plan approval request to the lead; 'Claude Code approves the plan in the lead's session as soon as the request arrives, without the lead reviewing it.' The teammate's subsequent edits/commands still go through normal permission prompts.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Shared task list and self-claiming",
+   "behavior": "Tasks have pending/in-progress/completed states and can depend on other tasks; a pending task with unresolved dependencies can't be claimed. The lead can assign tasks explicitly, or teammates self-claim the next unassigned, unblocked task. 'Task claiming uses file locking to prevent race conditions.' Agents without the Task tools coordinate through messages instead.",
+   "limits": "only agents with Task tool availability use the shared task list.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Teammate shutdown",
+   "behavior": "The lead sends a shutdown request by teammate name; 'The teammate can approve, exiting gracefully, or reject with an explanation.' Team shared directories are cleaned up automatically at session end.",
+   "limits": "'Shutdown can be slow: teammates finish their current request or tool call before shutting down.'",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Agent-team quality-gate hooks",
+   "behavior": "TeammateIdle runs when a teammate is about to go idle (exit code 2 sends feedback and keeps it working); TaskCreated runs when a task is created (exit code 2 prevents creation and sends feedback); TaskCompleted runs when a task is marked complete (exit code 2 prevents completion and sends feedback).",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Team config and task-list storage",
+   "behavior": "Teams/tasks are stored locally under a session-derived name (session-<first 8 chars of session ID>). Team config: ~/.claude/teams/{team-name}/config.json, removed when the session ends. Task list: ~/.claude/tasks/{team-name}/, persists locally, never uploaded, so resumed sessions keep their tasks; retention follows cleanupPeriodDays. 'There is no project-level equivalent of the team config' \u2014 a file like .claude/teams/teams.json in the project is not recognized as configuration.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Using subagent definitions for teammate roles",
+   "behavior": "Naming a subagent type when spawning a teammate applies: tools (teammate limited to the definition's list, plus SendMessage for in-process, plus Task tools if the session has them); model (definition's model, unless the spawn prompt names one); body (appended as additional instructions for an in-process teammate, replaces the default prompt for a split-pane teammate); mcpServers (applied only for split-pane teammates). 'skills: Claude Code doesn't apply the definition's skills to a teammate in either display mode.'",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Teammate permission inheritance",
+   "behavior": "'Teammates start with the lead's permission settings. If the lead runs with --dangerously-skip-permissions, all teammates do too.' Individual teammate modes can be changed after spawning, 'but you can't set per-teammate modes at spawn time.' Teammate permission prompts surface in the lead session.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Inter-agent message trust boundary",
+   "behavior": "'When one agent sends another a message over SendMessage, Claude Code tells the receiving agent the message came from another Claude session, not from you. A teammate can't approve a permission prompt or supply consent on your behalf, and a teammate that was denied an action can't relay it to another teammate to bypass the check.' In auto mode, the classifier treats a relayed approval claim as untrusted input and reviews every inter-agent message (plain or structured) before delivery; a message it blocks never reaches the recipient.",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Agent-team limitations",
+   "behavior": "'No session resumption with in-process teammates' (/resume and /rewind don't restore them); task status can lag; shutdown can be slow; 'One team per session'; 'No nested teams: teammates cannot spawn their own teammates. Only the lead can manage the team.'; 'No background subagents from in-process teammates' \u2014 Claude Code errors when a teammate spawns a subagent with background: true, and a teammate's run_in_background: true request fails or runs silently in the foreground; 'Lead is fixed' (no promoting a teammate or transferring leadership); permissions are set at spawn only; split-pane mode isn't supported in VS Code's integrated terminal, Windows Terminal, or Ghostty.",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Agent-team token cost and cache TTL",
+   "behavior": "'An in-process teammate's requests fall outside the main conversation's cache TTL bucket, so its cache holds for five minutes by default, including on a Claude subscription. To keep it for an hour, set subagentPromptCacheTtl to 1h.' 'The API bills 1-hour cache writes at a higher rate.'",
+   "limits": "n/a",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/agent-teams"
+  },
+  {
+   "feature": "Agent-team token costs guidance",
+   "behavior": "'Agent teams use approximately 7x more tokens than standard sessions when teammates run in plan mode, because each teammate maintains its own context window and runs as a separate Claude instance.' Guidance: use Sonnet for teammates, keep teams small, keep spawn prompts focused, shut down teammates when done.",
+   "limits": "n/a",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/costs"
+  },
+  {
+   "feature": "Choosing model by task cost for subagents",
+   "behavior": "'Sonnet handles most coding tasks well and costs less than Opus. Reserve Opus for complex architectural decisions or multi-step reasoning... For simple subagent tasks, specify model: haiku in your subagent configuration.'",
+   "limits": "n/a",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/costs"
+  },
+  {
+   "feature": "Delegating verbose operations to subagents to reduce cost",
+   "behavior": "'Running tests, fetching documentation, or processing log files can consume significant context. Delegate these to subagents so the verbose output stays in the subagent's context while only a summary returns to your main conversation.'",
+   "limits": "n/a",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/costs"
+  },
+  {
+   "feature": "modelPricing reporting at contracted rates",
+   "behavior": "A managed-settings-only modelPricing table (multiplier and/or per-model overrides) changes the cost figures Claude Code reports in /usage, the status line, and OpenTelemetry to match an org's contracted rates. 'The setting changes what Claude Code reports, not what Anthropic charges.' 'Claude Code ignores the key in user, project, and local settings and in --settings.'",
+   "limits": "managed settings only; requires v2.1.242+.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/costs"
+  },
+  {
+   "feature": "Prompt-cache reporting scope",
+   "behavior": "The /usage Session block's 'Prompt cache (main)' line 'covers the main conversation only, not subagents.'",
+   "limits": "n/a",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/costs"
+  },
+  {
+   "feature": "Dynamic workflows overview",
+   "behavior": "'A dynamic workflow is a JavaScript script that orchestrates many subagents at once. Claude writes the script for the task you describe, and a runtime executes it in the background while your session stays responsive.' Available on all paid plans, with Anthropic API access, and on Amazon Bedrock, Google Cloud's Agent Platform, and Microsoft Foundry.",
+   "limits": "On Pro, must be turned on from the Dynamic workflows row in /config.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Bundled /deep-research workflow",
+   "behavior": "'Fans out web searches on a question across several angles, fetches and cross-checks the sources it finds, votes on each claim, and returns a cited report with claims that didn't survive cross-checking filtered out.' Runs only when invoked.",
+   "limits": "Requires the WebSearch tool to be available.",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Triggering a workflow via the ultracode keyword",
+   "behavior": "Including 'ultracode' in a prompt (or a natural-language request like 'use a workflow') makes Claude write and run a workflow script for that task instead of turn by turn. 'The keyword only chooses how Claude structures the work: the agents' tool calls receive the same permission checks and sandboxing as any other tool call in the session.'",
+   "limits": "Works only in prompts typed by a human directly (interactive prompt, IDE panel, Remote Control, or SDK input stamped origin human); does not trigger from -p prompts, unstamped SDK input, scheduled task prompts, webhook payloads, or PR comments (before v2.1.210 it did trigger from those routes too).",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "ultracode effort setting (auto workflow orchestration)",
+   "behavior": "'Ultracode is a Claude Code setting that combines xhigh reasoning effort with automatic workflow orchestration. With it on, Claude plans a workflow for each substantive task instead of waiting for you to ask.' Set via /effort ultracode, claude --effort ultracode, or the ultracode settings key to start every session with it on.",
+   "limits": "Only available on models that support xhigh effort.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow approval prompt before running",
+   "behavior": "Options: Yes run it / Yes and don't ask again for this workflow in this project / View raw script / No. In auto mode: prompted on first launch only, then not again; in manual/accept-edits mode: prompted every run unless 'don't ask again' was selected; in bypass-permissions mode: no prompt; in claude -p / Agent SDK: no prompt, instead evaluated through normal permission rules (Workflow or Workflow(<name>) allow rules, the auto-mode classifier, bypass mode, a PreToolUse hook, or a host permission-prompt-tool/canUseTool/PermissionRequest hook).",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Saving a workflow as a reusable command",
+   "behavior": "From /workflows, select a run and press 's' to save it to .claude/workflows/ (project, shared) or ~/.claude/workflows/ (personal, or under CLAUDE_CONFIG_DIR); it then runs as /<name>. 'Claude Code checks the save location for symlinks before writing, and shows an error instead of writing through one.' Project location refuses if .claude, .claude/workflows, or the target file is a symlink; personal location refuses only if the target file itself is a symlink. In a monorepo, saves to the closest existing .claude/workflows/ between cwd and repo root (v2.1.178+); if a project and personal workflow share a name, the project one runs.",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Distributing a workflow via a plugin",
+   "behavior": "Place the script in a workflows/ directory at the plugin root (or point to a different location with the workflows manifest field); runs are namespaced by plugin name, e.g. /acme-tools:release-audit.",
+   "limits": "n/a",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Passing input to a saved workflow (args)",
+   "behavior": "A saved workflow accepts input through the args parameter; the script reads it as a global named args, and Claude passes structured data so the script can call array/object methods directly. args is undefined if omitted.",
+   "limits": "n/a",
+   "enforcement": "none",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow script primitives and constraints",
+   "behavior": "Body is plain JavaScript with top-level await: agent() spawns one subagent, pipeline() runs one per list item, parallel() runs a set concurrently, phase() groups agents under a progress-view title, log() shows a message, and args is the input global. meta must be the first statement and a plain object literal with name/description, or Claude Code drops /<name> from autocomplete. Date.now(), Math.random(), and a no-arg new Date() throw inside the script so a relaunched run repeats the same agent() calls. 'a script that contains import() fails before the run starts.'",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow runtime limits",
+   "behavior": "'Up to 16 concurrent agents, fewer when Claude Code has fewer CPUs available, including inside a CPU-limited container.' 'Up to 4,096 items in a single parallel() or pipeline() call: the runtime rejects a longer list with an error.' '1,000 agents total per run.' 'No mid-run user input.' 'No direct filesystem or shell access from the workflow itself' (agents do the reading/writing/running; the script coordinates).",
+   "limits": "see behavior column for the exact caps.",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow prompt-cache fan-out staggering",
+   "behavior": "Agents in a fan-out sharing model, effort level, agent type, tools, output schema, and working directory build the same cache prefix; Claude Code holds all but the first until the first agent's response begins, then releases the rest together so they read the cached prefix instead of processing it uncached.",
+   "limits": "Capped at CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS, default 5000ms; set to 0 to disable.",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Large workflow warning",
+   "behavior": "'When a workflow schedules more than 25 agents, or its projected token total passes 1.5 million, its progress line in the task panel below the input box shows a Large workflow warning.' 'The warning is advisory: it doesn't pause or limit the run.'",
+   "limits": "A chosen size guideline's agent count replaces the 25-agent threshold; sessions with ultracode on never show the warning.",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow size guideline (workflowSizeGuideline)",
+   "behavior": "'A size guideline tells Claude how many agents to aim for when it writes a dynamic workflow. Claude Code sends the guideline to Claude as advice, not a cap, so a prompt that calls for a different scale still overrides it.' Values: unrestricted (no guideline), small (<5 agents), medium (<15, default), large (<50). Set via /config or the workflowSizeGuideline settings key (v2.1.219+, which takes precedence over /config).",
+   "limits": "'The runtime agent caps still apply regardless of the setting.'",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow resume-after-pause replay logic",
+   "behavior": "Relaunching replays the run in the order agents started: a completed agent returns its saved result unless its prompt differs from the previous run (then it and everything after it rerun); an agent still running when stopped starts over; a failed agent reruns along with everything started after it. 'Stopping one agent alone... counts as failing.'",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow agent model selection",
+   "behavior": "'Claude Code picks each workflow agent's model in the same order it uses for subagents. A model the script names for a stage counts as the per-invocation model in that order. When nothing else assigns one, the agent runs on your session's model.' A blocked model (per the org allowlist) is substituted following the same rules as subagents, and the progress view shows a warning naming both the requested and substituted models.",
+   "limits": "n/a",
+   "enforcement": "automatic",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Turning off workflows",
+   "behavior": "Toggle Dynamic workflows off in /config (persists); set \"disableWorkflows\": true in ~/.claude/settings.json (persists); set CLAUDE_CODE_DISABLE_WORKFLOWS=1 (read at startup); organization-wide via managed settings disableWorkflows:true or the admin settings toggle. When disabled: bundled workflow commands and the /workflow-authoring skill become unavailable, the ultracode keyword no longer triggers a run, and ultracode is removed from the /effort menu.",
+   "limits": "n/a",
+   "enforcement": "blocks",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  },
+  {
+   "feature": "Workflow cost / usage counting",
+   "behavior": "'A workflow spawns many agents, so a single run can use meaningfully more tokens than working through the same task in conversation. Runs count toward your plan's usage and rate limits like any other session.' Recommends running on a small slice first to gauge spend; the runtime's agent caps bound the cost of a runaway script.",
+   "limits": "n/a",
+   "enforcement": "advisory",
+   "citation": "https://code.claude.com/docs/en/workflows"
+  }
+ ]
+}

@@ -1,0 +1,96 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/llm-output/rules/llm-output.md",
+  "rules": [
+    {
+      "heading": "Quarantine model output until a human moves it",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Plan mode (reads files and proposes a plan but makes no edits until you approve)",
+      "evidence": "Plan mode is the only native hold on a write in these areas: Claude reads files and proposes a plan but makes no edits until approval, entered with a launch permission-mode flag or by cycling modes mid-session. The hold covers edits, releases the instant a person approves, and a printed run has no approval surface at all (its built-in starting mode is Manual, and with prompts set to none anything that would prompt is denied rather than held). Nothing native keeps a generated artifact out of the tracked tree once approval lands. An untracked generation directory plus a staging refusal is a gate that outlives approval and survives an unattended run, which is posture the harness does not supply.",
+      "citation": "https://code.claude.com/docs/en/common-workflows and https://code.claude.com/docs/en/headless",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Keep a deterministic backbone and let the model fill the slots",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "--json-schema structured output with --output-format json (headless)",
+      "evidence": "A printed run can be pinned to a supplied JSON Schema: the response carries a structured_output field conforming to it, and an invalid schema exits with an error plus the validator's diagnostic rather than silently returning unstructured text. That is a real deterministic backbone the rule can stand on. It fixes shape only: the harness accepts the format keyword as an annotation and enforces nothing by it, and no schema can say whether a filled slot was computed or judged. The rule's computed-versus-judged labeling and inline review context are what the schema cannot carry.",
+      "citation": "https://code.claude.com/docs/en/headless",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor a printed run on a supplied output schema where one applies, since the harness fails the run on an invalid schema and hands back a structured payload, then remember a schema fixes shape and not footing: label which parts of an output were computed and which were judged, and carry review context inline with the row so a review step never has to resolve a path to know what it is looking at."
+    },
+    {
+      "heading": "Report no finding rather than manufacture one",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "--json-schema structured output (headless), with the concise built-in output style as the counterweight",
+      "evidence": "The rule's report schema anchor has a native carrier in a printed run: an empty findings array and a required limitations section are both expressible in a JSON Schema the harness validates before the run starts. The schema cannot tell a real finding from a manufactured one, so the high bar and the gap report stay the rule's own work. The counterweight is the concise built-in style, which leads with the result and keeps responses short while always preserving only the complete content of error reports, security warnings, and confirmations for destructive actions; a limitations section is not in that protected set, so a style can compress the very section this rule requires unless the report is schema-shaped rather than prose.",
+      "citation": "https://code.claude.com/docs/en/headless and https://code.claude.com/docs/en/output-styles",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Refute with named lenses, drop by default, and log the drops",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "Output styles change Claude's role, tone, and output format rather than how a claim is verified; plan mode gates edits until approval and says nothing about claims; a printed run offers turn caps, a spend cap, and streamed events, none of which model a refutation lens, a stakes tier, or a logged drop. The rule's existing hosted-reviewer floor comes from an area the first audit already covered, and nothing in styles, plan mode, or headless changes it.",
+      "citation": "https://code.claude.com/docs/en/output-styles",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Cite or stay silent",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "Output styles change how Claude responds, not what Claude knows, so no style supplies, checks, or requires evidence for a claim. Plan mode withholds edits and a printed run reports cost, session metadata, and permission denials, none of which touch sourcing, quote matching, or a dead-link repoint. The evidence gate, the string-matching quote checker, and not in the corpus as an allowed answer have no counterpart in these areas.",
+      "citation": "https://code.claude.com/docs/en/output-styles",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Gate output on status tags",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Permission modes in print mode, and --permission-prompts none",
+      "evidence": "A printed run starts in Manual on every plan, so a script must pick a mode deliberately: dontAsk denies every call that would otherwise prompt while still allowing read-only work and anything an allow rule covers, acceptEdits writes files without prompting, and --permission-prompts none denies whatever nothing else resolves and lists the refusals in the final result. That is a real advance-designation mechanism and it bands tool calls, never facts. Nothing native reads a claim's status tag, so verified, unverified, and flagged, and the pre-scoped confidence band and action set, are posture the rule adds on top of a mode the run already had to choose.",
+      "citation": "https://code.claude.com/docs/en/headless",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Reword a locked claim, never strengthen it",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Built-in concise output style, and the output-styles boundary that a style changes how Claude responds and not what Claude knows",
+      "evidence": "The harness already draws this exact line once: a style changes role, tone, and output format rather than knowledge, and the concise built-in compresses a response while always keeping the complete content of error reports, security warnings, and confirmations for destructive actions. That protection is narrow, covering one style and three content classes, and the same page says project conventions belong in an instruction file rather than a style. The rule extends the boundary to every locked claim under any style and adds the direction of drift no style polices: a reword may not gain claim, metric, scope, or verb strength, and a number never rounds up.",
+      "citation": "https://code.claude.com/docs/en/output-styles",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Rewording a claim to mirror the reader's vocabulary is allowed; changing the claim, the metric, the scope, or the strength of the verb is not, and a number never rounds up. The concise built-in style is the floor to read from, since it compresses a response while keeping the complete content of an error report, a security warning, and a confirmation for a destructive action; treat every locked claim as carrying that same protection under any style."
+    },
+    {
+      "heading": "Treat silence as not approval",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Plan mode, and the permission modes a printed run must choose",
+      "evidence": "The rule already names plan mode as the floor and gets the hold right: no edits until a person picks an approve option. Two clauses run ahead of the record. The fetched sources describe plan mode as withholding edits and do not enumerate which other tool categories it gates, and they never state that plan mode is unavailable in a printed run; what they do state is that a printed run starts in Manual, shows no trust or approval dialog, and with prompts set to none denies anything that would prompt unless a permission hook resolves it. The supported reading is that a printed run has nobody to answer, not that plan mode is absent from it, and the rule's own gate, an explicit yes on a shown diff, is what neither mode provides.",
+      "citation": "https://code.claude.com/docs/en/common-workflows and https://code.claude.com/docs/en/headless",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Plan mode is the harness floor here: it holds edits until a person picks an approve option, but the hold ends at approval, does not bind where bypass permissions are available, and covers edits rather than every write. A printed run has nobody to answer a prompt, and where prompts are switched off it denies instead of asking, so ask for the yes yourself."
+    },
+    {
+      "heading": "Read agreement with a shown suggestion as anchored, not accurate",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none in the new areas",
+      "evidence": "The closest thing in these areas is the learning built-in style, which adds markers inviting the person to write a piece themselves; that is an invitation to participate, not a blinding control, and it shapes a chat response rather than a file on disk. Nothing in output styles, plan mode, or a printed run strips a model-authored field from a review packet, audits a packet's provenance, or distinguishes a reviewer's agreement rate from an accuracy number.",
+      "citation": "https://code.claude.com/docs/en/output-styles",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Don't",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Plan mode, and the permission modes a printed run must choose",
+      "evidence": "Two lines touch the new areas and both are already carried by the rules above: the silence line against plan mode's hold and a printed run's missing prompt, and the auto-approval line against the mode a printed run has to pick at launch. The remaining lines have no counterpart in styles, plan mode, or headless. The block's own anchor says each line is enforced by its own rule's anchor, so the native floors belong in those rules and not restated here.",
+      "citation": "https://code.claude.com/docs/en/common-workflows and https://code.claude.com/docs/en/headless",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "No DUPLICATE and no CONFLICT found in these three areas. Output styles, plan mode, and headless mode are thin coverage for a file about generated content: they govern tone, when an edit lands, and how a run is driven, not whether a claim is sourced or a finding is real.\n\nUncertainties, in order of how much they could change a verdict:\n\n1. \"Treat silence as not approval\" says plan mode \"never applies to a printed run.\" The supplied facts do not support or refute that. They say plan mode is entered with a launch permission-mode flag or by cycling modes interactively, and separately that a printed run's built-in starting mode is Manual with auto, dontAsk, and acceptEdits named as the modes a script would pass. Plan is absent from that list but never declared unavailable. I proposed wording that retreats to what is supported (no one is there to answer) rather than asserting absence. If someone can verify the flag combination directly, the original line may be salvageable as written.\n\n2. The same rule says plan mode holds edits. The fetched pages explicitly decline to enumerate what else plan mode gates, pointing at a permission-modes page that was not fetched. My proposed wording says \"covers edits rather than every write,\" which is the safe reading, but a fuller fetch could justify a stronger claim.\n\n3. \"Report no finding rather than manufacture one\" has a live tension I did not escalate to CONFLICT: the concise built-in style compresses prose and protects only error reports, security warnings, and destructive confirmations, so a mandated limitations section is not protected under it. I read this rule as governing generated report artifacts rather than chat responses, which keeps it out of conflict. If the owner intends it to bind chat answers too, it becomes a real style collision worth its own sentence.\n\n4. Worth knowing for the file as a whole, though it changed no verdict: the output-styles docs say project and codebase conventions belong in an instruction file rather than a style, and that a custom style drops the built-in software-engineering instructions unless the keep-coding-instructions flag is set. That supports house shipping these as rules and not as an output style. Separately, a plugin-shipped style can carry a force-for-plugin flag that applies it automatically and overrides the user's own style selection; if house ever ships a style, that flag is the one to leave off.\n\n5. I did not judge these rules against MCP servers, permissions precedence, statusline, cost reporting, or telemetry, which were present in the supplied fact bank but outside the stated scope of output styles, plan mode, and headless mode. Several of those facts (permission rule precedence, PreToolUse versus permission rules) look directly relevant to the quarantine and status-tag rules and may deserve a scoped pass of their own."
+}

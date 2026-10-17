@@ -1,0 +1,111 @@
+{
+  "area": "Claude Code native support for output styles (/output-style, custom styles, system-prompt effects), plan mode (what it is/restricts, how it's entered, its interaction with instruction files), and CLAUDE.md/rule guidance about planning — as of 2026-09-20",
+  "facts": [
+    {
+      "feature": "Output styles change Claude Code's instructions, not knowledge",
+      "behavior": "\"Output styles change how Claude responds, not what Claude knows. They set Claude's role, tone, and output format for every response.\" \"An output style changes the instructions Claude Code gives Claude.\" \"Claude Code sends the active style's instructions with every request,\" and when you select a non-Default style, \"Claude Code also reminds Claude of the style during the conversation.\"",
+      "limits": "A custom output style \"leave[s] out Claude Code's built-in software engineering instructions, such as how to scope changes, write comments, and verify work, unless keep-coding-instructions is set to true.\" Styles apply to the main conversation and to a conversation fork (which inherits the parent's system prompt); \"Other subagents run their own system prompt, so styles don't change how they respond.\" For project/codebase conventions, the docs say to use CLAUDE.md instead, not an output style.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/output-styles"
+    },
+    {
+      "feature": "Built-in output styles",
+      "behavior": "Default = Claude Code's standard software-engineering instructions. Proactive = \"Claude executes immediately, makes reasonable assumptions instead of pausing for routine decisions, and prefers action over planning. This is stronger autonomous-execution guidance than auto mode applies, and it works without changing your permission mode, so your permission mode still decides what runs without asking you.\" Concise = \"leads with the result, skips preamble and narration, and keeps responses short by default... Claude always keeps the complete content of error reports, security warnings, and confirmations for destructive actions\" (requires v2.1.237+). Explanatory = adds educational \"Insights.\" Learning = adds Insights plus `TODO(human)` markers for the user to fill in.",
+      "limits": "Proactive changes response style only; it does not itself grant broader execution rights than the current permission mode allows.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/output-styles"
+    },
+    {
+      "feature": "/output-style command and where the selection is saved",
+      "behavior": "\"run /output-style <style> to switch... With no argument, the command lists the styles you can pick and marks the current one.\" Selection is saved to `.claude/settings.local.json` at the local project level (also settable via /config, the VS Code extension, or the desktop app's `outputStyle` field). \"The command also works in non-interactive mode and Agent SDK sessions, and from the mobile app or web via Remote Control, where you can list and select only built-in styles.\" Requires v2.1.269+. \"When you switch styles mid-session, Claude uses the new style starting with your next message\" (before v2.1.251 it required /clear or a new session).",
+      "limits": "Via Remote Control, only built-in styles can be listed/selected, not custom ones.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/output-styles"
+    },
+    {
+      "feature": "Custom output style files: format, storage, frontmatter",
+      "behavior": "\"A custom output style is a Markdown file: frontmatter for metadata, then the instructions for Claude.\" Stored at user (`~/.claude/output-styles`), project (`.claude/output-styles`, loaded from every such directory between cwd and repo root, closest wins on name collision), or managed-policy level; plugins can also ship styles in an `output-styles/` directory. Frontmatter fields: `name`, `description`, `keep-coding-instructions` (default false), `force-for-plugin` (plugin styles only, default false — \"apply this style automatically whenever the plugin is enabled, without requiring users to select it. Overrides the user's outputStyle setting.\").",
+      "limits": "\"In the terminal, Claude Code reads style files when it starts, so if you create or edit one during a running session, restart Claude Code to pick up the change.\"",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/output-styles"
+    },
+    {
+      "feature": "Plan mode: what it is and what it restricts",
+      "behavior": "\"For changes you want to review before they touch disk, switch to plan mode. Claude reads files and proposes a plan but makes no edits until you approve. The status bar shows ⏸ plan mode on while plan mode is active.\" Entered with `claude --permission-mode plan` at launch, or by pressing `Shift+Tab` mid-session until the status bar shows plan mode on.",
+      "limits": "The two required source pages (common-workflows, interactive-mode) state only that plan mode withholds edits until approval; they do not enumerate which other tool categories (Bash, MCP tool calls, etc.) plan mode blocks or allows — that fuller breakdown lives on the linked permission-modes page (\"See Plan mode for the approval flow and editing the plan in your text editor\"), which was outside the four requested URLs and was not fetched.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/common-workflows"
+    },
+    {
+      "feature": "Permission-mode cycle and plan mode's place in it",
+      "behavior": "`Shift+Tab` (or `Alt+M` on Windows when the runtime doesn't enable VT input mode): \"Cycle permission modes... Cycle through default (labeled Manual in the mode indicator), acceptEdits, plan, and, when available, bypassPermissions and then auto. From auto, the first press switches to default.\"",
+      "limits": "`bypassPermissions` and `auto` are listed as available only \"when available,\" not on every setup.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/interactive-mode"
+    },
+    {
+      "feature": "Plan mode's documented effect on prompt suggestions",
+      "behavior": "Among the conditions under which Claude Code withholds an automatic next-prompt suggestion, the docs list: \"While you're in plan mode.\"",
+      "limits": "This is the only cross-feature interaction of plan mode documented on the interactive-mode page; no other UI/feature interactions with plan mode are described there.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/interactive-mode"
+    },
+    {
+      "feature": "CLAUDE.md and auto memory are context, not enforced configuration",
+      "behavior": "\"Both are loaded at the start of every conversation. Claude treats them as context, not enforced configuration. To block an action regardless of what Claude decides, use a PreToolUse hook instead. The more specific and concise your instructions, the more consistently Claude follows them.\" Later: \"Settings rules are enforced by the client regardless of what Claude decides to do. CLAUDE.md instructions shape Claude's behavior but are not a hard enforcement layer.\"",
+      "limits": "No guaranteed compliance; \"If two rules contradict each other, Claude may pick one arbitrarily.\" CLAUDE.md content \"is delivered as a user message after the system prompt, not as part of the system prompt itself.\"",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": "CLAUDE.md file locations, load order, and concatenation",
+      "behavior": "Four scopes, load order broadest to narrowest: Managed policy (org-wide, e.g. `/Library/Application Support/ClaudeCode/CLAUDE.md` on macOS), User (`~/.claude/CLAUDE.md`), Project (`./CLAUDE.md` or `./.claude/CLAUDE.md`), Local (`./CLAUDE.local.md`, meant for `.gitignore`). \"CLAUDE.md and CLAUDE.local.md files in the directory hierarchy above the working directory are loaded at launch... Files in subdirectories load on demand when Claude reads files in those directories.\" \"All discovered files are concatenated into context rather than overriding each other,\" ordered root-to-cwd so instructions closer to the launch directory are read last.",
+      "limits": "Subdirectory CLAUDE.md files only load on demand (when Claude reads a file there), not at launch.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": "CLAUDE.md and MEMORY.md size/read limits",
+      "behavior": "\"target under 200 lines per CLAUDE.md file. Longer files consume more context and reduce adherence.\" \"Claude Code loads a CLAUDE.md file of up to 4 MiB in full and skips a larger file.\" For auto memory: \"The first 200 lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the start of every conversation. Content beyond that threshold is not loaded.\"",
+      "limits": "`@path` imports don't reduce context cost — \"imported files still load and enter the context window at launch.\"",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": ".claude/rules/ path-scoped rule files",
+      "behavior": "\"Rules can be scoped to specific files using YAML frontmatter with the paths field. These conditional rules only apply when Claude is working with files matching the specified patterns.\" \"Rules without a paths field are loaded unconditionally... Path-scoped rules trigger when Claude reads files matching the pattern, not on every tool use.\" Unscoped rules load \"with the same priority as .claude/CLAUDE.md.\"",
+      "limits": "Glob expansion in `paths` is capped: \"a rule's whole paths list shares one budget of 1,000 expanded patterns and 4 MiB.\" A pattern that would exceed the budget is used unexpanded and matches nothing.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": "Managed settings (hard enforcement) vs managed CLAUDE.md (behavioral guidance)",
+      "behavior": "Docs' own table splits the two: \"Block specific tools, commands, or file paths\" → managed settings `permissions.deny`; \"Enforce sandbox isolation\" → `sandbox.enabled`; vs. \"Code style and quality guidelines\" / \"Behavioral instructions for Claude\" → managed CLAUDE.md. \"Settings rules are enforced by the client regardless of what Claude decides to do. CLAUDE.md instructions shape Claude's behavior but are not a hard enforcement layer.\"",
+      "limits": "A managed CLAUDE.md \"cannot be excluded\" by individual/user settings, but unlike `permissions.deny` it is still advisory content, not a technical block.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": "CLAUDE.md instructing Claude to use plan mode (worked example)",
+      "behavior": "The docs' own example of adding Claude-specific content below an AGENTS.md import: `@AGENTS.md` then `## Claude Code` then `Use plan mode for changes under src/billing/.`",
+      "limits": "This is shown only as an example instruction pattern. Since CLAUDE.md content is advisory context rather than enforced configuration (per the CLAUDE.md-vs-auto-memory fact above), such a line is a request Claude tries to follow; the docs do not describe any mechanism by which a CLAUDE.md line forces entry into plan mode the way `--permission-mode plan` or Shift+Tab does.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": "AGENTS.md vs CLAUDE.md precedence for project instructions",
+      "behavior": "By default Claude reads AGENTS.md \"only when you have no CLAUDE.md or CLAUDE.local.md in your working directory or above it.\" Configurable via `/config` → Project instructions: `claude-md-or-agents-md` (default), `claude-md-and-agents-md`, `claude-md`, or `managed-only`.",
+      "limits": "An AGENTS.md read this way \"doesn't appear in /memory or /context\"'s Memory files list, and its `InstructionsLoaded` hooks \"don't fire\" (unless it's imported via a CLAUDE.md `@path`).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/memory"
+    },
+    {
+      "feature": "Where output styles sit relative to CLAUDE.md, --append-system-prompt, Agents, and Skills",
+      "behavior": "Docs' own comparison table: Output styles \"Changes Claude Code's default instructions\" — use for \"a different role, tone, or default response format every turn.\" CLAUDE.md \"Adds a user message after the system prompt\" — use so \"Claude should always know your project conventions and codebase context.\" `--append-system-prompt` \"Appends to the system prompt without removing anything\" — a one-off CLI flag at launch. Agents \"Runs a subagent with its own system prompt, model, and tools.\" Skills \"Loads task-specific instructions when invoked or relevant.\"",
+      "limits": "These layers are not interchangeable: output styles explicitly are not the place for \"instructions about your project, conventions, or codebase\" — that's CLAUDE.md's job per this same page.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/output-styles"
+    }
+  ],
+  "unreachable": []
+}

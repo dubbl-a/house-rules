@@ -1,0 +1,412 @@
+{
+  "area": "Claude Code native git and GitHub integration (commits, PR creation, GitHub App + Actions integration, code review, branch handling, worktree branches), as of 2026-09-20",
+  "facts": [
+    {
+      "feature": "Claude Code GitHub Action — interactive mode (@claude mentions)",
+      "behavior": "\"when the workflow provides no prompt input, Claude waits for the trigger phrase, @claude by default, in an issue or pull request comment, in a pull request review, or in the body or title of a newly opened issue, then responds to that request. Progress and results appear as a comment on the triggering issue or PR.\"",
+      "limits": "Requires a workflow file (e.g. examples/claude.yml) added to .github/workflows/; trigger phrase is configurable via trigger_phrase input; requires the Claude GitHub App installed plus an auth secret. Does not run without that setup — it is not built into Claude Code by default.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Claude Code GitHub Action — automation mode (prompt-driven)",
+      "behavior": "\"when the workflow provides a prompt input, Claude runs without waiting for a mention, subject only to the checks on who can trigger runs. By default, results appear in the workflow run log rather than a comment. Claude can post to the issue or pull request when the prompt directs it to and it has a tool that can post.\"",
+      "limits": "For a plain-text prompt, \"Claude has no shell or GitHub API access until you grant the tools the prompt needs\" via --allowedTools or a permissions.allow rule; a skill-invoked prompt instead gets whatever its allowed-tools frontmatter grants.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "GitHub Action — who can trigger runs",
+      "behavior": "Runs two checks before Claude starts: (1) Write access — on issue/PR events the triggering user must have repo write access (allowed_non_write_users + custom github_token can exempt specific users; schedule events skip this check); (2) Human actor — rejects any bot actor unless listed in allowed_bots, including for scheduled runs attributed to a bot user, \"which keeps bots from triggering Claude in a loop.\"",
+      "limits": "Applies in both interactive and automation mode; \"the run fails when either check rejects it.\"",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Claude GitHub App permission set",
+      "behavior": "Single shared permission set for every Claude GitHub feature (Actions RW, Checks RW, Contents RW, Discussions RW, Issues RW, Members R, Metadata R, Pull requests RW, Repository hooks RW, Statuses R, Workflows RW). \"A GitHub App has a single permission set covering all of its features... GitHub doesn't let you accept a subset.\"",
+      "limits": "A custom GitHub App scoped to only Contents/Issues/Pull requests can be built for just the GitHub Action, but \"Code Review and web auto-fix still require the official app.\"",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "/install-github-app quick setup",
+      "behavior": "Installs the Claude GitHub App, sets up an ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repo secret, pushes a branch with chosen workflow files, and opens a PR to add them.",
+      "limits": "\"works only with github.com repositories\"; exits with a notice for gitlab.com/bitbucket.org remotes; needs admin access to the repo and the GitHub CLI authenticated (gh auth login).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Manual GitHub Action setup",
+      "behavior": "Install the Claude GitHub App yourself, add ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN as a repo secret, and copy examples/claude.yml into .github/workflows/.",
+      "limits": "Requires admin access to the repository; used \"when you don't run Claude Code locally, when the command fails, or when you want full control of the workflow files.\"",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Organization-wide GitHub Action rollout",
+      "behavior": "Install the GitHub App once at the org level (all or selected repos); store the auth secret as an org-level Actions secret; add the workflow (or a reusable workflow) per repo. Workload identity federation lets the Action exchange the workflow's GitHub OIDC token for Claude API access instead of storing a long-lived secret, via anthropic_federation_rule_id, anthropic_organization_id, and optional anthropic_service_account_id / anthropic_workspace_id inputs.",
+      "limits": "Federation requires granting the workflow id-token: write. An OAuth token secret shouldn't be shared org-wide since it's tied to the individual subscriber; use an API key instead.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Review workflow generated by GitHub Actions setup",
+      "behavior": "A workflow that runs the code-review plugin skill on pull_request opened/synchronize/ready_for_review/reopened events; with --comment, \"Claude posts each review on the pull request itself, as an inline comment on each issue it finds or as one summary comment when it finds none.\"",
+      "limits": "\"Before v2.1.229, Claude wrote its review only to the workflow run log.\" On public repos, GitHub withholds secrets from fork-PR runs, so \"the review runs only on pull requests from branches in the same repository.\" Claude skips draft/closed PRs, PRs it judges don't need review, and PRs that already have a Claude comment. Requires claude_args with --allowedTools naming the inline-comment MCP tool even though the skill's own frontmatter names it, because the Action \"starts the MCP server that posts inline comments only when --allowedTools in claude_args names it.\"",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "GitHub Action cost controls",
+      "behavior": "--max-turns in claude_args limits iterations; workflow-level timeouts avoid runaway jobs; GitHub's concurrency controls limit parallel runs; writing specific requests and a concise CLAUDE.md reduce token/turn usage.",
+      "limits": "These are recommendations, not defaults — none is applied unless the workflow author configures it.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "GitHub Action cloud-provider routing",
+      "behavior": "use_bedrock / use_vertex / use_foundry inputs route the Action's inference through Amazon Bedrock, Google Cloud's Agent Platform, or Microsoft Foundry respectively, authenticated via OIDC identity federation instead of a static key.",
+      "limits": "Requires per-provider setup described on a separate cloud-providers page.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "CI not running on Claude's commits",
+      "behavior": "\"GitHub doesn't trigger workflows on commits made with the default GITHUB_TOKEN.\" Fix: remove a passed github_token: secrets.GITHUB_TOKEN so the Action authenticates as the Claude GitHub App instead, or pass a custom app token.",
+      "limits": "Documented gotcha, not a switch — no built-in toggle fixes it besides changing token source.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Uninstalling the GitHub Action",
+      "behavior": "Delete the workflow files referencing anthropics/claude-code-action from .github/workflows/; delete the ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN secret (repo and org level); uninstall the Claude GitHub App only if not used by another Claude feature (Code Review, web auto-fix).",
+      "limits": "\"If you delete a secret, the credential it held stays valid\" — must separately revoke the API key in the Console to retire it.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/github-actions"
+    },
+    {
+      "feature": "Managed Code Review (org-level automatic PR review)",
+      "behavior": "\"Code Review analyzes your GitHub pull requests and posts findings as inline comments on the lines of code where it found issues. A fleet of specialized agents examine the code changes in the context of your full codebase\"; a verification step checks candidates against actual code behavior to filter false positives; results are deduplicated, ranked by severity, posted as inline comments plus a summary, or the check run is updated to show no issues found.",
+      "limits": "\"in research preview, available for Team and Enterprise subscriptions... not available for organizations with Zero Data Retention enabled.\" Reviews average 20 minutes and scale in cost with PR size/complexity.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review severity levels",
+      "behavior": "Each finding tagged 🔴 Important (\"a bug that should be fixed before merging\"), 🟡 Nit (\"a minor issue, worth fixing but not blocking\"), or 🟣 Pre-existing (\"a bug that exists in the codebase but was not introduced by this PR\"), each with a collapsible extended-reasoning section.",
+      "limits": "Severity calibration can be changed per repo via REVIEW.md.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review does not gate merges",
+      "behavior": "\"Findings are tagged by severity and don't approve or block your PR, so existing review workflows stay intact.\" The check run \"always completes with a neutral conclusion so it never blocks merging through branch protection rules.\"",
+      "limits": "To gate merges yourself, you must parse the machine-readable severity JSON from the check run's Details text via your own CI (gh api ... --jq).",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review reactions and re-review behavior",
+      "behavior": "Each review comment arrives with 👍/👎 attached for one-click rating; Anthropic \"collects reaction counts after the PR merges and uses them to tune the reviewer. Reactions do not trigger a re-review or change anything on the PR.\" \"Replying to an inline comment does not prompt Claude to respond or update the PR\"; fixing the code and pushing (on push-triggered repos) or commenting @claude review triggers a fresh look; resolving the thread (not replying) dismisses a finding.",
+      "limits": "No automatic response to comment replies under any mode.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review check run output",
+      "behavior": "Populates a \"Claude Code Review\" check run alongside CI checks, with a severity table (file:line, issue) and \"Files changed\" tab annotations independent of inline comments \"so they remain available even if GitHub rejects an inline comment on a line that moved.\" The last line of the Details text is machine-readable JSON parseable via gh api + jq, e.g. {\"normal\": 2, \"nit\": 1, \"pre_existing\": 0}.",
+      "limits": "\"normal\" key = Important-finding count.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review setup and per-repo triggers",
+      "behavior": "An Owner enables Code Review org-wide at claude.ai/admin-settings/claude-code, installs the GitHub App, selects repos, then sets a Review Behavior per repo: \"Once after PR creation,\" \"After every push\" (also auto-resolves comment threads when the flagged issue is fixed), or \"Manual\" (no automatic runs; opt in via @claude review).",
+      "limits": "Requires Owner/Primary Owner role plus GitHub-org permission to install apps. Whichever mode is chosen, \"Claude reviews a pull request from a fork only when someone comments @claude review on it.\"",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Manually triggering Code Review with a PR comment",
+      "behavior": "@claude review starts a single review without subscribing to future pushes; @claude review always starts a review and subscribes the PR to push-triggered reviews going forward; @claude review once behaves like the bare command.",
+      "limits": "Must be a top-level PR comment (not inline), with once/always on the same line; commenter needs write/maintain/admin permission on the repo; PR must be open. Private org membership (GitHub's default) means Claude won't recognize write access unless the user is added as a direct repo collaborator. Manual triggers, unlike automatic ones, do run on draft PRs.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review on fork pull requests",
+      "behavior": "\"Claude doesn't review a pull request from a fork automatically, regardless of the repository's Review Behavior setting.\" \"Nothing other than a comment command starts a review on a fork pull request\" — clicking Re-run and pushing new commits both do nothing.",
+      "limits": "Requires a @claude review comment each time; the required write access is to the base repo, not the fork.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review customization via CLAUDE.md",
+      "behavior": "Code Review reads repository CLAUDE.md files at every directory level and \"treats newly introduced violations as nit-level findings.\" \"This works bidirectionally: if your PR changes code in a way that makes a CLAUDE.md statement outdated, Claude flags that the docs need updating too.\"",
+      "limits": "Rules in a subdirectory's CLAUDE.md apply only to files under that path; violations are capped at nit severity via this channel (use REVIEW.md to escalate).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review customization via REVIEW.md",
+      "behavior": "A repo-root freeform-markdown file whose contents are given directly to the agents that find and verify findings, and consulted by the agents that rank/report them. Documented tunable patterns: redefine what Important means, cap nit volume, list skip rules (paths/branches/categories), add repo-specific checks, require a verification bar (e.g. file:line citations), set re-review convergence behavior, and set summary shape.",
+      "limits": "Read only by the managed Code Review service — the local /code-review command does not read it. \"Length has a cost: a long REVIEW.md dilutes the rules that matter most.\"",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review pricing and spend caps",
+      "behavior": "Billed on token usage, \"each review averages $15-25 in cost\"; billed via usage credits, separate from plan's included usage; total cost scales with the chosen trigger (Once/Every push/Manual). A configurable monthly org spend cap, once hit, skips reviews with an explanatory PR comment and resumes automatically at the next billing period or when an admin raises the cap.",
+      "limits": "Costs appear on the Anthropic bill regardless of whether Bedrock/Vertex is used for other Claude Code features.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "Code Review failure recovery",
+      "behavior": "\"Review runs are best-effort. A failed run never blocks your PR, but it also doesn't retry on its own.\" A failed/timed-out run shows in the check run title (\"Code review encountered an error\"/\"Code review timed out\") with a neutral conclusion and no findings posted; recover by commenting @claude review (or clicking Re-run on non-fork PRs), which starts a fresh, unsubscribed review.",
+      "limits": "No automatic retry.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "/code-review — local diff review",
+      "behavior": "\"reviews a diff in your terminal without installing the GitHub App. It reports correctness bugs and reuse, simplification, and efficiency cleanups.\" With no target, \"it reviews your branch's commits ahead of its upstream plus any uncommitted changes\"; a target can be a file path, PR number, branch name, or ref range like main...my-feature.",
+      "limits": "\"needs work on the branch or in the working tree to have something to report.\" /review is an alias (before v2.1.223 it was a separate single-pass read-only GitHub-PR-only review command).",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "/code-review flags: --fix, --comment, --post",
+      "behavior": "--fix \"applies the findings to your working tree after the review\"; --comment \"posts the findings on a GitHub pull request as inline comments, or on a GitLab merge request as a single note\" (via glab CLI, printed to terminal if glab isn't installed); --post (ultra + github.com PR only) \"preselects posting the finished findings to the PR in the launch dialog.\"",
+      "limits": "--comment for GitLab requires Claude Code v2.1.257+; --post requires v2.1.227+; a bare number/branch is treated as a GitLab MR only when origin is gitlab.com — self-managed GitLab needs the URL or !123 form.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "/code-review effort levels",
+      "behavior": "low/medium \"report only the findings it's most confident in, so you see fewer false positives\"; high through max \"broaden coverage and may include findings the review is less sure about.\" Untyped runs \"reuse the last level from low through max you typed, even in an earlier session\"; ultra never sets or uses that remembered level.",
+      "limits": "A level passed in a non-interactive -p run \"doesn't update it\" (the remembered level). Before v2.1.223, no remembered level existed.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "/code-review background execution and checkpoints",
+      "behavior": "\"The review runs in the background by default\" (since v2.1.218) as a forked subagent with its own context window; runs in the foreground instead when rerun while a prior review is in progress, in non-interactive -p/Agent SDK mode (except ultra, which launches without waiting), or when CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1.",
+      "limits": "A background review's --fix edits \"apply... outside your session's checkpoints, so /rewind doesn't undo them; use git to revert them.\" Foreground edits are restored by /rewind as usual. It also does not read REVIEW.md (managed-service-only file).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "/code-review ultra — cloud multi-agent review",
+      "behavior": "\"/code-review ultra --fix runs the deeper ultrareview in the cloud, then applies its findings to your working tree.\" Branch scope = current branch vs. default branch plus uncommitted/staged changes; PR-number scope clones the PR directly from GitHub/GitHub Enterprise Server, uploading nothing from the local machine.",
+      "limits": "Requires claude.ai account auth; unavailable on Amazon Bedrock, Google Cloud's Agent Platform, Microsoft Foundry, or orgs with Zero Data Retention — falls back to a local review in those cases. \"The command runs only when you invoke it with /code-review ultra; Claude doesn't start an ultrareview on its own.\"",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/code-review"
+    },
+    {
+      "feature": "ultrareview diff-size limits and fallbacks",
+      "behavior": "\"a branch review can include up to 500 changed files and 8,000 changed lines by default\" (refusal names the exact values and top offending files); a too-large PR is refused similarly without a per-file breakdown; when the branch shares no merge base with the target, ultrareview falls back to reviewing every tracked file in the repo (same size limits apply); a detached HEAD with no branches is refused outright with a suggestion to create a branch.",
+      "limits": "Whole-repo fallback \"requires a full clone.\"",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/ultrareview"
+    },
+    {
+      "feature": "Ultrareview — post findings to a GitHub pull request",
+      "behavior": "On Claude Code v2.1.227+, reviewing a github.com PR lets you have Claude \"post the finished findings to the PR as a single plain comment from your own GitHub account... isn't a review or an approval, and it ends with a 'Generated by Claude Code' note.\" Posting happens server-side via the Anthropic API using the connected GitHub account, not from the local machine.",
+      "limits": "\"Claude Code never posts unless you choose to on that run, and --no-post is the default.\" Branch reviews and GitHub Enterprise Server PR reviews \"show the findings in your session only\" (can't post). If the interactive session ends before the review finishes, nothing is posted even on later resume.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/ultrareview"
+    },
+    {
+      "feature": "Ultrareview pricing / free runs",
+      "behavior": "Pro and Max plans get \"3 free runs\" as a one-time, non-refreshing allotment; Team/Enterprise get none free. After free runs, \"typically $5 to $25 in usage credits\" per review, matching the pre-run estimate shown in a confirmation dialog that also shows scope and remaining free runs.",
+      "limits": "Requires usage credits to be turned on for the account/org, or Claude Code \"blocks the launch\"; billing confirmation is re-shown once per new conversation.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/ultrareview"
+    },
+    {
+      "feature": "claude ultrareview — non-interactive subcommand",
+      "behavior": "Launches the same review as /code-review ultra from CI/scripts, blocks until the remote review finishes, and prints findings to stdout; supports --json (raw bugs.json), --timeout <minutes> (default 45), --post, --no-post (default). \"You consent to the whole-repository fallback and to the billing and terms prompt when you run the subcommand.\"",
+      "limits": "Exit codes: 0 = completed (with or without findings), 1 = failed to launch/errored/timed out, 130 = interrupted (remote review keeps running). Running claude -p '/code-review ultra' instead launches and returns a tracking link without waiting, and posts nothing if the session exits before findings arrive; if the run would bill credits, Claude Code stops and points to the ultrareview subcommand since billing confirmation needs an interactive session.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/ultrareview"
+    },
+    {
+      "feature": "PR creation via natural language",
+      "behavior": "\"You can create pull requests by asking Claude directly ('create a pr for my changes'), or guide Claude through it step-by-step.\" \"Claude Code links the session to the PR when Claude creates it with gh pr create or glab mr create, and when Claude works on an existing PR.\"",
+      "limits": "Relies on the gh/glab CLI being available in the environment; review is recommended before submitting.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/common-workflows"
+    },
+    {
+      "feature": "Find a session by its PR (--from-pr)",
+      "behavior": "\"run claude --from-pr 1234 with your own PR number, which opens the session picker filtered to sessions linked to that PR, or paste the PR URL into the /resume picker search.\" Accepts a PR number, GitHub/GitHub Enterprise PR URL, GitLab MR URL, or Bitbucket PR URL.",
+      "limits": "Only finds sessions Claude Code already linked to that PR (via gh pr create/glab mr create or working an existing PR).",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "Parallel sessions with git worktrees (--worktree / -w)",
+      "behavior": "\"claude --worktree feature-auth\" creates an isolated worktree under .claude/worktrees/<name>/ at the repo root, on a new branch named worktree-<name>, and starts Claude there. Omitting a name generates one (e.g. bright-running-fox). Claude can also be asked mid-session to \"work in a worktree,\" using the EnterWorktree tool.",
+      "limits": "\"the repository needs at least one commit first\" — with none, fails with \"Failed to resolve base branch 'HEAD': git rev-parse failed\". Interactive runs require workspace trust (a fresh directory triggers a trust dialog, or --worktree errors); non-interactive -p runs skip that check.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/common-workflows"
+    },
+    {
+      "feature": "Worktree branch from a pull/merge request",
+      "behavior": "Passing --worktree a number prefixed with # (or a PR/MR URL) fetches that change's head commit from origin and creates the worktree at .claude/worktrees/pr-<number>. Fetch path depends on the origin host: github.com uses pull/<n>/head, gitlab.com uses merge-requests/<n>/head, other hosts try both in order.",
+      "limits": "Quote the argument so the shell doesn't treat # as a comment. Before v2.1.233 it accepted only #<number> and GitHub-style URLs and always used pull/<n>/head.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": "Worktree base-branch configuration (worktree.baseRef)",
+      "behavior": "\"fresh\" (default): branches from the repository's default branch on the remote. \"head\": branches from the current local HEAD, carrying unpushed commits/feature-branch state; useful \"when isolating subagents that need to operate on in-progress work.\"",
+      "limits": "\"You can't set worktree.baseRef to a branch name\" — use git worktree add directly for that. For \"fresh,\" Claude Code refreshes origin/HEAD only if not fetched in the last 24 hours, capped at 5 seconds, and falls back to local HEAD if no remote/cache exists.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": "Worktree isolation enforcement (4 blocking checks)",
+      "behavior": "While a session is isolated in a worktree, Claude Code blocks: (1) an Edit/Write/NotebookEdit targeting the main checkout; (2) a Bash/PowerShell/Monitor command whose working directory resolves to, or can't be verified to stay outside, the main checkout; (3) a git command redirected into the main checkout via git -C, --git-dir, GIT_DIR/GIT_WORK_TREE, or a prior cd; (4) a command whose git-target safety can't be statically verified (e.g. a computed command name) — \"You can't turn this check off.\"",
+      "limits": "The same rules cover every subagent spawned from the isolated session, interactive or background. For PowerShell, only the working-directory check (2) applies.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": "Worktree cleanup on session exit",
+      "behavior": "On exiting an interactive worktree session: a clean, unnamed session auto-removes the worktree and its branch; a clean named session prompts first; a worktree with changed/untracked files or new commits always prompts keep-or-remove, and \"removing deletes the worktree directory and its branch, along with all the work in them.\"",
+      "limits": "Non-interactive -p runs have no exit prompt and \"don't clean up their worktrees\" — the git-worktree lock persists until a later stale-lock sweep or a manual git worktree remove (with git worktree unlock first if locked).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": ".worktreeinclude — copy gitignored files into worktrees",
+      "behavior": "A gitignore-syntax file at the project root that copies matching gitignored files (e.g. .env, config/secrets.json) into every new git-created worktree. \"Only files that match a pattern and are also gitignored are copied, so tracked files are never duplicated.\"",
+      "limits": "Not processed when a WorktreeCreate hook replaces the default git logic — copy files inside the hook script instead in that case.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": "Non-git version control worktree support",
+      "behavior": "\"Worktree isolation uses git by default. For SVN, Perforce, Mercurial, or other systems, configure WorktreeCreate and WorktreeRemove hooks to provide custom creation and cleanup logic.\"",
+      "limits": "Requires a custom hook script; .worktreeinclude is not applied in this path; the resulting directory has no git metadata so it passes the worktree-safety check only when no git repository contains it.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": "Subagent isolation with worktrees",
+      "behavior": "A custom subagent can get its own temporary worktree via isolation: worktree frontmatter (or by asking Claude to \"use worktrees for your agents\"); branches from the same base as --worktree. Claude Code removes an unchanged subagent worktree automatically when it finishes; a changed one persists until the periodic cleanup sweep.",
+      "limits": "The periodic sweep removes worktrees older than the cleanupPeriodDays setting, but leaves in place any worktree that still holds uncommitted/unpushed work, one you created manually with git worktree add, or one belonging to a still-active --worktree session.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/worktrees"
+    },
+    {
+      "feature": "Background-session worktree isolation (agent view)",
+      "behavior": "\"Before editing files, Claude moves the session into an isolated git worktree under .claude/worktrees/, so parallel sessions can read the same checkout but each writes to its own.\" Skipped when the session/file is already inside a linked worktree, the working directory isn't a git repo with no WorktreeCreate hook configured, or the write target is outside the working directory. Can be disabled entirely with {\"worktree\": {\"bgIsolation\": \"none\"}}.",
+      "limits": "Turning it off means \"Background sessions then edit your working copy directly without moving into a worktree first\" — no isolation.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/agent-view"
+    },
+    {
+      "feature": "Background-session git commit/push/PR policy",
+      "behavior": "\"Commit and push: Claude commits without asking, and pushes the branch when the repository has a remote.\" \"Draft pull request: Claude opens one when the task calls for it.\" \"Never: pushing to main or master, force-pushing, and merging.\" \"Your git instructions take precedence: if the task, CLAUDE.md, or memory says you handle committing or pushing yourself, Claude leaves git to you.\"",
+      "limits": "Documented specifically for background/agent-view sessions; the \"Never\" list (main-push, force-push, merge) is a hard rule unless a governing instruction says otherwise per the stated precedence.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/agent-view"
+    },
+    {
+      "feature": "PR-status label in agent view",
+      "behavior": "A background-session row that opened a PR shows a right-edge label, #1234 for a GitHub PR or !1234 for a GitLab MR, color-coded: yellow (waiting on checks/review, or checks failed), green (checks passed, no blocking review), purple (merged), grey (draft or closed). Multiple linked PRs show a count like \"3 PRs.\"",
+      "limits": "Detected via gh command output that names the PR, or via gh pr view lookup after a checkout/push, with up to 5 retries on later git/gh/glab/curl commands; a gh pr merge whose output isn't captured (interactive-only output) doesn't create a link.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/agent-view"
+    },
+    {
+      "feature": "Subagent worktree inheritance",
+      "behavior": "\"A subagent the background session spawns inherits the session's working directory, so its file edits land in the session's worktree rather than your working copy.\" Give it a separate worktree instead via isolation: worktree frontmatter or an isolation: \"worktree\" spawn param.",
+      "limits": "Default is inheritance, not isolation, unless explicitly overridden.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/agent-view"
+    },
+    {
+      "feature": "claude rm worktree deletion flags",
+      "behavior": "Deleting a background session (Ctrl+X twice, or claude rm) removes its worktree if clean; claude rm keeps a worktree with uncommitted changes. Neither removes a worktree another session is using, or one with unpushed commits, unless --discard-unpushed <commit>@<worktree-id> is passed; --force-remove-worktree <worktree-id> force-deletes a worktree directory after a git failure.",
+      "limits": "--discard-unpushed requires Claude Code v2.1.260+; --force-remove-worktree requires v2.1.268+.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "Auto-fix pull requests (cloud)",
+      "behavior": "\"Claude can watch a pull request and automatically respond to CI failures and review comments. Claude subscribes to GitHub activity on the PR, and when a check fails or a reviewer leaves a comment, Claude investigates and pushes a fix if one is clear.\" For ambiguous or architecturally significant requests, \"Claude asks you before acting\"; duplicate/no-action events are just noted.",
+      "limits": "Requires the Claude GitHub App installed. \"GitHub does not emit a webhook when the base branch advances and creates a merge conflict, so auto-fix can't react to conflicts on its own\" — must ask Claude to rebase manually. Replies to review threads post under the user's own GitHub account (labeled as Claude Code), which \"can trigger\" comment-triggered automation like Atlantis/Terraform Cloud/custom Actions on issue_comment events.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/claude-code-on-the-web"
+    },
+    {
+      "feature": "/autofix-pr command",
+      "behavior": "\"Spawn a cloud session that watches the current branch's PR and pushes fixes when CI fails or reviewers leave comments.\" Detects the open PR via gh pr view; default instruction is to fix every CI failure and review comment, overridable with a custom prompt.",
+      "limits": "Requires the gh CLI and access to cloud sessions; to watch a different PR, check out its branch first.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "/branch command — conversation branch, not a git branch",
+      "behavior": "\"Create a branch of the current conversation at this point, so you can try a different direction without losing the conversation as it stands. Switches you into the branch and preserves the original, which you can return to with /resume.\"",
+      "limits": "This branches Claude Code's conversation history, not a git branch — it performs no git operation. Related: /fork (run a copy as a background session) and /subtask (hand a side task to a subagent).",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "/batch command — parallel worktree-based automation",
+      "behavior": "\"Orchestrate large-scale changes across a codebase in parallel. Researches the codebase, decomposes the work into 5 to 30 independent units, and presents a plan. Once approved, spawns one background subagent per unit in an isolated git worktree. Each subagent implements its unit, runs tests, and opens a pull request.\"",
+      "limits": "Requires a git repository; requires approving the decomposition plan before subagents spawn.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "/diff command",
+      "behavior": "Reviews the changes in the working tree, \"including the edits Claude has made so far.\"",
+      "limits": "Local, terminal-only review of the working tree diff.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "Scoped git Bash permission rules",
+      "behavior": "Git commands can be allow/deny-scoped as Bash permission rules, e.g. \"Bash(git log *)\" and \"Bash(git diff *)\", usable with --allowedTools / --disallowedTools to restrict which git commands Claude may run.",
+      "limits": "Configuration-driven; not a default restriction on its own.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/cli-reference"
+    },
+    {
+      "feature": "--cloud sending local repos without GitHub (bundling)",
+      "behavior": "When run from a repo with no git remote, or a github.com repo the Claude GitHub App isn't installed on, \"Claude Code bundles your local repository and uploads it directly to the cloud session,\" including \"full repository history across all branches, plus uncommitted changes to tracked files.\" On macOS/Linux/WSL it leaves uncommitted changes to credential-like files (.env, *.tfvars, id_rsa, *.pem) out of the upload and names what was excluded.",
+      "limits": "Bundle requires a git repo with ≥1 commit and must be under 100MB (falls back to current-branch-only, then a squashed snapshot, then fails if still too large); untracked files are never included; a bundled session can push back to GitHub only if the connected GitHub account has push access to that repo. CCR_FORCE_BUNDLE=1 forces bundling even when a normal clone would otherwise be used.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/claude-code-on-the-web"
+    },
+    {
+      "feature": "--teleport requirements (cloud session to local git)",
+      "behavior": "Pulls a cloud session and its branch into the terminal. Requires: clean git state (prompts to stash if dirty), the correct repository checkout (not a fork — Claude Code names both repos on mismatch), the session's branch already pushed to the remote (auto-fetched and checked out), and the same claude.ai account.",
+      "limits": "\"--teleport is distinct from --resume\": --resume only reopens local session history and never lists cloud sessions. --teleport requires claude.ai subscription auth, not API-key auth.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/claude-code-on-the-web"
+    },
+    {
+      "feature": "GitHub Enterprise Server support",
+      "behavior": "\"repository cloning and pull request creation require GitHub. Self-hosted GitHub Enterprise Server instances are supported for Team and Enterprise plans.\"",
+      "limits": "Non-GitHub hosts (GitLab, Bitbucket) can only be sent to a cloud session as a local bundle via CCR_FORCE_BUNDLE=1, and \"the session can't push results back to that remote.\"",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/claude-code-on-the-web"
+    },
+    {
+      "feature": "Organization IP allowlisting blocks Anthropic-hosted cloud/Code Review",
+      "behavior": "\"If your organization has IP allowlisting enabled, every Anthropic-hosted cloud session fails with an authentication error. The same applies to Code Review and to routines that run on Anthropic-hosted environments.\"",
+      "limits": "A routine or session routed to a self-hosted environment calls the API from the org's own network and is unaffected; otherwise contact Anthropic support to exempt Anthropic-hosted services from the allowlist.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/claude-code-on-the-web"
+    }
+  ],
+  "unreachable": []
+}

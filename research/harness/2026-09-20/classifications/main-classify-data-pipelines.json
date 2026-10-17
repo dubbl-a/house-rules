@@ -1,0 +1,105 @@
+{
+  "item": "plugins/house/modules/data-pipelines/rules/data-pipelines.md",
+  "rules": [
+    {
+      "heading": "End every pipeline run with a retro of invariants, deltas, and proposals",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The gathered facts describe lifecycle hooks that fire around Claude's own turns and tool calls (SessionStart, PostToolUse, Stop and the rest), and nothing that inspects a data pipeline's invariants, deltas or proposals after a run, so the retro runner has no native counterpart.",
+      "citation": "https://code.claude.com/docs/en/hooks.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make a pipeline idempotent and resumable, and log the idempotency rather than assume it",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Native resumability covers conversations and transcripts, where a resumed session restores history but a tool still running when the process ended does not finish or re-run, and nothing in the facts gives a data run a ledger row, an input hash window or an applied marker.",
+      "citation": "https://code.claude.com/docs/en/sessions",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Write nothing when a record is unchanged",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness governs whether a write is permitted, through permission rules enforced by Claude Code rather than by the model, and says nothing about comparing a record's substance before stamping it, so the no-op write rule adds a behavior the facts do not cover.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Default to a dry run and require an explicit flag to write",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Permission rules and permission modes over Edit, Write and Bash tool calls",
+      "evidence": "The rule's stated reason matches the documented floor, since permission rules match the tool call and the command text Claude typically produces and are enforced by Claude Code rather than by the model, which leaves what a script writes after it starts ungated; the rule adds the dry-run default, the machine-verifiable diff and the single deletion call site on top.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Brake a prune at a share of the table, and unit-test the brake",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Critical-path rm/rmdir circuit breaker and Bash permission prompts",
+      "evidence": "The harness refuses to let an allow rule or a hook approve an rm or rmdir on a critical path and otherwise prompts for Bash, but that protection is filesystem shaped and never sees a row delete issued inside a running script, which is exactly the gap the share brake and its unit test fill.",
+      "citation": "https://code.claude.com/docs/en/permission-modes.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Drive writes from a policy registry that fails closed on an unknown policy",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Fail-closed handling in the facts belongs to managed settings keys such as allowedMcpServers and allowManagedHooksOnly, which is a settings concern, and no native mechanism defines a writable field set for a pipeline or refuses an unrecognized per-field policy.",
+      "citation": "https://code.claude.com/docs/en/managed-settings.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Make unmapped input loud",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the facts inspects external tabular input, counts unbucketed rows or asserts a header contract; the nearest native checks are schema checks over Claude Code's own config, such as plugin manifest validation.",
+      "citation": "https://code.claude.com/docs/en/plugins-reference.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Archive first, parse second, and write the ledger row in the same transaction",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The facts cover fetch gating by domain through WebFetch rules and the sandbox proxy, not archival of fetched bytes, content addressing, supersede-rather-than-clobber, or a ledger row sharing a transaction with the artifact.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Reconcile a vendor's success response against an independent count",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "No gathered fact verifies a third-party API's reported success against an independent count; the nearest native integrity check is archive pinning by sha256 on a plugin source, which compares a download against a declared digest rather than reconciling what a vendor holds.",
+      "citation": "https://code.claude.com/docs/en/plugin-marketplaces.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Name, don't act, on ambiguous data",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The harness holds on uncertainty only at the permission boundary, where AskUserQuestion and tools matched by an ask rule are never auto-approved by any mode, and it has no notion of uncertain record identity, a review queue, or a population statistic deciding a row.",
+      "citation": "https://code.claude.com/docs/en/permission-modes.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Key a projection on its source's whole grain, and prove that grain with a constraint",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Nothing in the facts models database grain, unique constraints or projection write keys; the harness's own structured-output schema validation, which rejects a self-contradicting schema before a subagent starts, is the closest shape check and is unrelated to data keys.",
+      "citation": "https://code.claude.com/docs/en/workflows.md",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Every \"## \" heading in the file is covered: eleven rules plus the \"## Don't\" section, which was excluded per the task. No DUPLICATE and no CONFLICT found; two rules are COMPLEMENT and nine are UNIQUE, so no rewording was proposed and every proposedWording is empty.\n\nRules I was unsure about, and why:\n\n1. \"Brake a prune at a share of the table\" is the closest thing to an imprecise native claim in the file. Its prose says the harness \"routes a destructive filesystem command through a permission prompt\", which is true by default but not universal: a matching allow rule can pre-approve an ordinary rm, and only an rm or rmdir aimed at a critical path is guaranteed to still ask in every mode (https://code.claude.com/docs/en/permission-modes.md). The contrast the rule draws, filesystem deletes seen versus row deletes unseen, still holds, so I kept it rather than calling it a conflict, but a tightening reword naming the critical-path circuit breaker as the floor would make the clause exactly true.\n\n2. \"End every pipeline run with a retro of invariants, deltas, and proposals\" was the hardest call between UNIQUE and COMPLEMENT. Its enforcement shape (a runner that exits non-zero so bad state cannot reach a publish) rhymes with a hook exiting 2 to block, and the prose mentions \"a per-run hook\". But the native hook events all fire around Claude's session and tool lifecycle, not around a pipeline run, and the anchor is a package script rather than a configured hook, so I judged the overlap to be vocabulary rather than mechanism.\n\n3. \"Archive first, parse second\" contains a circuit breaker after a few consecutive refusals, which resembles two native self-limiters: the Stop hook block cap after eight consecutive blocks and auto mode pausing after three consecutive classifier blocks. Both govern Claude's own loop, not a fetcher's request budget, so I kept the rule UNIQUE.\n\n4. \"Default to a dry run\" is the one rule already written to cite its native floor, and I read its claim as accurate. The sandbox does confine a Bash subprocess's filesystem writes to the workspace (https://code.claude.com/docs/en/sandboxing), which is a partial counterexample to a loose reading of \"cannot see what a script writes\", but the rule is about per-write visibility and approval of what a script sends to a database or API, which the sandbox does not provide, so I left it alone.\n\nOne general observation for the owner's standard: this module sits almost entirely outside the harness's surface area. That is a good result for a domain module, but it also means the two rules that do reference native behavior carry all the risk of drifting out of date, and they are the two worth re-checking whenever the permissions or sandboxing docs change."
+}

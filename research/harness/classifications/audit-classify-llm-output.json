@@ -1,0 +1,87 @@
+{
+ "item": "plugins/house/modules/llm-output/rules/llm-output.md",
+ "rules": [
+  {
+   "heading": "Quarantine model output until a human moves it",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Subagent worktree isolation (isolation: worktree) plus the file-modification permission prompt",
+   "evidence": "The harness can quarantine an agent's writes inside a worktree and blocks any edit reaching the main checkout with a check that cannot be turned off, but promotion out of that worktree is a git operation the model can perform itself, so nothing native makes a human move the file as the sign-off.",
+   "citation": "https://code.claude.com/docs/en/worktrees.md#how-claude-code-enforces-isolation",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Keep a deterministic backbone and let the model fill the slots",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Dynamic workflow script determinism (Date.now, Math.random and a no-arg new Date throw inside a script) and the command-hook versus prompt-hook split",
+   "evidence": "The workflow runtime already forces the coordinating script to be reproducible so a relaunched run repeats the same agent calls, and hook docs reserve prompt hooks for judgment while command hooks carry deterministic decisions, but neither reaches ordinary generated output or requires labelling which parts were computed versus judged.",
+   "citation": "https://code.claude.com/docs/en/workflows",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Report no finding rather than manufacture one",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Code review verification pass and severity-tagged findings",
+   "evidence": "Hosted review already runs a verification step that checks candidates against actual code behavior to filter out false positives, and the local command at low effort reports only the highest-confidence findings, so an empty result is a normal outcome there; the harness has no limitations section and no gap report for an unmet requirement.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#how-reviews-work",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Hold a high bar for a finding: the review surfaces already treat a run that reports nothing as a normal outcome, and this repo extends that floor to every generated report, so a real finding becomes a named edit with exact replacement text shipped as a pull request rather than quietly accumulated."
+  },
+  {
+   "heading": "Refute with named lenses, drop by default, and log the drops",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Hosted Code Review multi-agent fan-out with a verification step",
+   "evidence": "The hosted reviewer already runs agents in parallel where each looks for a different class of issue and then verifies candidates before deduplicating and ranking them, but it never tells the reviewer which lens caught what and drops nothing visibly, so the attribution and the drop log are the additions.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#how-reviews-work",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "The hosted reviewer already fans out one agent per issue class and verifies candidates before reporting; on that floor, run every draft claim past named refutation lenses, one per failure class, so a reviewer can say which lens caught what instead of trusting a general impression of care."
+  },
+  {
+   "heading": "Cite or stay silent",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Bundled /deep-research workflow (cross-checked, cited report)",
+   "evidence": "The bundled research workflow fetches and cross-checks its sources, votes on each claim, and filters out claims that did not survive, but that behavior lives in one workflow the user has to invoke, and nothing native string-matches a quotation against its source or blocks a claim with an empty evidence list anywhere else.",
+   "citation": "https://code.claude.com/docs/en/workflows",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Gate output on status tags",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "The nearest native mechanism is the permission system, where dontAsk mode auto-denies unless a tool call was pre-approved through permissions.allow, which governs tool calls rather than the status of a fact inside generated content, so nothing native tags a claim verified, unverified, or flagged or gates a sync on that tag.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Reword a locked claim, never strengthen it",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none",
+   "evidence": "Checkpointing restores whole files from snapshots taken before each prompt and is explicitly scoped to session-level recovery rather than content integrity, so the harness has no concept of a locked span, a frozen draft number, or a decision ledger a publish step must consult.",
+   "citation": "https://code.claude.com/docs/en/checkpointing",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Treat silence as not approval",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Permission system tiers (file modification always requires approval) and the inter-agent trust boundary",
+   "evidence": "The harness already enforces that file modification requires approval in default mode and that only the permission system or a user message grants approval, so an agent message never counts as consent; what it does not cover is data, an unanswered question, or a missing field, and modes such as acceptEdits and auto deliberately remove the per-write prompt.",
+   "citation": "https://code.claude.com/docs/en/permissions.md",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Where the harness gates a write, its permission prompt is the floor and an agent message never substitutes for it; everywhere else, show the diff and wait for an explicit yes before generating a file, because silence is not approval and neither is a question left unanswered."
+  },
+  {
+   "heading": "Read agreement with a shown suggestion as anchored, not accurate",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Code Review reaction collection on shown findings, and Anthropic eval guidance on calibrating model-based graders",
+   "evidence": "Code Review ships each finding with thumbs already attached and collects those reaction counts to tune the reviewer, which is exactly agreement measured against a shown suggestion, and the eval guidance warns that model-based graders need calibration and that one-sided evals create one-sided optimization, but nothing native blinds a review packet on disk or strips model-authored fields from it.",
+   "citation": "https://code.claude.com/docs/en/code-review.md#rate-and-reply-to-findings",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "Three rules I was unsure about. (1) \"Gate output on status tags\": I called it UNIQUE, but its auto-approval paragraph mirrors the design of permissions.allow and dontAsk mode, where a human designates a band of actions once in advance rather than at each call; the domain differs (rows of generated content, not tool calls), so it does not collide, but a reader could reasonably file the auto-approval clause as COMPLEMENT on that primitive. (2) \"Treat silence as not approval\" is the closest thing in this file to a conflict rather than a complement: the harness lets a user choose acceptEdits, auto, or bypassPermissions precisely to stop being asked before each write, so a blanket \"wait for an explicit yes before generating a file\" fights the mode the user selected. I resolved it as COMPLEMENT with a reword that names the permission prompt as the floor and scopes the rule to surfaces the harness does not gate; if the owner wants the stricter reading to survive in every mode, this should be re-filed as a declared intentional duplicate instead. (3) \"Quarantine model output until a human moves it\" sits close to native worktree isolation, which blocks writes into the main checkout with a check that cannot be disabled; I left it as keep because the rule's mechanism is an untracked drafts directory plus a git pre-commit hook rather than the harness worktree, but citing worktree isolation as the floor would make the relationship explicit. Rules 3, 4, and 8 got reword actions because each restates something a native surface already does; the proposed wordings preserve the rule's intent and name the floor so the rule reads as an extension rather than a repeat. No rule in the file contradicts a documented harness behavior, so no CONFLICT dispositions were issued. The \"## Don't\" section was excluded per the instruction."
+}

@@ -1,0 +1,96 @@
+{
+ "item": "plugins/house/modules/llm-output/rules/llm-output.md",
+ "rules": [
+  {
+   "heading": "Quarantine model output until a human moves it",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Plan mode (edits blocked until a person approves the plan)",
+   "evidence": "Plan mode is the nearest native gate: Claude \"reads files, runs shell commands to explore, and writes a plan, but does not edit your source. Except in sessions with bypass permissions available, edits stay blocked until you approve the plan.\" That gate is session scoped and lapses three ways the rule survives: it ends the moment a plan is approved (\"Approving a plan exits plan mode and switches the session to the permission mode each approve option describes\"), it is not enforced at all where bypass permissions are available (\"a file edit or shell command it attempts during planning runs without prompting\"), and a printed run has no plan prompt to answer. The rule's untracked directory plus pre-commit hook keeps the gate per artifact after the session stops holding it, which is stronger enforcement than plan mode offers, so this is not a duplicate.",
+   "citation": "https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode ; https://code.claude.com/docs/en/permission-modes#review-and-approve-a-plan",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Keep a deterministic backbone and let the model fill the slots",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "--bare mode (headless), with --output-format json for the printed result",
+   "evidence": "Bare mode is the harness's reproducibility primitive for scripted runs: it \"skip[s] auto-discovery of hooks, skills, custom commands, subagents, plugins, MCP servers, auto memory, and CLAUDE.md\" and is \"the recommended mode for scripted and SDK calls.\" That pins what context a run starts from, and --output-format json pins the shape of what comes back. Neither touches the rule's subject: where the process, the constants, and the arithmetic live, or whether an output field says it was computed rather than judged. The harness has no notion of a tested deterministic half, so the rule adds scope and enforcement the native primitive lacks.",
+   "citation": "https://code.claude.com/docs/en/headless",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Report no finding rather than manufacture one",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Concise built-in output style (its guaranteed-complete floor)",
+   "evidence": "The Concise style \"leads with the result, skips preamble and narration, and keeps responses short by default,\" and the only content it guarantees to keep whole is \"error reports, security warnings, and confirmations for destructive actions.\" A limitations section and an honest empty findings list are outside that floor, so a style change can shorten exactly what this rule says must always appear. The rule's schema anchor, which \"accepts an empty findings list and rejects a missing limitations section,\" is what keeps the requirement alive across styles. Complement, and worth keeping precisely because the native floor stops short of it.",
+   "citation": "https://code.claude.com/docs/en/output-styles",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Refute with named lenses, drop by default, and log the drops",
+   "disposition": "UNIQUE",
+   "nativeFeature": "none in the new areas",
+   "evidence": "Nothing in output styles, plan mode, or headless mode names refutation lenses, drop logging, or stakes tiering. The only adjacency is that print mode can cap effort with --max-turns and --max-budget-usd, which \"only work with --print\" and are flat ceilings on turns and spend, with no notion of stakes and no record of a dropped claim. Not a counterpart, so the rule stands untouched by these three areas.",
+   "citation": "claude --help ; https://code.claude.com/docs/en/headless",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Cite or stay silent",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "--json-schema structured output (format keyword is annotation only)",
+   "evidence": "Structured output is the closest native mechanism for shaping an evidence-bearing result, and it explicitly does not check evidence: Claude Code \"accepts schemas using the 'format' keyword (e.g. \\\"format\\\":\\\"email\\\") but treats it only as an annotation, not enforced.\" Its blocking behavior is aimed at the schema itself, exiting with \"Error: --json-schema is not a valid JSON Schema\" for a bad schema. So a printed run can emit a fabricated quote or a dead source in a perfectly valid payload. The rule's string-matching quote checker and empty-evidence rejection add the verification layer the schema deliberately omits.",
+   "citation": "https://code.claude.com/docs/en/headless",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Gate output on status tags",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Headless --permission-mode baseline (Manual, auto classifier, dontAsk)",
+   "evidence": "The harness does have a native band-and-auto-approve mechanism, but it grades tool calls, not facts: \"For -p, the built-in starting permission mode is Manual on every plan\"; auto mode means \"a classifier reviews most actions instead of you\"; dontAsk means \"Claude Code denies anything not in your permissions.allow rules or the read-only command set.\" None of these can read a verified, unverified, or flagged tag on a row, and none blocks a claim from shipping inside an allowed write. The rule applies the same band posture one layer up, at the content the permission system never inspects, with a validator that fails on an untagged or flagged claim. Complement, not duplicate.",
+   "citation": "https://code.claude.com/docs/en/headless",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Reword a locked claim, never strengthen it",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Output styles (\"change how Claude responds, not what Claude knows\")",
+   "evidence": "Output styles are the harness's supported way to change voice and shape without changing substance: they \"modify the system prompt to set role, tone, and output format,\" and the docs draw exactly the line this rule draws, that a style changes how Claude responds and not what Claude knows. The harness enforces nothing about a claim's metric, scope, or verb strength when the wording changes, and a style is advisory system-prompt text. The rule supplies the missing floor plus a diff check that fails when a locked span changes without an itemized ledger entry, so it extends the native separation rather than restating it.",
+   "citation": "https://code.claude.com/docs/en/output-styles",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Treat silence as not approval",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Plan mode approval flow (explicit approve options, no silent yes)",
+   "evidence": "Plan mode is a real native instance of this posture: edits \"stay blocked until you approve the plan,\" approval is an explicit pick among approve or keep planning, and leaving plan mode without approving is a separate deliberate action. But it is narrower and softer than the rule in three documented ways: it gates edits only, it is \"not enforced\" where bypass permissions are available, and a printed run shows no such prompt at all, since \"the workspace trust dialog and per-MCP-server approval prompt are both skipped in -p mode.\" The rule's anchor line currently reads none, which invites a reader to think nothing native covers this. Naming the plan floor and its lapses makes the rule read as an extension of the harness instead of a substitute for it.",
+   "citation": "https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode ; https://code.claude.com/docs/en/headless",
+   "action": "reword-to-cite-native-floor",
+   "proposedWording": "Show the diff and wait for an explicit yes before generating a file, because silence is not approval and neither is a question left unanswered.\nPlan mode is the harness floor here: it holds edits until a person picks an approve option, but the hold ends at approval, does not bind where bypass permissions are available, and never applies to a printed run, so ask for the yes yourself.\nThe same reading applies to data: said nothing is not said yes, and the full rule lives in engineering.md.\nAnchor: none (because an approval a script could grant is not an approval; the gate is the person)."
+  },
+  {
+   "heading": "Read agreement with a shown suggestion as anchored, not accurate",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Reviewing and approving a plan (plan mode's shown-suggestion decision point)",
+   "evidence": "Plan mode produces the exact instrument this rule warns about: the model's proposal is shown beside the reasoning, and the person picks an approve option or edits it in place with the editor hotkey. The docs frame that step as \"a user decision point, not an automated enforcement step,\" and offer no blinding, no provenance separation, and no guidance on what an approval rate means. So the harness manufactures shown-suggestion agreement at scale and says nothing about how to read it. The rule's posture, that such agreement measures anchoring rather than accuracy, plus blinding enforced in the packet on disk, is entirely additive.",
+   "citation": "https://code.claude.com/docs/en/permission-modes#review-and-approve-a-plan",
+   "action": "keep",
+   "proposedWording": ""
+  },
+  {
+   "heading": "Don't",
+   "disposition": "COMPLEMENT",
+   "nativeFeature": "Headless auto-approval surface (--allowedTools with the -p Manual baseline)",
+   "evidence": "The line closest to a native counterpart is the ban on a model approving, promoting, or merging its own output. Headless mode starts at Manual, and auto-approval is opt in via \"--allowedTools to let Claude use certain tools without prompting,\" with --disallowedTools removing tools entirely. Those rules decide which tool calls run; they never judge whether the content of a write was self approved, and an allowed write tool will happily commit a model's own unreviewed output. Every other line here restates a rule judged above and none of them contradicts documented output style, plan mode, or headless behavior.",
+   "citation": "https://code.claude.com/docs/en/headless",
+   "action": "keep",
+   "proposedWording": ""
+  }
+ ],
+ "notes": "Scope note: I judged only against output styles, plan mode, and headless mode, as instructed. The supplied fact bundle also carried MCP, settings precedence, permission rules, hooks, cost reporting, statusline, and telemetry facts; I used the permission-modes facts only where they define plan mode's own mechanics, since the plan mode pages defer to that doc, and I ignored the MCP, settings, hooks, statusline, and telemetry material as out of scope for this pass.\n\nNo CONFLICT found, but two tensions the owner may want to settle intentionally rather than leave implicit:\n\n1. The Proactive built-in output style is the sharpest. It instructs Claude to execute \\\"immediately, mak[e] reasonable assumptions instead of pausing for routine decisions, and prefer action over planning,\\\" and it \\\"works without changing your permission mode.\\\" That is system-prompt-level pressure against the pausing posture of Quarantine, Treat silence as not approval, and Cite or stay silent. It is not a contradiction of documented behavior, because Proactive changes no permission gate and the module's anchors are hooks, schemas, and validators rather than model willingness. But a reader running Proactive gets guidance pulling one way and rules pulling the other. A single sentence somewhere in the module saying the rules bind regardless of the selected output style would close it, if the owner wants that.\n\n2. The Concise style shortens by default and guarantees completeness only for error reports, security warnings, and destructive confirmations. The mandatory limitations section in Report no finding sits outside that guarantee. I judged this a complement rather than a conflict because the rule's anchor is a schema that rejects a missing limitations section, which outranks a style's tone guidance, but the interaction is worth knowing.\n\nJudgment calls I was least sure about:\n\n- Keep a deterministic backbone: I nearly marked it UNIQUE. --bare and --output-format json are reproducibility and shape primitives, not process-determinism primitives, so calling it a complement is a slightly generous reading. If the owner prefers strict reading, UNIQUE with nativeFeature none in the new areas is defensible; the action stays keep either way.\n\n- Refute with named lenses: marked UNIQUE, though --max-turns and --max-budget-usd do cap the number of passes in print mode. I did not treat a flat budget ceiling as a counterpart to stakes-based tiering.\n\n- Don't: judged as one heading, as instructed. It is a restatement list, so its disposition is really inherited from the rules above; I anchored it on the one line with a genuine native adjacency rather than marking the whole block UNIQUE.\n\n- I proposed exactly one reword, on Treat silence as not approval, because its anchor line currently reads none and plan mode is the rule a reader is most likely to mistake for full native coverage. I deliberately did not reword Quarantine, even though plan mode is also its nearest native gate, because that rule's hook anchor already enforces more than plan mode does and the extra prose would be churn. Placement for the reword: the new sentence goes second, after the existing opening line and before the data line; heading, anchor line, and Receipts line stay as they are. No em dashes, no dates, no numbers in the proposed prose."
+}

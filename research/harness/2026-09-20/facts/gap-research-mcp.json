@@ -1,0 +1,139 @@
+{
+  "area": "Claude Code — MCP servers: .mcp.json / settings scopes, tool permissioning, enterprise-managed MCP settings, and PreToolUse hook / permission-prompt interaction (as of 2026-09-20)",
+  "facts": [
+    {
+      "feature": ".mcp.json (project-scope MCP config)",
+      "behavior": "Stored at the project root; \"Created automatically when you run `claude mcp add --scope project`\"; \"Checked into version control so everyone on your team gets the same MCP tools and services\"; supports `${VAR}` / `${VAR:-default}` environment-variable expansion in server url/headers/env.",
+      "limits": "Requires user approval before first use in an interactive session. Credential-like variables (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, AWS_BEARER_TOKEN_BEDROCK, HTTPS_PROXY, NPM_TOKEN, etc.) \"never expand\" inside remote server url/headers, to protect credentials.",
+      "enforcement": "warns",
+      "citation": "https://code.claude.com/docs/en/mcp.md"
+    },
+    {
+      "feature": "MCP server scopes: local / project / user",
+      "behavior": "Three scopes: Local (default, current project only, not shared, stored in ~/.claude.json, no approval needed), Project (current project only, shared via .mcp.json, requires approval in interactive mode), User (all your projects, not shared, stored in ~/.claude.json, no approval needed).",
+      "limits": "Only project scope is shared/committed; local and user scopes never leave the machine they're set on.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/mcp.md"
+    },
+    {
+      "feature": "Project-scoped MCP server approval flow (workspace trust)",
+      "behavior": "Interactive sessions prompt for approval of .mcp.json servers via a workspace-trust dialog; once approved, servers auto-load in future sessions. As of v2.1.196, `claude mcp list`/`get` read .mcp.json approvals only from settings files not checked into the repo until the workspace is trusted: \"A cloned repository can't approve its own servers: enableAllProjectMcpServers or enabledMcpjsonServers committed to the project's .claude/settings.json is ignored in an untrusted folder, and the server stays at ⏸ Pending approval instead of being connected and health-checked.\" Approvals from ~/.claude/settings.json (user), managed settings, and --settings still apply in an untrusted folder. `claude mcp reset-project-choices` resets approved/rejected project-scoped servers.",
+      "limits": "In non-interactive mode (`claude -p`, Agent SDK, cloud sessions) servers load WITHOUT prompting since no approval UI can be shown — \"Non-interactive mode ... Servers load without prompting (approval prompt can't be shown)\"; mitigations are `--strict-mcp-config` (restrict to explicitly passed servers) or `--setting-sources user` / `--bare` to avoid reading project .mcp.json at all. `disabledMcpjsonServers` in ANY settings file still rejects a server outright regardless of trust state.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/mcp.md and https://code.claude.com/docs/en/permissions.md"
+    },
+    {
+      "feature": "enableAllProjectMcpServers / enabledMcpjsonServers / disabledMcpjsonServers / allowedMcpServers / deniedMcpServers",
+      "behavior": "Settings keys that bypass or restrict the per-server approval prompt: enableAllProjectMcpServers approves all .mcp.json servers; enabledMcpjsonServers approves specific named servers; disabledMcpjsonServers rejects named servers in every session type (even bypassing trust checks); allowedMcpServers/deniedMcpServers act as allow/deny lists (can include a `serverUrl:` prefix form).",
+      "limits": "These bypass keys themselves are still gated by workspace trust when committed to a project's shared settings.json (a cloned repo can't self-approve); disabledMcpjsonServers is the one exception that always applies.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/mcp.md"
+    },
+    {
+      "feature": "Settings files & precedence (general, applies to MCP + permission keys)",
+      "behavior": "Five sources, highest precedence first: (1) Managed settings (managed-settings.json / MDM / claude.ai console — \"nothing you set overrides them\"), (2) Command line (`claude --settings`, one session), (3) Project local (.claude/settings.local.json), (4) Shared project (.claude/settings.json, committed), (5) User (~/.claude/settings.json). List-type keys like permissions.allow MERGE across scopes rather than one overriding another.",
+      "limits": "A handful of security-sensitive keys (disableClaudeAiConnectors, enableArtifact=false, isolatePeerMachines, remoteControlAtStartup=false from project/local, crossSessionInbound stricter value, useAutoModeDuringPlan=false, syncClaudeAiSkills/Plugins=false, maxEffortLevel lower cap) are exceptions where a stricter lower-scope value is honored even over managed settings. permissions.defaultMode values 'auto' and 'bypassPermissions' don't take effect from project/local settings (must be user or managed, or passed via --permission-mode).",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/settings.md"
+    },
+    {
+      "feature": "Managed / enterprise settings for MCP (managedMcpServers)",
+      "behavior": "Organizations deploy servers via `managedMcpServers` (managed-settings.json / MDM / claude.ai admin console). \"A server your organization provides through the managedMcpServers managed setting ranks above all of these, so when one of them duplicates it, Claude Code connects the organization's definition. Requires Claude Code v2.1.259 or later.\" Precedence order given by the source: managed MCP config > local scope > project scope (.mcp.json) > user scope > plugin-provided servers > claude.ai connectors. Enterprises can also set allowedMcpServers/deniedMcpServers policy and per-tool blocking for claude.ai connectors, and `ENABLE_CLAUDEAI_MCP_SERVERS=false` disables connector fetching.",
+      "limits": "Managed settings can't be overridden by any lower scope or by --settings/CLI flags (apart from the small security-exceptions list documented on the settings page). `allowManagedPermissionRulesOnly` can make managed settings the ONLY permitted source of permission rules at all.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/mcp.md and https://code.claude.com/docs/en/permissions.md"
+    },
+    {
+      "feature": "Organization controls on claude.ai connector tools (ask / blocked)",
+      "behavior": "\"Your organization can set per-tool controls on claude.ai connectors. Claude Code reads these settings at startup and enforces them locally...\" Tool set to `ask`: \"Claude Code prompts on every call with the reason 'Your organization requires approval for this tool'. The prompt appears even in acceptEdits, auto, and bypassPermissions permission modes, and never offers an option to remember your choice. Allow rules that match the tool don't skip the prompt either. In dontAsk mode, which never prompts, Claude Code denies the call instead.\" Tool set to `blocked`: \"Claude Code filters the tool out before Claude sees it, so it never appears in the tool list.\"",
+      "limits": "In the desktop app's local and SSH sessions, the desktop app withholds blocked tools before delivering a connector, and the ask setting doesn't reach Claude Code there — it falls back to ordinary permission rules instead of prompting on every call.",
+      "enforcement": "warns",
+      "citation": "https://code.claude.com/docs/en/mcp.md"
+    },
+    {
+      "feature": "MCP tool naming & permission-rule matching (mcp__server__tool)",
+      "behavior": "MCP tools are addressed as `mcp__<server>__<tool>` (plugin-bundled: `mcp__plugin_<plugin>_<server>__<tool>`). `mcp__puppeteer` matches any tool from that server; `mcp__puppeteer__*` (wildcard) also matches all its tools; `mcp__puppeteer__puppeteer_navigate` matches one tool. Deny/ask rules accept full tool-name globs, e.g. `mcp__*` denies every MCP tool from every server. Allow rules accept globs only AFTER a literal `mcp__<server>__` prefix (server segment must be glob-free) — an unanchored allow glob like `\"*\"` or `\"mcp__*\"` is skipped with a warning and auto-approves nothing.",
+      "limits": "To match a parameter/argument INSIDE an MCP tool call (not just the tool name), settings-file deny/ask rules with parentheses on mcp__ tools are rejected: \"When Claude Code loads a settings file, it skips any mcp__ rule that has parentheses.\" The only way to match a parameter on an MCP tool is a deny rule passed via the `--disallowedTools` CLI flag — ordinary allow/deny rules in settings.json cannot inspect/gate on an MCP tool's arguments.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/permissions.md"
+    },
+    {
+      "feature": "Permission rule precedence (deny > ask > allow)",
+      "behavior": "\"Rules are evaluated in order: deny, then ask, then allow. The first match in that order determines the outcome, and rule specificity doesn't change the order.\" \"A broad deny rule like Bash(aws *) blocks every matching call, including calls that also match a narrower allow rule... An allow rule can't carve an exception out of a deny rule.\" Applies identically to MCP tool rules.",
+      "limits": "A bare tool-name deny rule (e.g. denying `mcp__server` entirely) removes the tool from Claude's context so Claude never even sees it exists, vs. a scoped deny (e.g. one specific tool) which leaves the server's other tools visible and only blocks matching calls.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/permissions.md"
+    },
+    {
+      "feature": "requiresUserInteraction (per-tool forced-prompt annotation)",
+      "behavior": "An MCP server can mark a specific tool so Claude Code always prompts for it. Per permissions.md: \"MCP tools marked requiresUserInteraction also still prompt when a hook returns 'allow', as do connector tools your organization set to ask in sessions where that setting reaches Claude Code.\" Also referenced in dontAsk mode's description: dontAsk auto-denies calls that would otherwise prompt, but \"AskUserQuestion, MCP tools marked requiresUserInteraction, and connector tools your organization set to ask ... are denied even if you've allowed them.\"",
+      "limits": "Could not retrieve the dedicated docs section (anchor /docs/en/mcp#require-approval-for-a-specific-tool) verbatim — the underlying mcp.md page section text was not retrievable via WebFetch in this session; behavior is corroborated only via cross-references from permissions.md.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/permissions.md (cross-referencing https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool)"
+    },
+    {
+      "feature": "Permission modes and how they treat MCP tools",
+      "behavior": "default/Manual prompts on first use of each tool including MCP tools. acceptEdits auto-accepts file edits/common fs commands only, not MCP tools generally. auto (classifier) auto-approves with background safety checks. dontAsk auto-denies everything that would otherwise prompt (with the requiresUserInteraction/org-ask exceptions above still being denied even if allowed). bypassPermissions \"Skips permission prompts, except for the actions no mode auto-approves\" — but org-set ask connector tools and requiresUserInteraction MCP tools still prompt even in bypassPermissions.",
+      "limits": "bypassPermissions still doesn't skip prompts for org-mandated ask connector tools or requiresUserInteraction MCP tools — those are the two documented cases no permission mode can bypass (aside from EndConversation removal rules).",
+      "enforcement": "warns",
+      "citation": "https://code.claude.com/docs/en/permissions.md"
+    },
+    {
+      "feature": "PreToolUse hook and MCP tool calls",
+      "behavior": "\"PreToolUse fires before a tool call executes and can block it... firing on every tool call except EndConversation calls.\" \"MCP server tools appear as regular tools in tool events (PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, PermissionDenied), so you can match them the same way you match any other tool name.\" Matcher patterns use the same mcp__<server>__<tool> naming, and require `.*` to match a whole server's tools (a bare `mcp__memory` with no `.*` is compared as an exact string and matches nothing, per hooks.md wording: \"To match every tool from a server, append .* to the server prefix. The .* is required...\").",
+      "limits": "None documented beyond the general EndConversation exception; PreToolUse fully reaches MCP tool calls.",
+      "enforcement": "automatic",
+      "citation": "https://code.claude.com/docs/en/hooks.md"
+    },
+    {
+      "feature": "PreToolUse hook decision vs permission rules/prompts (extend permissions with hooks)",
+      "behavior": "From permissions.md: \"PreToolUse hooks run before the permission prompt, for every tool except EndConversation. The hook output can deny the tool call, force a prompt, or skip the prompt to let the call proceed.\" \"Hook decisions don't bypass permission rules. Claude Code evaluates deny and ask rules regardless of what a PreToolUse hook returns: a matching deny rule blocks the call, and a matching ask rule still prompts even when the hook returned allow or ask. This preserves the deny-first precedence... including deny rules set in managed settings.\" \"A blocking hook also takes precedence over allow rules. A hook that exits with code 2 stops the tool call before permission rules are evaluated, so the block applies even when an allow rule would otherwise let the call proceed.\" JSON decision uses hookSpecificOutput.permissionDecision: 'allow' | 'deny' (and implicitly 'ask'); exit code 2 unconditionally blocks even over a JSON allow.",
+      "limits": "A hook returning 'allow' does NOT override: (1) a matching deny/ask permission rule from any scope including managed, (2) requiresUserInteraction-marked MCP tools, (3) organization-set 'ask' connector tools. A hook can only deny outright (exit 2) or add friction (force ask); it cannot force-bypass a stricter rule elsewhere in the stack.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/permissions.md"
+    },
+    {
+      "feature": "PermissionRequest hook event (distinct from PreToolUse)",
+      "behavior": "Fires \"when a tool call needs a permission decision\" — i.e. after PreToolUse, at the point a prompt would otherwise be shown, so a hook can programmatically answer prompts (including for MCP tools) via a `decision` object rather than the PreToolUse hookSpecificOutput.permissionDecision field.",
+      "limits": "\"Exit code 2 isn't honored for this event and the permission flow proceeds unchanged. Deny through the decision object instead\" — unlike PreToolUse, PermissionRequest hooks cannot block via a nonzero/exit-2 shortcut; only the structured decision object works. Full field-level schema of that decision object could not be retrieved verbatim in this session.",
+      "enforcement": "advisory",
+      "citation": "https://code.claude.com/docs/en/hooks.md"
+    },
+    {
+      "feature": "PreToolUse/general hooks and headless (`claude -p`) / SDK sessions",
+      "behavior": "Not explicitly documented on the hooks page for general tool-related hook events. The only headless-specific statement found concerns the separate `Setup` hook event, which fires \"When you start Claude Code with --init-only, or with --init or --maintenance in -p mode. For one-time preparation in CI or scripts.\"",
+      "limits": "This area is UNRESOLVED from the fetched pages: I could not find an explicit statement confirming or denying that PreToolUse/PermissionRequest hooks fire during `claude -p` / non-interactive / Agent-SDK sessions in general (separate from the Setup event). Do not assume parity with interactive sessions without further verification.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/hooks.md"
+    },
+    {
+      "feature": "Hook execution environment / MCP tool hooks (a hook TYPE that calls an MCP tool)",
+      "behavior": "Distinct from 'hooks firing on MCP tool calls' is a hook TYPE that itself invokes an MCP tool as its action: \"MCP tool hooks: call a tool on an already-connected MCP server. The tool's text output is treated like command-hook stdout.\" \"The server must already be connected; the hook never triggers an OAuth or connection flow.\" \"mcp_tool hooks are not available for the SessionStart hook event (no MCP client context).\" Command hooks run with \"Claude Code's environment\" in the current directory; on macOS/Linux, \"command hooks run in their own session without a controlling terminal. The hook process and any child processes can't open /dev/tty or send escape sequences directly to the Claude Code interface.\"",
+      "limits": "An mcp_tool-type hook can only call a server that's already connected — it cannot bootstrap a new connection or complete OAuth. Not available at SessionStart. No explicit statement found on whether hooks run sandboxed or with full user permissions beyond the terminal-isolation note above.",
+      "enforcement": "none",
+      "citation": "https://code.claude.com/docs/en/hooks.md"
+    },
+    {
+      "feature": "claude mcp CLI (scope flag, subcommands)",
+      "behavior": "`claude mcp add [options] <name> <commandOrUrl> [args...]` supports `-s, --scope <scope>` = local|user|project (default: local), `-t, --transport` = stdio|sse|http (default stdio), `-e/--env`, `-H/--header`, OAuth flags (--client-id, --client-secret, --callback-port). Other subcommands: add-from-claude-desktop, add-json, get, list, login, logout, remove, reset-project-choices, serve. `claude mcp get`/`list` help text states: \"Unapproved .mcp.json servers are shown as ⏸ Pending approval and not connected to; approved servers are health-checked unless disabled for this project.\"",
+      "limits": "CLI help text does not itself document permission/tool-allow behavior beyond the approval-status note; that lives in the docs pages, not --help output.",
+      "enforcement": "advisory",
+      "citation": "`claude mcp --help`, `claude mcp add --help`, `claude mcp get --help` (run locally)"
+    },
+    {
+      "feature": "Read/Edit/WebFetch/Bash rule mechanics do not extend to MCP tool argument inspection",
+      "behavior": "Read/Edit path rules, WebFetch domain rules, and Bash command-text rules all have rich pattern-matching (gitignore-style paths, domain wildcards, compound-command splitting) documented at length — none of this machinery applies to MCP tools. The only parameter-level control point for MCP tools is CLI `--disallowedTools` with a parenthesized parameter rule, and settings-file mcp__ rules with parentheses are silently skipped with a startup warning.",
+      "limits": "Confirms a real blind spot: a settings.json ask/deny rule cannot gate an MCP tool call based on the arguments Claude passes to it (e.g. cannot write a rule like `mcp__github__create_pr(base:main)` in settings.json) — only a PreToolUse hook inspecting tool_input, or --disallowedTools at CLI invocation time, can do this.",
+      "enforcement": "blocks",
+      "citation": "https://code.claude.com/docs/en/permissions.md"
+    }
+  ],
+  "unreachable": [
+    "The dedicated docs subsection at https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool (requiresUserInteraction) could not be retrieved verbatim from mcp.md via WebFetch in this session even after targeted re-fetches; its existence and effect are only corroborated indirectly via cross-references in permissions.md.",
+    "Full raw text of https://code.claude.com/docs/en/mcp.md could not be obtained verbatim — WebFetch's summarizing model declined a full verbatim reproduction citing copyright, so mcp.md facts above rely on the tool's synthesized-but-quoted extracts rather than a full raw read (unlike settings.md and permissions.md, which were read as full raw persisted files).",
+    "Full raw text of https://code.claude.com/docs/en/hooks.md was likewise not obtainable verbatim in full (same refusal); hooks facts rely on synthesized extracts with embedded verbatim quotes, not a complete raw read.",
+    "No explicit documentation statement found (in the pages fetched) on whether PreToolUse/PermissionRequest hooks fire during claude -p / headless / Agent-SDK sessions for ordinary tool calls (only the Setup event's -p behavior is documented) — this is a genuine gap, not a refusal.",
+    "The PermissionRequest hook event's full decision-object schema (field names/values beyond the exit-code-2 caveat) was not retrieved.",
+    "https://code.claude.com/docs/en/managed-mcp (linked from mcp.md as the canonical page for managedMcpServers / 'Provide servers through managed settings') was not separately fetched in this session; facts about managedMcpServers rely on cross-references found in mcp.md and permissions.md rather than that page directly."
+  ]
+}

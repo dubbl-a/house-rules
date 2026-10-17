@@ -1,0 +1,69 @@
+{
+  "item": "<audit-worktree>/plugins/house/modules/deployment/rules/deployment.md",
+  "rules": [
+    {
+      "heading": "Deploy manually after the merge, because a merge is not a production update",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Auto mode classifier (default-blocked list includes production deploys); background-session git policy that never merges",
+      "evidence": "The classifier reviews and by default blocks production deploys before they run, but nothing in the harness tracks whether merged code has reached production or stops the model from calling a merge live, so the rule adds the reporting posture and the surface list the harness has no notion of.",
+      "citation": "https://code.claude.com/docs/en/permission-modes.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: none (the harness only reviews a deploy command in auto mode and cannot observe that a merge was meant to ship; the named deploy script is the only path to production and the docs must say so out loud)."
+    },
+    {
+      "heading": "Chain the deploy guards before building anything, and give them one named escape hatch",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "GitHub Actions gotcha: no workflow runs on commits pushed with the default GITHUB_TOKEN; PreToolUse hooks as the blocking layer",
+      "evidence": "The docs record that GitHub triggers no workflow at all for a commit made with the default workflow token, which is exactly why an empty check-run list must fail closed, and the harness itself offers no gate on checkout state, account pinning, or merged-PR provenance.",
+      "citation": "https://code.claude.com/docs/en/github-actions",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Unchecked is not passing, so an empty list of check runs fails closed rather than reading as success, because GitHub starts no workflow run at all for a commit pushed with the default workflow token and leaves the tip genuinely unchecked."
+    },
+    {
+      "heading": "Migrate before deploying the code that reads the schema",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "Auto mode classifier (production migrations on the default-blocked list)",
+      "evidence": "The classifier holds a production migration for review before it runs, but it reviews one action at a time and has no notion of ordering a migration against the deploy that reads it, which is the whole substance of this rule.",
+      "citation": "https://code.claude.com/docs/en/permission-modes.md",
+      "action": "reword-to-cite-native-floor",
+      "proposedWording": "Anchor: the ordered ship script (`npm run ship`), which runs the migration step before the deploy step and exits at the first failure by name, because auto mode holds a production migration for review but has no notion of which step must come first."
+    },
+    {
+      "heading": "Invoke a deploy only through its named script",
+      "disposition": "COMPLEMENT",
+      "nativeFeature": "permissions.deny rules and deny-before-ask-before-allow evaluation order",
+      "evidence": "The docs state that permission rules are enforced by Claude Code and not by the model, and that deny is evaluated first so a broad deny beats a narrower allow, which is precisely the floor the Anchor line already cites for denying the raw platform CLI while allowing the named script.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Verify the deployed URL against the built file with the cache bypassed",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The only fetch-related native behavior in the gathered facts is WebFetch domain permission rules, which govern which hosts may be reached and say nothing about comparing a built artifact to a live response or bypassing an edge cache.",
+      "citation": "https://code.claude.com/docs/en/permissions.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Repoint and deploy the consumer before dropping the producer's column",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "The nearest native safeguard is the critical-path rm and rmdir circuit breaker, which covers filesystem removals only and has no view of a schema contract between a producer and its consumers.",
+      "citation": "https://code.claude.com/docs/en/permission-modes.md",
+      "action": "keep",
+      "proposedWording": ""
+    },
+    {
+      "heading": "Restore a backup before calling it a backup",
+      "disposition": "UNIQUE",
+      "nativeFeature": "none",
+      "evidence": "Checkpointing is the only native restore mechanism and the docs say plainly that it is session-level recovery and not version control, with snapshots aged out by the retention sweep, so it is not a data backup and makes no claim about proving one restores.",
+      "citation": "https://code.claude.com/docs/en/checkpointing",
+      "action": "keep",
+      "proposedWording": ""
+    }
+  ],
+  "notes": "Seven headings classified; \"## Don't\" excluded as instructed. No DUPLICATE and no CONFLICT found in this file: nothing here restates a native mechanism, and nothing tells the assistant to hand-do work the harness automates.\n\nLeast certain calls:\n\n1. \"Deploy manually after the merge\" — borderline UNIQUE vs COMPLEMENT. The auto mode classifier's default-blocked list names production deploys, which is a real adjacent floor, but the rule's actual subject is truthful reporting of what is live, which no native feature touches at all. I chose COMPLEMENT and a light Anchor reword rather than a keep, because the current Anchor says \"nothing can observe that a merge was meant to ship\" and a reader could take that as \"the harness does nothing about deploys,\" which is not quite right in auto mode.\n\n2. \"Migrate before deploying the code that reads the schema\" — thinnest overlap of the three COMPLEMENTs. The classifier blocks production migrations, but that is a gate on one action rather than an ordering guarantee, so a reader could reasonably argue this is UNIQUE. The reword is defensive: it names the floor so the rule cannot be read as claiming the harness orders anything.\n\n3. \"Invoke a deploy only through its named script\" — kept, but with a caveat worth tracking. The Anchor's claim about deny rules is accurate (rules are enforced by Claude Code, not the model, and deny is evaluated first). However the permissions docs also say a Bash rule matches the command text and form the model typically produces, not the same program invoked another way, and is explicitly \"not a security boundary around the program.\" The deny on the raw platform CLI therefore does not stop every possible invocation. I did not propose a reword because the rule's prose already tells the reader never to call the CLI by hand from anywhere, which covers the gap in posture; if the owner wants the caveat stated in the Anchor, that would be a second reword candidate.\n\n4. \"Restore a backup before calling it a backup\" — classified UNIQUE. Checkpointing is the only native thing shaped like restore, and the docs disclaim it as not version control, so citing it would risk implying a relationship that does not exist. If the owner prefers every rule to name a floor even when the floor is an explicit non-guarantee, this one could be reworded to cite checkpointing's disclaimer instead.\n\nAll proposed wordings keep the heading unchanged, use no em dashes, and carry no dates or numerals in rule prose."
+}
