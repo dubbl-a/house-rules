@@ -6,7 +6,7 @@ Output that reads as finished is not output that has been checked.
 
 ## Quarantine model output until a human moves it
 
-The harness floor is its approval prompt on a write, which auto mode, now the built-in starting mode, and accept-edits both waive for edits inside the working directory, and which never outlives the session, so the durable gate must be structural: generate into an untracked directory and let a person move each file into the tracked one; that move is the sign-off, and unlike a review, cannot be skipped.
+The harness floor is its approval prompt on a write, which auto mode, now the built-in starting mode of an interactive terminal or VS Code session, and accept-edits both waive for edits inside the working directory, and which never outlives the session, so the durable gate must be structural: generate into an untracked directory and let a person move each file into the tracked one; that move is the sign-off, and unlike a review, cannot be skipped.
 The machine may not vouch for its own guess: a queued row stays pending until a person promotes it, a dry run may admit nobody, and a hand-edited review file is never overwritten.
 Surface the real records for a person to direct, then execute the write and carry it through every downstream stage yourself: the decision is theirs, the bookkeeping is yours.
 This governs an artifact heading for the tracked tree or published output, content a user or future session reads as finished; a status-tagged row scoped for auto-approval is a different surface below.

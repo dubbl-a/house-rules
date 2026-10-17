@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.21.3] - 2026-10-16
+
+A patch release under ADR 0012: new commands (`house decline`, `house hook add`), honest guard records for a team repo, checker fixes that make a fresh bootstrap pass and give CI the local verdict, and rule clauses following Claude Code 2.1.302 and adopter reports. No heading is renamed, no config slot changes, and nothing the guard denies changes (its refusal message is reworded only). `house.json` gains optional values (`guard.by` `"floor"` and `"remote"`, a `declined-step` deviation kind), and `.house/lock.json` gains a `modules` key without any change to the layout of `.house/`. Upgrading from 0.21.2: run `/house-rules:sync`, which writes the new checker and the lock's `modules` record together.
+
 ### Added
 
 - `house decline <module> <step-id> --why "..."` records an at-adoption step the repo decided not to do (#247). It writes a dated `declined-step` deviation naming the module and step, and `house doctor` lists the step as declined, with the date and reason, instead of not confirmed, so the not-confirmed list can be emptied. The checker validates the record's shape and that its module is in `house.json`. Like `confirm`, it refuses until the vendored checker is the plugin's. Confirming a declined step later still works and wins; the decline stays in `deviations` as history.
@@ -15,6 +19,8 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- "Quarantine model output until a human moves it" in the llm-output rule scopes auto mode as the built-in starting mode to an interactive terminal or VS Code session. Claude Code 2.1.302 starts `claude -p` and Agent SDK sessions with no permission mode in `default` on third-party providers, with telemetry off, or on a fresh install, so a printed run no longer starts in auto mode by default. The "Treat silence as not approval" receipt in `docs/handbook/llm-output.md` records the change.
+- The harness survey records Claude Code 2.1.300, 2.1.301, and 2.1.302.
 - The review rule and the session-start orchestration text now say a must-fix names a concrete failure, that added machinery is a cost the fix must justify, that the refuter names the simplest fix, and that a simplification pass keeping the safety core, then a check scoped to it, is an option to offer the user when rounds keep adding machinery (#254).
 - The branch guard's refusal for text that only mentions the hooks setting now names the route that needs no round trip: write the text to a file and pass its path, or give the user a fenced block (#248). What the guard refuses is unchanged.
 - `plugins/house/templates/pr-checks.yml` pins `actions/setup-node` v7.1.0, matching this repo's workflows after the Dependabot bump (#242). Dependabot does not scan the templates. Existing adopters keep their file and can copy the `uses:` line.
