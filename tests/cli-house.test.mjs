@@ -614,6 +614,7 @@ test('doctor: rule-load positive control reports none wired when nothing declare
   assert.deepEqual(j.ruleLoadProbe, {
     source: null,
     logPath: join(configDir, 'house', 'instructions-loaded', `${instructionsLoadedKey(repo)}.jsonl`),
+    logFiles: 0,
     lastLoadAt: null,
     vendoredSeen: 0,
     vendoredTotal: 0,
@@ -810,6 +811,28 @@ test('doctor: honors CLAUDE_CODE_PROJECT_DIR_NAME beside CLAUDE_CONFIG_DIR for t
   const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
   assert.equal(j.ruleLoadProbe.logPath, join(configDir, 'house', 'instructions-loaded', `${named}.jsonl`));
   assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:00:00.000Z');
+});
+
+test('doctor: pools legacy worktree-keyed logs for the root, and ignores a sibling repo\'s key', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  const repo = buildTargetRepo();
+  const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
+  CLEANUP_DIRS.push(configDir);
+  const logDir = join(configDir, 'house', 'instructions-loaded');
+  mkdirSync(logDir, { recursive: true });
+  const key = instructionsLoadedKey(repo);
+  const rec = (ts) => `${JSON.stringify({ ts, file_path: 'x', load_reason: 'session_start', session_id: 's' })}\n`;
+  writeFileSync(join(logDir, `${key}.jsonl`), rec('2026-09-08T10:00:00.000Z'));
+  writeFileSync(join(logDir, `${key}-.claude-worktrees-agent-1.jsonl`), rec('2026-09-09T10:00:00.000Z'));
+  writeFileSync(join(logDir, `${key}-2.jsonl`), rec('2026-09-20T10:00:00.000Z'));
+  writeFileSync(join(logDir, `${key}-.claude-worktrees-agent-2.jsonl.bak`), rec('2026-09-21T10:00:00.000Z'));
+
+  const env = { CLAUDE_CONFIG_DIR: configDir };
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
+  assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-09T10:00:00.000Z', 'worktree log pooled; sibling repo and non-jsonl ignored');
+  assert.equal(j.ruleLoadProbe.logFiles, 2);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo], env).out, /pooled 2 log files/);
 });
 
 // ── check ────────────────────────────────────────────────────────────────
