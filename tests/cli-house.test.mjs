@@ -4001,3 +4001,61 @@ test('#248 hook add: after the new file is committed the floor still reads armed
   const full = spawnSync(process.execPath, [join(repo, '.house', 'check.mjs'), '--only=guard', '--json', '--repo', repo], { encoding: 'utf8' });
   assert.doesNotMatch(full.stdout, /30-mycheck/);
 });
+
+test('#248 hook add does not claim re-armed under a foreign hooks path, and exits non-zero', () => {
+  const { cliPath, repo, hook } = buildHookAddRepo();
+  spawnSync('git', ['-C', repo, 'config', 'core.hooksPath', '.husky']);
+  const r = runCli(cliPath, ['hook', 'add', hook, '--name', '30-x', '--repo', repo]);
+  assert.notEqual(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(r.out + r.err, /re-armed the hooks/);
+  assert.match(r.err, /NOT armed/);
+  assert.match(r.out, /NOT armed; chain it/);
+});
+
+test('#248 hook add creates nothing when .githooks is a symlink out of the repo', () => {
+  const { cliPath, repo, hook } = buildHookAddRepo();
+  const outside = mkdtempSync(join(tmpdir(), 'house-hookadd-out-'));
+  CLEANUP_DIRS.push(outside);
+  mkdirSync(join(outside, 'x'));
+  writeFileSync(join(outside, 'x', 'pre-commit'), '');
+  rmSync(join(repo, '.githooks'), { recursive: true, force: true });
+  symlinkSync(join(outside, 'x'), join(repo, '.githooks'));
+  const r = runCli(cliPath, ['hook', 'add', hook, '--name', '30-x', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /outside the repo/);
+  assert.deepEqual(readdirSync(join(outside, 'x')), ['pre-commit']);
+});
+
+test('#248 hook add refuses a dangling-symlink or regular-file .d with a message, not a stack trace', () => {
+  const { cliPath, repo, hook } = buildHookAddRepo();
+  const d = join(repo, '.githooks', 'pre-commit.d');
+  rmSync(d, { recursive: true, force: true });
+  symlinkSync(join(repo, 'nowhere'), d);
+  const dang = runCli(cliPath, ['hook', 'add', hook, '--name', '30-x', '--repo', repo]);
+  assert.equal(dang.code, 2);
+  assert.match(dang.err, /dangling symlink/);
+  rmSync(d, { force: true });
+  writeFileSync(d, 'x');
+  const reg = runCli(cliPath, ['hook', 'add', hook, '--name', '30-x', '--repo', repo]);
+  assert.equal(reg.code, 2);
+  assert.match(reg.err, /not a directory/);
+  assert.doesNotMatch(dang.err + reg.err, /at \w+ \(|ENOENT/);
+});
+
+test('#248 hook add refuses --stage or --name given without a value', () => {
+  const { cliPath, repo, hook } = buildHookAddRepo();
+  for (const args of [['--stage'], ['--stage', '--repo', repo], ['--stage='], ['--name'], ['--name=']]) {
+    const r = runCli(cliPath, ['hook', 'add', hook, ...args, ...(args.includes('--repo') ? [] : ['--repo', repo])]);
+    assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.err, /needs a value/, args.join(' '));
+  }
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-commit.d', 'mycheck')));
+});
+
+test('#248 hook add from a subdirectory --repo names the repo root, and works', () => {
+  const { cliPath, repo, hook } = buildHookAddRepo();
+  mkdirSync(join(repo, 'sub'));
+  const r = runCli(cliPath, ['hook', 'add', hook, '--name', '34-sub', '--repo', join(repo, 'sub')]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '34-sub')));
+});

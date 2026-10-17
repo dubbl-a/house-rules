@@ -3661,12 +3661,18 @@ function cmdHookAdd(args) {
     console.error('usage: house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
     process.exit(2);
   }
+  if (args.stage === '' || args.name === '') {
+    console.error(`house hook add: --${args.stage === '' ? 'stage' : 'name'} needs a value; nothing was written.`);
+    process.exit(2);
+  }
   const stage = args.stage || 'pre-commit';
   if (!HOOK_ADD_STAGES.includes(stage)) {
     console.error(`house hook add: --stage must be one of ${HOOK_ADD_STAGES.join(', ')}, got \`${stage}\`; nothing was written.`);
     process.exit(2);
   }
-  const repoRoot = resolveRepoRoot(args);
+  let repoRoot = resolveRepoRoot(args);
+  // --repo may name a subdirectory; the hooks live at the repo root.
+  try { repoRoot = git(repoRoot, ['rev-parse', '--show-toplevel']).trim(); } catch { /* keep the given path */ }
   const src = path.resolve(process.cwd(), file);
   let srcStat;
   try { srcStat = lstatSync(src); } catch {
@@ -3688,12 +3694,36 @@ function cmdHookAdd(args) {
   }
   const hooksDir = path.join(repoRoot, '.githooks');
   if (!existsSync(path.join(hooksDir, stage))) {
-    console.error(`house hook add: ${hooksDir}/${stage} is missing, so the github module's hook floor is not rendered here. Run \`house render --apply\` first; nothing was written.`);
+    console.error(`house hook add: ${hooksDir}/${stage} is missing, so the github module's hook floor is not rendered in the repo at ${repoRoot}. Run \`house render --apply\` first; nothing was written.`);
     process.exit(2);
   }
   const destDir = path.join(hooksDir, `${stage}.d`);
-  mkdirSync(destDir, { recursive: true });
   const realRepo = realpathSync(repoRoot);
+  // Resolve before any mkdir, so a hooks directory symlinked out of the repo gets nothing created.
+  if (realpathSync(hooksDir) !== path.join(realRepo, '.githooks')) {
+    console.error(`house hook add: ${hooksDir} resolves to ${realpathSync(hooksDir)}, outside the repo; nothing was written.`);
+    process.exit(2);
+  }
+  let dStat = null;
+  try { dStat = lstatSync(destDir); } catch { /* absent: created below */ }
+  if (dStat && !dStat.isDirectory()) {
+    if (dStat.isSymbolicLink()) {
+      let target = null;
+      try { target = realpathSync(destDir); } catch { /* dangling */ }
+      if (target === null) {
+        console.error(`house hook add: ${destDir} is a dangling symlink; remove it and re-run. Nothing was written.`);
+        process.exit(2);
+      }
+      if (target !== path.join(realRepo, '.githooks', `${stage}.d`)) {
+        console.error(`house hook add: ${destDir} resolves to ${target}, outside the repo's own .githooks; nothing was written.`);
+        process.exit(2);
+      }
+    } else {
+      console.error(`house hook add: ${destDir} is not a directory; nothing was written.`);
+      process.exit(2);
+    }
+  }
+  if (!dStat) mkdirSync(destDir, { recursive: true });
   const realDestDir = realpathSync(destDir);
   if (realDestDir !== path.join(realRepo, '.githooks', `${stage}.d`)) {
     console.error(`house hook add: ${destDir} resolves to ${realDestDir}, outside the repo's own .githooks; nothing was written.`);
@@ -3708,10 +3738,26 @@ function cmdHookAdd(args) {
   }
   copyFileSync(src, dest);
   chmodSync(dest, 0o755);
-  runArmGitHooks(repoRoot, false);
+  const armOut = runArmGitHooks(repoRoot, false);
   const rel = posixJoin('.githooks', `${stage}.d`, name);
-  console.log(`house hook add: wrote ${rel} (mode 755) and re-armed the hooks.`);
-  console.log(`  The dispatcher refuses every ${stage} until the file is tracked, and the session branch guard reads the floor as unarmed while it is untracked or uncommitted. Run: git add ${rel} && git commit, on a feature branch.`);
+  console.log(`house hook add: wrote ${rel} (mode 755).`);
+  if (armOut) for (const line of armOut.split('\n')) if (line.trim()) console.log(line);
+  const probe = gitHookFloorProbe(repoRoot);
+  if (!probe || probe.armed !== true) {
+    console.error(`house hook add: the git-hook floor is NOT armed here${probe && probe.hooksPath ? ` (core.hooksPath is ${probe.hooksPath})` : ''}; the file is written but nothing runs it. Follow the guidance above, then commit ${rel}.`);
+    process.exit(1);
+  }
+  console.log('  Re-armed: core.hooksPath points at the floor.');
+  let linked = false;
+  try {
+    const canon = (p) => realpathSync(path.resolve(repoRoot, p));
+    linked = canon(git(repoRoot, ['rev-parse', '--git-dir']).trim()) !== canon(git(repoRoot, ['rev-parse', '--git-common-dir']).trim());
+  } catch { /* treat as a plain checkout */ }
+  if (linked) {
+    console.log(`  This is a linked worktree: core.hooksPath stays on the main checkout, so commits here are not blocked by the untracked file, but the session branch guard reads the floor as unarmed until ${rel} is committed. Run: git add ${rel} && git commit, on a feature branch.`);
+  } else {
+    console.log(`  The dispatcher refuses every ${stage} until the file is tracked, and the session branch guard reads the floor as unarmed while it is untracked or uncommitted. Run: git add ${rel} && git commit, on a feature branch.`);
+  }
 }
 
 // ── CLI / main ───────────────────────────────────────────────────────────
