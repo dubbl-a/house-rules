@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- The drift family flags a root `CLAUDE.md` domain-rules table row whose "Loads when working in" globs differ from the `paths:` of the vendored rule file it names (#277). The finding names the globs missing from the row and the extra ones, and says to copy them from `.house/INDEX.md`. Rows for repo-authored rule files, and rows naming a file that is absent or has no `paths:`, are skipped, because those rows are hand summaries other checks already cover.
+
+### Changed
+
+- The lengths family prints each line-limited file's headroom as an info line, such as `README.md [headroom] 193 of 200 lines`, so a second pull request near a limit is visible in review (#287). Info lines never count: finding and warning totals and the exit code are unchanged.
+
 ## [0.21.4] - 2026-10-17
 
 A patch release under ADR 0012: checker and CLI fixes. The lock's `modules` record no longer decides any verdict, rendered globs are quoted, the env-anchor finding names its fix, an armed-floor check works from a session, and rule-load logs pool per repo. No heading is renamed, no config slot changes, nothing the guard denies changes (its refusal message is reworded only), and neither the `house.json` nor the `.house/` layout changes. Every vendored rule file's `paths:` frontmatter changes form on this sync, from `- docs/**` to `- "docs/**"`, so expect a diff in each one. Upgrading from 0.21.3: run `/house-rules:sync`.

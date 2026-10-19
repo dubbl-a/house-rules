@@ -938,6 +938,43 @@ function collectComponentBasenames(allTracked, roots, exts) {
   return out;
 }
 
+// #277: the root CLAUDE.md's domain-rules table copies each rule file's
+// `paths:` globs by hand, so a render that changes a file's globs leaves the
+// row stale and nothing says so. A row is matched to a rule file by the
+// `.claude/rules/house/...md` path in its first cell; its second cell's backticked
+// globs are compared, as a set, with that file's `paths:` list. A row whose
+// file is missing or has no `paths:` is skipped: other checks own those. Only
+// vendored files (`.claude/rules/house/`) are compared: the skeleton says to
+// copy their globs from INDEX.md verbatim, while a repo-authored rule's row is
+// often a hand summary (brace shorthand, a glob family) that would never match.
+function checkRulesTable(ctx) {
+  const findings = [];
+  const raw = safeRead(join(ctx.repoRoot, 'CLAUDE.md'));
+  if (!raw) return findings;
+  raw.split('\n').forEach((line, idx) => {
+    if (!line.trimStart().startsWith('|')) return;
+    const cells = line.split('|').map((c) => c.trim());
+    const file = (cells[1] || '').match(/\.claude\/rules\/house\/[^\s)`\]]+\.md/);
+    if (!file) return;
+    const rowGlobs = [...(cells[2] || '').matchAll(/`([^`]+)`/g)].map((m) => m[1].trim().replace(/^["']|["']$/g, ''));
+    if (rowGlobs.length === 0) return;
+    const ruleAbs = join(ctx.repoRoot, file[0]);
+    if (!existsSync(ruleAbs)) return;
+    const { globs } = parseRuleFrontmatterPaths(safeRead(ruleAbs));
+    if (globs.length === 0) return;
+    const rowSet = new Set(rowGlobs);
+    const ruleSet = new Set(globs);
+    const missing = globs.filter((g) => !rowSet.has(g));
+    const extra = rowGlobs.filter((g) => !ruleSet.has(g));
+    if (missing.length === 0 && extra.length === 0) return;
+    const parts = [];
+    if (missing.length) parts.push(`missing ${missing.map((g) => `\`${g}\``).join(', ')}`);
+    if (extra.length) parts.push(`lists ${extra.map((g) => `\`${g}\``).join(', ')}, which ${file[0]} no longer loads on`);
+    findings.push(mk('drift', 'CLAUDE.md', idx + 1, 'rules table', `the "Loads when working in" cell for ${file[0]} disagrees with that file's \`paths:\` frontmatter: ${parts.join('; ')}. Copy the globs from .house/INDEX.md (\`house render --apply\` rewrites it) or from the file's frontmatter.`));
+  });
+  return findings;
+}
+
 function checkDrift(ctx) {
   const findings = [];
   const warnings = [];
@@ -1333,6 +1370,7 @@ function checkDrift(ctx) {
     warnings.push(mk('drift', '.gitignore', null, 'local-only ignore', `\`${p}\` resolves only because a local-only rule hides it (.git/info/exclude, or a global core.excludesFile). Those do not travel with the repo, so a fresh checkout -- CI, or a teammate -- will flag this path instead. Commit the ignore rule, or list the path in modules.docs.config.buildArtifactPrefixes.`));
   }
 
+  findings.push(...checkRulesTable(ctx));
   return { findings, warnings, scanned };
 }
 
@@ -1912,6 +1950,7 @@ function checkLengths(ctx) {
   }
 
   const tighten = [];
+  const info = [];
   for (const [file, { limitLines, limitBytes }] of perFile) {
     const abs = join(ctx.repoRoot, file);
     if (!existsSync(abs) || specialFileKind(abs)) continue;
@@ -1923,6 +1962,9 @@ function checkLengths(ctx) {
     const effectiveCeiling = limitLines === null ? null
       : (ceilingFromRatchet !== null ? Math.max(ceilingFromRatchet, limitLines) : limitLines);
     const linesOver = effectiveCeiling !== null && count > effectiveCeiling;
+    // #287: two PRs can each pass the limit and together break it, so show
+    // the room left. Informational only: never a finding or warning.
+    if (effectiveCeiling !== null && !linesOver) info.push(mk('lengths', file, null, 'headroom', `${count} of ${effectiveCeiling} lines`));
 
     let bytes = null;
     let bytesOver = false;
@@ -1950,7 +1992,7 @@ function checkLengths(ctx) {
   }
 
   ctx.pendingRatchetTighten.push(...tighten);
-  return { findings, warnings };
+  return { findings, warnings, info };
 }
 
 // The harness warns at startup and in /status when an instruction file passes
