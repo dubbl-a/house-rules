@@ -68,11 +68,12 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Batch related fixes into one brief so large files are read once.
 - Subagents commit; the session pushes and opens the PR. On the user's "merge" it waits for green
-  checks (`gh pr checks <n> --watch`, a red or stuck one reported), merges, then cleans up (worktree,
-  local branch, `git fetch --prune`, default branch pulled), each a plain call. A merge is not a
-  deploy: offer one only where the repo names a deploy. Hand the user a command only for what the
-  session cannot run; an agent's denial goes to the user, not the parent.
-- Stop a subagent via a message or `TaskStop`, never by killing its children; STOP hands over its jobs.
+  checks (`gh pr checks <n> --watch`), reporting a red or stuck one instead of merging, then merges
+  and cleans up (worktree, local branch, `git fetch --prune`, default branch pulled), each a plain
+  call. A merge is not a deploy: offer one only where the repo names a deploy. Hand the user a
+  command only for what the session cannot run; an agent's denial goes to the user, not the parent.
+- Stop a subagent by message or `TaskStop`, never by killing its children, then take over its work;
+  a brief's STOP asks it to stop or hand over any background job it started before it reports.
 - A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
   brief names a destination there and the session moves the artifact afterwards.
 - Workflows run only when the user asks; when they do, name the agent count, and treat the
@@ -119,10 +120,9 @@ diffs."):
 - Anything settleable by running it gets run.
 - Never accept "done" or "tests pass". The refuter reruns them; when no refuter is sent, the
   session reruns them.
-- Run `git status --short` before and after a refuter or debugger. If the output differs, the
-  agent edited files. Discard its verdict. Where another agent can still write the branch, the
-  refuter reviews the pinned commit in its own detached checkout (`git worktree add --detach <tmp>
-  <sha>`, removed afterwards) and `git status` runs there.
+- Run `git status --short` before and after a refuter or debugger; if it differs, the agent edited
+  files: discard its verdict. Where another agent can still write the branch, the session adds a
+  detached checkout of the pinned commit, names it in the brief, runs status there, then removes it.
 - Say which findings came from an agent, which the session confirmed, and which nobody tested.
 - Every launched agent must have a recorded result. An absent result is UNKNOWN, not failed and
   not finished.
