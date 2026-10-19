@@ -51,7 +51,7 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
   or synthesis whose verdict decides, because the verdict is the product and Opus is moderately
   priced. A hard multi-file or agentic build may go to Opus through an explicit `model` on the
-  builder call; routine and mechanical work stays on Sonnet or Haiku.
+  builder call; code and prose stay on Sonnet, locations and receipt checks on Haiku.
 - On `/deep-research`, never `Workflow({name: "deep-research"})`, which pins no model. Copy
   `<home>/.claude/workflows/deep-research-tiered.js` into the session scratchpad and run
   `Workflow({scriptPath: <that copy>, args: {question, depth}})`, stating the depth (light,
@@ -67,12 +67,12 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 
 - Spawn for: multi-file changes, sweeps, large reads, independent review, parallel research.
 - Batch related fixes into one brief so large files are read once.
-- Subagents commit; the session pushes and opens the pull request. On the user's "merge" it waits for
-  green checks (`gh pr checks <n> --watch`), reports a red or stuck one, then merges and cleans up (worktree, local branch, `git fetch --prune`, default branch pulled), each a plain
-  call. A merge is not a deploy: offer one only where the repo names a deploy. Hand the user a
-  command only for what the session cannot run; an agent's denial goes to the user, not the parent.
-- Stop a subagent through it or `TaskStop`, never by killing its children from the parent; its
-  brief's STOP hands over any background job it started before it reports.
+- Subagents commit; the session pushes and opens the PR. On the user's "merge" it waits for green
+  checks (`gh pr checks <n> --watch`, a red or stuck one reported), merges, then cleans up (worktree,
+  local branch, `git fetch --prune`, default branch pulled), each a plain call. A merge is not a
+  deploy: offer one only where the repo names a deploy. Hand the user a command only for what the
+  session cannot run; an agent's denial goes to the user, not the parent.
+- Stop a subagent via a message or `TaskStop`, never by killing its children; STOP hands over its jobs.
 - A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
   brief names a destination there and the session moves the artifact afterwards.
 - Workflows run only when the user asks; when they do, name the agent count, and treat the
