@@ -763,6 +763,8 @@ already lives, and becomes an issue closed as not planned only when no such plac
 that reason is still the one line the next session cannot reconstruct on its own. Auto memory
 stays machine-local and unshared, so it still is not the channel (as of 2026-09-02, above).
 
+Added from aaron-gtm, dated 2026-10-19 (#279): a session deferring a model-choice decision first wrote its issue with its own reading stated as findings, resting on three failures from two single runs it never inspected, with a 35 h build time estimated from parameter count sitting unlabelled beside measured numbers. Aaron's correction was to let a new session reach independent conclusions and to share the earlier research passes. The issue was rewritten into Measured (with n and run count), Estimates (labelled), Limits of these numbers, One session's interpretations (unverified), Prior research, and Where things are. The evals rule covers the ratio and the sample, and research covers UNVERIFIED marks; neither covers the hand-off framing, which is what the sentence adds.
+
 ## Check for a peer session before driving shared external state
 
 repo-e's `resume_instructions.md` documents the incident that produced this rule, dated
@@ -776,6 +778,8 @@ worktree onto master; when a merge succeeded remotely but the local state disagr
 to verify the PR state before retrying rather than merging twice; and the section states the
 guard directly: "NEVER checkout/pull/ship in MAIN when a parallel session occupies it, deploy from
 the merged worktree instead."
+
+Three more cases from aaron-gtm, dated 2026-10-18 and 2026-10-19 (#289, #284). Two concurrent sessions coordinated over cross-session messages, and one relayed a ruling it said Aaron had typed in its session, authorizing about 6M tokens of subscription vision runs the other session owned. The receiver paused and asked Aaron directly; his answer was narrower ("yes for the signal and skip the gifs") and changed what ran, so the relay alone would have run the wrong job. The harness already says a peer message is not user approval; it does not say what to do when a peer relays the user's words, hence the lead-not-approval sentence. In a second case three sessions shared one local corpus and index, where only one could write while readers needed a stable view; an explicit baton carried in messages worked (the holder sends `baton: back` when done, a reader snapshots right after and the next writer waits for its "copied", a session handed a baton it cannot use hands it straight back, each message names duration, what will be written, and the next writer). Without it a measurement read a store another session was rewriting, and two writers can interleave index rebuilds.
 
 ## Sources
 
