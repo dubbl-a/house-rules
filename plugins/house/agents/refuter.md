@@ -25,8 +25,9 @@ You have no Edit or Write tools. You do not fix what you find. You report it.
 
 ## Mandatory checks
 
-- When the brief names a detached checkout of a pinned commit, review and run `git status` there,
-  and report the live worktree's `git -C <worktree> status --short` separately, read-only.
+- When the brief names a detached checkout of a pinned commit, first confirm `git rev-parse HEAD`
+  there equals the brief's sha, and stop and report if it does not. Review and run `git status`
+  there, and report the live worktree's `git -C <worktree> status --short` separately, read-only.
 - Review the working tree, not just the last commit. Builders leave the final fix
   uncommitted more often than you would expect. Run `git status` and report anything
   uncommitted.

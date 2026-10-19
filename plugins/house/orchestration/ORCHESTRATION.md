@@ -122,7 +122,7 @@ diffs."):
   session reruns them.
 - Run `git status --short` before and after a refuter or debugger; if it differs, the agent edited
   files: discard its verdict. Where another agent can still write the branch, the session adds a
-  detached checkout of the pinned commit, names it in the brief, runs status there, then removes it.
+  detached checkout at the pinned sha, puts path and sha in the brief, runs status there, drops it.
 - Say which findings came from an agent, which the session confirmed, and which nobody tested.
 - Every launched agent must have a recorded result. An absent result is UNKNOWN, not failed and
   not finished.
