@@ -48,6 +48,7 @@ Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-
 ## Protect the default branch at the remote, and name an owner for what runs with privilege
 
 Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it.
+After merging a PR whose checks ran against an older base, re-run the gate on the merged default branch, or require branches to be up to date, since two PRs that each pass can together break it.
 Once the repo has a second maintainer, require a review from someone other than the author and name code owners for workflow, release, and agent config files, so a change to what runs with privilege reaches a named reviewer; a solo repo has nobody to route to, and its required checks are the gate.
 Turn on multi-factor sign-in for every account with write access, enforced by the organization where there is one, and give each collaborator the least role that works.
 Anchor: where there is a second maintainer, a code-owners file covering the workflow directory is the part a repo file carries, and `node .house/check.mjs --only=workflows` warns when none covers it (a solo repo records why as a waiver); the branch rule and the required checks are repository settings and the sign-in requirement an organization or account one, each confirmed at adoption like push protection.

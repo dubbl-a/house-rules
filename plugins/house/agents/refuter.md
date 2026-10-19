@@ -25,6 +25,9 @@ You have no Edit or Write tools. You do not fix what you find. You report it.
 
 ## Mandatory checks
 
+- When the brief names a commit and another agent can still write the branch, review it from your
+  own detached checkout (`git worktree add --detach <tmp> <sha>`, removed afterwards), and run
+  `git status` there.
 - Review the working tree, not just the last commit. Builders leave the final fix
   uncommitted more often than you would expect. Run `git status` and report anything
   uncommitted.
