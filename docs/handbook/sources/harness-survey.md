@@ -1144,3 +1144,14 @@ Claude Code 2.1.300, 2.1.301, and 2.1.302 (changelog: https://raw.githubusercont
 - Local transcripts record each request's system prompt and tools; OpenTelemetry additions; `advisorModel` and three env variables; Claude no longer polls a background command; Remote Control, cloud session, MCP, and other fixes. No impact: no package text shares a transcript or reads OpenTelemetry output, none of the settings belongs on `RISKY_AGENT_SETTINGS`, and `plugins/house/orchestration/ORCHESTRATION.md` names no polling.
 
 No signal in the skill's "Choosing the depth" section points to a full re-survey: the three releases are fixes and small features, they bring no new model family or default, and the one conflict sits in a receipt whose banked fact dates from 2.1.285, a single area. The rule reword is prose with no heading renamed and no guard change, so it ships as a patch under ADR 0011 and ADR 0012. The prompt audit needs the maintainer's machine and was not run for this addendum.
+
+## Addendum, 2026-10-19: Claude Code 2.1.303
+
+Claude Code 2.1.303 (changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-10-18) was triaged on issue #276 with nothing to adopt. Its whole entry is "Bug fixes and reliability improvements", so it names no behavior, setting, hook event, model, or default that any rule, receipt, or mechanism claims.
+
+- `RISKY_AGENT_SETTINGS` in `plugins/house/payload/check.mjs`: no new, renamed, or removed setting; no change.
+- Observed under `claude --version` 2.1.303 on `origin/main` 41bff88: `npm run verify` exits 0 and the plugin validator passes with `--strict`, so the release adds no validator warning.
+- `node scripts/house/check-deep-research-upstream.mjs --json` exits 0, "native script unchanged since 2.1.288"; the fork baseline stands.
+- No new model or default model; the model facts of record in `docs/handbook/claude-code.md` stand.
+
+Depth: delta addendum, since the release carries no itemized change.
