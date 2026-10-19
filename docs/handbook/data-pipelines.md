@@ -44,6 +44,10 @@ The plan-validate-execute shape is external, widely-held guidance rather than a 
 
 Native floor, as of 2026-09-28: the permission system gates the Read, Edit, and Write tools directly while the sandbox, when enabled and available, isolates only Bash subprocesses, bounding where a script may write, so nothing native judges what a running script writes to a store (https://code.claude.com/docs/en/sandboxing).
 
+A lenient argument parser defeats the default; the strict-parsing rule is engineering.md's, under "Make an error message teach the fix", since it applies to any CLI that writes or spends, not only a pipeline (#288).
+
+A text-deletion rule needs its removals read, not only its matches. In aaron-gtm, about 40 approved strip rules run on a copy of a roughly 800-document corpus and read by an independent reviewer in three rounds removed numbered headings, a bold label, a code fence (leaving the rest of a document inside an unclosed block), product paragraphs caught by a link tracking tag, and a deliberate check-the-source warning (#293). What held was two kinds of evidence per deletion, a whole-line guard that lets a rule remove headings only when it declares `headings: true`, and corpus-wide checks: fence parity unchanged, every key passage verbatim, a second run removing nothing.
+
 ## Brake a prune at a share of the table, and unit-test the brake
 
 repo-b's `revops.md` refuses to delete more than 10% of a table in one run, with an explicit `--force` flag to override. repo-d's `publish-voters.mjs` carries the same brake as a percentage-threshold refusal on a destructive publish, with `--force`, `--dry-run`, and a unit test of the brake predicate itself, because a brake nobody has watched trip is only a comment in the code, not a control.
@@ -61,6 +65,10 @@ repo-d's `config/attio-payload.json` and its CLAUDE.md carry the corollary as a 
 repo-c's `.claude/rules/finance.md` defines a bucket taxonomy for revenue and states that unmapped revenue must be loud: a planned `check:unmapped` build gate fails when revenue lands in no bucket above a threshold, rather than letting a new upstream category quietly vanish from every report while every page still renders and every total still appears to add up. The same rule file makes reconciliation against the books the correctness gate: the sync is not trusted until its figures tie out against checked-in prior-year fixtures.
 
 repo-c's `.claude/rules/sheets.md` supplies the header-addressed half of the same rule: an exported tab is parsed by header, never by column position, so an inserted or reordered column in the source spreadsheet produces a loud mismatch instead of a column of dates silently read as amounts.
+
+aaron-gtm shipped an HTML extraction profile with fixtures built from the expected markup; every test passed, and a live dry run then reported all posts clean while every image was dropped, because the live class names differed and the dropped element was never counted. Two later rounds each found another silent drop that passed the counters until an invariant was added (images present equals figures emitted plus images recorded as removed), and a further review found emitted markers placed where the next stage would overwrite prose, which only a convert-then-run-the-next-stage test exposed (#296).
+
+The same corpus showed the inheritance half: cleanup rules for a repeated copyright footer were scoped to the old extractor, a vision-model path produced the same footer outside that scope, and the footer went from 24 chunks to 185 until one word added the new extractor to the rule's scope (#285).
 
 ## Archive first, parse second, and write the ledger row in the same transaction
 

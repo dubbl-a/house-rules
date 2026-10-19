@@ -17,6 +17,8 @@ repo-d (`migrations/001_schema.sql`) takes a different shape for the same proble
 
 Incident, repo-a: a migration number collided across worktrees. A number that appears in no commit anywhere can still be taken, because a sibling checkout's uncommitted file already claims it. The recorded fix takes the next number from three places at once: the applied ledger, the committed files, and every sibling checkout's uncommitted files, not the ledger or the disk alone. The same incident produced a second rule: regenerate a schema-dump baseline only from a checkout that has been rebased onto the protected branch, because a dump taken from a stale checkout bakes a sibling's unmerged schema into what is supposed to be the source of truth. repo-a carries a live, unfixed instance of exactly this risk on record, issue #632: `db/baseline/schema.sql` is six migrations stale, and nothing gates it.
 
+Two parallel aaron-gtm subagents each added the next numbered migration and both chose `002_*.sql`; each test exercised only its own file and an ordered runner applied both, so no gate caught it, and the orchestrating session renumbered during the rebase before the PR opened (#282). Separately, a migration in aaron-gtm PR #488 dropped a table that older checkouts still read, which would have silently lost a search lane with exit 0; four refuter rounds ended at expand then contract plus a writer that refuses a database whose ledger holds a file the checkout lacks (#278).
+
 ## Back up before a destructive migration, and diff after it
 
 No incident recorded across the module's four repos for this rule; it entered on reasoning alone, carried by external, widely-held guidance. Take a full backup immediately before any migration that drops or rewrites data, and keep a rollback path that has actually been executed, "because a rollback plan you haven't run is a hypothesis." Then run a post-migration schema and row-count diff rather than trusting a zero exit code, because "mismatches and missing rows do not raise errors." A clean exit code is a claim about the process, not about the data.
@@ -66,6 +68,8 @@ Native floor, as of 2026-09-02: the Bash sandbox, which isolates Bash subprocess
 repo-a: out-of-band matchers read `DATABASE_URL` from the exported environment, "deliberately not from `.dev.vars`, a write script should not pick its target database out of a dotfile." A read-only build may still load a dotfile for vendor keys (`--env-file=.dev.vars` is fine there); the line the rule draws is specifically about what decides *which database* a write lands in, not about dotfiles in general.
 
 Native floor, as of 2026-09-02: Bash permission rules, which match the command text after a built-in, non-configurable wrapper list is stripped; environment runners such as direnv are not on that list (https://code.claude.com/docs/en/permissions.md).
+
+An aaron-gtm live Postgres test suite began by dropping and recreating a schema, and its guard compared the test URL to `DATABASE_URL` as raw strings, only when `DATABASE_URL` was set. Under the repo's test command it never is (it lives in an env file the runner does not load), and a URL differing only by pooler hostname would also have passed. A refuter caught it before merge; the fix loads the env file to identify the protected target, fails closed when it cannot, compares host with the pooler suffix folded plus database name, and carries a negative control pointing the protected URL at the test URL in pooler form (#281).
 
 ## Sources
 

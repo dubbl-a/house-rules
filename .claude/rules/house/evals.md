@@ -2,7 +2,7 @@
 paths:
   - "plugins/house/evals/**"
 ---
-<!-- house-managed v0.21.4 module=evals source=modules/evals/rules/evals.md body-sha256=822c02bfbbd7a27611847c2e6b2d8821bbd696fb56e772751aebab87892851e7 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.4 module=evals source=modules/evals/rules/evals.md body-sha256=e6628c3d159dc22c191064407c5e5e2880dbd8f73b3e738776792f3013d007d8 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Evals
 
@@ -28,6 +28,7 @@ Receipts: `docs/handbook/evals.md#prove-an-eval-can-fail-then-grade-it-with-the-
 Keep the answer key independent of the thing graded, because labels from the tool under test measure drift, not accuracy.
 Never hand-edit generated data to make its gate pass, pre-register a tuning sweep in the tool's own header first, audit the corpus assembly since a corpus missing its positives scores every candidate perfectly, treat a clean validation as the moment to check the key, and give no label source deference.
 Score a task taken from real use mechanically, by grounding and attribution checks with no hand-written key, and record whose words the question is, since a key minted for a real question is the gate grading its own guess.
+List in an answer key every passage that states each fact (alternates), merge overlapping items, and re-check for alternates when the corpus grows, since a one-source key scores a correct answer citing another source as a miss; only the key's human author accepts an alternate, and the scorer normalizes equivalent location forms.
 Anchor: every fixture row carries its label source, and the gate refuses a key written by the tool it grades (`node --test tests/`); the harness hides case definitions but never checks label provenance, so an independently sourced key is this repo's addition
 Receipts: `docs/handbook/evals.md#never-let-a-gate-mint-the-answer-key-it-grades-against`
 
@@ -50,6 +51,7 @@ Receipts: `docs/handbook/evals.md#show-the-ratio-and-the-sample-because-one-numb
 ## Make a measuring instrument reproducible
 
 Seed the sampling so two initializing runs are byte-identical, since an unreproducible baseline fingerprint means nothing.
+Compute and validate everything a spending instrument will record (counts, fingerprints, config, output paths) before its first paid call, since a failure after the spend loses the run.
 Regenerate a sampled fixture from its source under a seed instead of curating it, and commit a hand-authored case set with a header saying how its cases were chosen and from what sources, since nothing in it is sampled and a generated key would grade the system against itself; treat a holdout as spent once validated against, require a byte-identical parity diff when a formula changes, log every assumption behind a modelled number with its re-pull command, move the baseline in the change that moves the numbers with the why in the PR, and read growth in reviewer-corrected labels as decay of the key rather than improvement.
 When the instrument drives an agent, pin the bare non-interactive invocation that skips ambient discovery, or where bare mode cannot authenticate the leanest invocation the login allows (the strict server-config flag, project-only setting sources, an explicit tool list, and the deny-by-default permission mode with an allowlist), and record the pricing basis beside any reported cost, since a rate or residency multiplier can move that figure without moving the bill.
 Anchor: seeded regeneration asserted byte-identical in `tests/`; the harness advises pinning the model, can replay mock answers copied into its replay directory, and reports cost at list price, but leaves fixture sampling and the pricing basis free to move, so seeding the fixture and recording the pricing basis are this repo's addition
