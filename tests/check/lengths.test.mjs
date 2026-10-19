@@ -34,6 +34,18 @@ test('lengths: a file under its configured limit passes', () => {
   assert.equal(code, 0);
 });
 
+// #287: headroom is informational, so it prints but changes no count.
+test('lengths: headroom prints for a limited file and changes no counts', () => {
+  const dir = sandbox({
+    'README.md': linesOf(193),
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 200 } } } } }),
+  });
+  const { code, out } = run(dir, ['--only=lengths']);
+  assert.equal(code, 0);
+  assert.match(out, /README\.md \[headroom\] 193 of 200 lines  \(info\)/);
+  assert.match(out, /Summary: 0 finding\(s\), 0 warning\(s\)/);
+});
+
 test('lengths: a file over its configured limit is a finding', () => {
   // README.md is a normal limited file. CLAUDE.md is deliberately excluded
   // here: it is a warning, never a blocking finding (its own tests below).
@@ -55,7 +67,7 @@ test('lengths: a glob-pattern limit applies to every matching file', () => {
   const { code, out } = run(dir, ['--only=lengths']);
   assert.equal(code, 1, out);
   assert.match(out, /\.claude\/rules\/a\.md/);
-  assert.doesNotMatch(out, /\.claude\/rules\/b\.md/);
+  assert.doesNotMatch(out, /\.claude\/rules\/b\.md \[length\]/);
 });
 
 test('lengths: growth past the base limit but under a recorded ratchet ceiling passes', () => {
