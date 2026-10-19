@@ -2,7 +2,7 @@
 paths:
   - "scripts/**"
 ---
-<!-- house-managed v0.21.4 module=engineering source=modules/engineering/rules/engineering.md body-sha256=0c8406cb9325d593cba339cfaccfe6946620bb010113390f57a4a2faf7dbb0ba DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.4 module=engineering source=modules/engineering/rules/engineering.md body-sha256=5d33d7ff4ae8a80ccc8d26e9eaecd8554f8eaee6a22cac5b003f89611db8038c DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -91,6 +91,7 @@ Receipts: `docs/handbook/engineering.md#land-a-build-time-guard-with-the-code-it
 
 Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated and an approved plan is not that record.
 Judge a system against its own rules first, then against current external guidance with the sources listed.
+Enter a research recommendation in the plan as a hypothesis with a stated confidence and the test that could refute it (an A/B on the repo's eval, a bounded tool check, a scratch environment); a null result keeps the status quo.
 Anchor: a `docs/decisions/` record naming the candidates, the deciding case, and the adopt call
 Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-a-tool-and-record-what-you-did-not-adopt`
 
@@ -105,6 +106,7 @@ Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depe
 
 Build a list by reading the thing that defines it rather than typing the members, and fail loudly on an unresolvable member, since a hand-kept list silently omits whatever nobody remembered.
 When told to remove something, enumerate every surface in the source and in the built output, and remove them all in one pass with no carve-outs.
+Date "new since" by an item's first appearance in the system of record's history (git, an append-only log), never a last-modified field, since any refresh rewrites it and old items look new; keep a refreshed-but-old negative control.
 Anchor: the enumerator reads the system of record at run time and exits non-zero on an unresolvable member, planted-missing-member case in `tests/`
 Receipts: `docs/handbook/engineering.md#enumerate-from-the-system-of-record-and-fail-hard-on-a-missing-member`
 

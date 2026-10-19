@@ -35,6 +35,8 @@ Receipts: `docs/handbook/data-pipelines.md#write-nothing-when-a-record-is-unchan
 Make the dry run the default and `--apply` the opt-in: the harness gates the file tools Claude calls directly, and its sandbox, when enabled, bounds where a script may write, but neither judges what a running script writes to a store, and rewind cannot undo it. So a new script's first run is a plan a human reads, not an unasked change.
 Plan, validate, execute: emit a machine-verifiable diff, check it, then write, and leave an audit row per write. Gate deletion behind one script, one call site, its own breadcrumb.
 Roll out in tiers, small push before full, and head a script whose dry run would itself surface regressions with a do-not-run note, since the dry half isn't always the safe half.
+Parse arguments strictly in any CLI that writes, spends, or calls a model: `--help` prints usage and does nothing, and an unknown flag, stray positional, or bad value prints usage and exits non-zero before any side effect, since agents probe a tool with `--help` and a lenient parser turns that read into a paid run. Test both paths.
+Review a rule that deletes text by reading what it removes on a full copy of real data, behind structural guards (headings removed only where the rule declares it, code fences still paired, answer-key passages still present, a second run removing nothing), since a rule written from positive examples passes its tests while removing neighbouring content.
 
 Anchor: a unit test per write script asserting a default run issues no write call, plus this package's dry-run-default eval.
 Receipts: `docs/handbook/data-pipelines.md#default-to-a-dry-run-and-require-an-explicit-flag-to-write`
@@ -59,6 +61,7 @@ Receipts: `docs/handbook/data-pipelines.md#drive-writes-from-a-policy-registry-t
 
 Fail a gate when input lands in no bucket above a threshold: the silent version of this failure is a new upstream category vanishing from every report while every page renders and every total still adds up.
 Parse an external tabular source by header, never position, so an inserted or reordered column is a loud mismatch, not dates quietly read as amounts.
+Review a parser or extraction change against a census of the live input, not only fixtures from the expected markup, account for every transformed element (present equals kept plus recorded removed), and test the output through the next stage that consumes it. A new path producing content an old path already produces inherits the old path's cleanup rules: check for rules scoped to the old path only, and count known boilerplate before and after a large re-extraction.
 
 Anchor: a build gate counting unbucketed input and failing above the threshold, plus a header-contract assertion at parse time.
 Receipts: `docs/handbook/data-pipelines.md#make-unmapped-input-loud`

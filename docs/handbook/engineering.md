@@ -65,6 +65,8 @@ repo-e's `reviews/2026-07-24-writing-efficacy-review.md` is the one recorded inc
 
 Native floor, as of 2026-09-02: plan mode, which holds edits until a person approves a plan except in sessions where bypass permissions are available, and which leaves no record once the plan is approved (https://code.claude.com/docs/en/permission-modes#analyze-before-you-edit-with-plan-mode).
 
+Two aaron-gtm research passes recommended keeping a chunker, trying a different embedding model, and skipping third-party vectorizer tools, on thin evidence (one preprint, vendor tables, a claim that passed verification 2-1). The owner agreed, then required the build to try to refute them, not follow them (#286).
+
 ## Pin a framework default your output depends on, with the reason beside it
 
 repo-a's `check-image-optimization.mjs` justifies its `MIN_SHRINK` constant (0.25) in a comment beside the value: portraits land around a 95% shrink in practice, so 25% is low enough to never fire on a genuinely hard-to-compress image, and high enough that a 0% passthrough still cannot sneak past it. `vitest.config.mjs` carries a 15-line comment on its `oxc: { jsx: ... }` setting, explaining why the older `esbuild.jsx` spelling is silently ignored and why fixing the setting centrally beats a scoped `tsconfig` per template directory: "that is not hypothetical: it broke the three email suites on the Astro 7 upgrade." A CI workflow's `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'` flag carries both the deprecation link and a note that it becomes a no-op, and removable, once Node 24 is the runner default. A Cloudflare vendor quirk, a pinned `[[kv_namespaces]]` block, carries its mitigation and the cost of removing it directly in the config: don't drop that block, or deploys will fail again. repo-d's `.gitignore` explains every non-obvious anchored rule in a comment, for example why `/public/` (anchored) rather than a blanket `public/`, because a sibling app's `app/public/` is Vite's own source `publicDir` and would otherwise be swept up by the same pattern. This is the same rule Anthropic states for agent-facing configuration, the "voodoo constants" ban: justify every configuration constant in a comment, because if the person writing the value doesn't know why it's right, neither will the agent reading it later.
@@ -72,6 +74,8 @@ repo-a's `check-image-optimization.mjs` justifies its `MIN_SHRINK` constant (0.2
 ## Enumerate from the system of record, and fail hard on a missing member
 
 An operator memory note (`feedback_no_carve_outs_on_removal.md`) records the incident behind this rule: told to remove something, an agent that removes it from the obvious place but leaves it standing in a sibling surface has not actually removed it, and the gap does not announce itself. The remedy is procedural rather than a reminder to be thorough: enumerate every surface, source and built output together, in one pass, with no carve-outs decided in advance.
+
+aaron-gtm flagged documents "new since" a date by reading the ledger's `extracted_at`; a cleanup that re-extracted 230 old entries the same day made 36 flags false, and under the corrected rule 0 of 29 were new. The fix loads the ledger as committed in git before the date (`git rev-list -1 --before=<date> -- <ledger>`, then `git show <rev>:<ledger>`) and treats a key absent there as new, with a refreshed-but-old fixture as the negative control (#292).
 
 ## Normalize against fixed anchors, never against the live population
 
