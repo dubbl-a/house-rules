@@ -44,7 +44,7 @@ The plan-validate-execute shape is external, widely-held guidance rather than a 
 
 Native floor, as of 2026-09-28: the permission system gates the Read, Edit, and Write tools directly while the sandbox, when enabled and available, isolates only Bash subprocesses, bounding where a script may write, so nothing native judges what a running script writes to a store (https://code.claude.com/docs/en/sandboxing).
 
-A lenient argument parser defeats the default. In aaron-gtm, `npm run kb -- figures --help` ignored the unrecognized flag and started a paid run over 490 images through the Anthropic API (about $2.33 estimated); every call failed on a low credit balance, so nothing was spent, by luck (#288). The downstream fix made `--help` print usage and exit 0, and an unknown flag or bad value print usage and exit 2, with neither doing any work (aaron-gtm#450).
+A lenient argument parser defeats the default; the strict-parsing rule is engineering.md's, under "Make an error message teach the fix", since it applies to any CLI that writes or spends, not only a pipeline (#288).
 
 A text-deletion rule needs its removals read, not only its matches. In aaron-gtm, about 40 approved strip rules run on a copy of a roughly 800-document corpus and read by an independent reviewer in three rounds removed numbered headings, a bold label, a code fence (leaving the rest of a document inside an unclosed block), product paragraphs caught by a link tracking tag, and a deliberate check-the-source warning (#293). What held was two kinds of evidence per deletion, a whole-line guard that lets a rule remove headings only when it declares `headings: true`, and corpus-wide checks: fence parity unchanged, every key passage verbatim, a second run removing nothing.
 

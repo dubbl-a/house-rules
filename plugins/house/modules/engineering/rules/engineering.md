@@ -116,6 +116,7 @@ Receipts: `docs/handbook/engineering.md#normalize-against-fixed-anchors-never-ag
 
 Write a refusal that teaches the fix rather than reporting the failure, since the reader is trying to get unstuck.
 Print the working directory, the two states that disagree, and labelled remediations; fail fast on missing config, since a silent fallback ships stale content; and record the symptom beside the fix so the reader recognises it before diagnosing.
+Parse arguments strictly in any CLI that writes, spends, or calls a model: `--help` prints usage and does nothing, and an unknown flag, stray positional, or bad value prints usage and exits non-zero before any side effect, since agents probe a tool with `--help` and a lenient parser turns that read into a paid run. Test both paths.
 Anchor: every guard's refusal path is exercised in `tests/` and asserts its remediation text; the harness passes a hook's reason through verbatim without requiring usefulness, so what a guard prints is what the next reader and agent act on.
 Receipts: `docs/handbook/engineering.md#make-an-error-message-teach-the-fix`
 
