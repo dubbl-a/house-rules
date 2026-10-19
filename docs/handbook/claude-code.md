@@ -292,6 +292,21 @@ the scope and synthesize prompts; the prompt text is the only lever, so the rebu
 each anchor matches once. A control run (`wf_2c15b854-cbc`, same question and args) made one tool
 call, the StructuredOutput, and returned five angles in 9 seconds.
 
+The verifiers refuted faithful quotes for a weak source, 2026-10-19 (#295): a `standard` run (71
+agents) refuted 5 of its 15 verified claims, at least 2 of them on a source-quality rubric the
+question set, with the quote confirmed in the source. The native verify prompt says to refute for
+a "low-quality source for strong claim" and for "marketing fluff", so a named practitioner's
+opinion, quoted correctly, went 0-3 and the synthesis reported no guidance. The fork now splits
+"does the source say it" from "how much does it weigh". A verdict carries a `basis` (supported,
+weak-source, unsupported, contradicted, outdated); a verifier refutes only when the source does
+not say the claim, and a faithful quote from opinion, vendor or forum material is labelled
+`weak-source`, even when the question sets a rubric. The script enforces it too: the tally turns a
+refute whose basis is `weak-source` into a surviving vote, so a verifier that ignores the prompt
+cannot kill the claim. The synthesis sees `Weak source: n/m` on such claims and is told to report
+them as what they are, and the run returns a `tierNote` giving claims refuted on content, claims
+kept with the label, and how many of those the native tally would have refuted on weakness alone.
+The rebuild refuses unless each new anchor matches once.
+
 The roster and the session-start text, 2026-09-20: the variable is a floor, not a way of working,
 and the way of working was being retyped into prompts ("subagents on lower models, and here is
 how to use them"). The plugin now ships it. Five agents under `plugins/house/agents/` (scout on

@@ -839,6 +839,34 @@ function fakeNativeBody(overrides = {}) {
     'agent(VERIFY_PROMPT(claim, v), {',
     '          schema: VERDICT_SCHEMA,',
     '        })',
+    // The verdict schema, verify checklist, tally, and synthesis anchors the
+    // source-tier patches rely on (issue #295). `tiers: false` drops them.
+    ...(overrides.tiers === false ? [] : [
+      'const VERDICT_SCHEMA = {',
+      '  type: "object", required: ["refuted", "evidence", "confidence"],',
+      '  properties: {',
+      '    refuted: { type: "boolean" },',
+      '    evidence: { type: "string" },',
+      '  },',
+      '}',
+      '  "3. Is the source quality sufficient for the claim\'s strength? (extraordinary claims need primary sources)\\\\n" +',
+      '  "4. Is the claim outdated?\\\\n" +',
+      '  "5. Is this a marketing claim / press release / cherry-picked benchmark / forum speculation?\\\\n\\\\n" +',
+      '  "**refuted=true** if: unsupported by quote / contradicted / low-quality source for strong claim / outdated / marketing fluff.\\\\n" +',
+      '  "**refuted=false** ONLY if: claim is well-supported, current, and source quality matches claim strength.\\\\n" +',
+      '  "Default to refuted=true if uncertain.\\\\n\\\\nStructured output only. Evidence MUST be specific."',
+      '      const valid = verdicts.filter(Boolean)',
+      '      const refuted = valid.filter(v => v.refuted).length',
+      '      const errored = VOTES_PER_CLAIM - valid.length',
+      '      const survives = valid.length >= REFUTATIONS_REQUIRED && refuted < REFUTATIONS_REQUIRED',
+      '      const isRefuted = refuted >= REFUTATIONS_REQUIRED',
+      '      return { ...claim, verdicts: valid, refutedVotes: refuted, erroredVotes: errored, survives, isRefuted }',
+      'const unverified = voted.filter(c => !c.survives && !c.isRefuted)',
+      '    "Vote: " + c.refutedVotes + " \\\\xB7 Source: " + webText(c.sourceUrl) + " (" + webText(c.sourceQuality) + ")\\\\n" +',
+      '    "Quote: \\\\"" + webText(c.quote) + "\\\\"\\\\n"',
+      '  "3. Assign confidence per finding: high (multiple primary sources), low (single source or blog-quality).\\\\n" +',
+      '  "4. Write a 3-5 sentence executive summary.\\\\n" +',
+    ]),
     ...selectionLines,
     `const report = await agent("6. List 2-4 open questions that emerged but weren't answered.${overrides.prompts === false ? '' : '\\\\n\\\\nStructured output only.'}",`,
     '  { label: "synthesize", schema: REPORT_SCHEMA }',
@@ -1243,6 +1271,90 @@ test('deep-research check: --rebuild refuses when the result anchors for the ver
   assert.match(res.stdout, /rebuild refused/);
   assert.match(res.stdout, /stats: \{ angles/);
   assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: --rebuild separates "does the source say it" from "how much does it weigh" (issue #295)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  assert.ok(!fork.includes('low-quality source for strong claim'), 'native refute-on-quality wording still present');
+  assert.ok(!fork.includes('Is the source quality sufficient'), 'native quality checklist item still present');
+  assert.ok(!fork.includes('Default to refuted=true if uncertain.'), 'native default-refute line still present');
+  assert.match(fork, /required: \["refuted", "basis", "evidence", "confidence"\]/);
+  assert.match(fork, /basis: \{ enum: \["supported", "weak-source", "unsupported", "contradicted", "outdated"\] \}/);
+  assert.match(fork, /basis=weak-source/);
+  assert.match(fork, /Never refute a claim only because its source is opinion/);
+  assert.match(fork, /issue #295/);
+  assert.match(fork, /function tierNote\(/);
+  assert.match(fork, /const TIER_NOTE = tierNote\(voted\)/);
+  assert.equal((fork.match(/TIER_NOTE \? \{ tierNote: TIER_NOTE \}/g) || []).length, 3, 'every result after verify carries the tier note');
+  assert.match(fork, /Weak source: " \+ c\.weakVotes/);
+  assert.match(fork, /report it as what it is/);
+});
+
+test('deep-research check: --rebuild refuses when the source-tier anchors no longer match (issue #295)', () => {
+  const dir = mktemp('house-dr-');
+  const bin = fakeBinary(dir, fakeNativeBody({ tiers: false }));
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 3, res.stdout + res.stderr);
+  assert.match(res.stdout, /rebuild refused/);
+  assert.match(res.stdout, /anchor not found/);
+  assert.ok(!existsSync(out), 'no partial fork written');
+});
+
+test('deep-research check: the rebuilt tally rescues a claim refuted only on source weakness, and nothing else (issue #295)', async () => {
+  const dir = mktemp('house-dr-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const out = join(dir, 'deep-research-pinned.js');
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--rebuild=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const fork = readFileSync(out, 'utf8');
+  const start = fork.indexOf('const valid = verdicts.filter(Boolean)');
+  const retLine = fork.indexOf('return { ...claim', start);
+  const block = fork.slice(start, fork.indexOf('\n', retLine));
+  const tally = (basisList) => new Function('verdicts', 'claim', 'VOTES_PER_CLAIM', 'REFUTATIONS_REQUIRED', block)(
+    basisList.map((basis) => ({ refuted: basis !== 'supported', basis, evidence: 'e', confidence: 'high' })),
+    { claim: 'c' }, 3, 2);
+  const weak = tally(['weak-source', 'weak-source', 'weak-source']);
+  assert.equal(weak.survives, true, 'a 0-3 vote of weak-source refutes survives');
+  assert.equal(weak.isRefuted, false);
+  assert.equal(weak.refutedVotes, 0);
+  assert.equal(weak.weakVotes, 3);
+  assert.equal(weak.tierOnlyVotes, 3);
+  assert.equal(weak.rescued, true);
+  const content = tally(['unsupported', 'unsupported', 'weak-source']);
+  assert.equal(content.isRefuted, true, 'a content refute still kills');
+  assert.equal(content.survives, false);
+  assert.equal(content.rescued, false);
+  const contradicted = tally(['contradicted', 'contradicted', 'contradicted']);
+  assert.equal(contradicted.isRefuted, true, 'a contradicted refute is not overridden');
+  assert.equal(contradicted.refutedVotes, 3);
+  assert.equal(contradicted.tierOnlyVotes, 0);
+  const mixed = tally(['unsupported', 'weak-source', 'supported']);
+  assert.equal(mixed.survives, true);
+  assert.equal(mixed.refutedVotes, 1, 'only the content refute counts');
+  assert.equal(mixed.rescued, true, 'the weak-source vote alone would have made quorum');
+});
+
+test('deep-research check: tierNote reports the split, and is empty when no tier label was used (issue #295)', async () => {
+  const { tierNote } = await import(pathToFileURL(DR_CHECK).href);
+  const claim = (o) => ({ survives: false, isRefuted: false, weakVotes: 0, rescued: false, ...o });
+  assert.equal(tierNote([claim({ survives: true }), claim({ isRefuted: true })]), '', 'no weak-source label, no note');
+  const note = tierNote([
+    claim({ isRefuted: true }),
+    claim({ survives: true, weakVotes: 2, rescued: true }),
+    claim({ survives: true, weakVotes: 1 }),
+    claim({ survives: true }),
+  ]);
+  assert.match(note, /1 claims? refuted on content/);
+  assert.match(note, /2 claims? kept with a weak-source label/);
+  assert.match(note, /1 of those would have been refuted on source weakness alone/);
 });
 
 test('deep-research check: the fork and the --install message say to copy the fork into the scratchpad first', async () => {

@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- The `/deep-research` fork no longer refutes a faithful quote for a weak source (#295). The native verify prompt refuted for "low-quality source for strong claim / marketing fluff", so a correctly quoted named practitioner's opinion went 0-3 and the synthesis reported no guidance. Verdicts now carry a `basis` (supported, weak-source, unsupported, contradicted, outdated); a verifier refutes only when the source does not say the claim, and the tally counts a refute with basis `weak-source` as a surviving vote. The synthesis marks such claims `Weak source` and reports them as opinion, and the run returns a `tierNote` with the content-refuted, weak-source-kept, and rescued counts. Upgrading: rerun `check-deep-research-upstream.mjs --install`.
+
 ## [0.21.5] - 2026-10-19
 
 A patch release under ADR 0012: a new drift finding, a headroom line, and seventeen adopter candidate rules folded into existing rules as sentences. No heading is renamed, no config slot changes, nothing the guard denies changes, and neither the `house.json` nor the `.house/` layout changes. The new rules-table finding fails a repo whose root `CLAUDE.md` table row has drifted from a vendored rule's `paths:`; one adopter's sync needs its `house/docs.md` row updated. Records Claude Code 2.1.303 in the harness survey, with nothing to adopt (#276). Upgrading from 0.21.4: run `/house-rules:sync`, and fix any row the drift family names.

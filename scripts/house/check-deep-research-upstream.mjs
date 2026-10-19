@@ -11,7 +11,10 @@
 // The fork also replaces the native's fixed fan-out (3 votes x 25 claims, a
 // fetch cap that high-relevance results bypass) with a depth preset the
 // caller picks per question: args.depth "light" | "standard" | "deep", any
-// field overridable via args.budget. This tool keeps that fork honest without
+// field overridable via args.budget. It also stops verifiers refuting a
+// faithfully quoted claim for a weak source: they label it weak-source
+// instead, the tally keeps it, and the run reports the split (issue #295).
+// This tool keeps that fork honest without
 // vendoring Anthropic's script text into a repo: it reads the script out of
 // the locally installed binary.
 //
@@ -189,9 +192,70 @@ if (VERIFY_NOTE) log(VERIFY_NOTE)
 // Every result after verify carries the note: the two early returns (all
 // refuted or unverified, synthesis failed) and the final one.
 export const NOTE_EARLY_LINE = '    stats: { angles: scope.angles.length, sources: allSources.length, claims: allClaims.length, verified: voted.length,';
-const NOTE_EARLY_REPLACEMENT = '    ...(VERIFY_NOTE ? { verifyNote: VERIFY_NOTE } : {}),\n' + NOTE_EARLY_LINE;
+const NOTE_EARLY_REPLACEMENT = '    ...(VERIFY_NOTE ? { verifyNote: VERIFY_NOTE } : {}),\n    ...(TIER_NOTE ? { tierNote: TIER_NOTE } : {}),\n' + NOTE_EARLY_LINE;
 export const NOTE_FINAL_LINE = '  question: QUESTION,\n  ...report,\n';
-const NOTE_FINAL_REPLACEMENT = NOTE_FINAL_LINE + '  ...(VERIFY_NOTE ? { verifyNote: VERIFY_NOTE } : {}),\n';
+const NOTE_FINAL_REPLACEMENT = NOTE_FINAL_LINE + '  ...(VERIFY_NOTE ? { verifyNote: VERIFY_NOTE } : {}),\n  ...(TIER_NOTE ? { tierNote: TIER_NOTE } : {}),\n';
+
+// Source tier versus content (issue #295). Native tells a verifier to refute
+// for "low-quality source for strong claim / marketing fluff", so a faithfully
+// quoted named practitioner's opinion was refuted 0-3 and the synthesis
+// reported no guidance. The fork splits the two questions: a verifier refutes
+// only when the source does not say the claim (unsupported, contradicted,
+// outdated) and labels the rest with basis "weak-source"; the tally then turns
+// any refute whose basis is weak-source into a surviving vote, so the script
+// enforces it even when a verifier ignores the prompt, and the run reports the
+// split (tierNote). `\\n` here is the literal backslash-n of the JS source.
+/**
+ * What a run that kept weak-source claims says about the split: claims refuted
+ * on content, claims kept with a weak-source label, and how many of those the
+ * native tally would have refuted on source weakness alone. Empty when no
+ * surviving claim carries the label. Written into the fork, so self-contained.
+ */
+export function tierNote(voted) {
+  const refuted = voted.filter((c) => c.isRefuted).length;
+  const weak = voted.filter((c) => c.survives && c.weakVotes > 0).length;
+  const rescued = voted.filter((c) => c.rescued).length;
+  if (!weak && !rescued) return '';
+  const claims = (n) => n + (n === 1 ? ' claim' : ' claims');
+  return 'Source tier: ' + claims(refuted) + ' refuted on content; ' + claims(weak) + ' kept with a weak-source label (faithfully quoted opinion, vendor, or forum material), ' + rescued + ' of those would have been refuted on source weakness alone.';
+}
+const TIER_NOTE_DEFS = `${tierNote.toString()}
+const TIER_NOTE = tierNote(voted)
+if (TIER_NOTE) log(TIER_NOTE)
+`;
+export const TIER_PINS = [
+  ['required: ["refuted", "evidence", "confidence"]', 'required: ["refuted", "basis", "evidence", "confidence"]'],
+  ['    refuted: { type: "boolean" },\n', '    refuted: { type: "boolean" },\n    basis: { enum: ["supported", "weak-source", "unsupported", "contradicted", "outdated"] },\n'],
+  [
+    '  "3. Is the source quality sufficient for the claim\'s strength? (extraordinary claims need primary sources)\\n" +\n',
+    '  "3. What tier is the source: primary data or a named first-hand account; named practitioner opinion; vendor marketing, press release, or forum post? Set basis=weak-source when the source says the claim faithfully but is opinion, marketing or forum material, or gives no data for a strong claim. The tier is a label for the synthesis, never a ground to refute, and this holds even when the research question sets a source-quality rubric: the rubric decides weight, not whether the source says it.\\n" +\n',
+  ],
+  [
+    '  "5. Is this a marketing claim / press release / cherry-picked benchmark / forum speculation?\\n\\n" +\n  "**refuted=true** if: unsupported by quote / contradicted / low-quality source for strong claim / outdated / marketing fluff.\\n" +\n  "**refuted=false** ONLY if: claim is well-supported, current, and source quality matches claim strength.\\n" +\n  "Default to refuted=true if uncertain.',
+    '  "5. Does a quoted marketing claim, press release or benchmark overstate what the source itself shows? An overstatement is unsupported; a faithful quote from a weak source is weak-source.\\n\\n" +\n  "**refuted=true** only if the claim is unsupported by the quote or page (misquoted, overreached, misread), contradicted by credible evidence, or outdated; set basis to that reason.\\n" +\n  "**refuted=false** otherwise: basis supported, or weak-source when the source says it faithfully but carries little weight. Never refute a claim only because its source is opinion, vendor material, a forum, or lacks data.\\n" +\n  "Default to refuted=true if you cannot confirm the source says it.',
+  ],
+  [
+    '      const valid = verdicts.filter(Boolean)\n',
+    '      // Per issue #295: a refute whose basis is weak-source is a label, not a vote against.\n      const valid = verdicts.filter(Boolean).map(v => (v.refuted && v.basis === "weak-source") ? { ...v, refuted: false, tierOnly: true } : v)\n      const weakVotes = valid.filter(v => v.basis === "weak-source").length\n      const tierOnlyVotes = valid.filter(v => v.tierOnly).length\n',
+  ],
+  [
+    '      return { ...claim, verdicts: valid, refutedVotes: refuted, erroredVotes: errored, survives, isRefuted }',
+    '      return { ...claim, verdicts: valid, refutedVotes: refuted, erroredVotes: errored, survives, isRefuted, weakVotes, tierOnlyVotes, rescued: survives && refuted + tierOnlyVotes >= REFUTATIONS_REQUIRED }',
+  ],
+  [
+    'const unverified = voted.filter(c => !c.survives && !c.isRefuted)\n',
+    'const unverified = voted.filter(c => !c.survives && !c.isRefuted)\n' + TIER_NOTE_DEFS,
+  ],
+  [
+    '+ webText(c.sourceQuality) + ")\\n" +\n    "Quote: ',
+    '+ webText(c.sourceQuality) + ")" + (c.weakVotes > 0 ? " \\xB7 Weak source: " + c.weakVotes + "/" + c.verdicts.length + " verifiers found it faithfully quoted from opinion, vendor, or forum material" : "") + "\\n" +\n    "Quote: ',
+  ],
+  [
+    'single source or blog-quality).\\n" +\n',
+    'single source or blog-quality). A claim marked Weak source is a faithful quote of opinion, vendor or forum material; report it as what it is (for example, one named practitioner advises), never as established fact, and do not rest a recommendation on such claims alone.\\n" +\n',
+  ],
+];
+
 
 // How a session runs the fork. The Workflow tool runs a script only from the
 // working directory, an added directory, or the session scratchpad, so the
@@ -330,7 +394,7 @@ export function rebuild(body, version) {
   let s = body;
   // Order matters: the budget block defines ARGS_OBJ, which the question
   // replacement reads, and both sit above the first use in the native body.
-  for (const [from, to, times = 1] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT], [SELECTION_LINE, SELECTION_REPLACEMENT], [NOTE_EARLY_LINE, NOTE_EARLY_REPLACEMENT, 2], [NOTE_FINAL_LINE, NOTE_FINAL_REPLACEMENT], ...PROMPT_PINS]) {
+  for (const [from, to, times = 1] of [[BUDGET_LINE, BUDGET_REPLACEMENT], [FETCH_BYPASS_LINE, FETCH_BYPASS_REPLACEMENT], [QUESTION_LINE, QUESTION_REPLACEMENT], [SELECTION_LINE, SELECTION_REPLACEMENT], [NOTE_EARLY_LINE, NOTE_EARLY_REPLACEMENT, 2], [NOTE_FINAL_LINE, NOTE_FINAL_REPLACEMENT], ...PROMPT_PINS, ...TIER_PINS]) {
     if (s.split(from).length !== times + 1) throw new Error(`anchor not found ${times === 1 ? 'exactly once' : `exactly ${times} times`}: ${from.trim().split('\n')[0]}`);
     s = s.split(from).join(to);
   }
