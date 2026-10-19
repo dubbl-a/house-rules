@@ -8,7 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Added
 
-- The drift family flags a root `CLAUDE.md` domain-rules table row whose "Loads when working in" globs differ from the `paths:` of the vendored rule file it names (#277). The finding names the globs missing from the row and the extra ones, and says to copy them from `.house/INDEX.md`. Rows for repo-authored rule files, and rows naming a file that is absent or has no `paths:`, are skipped, because those rows are hand summaries other checks already cover.
+- The drift family flags a root `CLAUDE.md` domain-rules table row whose "Loads when working in" globs differ from the `paths:` of the vendored rule file it names (#277). The finding names the globs missing from the row and the extra ones, and says to copy them from the rule file's `paths:` frontmatter. Rows inside a code fence or an HTML comment are ignored. Rows for repo-authored rule files, and rows naming a file that is absent or has no `paths:`, are skipped, because those rows are hand summaries other checks already cover.
 
 ### Changed
 

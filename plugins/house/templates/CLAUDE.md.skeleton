@@ -25,9 +25,9 @@ Topic-specific rules load only when a matching path is open. Grep
 
 | File | Loads when working in | Covers |
 | --- | --- | --- |
-<!-- TODO: one row per file in `.claude/rules/house/`. `.house/INDEX.md`,
-which `house render` writes, lists every rule file with the globs it loads
-on, so copy the first two columns from there and write Covers yourself.
+<!-- TODO: one row per file in `.claude/rules/house/`. Copy each file's `paths:`
+globs from its frontmatter into the second column and write Covers
+yourself; the checker flags a row whose globs differ.
 Rule files this repo authored itself get their rows in this same table. -->
 
 ## Build-time guards

@@ -945,13 +945,21 @@ function collectComponentBasenames(allTracked, roots, exts) {
 // globs are compared, as a set, with that file's `paths:` list. A row whose
 // file is missing or has no `paths:` is skipped: other checks own those. Only
 // vendored files (`.claude/rules/house/`) are compared: the skeleton says to
-// copy their globs from INDEX.md verbatim, while a repo-authored rule's row is
+// copy their globs from the file's `paths:` verbatim, while a repo-authored rule's row is
 // often a hand summary (brace shorthand, a glob family) that would never match.
 function checkRulesTable(ctx) {
   const findings = [];
   const raw = safeRead(join(ctx.repoRoot, 'CLAUDE.md'));
   if (!raw) return findings;
+  let inFence = false;
+  let inComment = false;
   raw.split('\n').forEach((line, idx) => {
+    if (/^\s*```/.test(line)) { inFence = !inFence; return; }
+    if (inFence) return;
+    // A row inside an HTML comment (the skeleton's own TODO block) is not live.
+    if (inComment) { if (line.includes('-->')) inComment = false; return; }
+    const open = line.indexOf('<!--');
+    if (open !== -1 && !line.includes('-->', open)) { inComment = true; return; }
     if (!line.trimStart().startsWith('|')) return;
     const cells = line.split('|').map((c) => c.trim());
     const file = (cells[1] || '').match(/\.claude\/rules\/house\/[^\s)`\]]+\.md/);
@@ -970,7 +978,7 @@ function checkRulesTable(ctx) {
     const parts = [];
     if (missing.length) parts.push(`missing ${missing.map((g) => `\`${g}\``).join(', ')}`);
     if (extra.length) parts.push(`lists ${extra.map((g) => `\`${g}\``).join(', ')}, which ${file[0]} no longer loads on`);
-    findings.push(mk('drift', 'CLAUDE.md', idx + 1, 'rules table', `the "Loads when working in" cell for ${file[0]} disagrees with that file's \`paths:\` frontmatter: ${parts.join('; ')}. Copy the globs from .house/INDEX.md (\`house render --apply\` rewrites it) or from the file's frontmatter.`));
+    findings.push(mk('drift', 'CLAUDE.md', idx + 1, 'rules table', `the "Loads when working in" cell for ${file[0]} disagrees with that file's \`paths:\` frontmatter: ${parts.join('; ')}. Copy the globs from that file's \`paths:\` frontmatter.`));
   });
   return findings;
 }

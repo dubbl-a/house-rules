@@ -12,7 +12,12 @@ const fixture = (cell, ...globs) => sandbox({
   'docs/a.md': 'x\n',
   'house.json': houseJson({}),
 });
-const tableFindings = (dir) => (run(dir, ['--only=drift', '--json']).json?.findings ?? []).filter((f) => f.kind === 'rules table');
+// A crash prints no JSON, so every caller, the negative ones included, fails on it.
+const tableFindings = (dir) => {
+  const { json, out } = run(dir, ['--only=drift', '--json']);
+  assert.notEqual(json, null, `checker output did not parse: ${out}`);
+  return json.findings.filter((f) => f.kind === 'rules table');
+};
 
 test('rules table: a row matching the rule file paths is clean', () => {
   const dir = fixture('`docs/**`, `README.md`', 'README.md', 'docs/**');
@@ -38,6 +43,18 @@ test('rules table: a repo-authored rule row is not compared', () => {
   const dir = sandbox({
     'CLAUDE.md': table('`docs/**`').replace('rules/house/docs.md', 'rules/mine.md'),
     '.claude/rules/mine.md': rule('README.md', 'docs/**'),
+    'README.md': 'x\n',
+    'docs/a.md': 'x\n',
+    'house.json': houseJson({}),
+  });
+  assert.equal(tableFindings(dir).length, 0);
+});
+
+test('rules table: a stale row inside a code fence or an HTML comment is not live', () => {
+  const stale = '| `.claude/rules/house/docs.md` | `old/**` | docs |';
+  const dir = sandbox({
+    'CLAUDE.md': `# Repo\n\n\`\`\`\n${stale}\n\`\`\`\n\n<!-- example:\n${stale}\n-->\n\n<!-- ${stale} -->\n`,
+    '.claude/rules/house/docs.md': rule('README.md', 'docs/**'),
     'README.md': 'x\n',
     'docs/a.md': 'x\n',
     'house.json': houseJson({}),
