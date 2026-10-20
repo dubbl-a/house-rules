@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-20
+
+A minor release under ADR 0012, because the branch guard now denies a command whose clause split fails instead of reading it as clause text, which tightens what the guard denies, the breaking class under ADR 0011. The rest is patch-class: a `house doctor` line naming how far the installed plugin is behind the latest release, a wider default for the em-dash scan, and rule and orchestration sentences, including the Claude Code 2.1.305 floor for extending a `/deep-research` fork run. No heading is renamed, no config slot changes, and neither the `house.json` nor the `.house/` layout changes. The em-dash scan's new default can add findings for site or knowledge-base Markdown; fix them, exclude them with a reason, or turn detection off under `modules.docs.config.emDash`. Upgrading from 0.21.6: run `/house-rules:sync`.
+
 ### Added
 
 - `house doctor` prints one advisory line comparing the installed plugin with the latest published release of dubbl-a/house-rules (`latest release v0.21.7; installed v0.21.6 (1 behind)`), and the sync skill's report includes it (#305). The pin line compared `house.json` only with the loaded plugin, so a pinned install read "matches" while releases behind. Offline, rate-limited or malformed answers print `latest release: not checked (<reason>)`; the exit code never changes, no response byte is echoed, and a `GITHUB_TOKEN` is sent only to the default URL.
@@ -14,6 +18,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 - The em-dash scan now detects websites and knowledge bases by default and scans their Markdown with the README: an mkdocs `docs_dir`, docusaurus `docs/` and `blog/`, a `.vitepress` parent, astro `src/content/`, hugo `content/`, and any `site`, `website`, `wiki`, `handbook` or `kb` directory, at any depth, with one info line per detected root. This widens the default, so an adopter with em dashes in detected site or knowledge-base content gets new findings and can fix them, exclude them with a reason, or turn detection off with `mode: "off"`, `detect: false`, or `"paths": []` under `modules.docs.config.emDash`. Dot directories, `node_modules`, `vendor` and `third_party` are never claimed.
 - The claude-code rule's peer-session section says to launch headless workers with `--name` and a worker prefix, run message-free ones in bare mode, and tell peers once what the workers are named and that they hold no lock (#283).
+- The claude-code rule's model section and the `/deep-research` line of `ORCHESTRATION.md` say that extending a fork run with `resumeFromRunId` reuses the finished calls only from Claude Code 2.1.305, which fixed Workflow resume re-running completed `pipeline()` and `parallel()` agents; on an older CLI the extension re-runs the fork's search, fetch, and verify agents and costs nearly the whole run again, not the extra agents the `verifyNote` counts. Records Claude Code 2.1.305 in the harness survey.
 
 ### Fixed
 
