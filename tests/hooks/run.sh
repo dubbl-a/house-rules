@@ -2366,6 +2366,20 @@ if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disabl
 else
   fail "a hooks-path write behind a 200-line heredoc is denied under 3000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
 fi
+# One long line, the other shape: a first cut of clause_tokens trimmed every
+# clause at its first newline with `${s%%$'\n'*}`, quadratic in the clause's
+# length under a UTF-8 locale on bash 3.2, and a 66 KB one-line command (an
+# inline base64 blob) took 5 s where the here-string took 0.6.
+_blob=$(head -c 72000 /dev/zero | tr '\0' 'Q' | sed 's/\(.\{70\}\)/\1 /g')
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+LC_ALL=C.UTF-8 run_hook "$(mk_payload "echo $_blob > /dev/null; $_sg config core.$_sph /dev/null" "$sc")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 3000 ]]; then
+  pass "a hooks-path write behind a 72 KB one-line clause is denied in ${_ms} ms, under 3000"
+else
+  fail "a hooks-path write behind a 72 KB one-line clause is denied under 3000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+fi
 
 # ── the harness side of failing closed: the guard's entry in hooks.json ───
 # Every case above is the script's own decision. A guard that cannot start,

@@ -748,9 +748,13 @@ local_hook_is_substantive() {
 # clause on macOS's bash 3.2, and a long heredoc is thousands of clauses
 # (#314). Word splitting does the same split without one, provided pathname
 # expansion is off, which hooks_dir_files briefly undoes; it is forced off
-# here and left as the caller had it. tests/hooks/run.sh pins the equivalence.
+# here and left as the caller had it. A clause with a newline (an alias body)
+# goes back to read itself: in a UTF-8 locale `${1%%$'\n'*}` is quadratic in
+# the clause's length on bash 3.2, and a 66 KB one-line command took 5 s.
+# tests/hooks/run.sh pins the equivalence.
 clause_tokens() {
-  local s="${1%%$'\n'*}" IFS=$' \t\n' glob=0
+  local s="$1" IFS=$' \t\n' glob=0
+  case "$s" in *$'\n'*) read -r -a toks <<<"$s"; return 0 ;; esac
   case "$-" in *f*) ;; *) glob=1; set -f ;; esac
   # shellcheck disable=SC2206 # the split is the point; -f is on
   toks=($s)
