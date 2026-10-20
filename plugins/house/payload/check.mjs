@@ -1731,7 +1731,9 @@ function checkShape(ctx) {
 
   const em = emDashConfig(ctx.house);
   if (em.mode !== 'off') {
-    const inPublic = ctx.allTracked.filter((f) =>
+    // #304: a doc not yet added is in the next commit, so it is scanned the way
+    // CI will scan it, as the drift scan does since #251; an ignored one is not.
+    const inPublic = [...ctx.allTracked, ...ctx.untracked].filter((f) =>
       em.paths.some((p) => matchesConfigPath(f, p)) && !em.exclude.some((p) => matchesConfigPath(f, p)));
     // `exclude` narrows the configured paths; under "all" the rule files come
     // back in whatever it says, because they are the surface this ban started

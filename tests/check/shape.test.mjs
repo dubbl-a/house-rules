@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { sandbox, run, houseJson } from './helpers.mjs';
+import { sandbox, run, houseJson, writeUntracked } from './helpers.mjs';
 
 // See manifest.test.mjs: the module-defaults sub-checks read the INSTALLED
 // plugin when one is reachable, so any run that includes the manifest family
@@ -111,6 +111,40 @@ test('shape: mode `all` adds the rule files to the public set and reports each f
   const overlapRes = run(overlap, ['--only=shape', '--json']);
   assert.equal(overlapRes.code, 1, overlapRes.out);
   assert.deepEqual(emPaths(overlapRes.json), ['.claude/rules/house/git.md', 'README.md']);
+});
+
+// #304: a new doc not yet added is in the next commit, so the em dash scan
+// reads it the way CI will; an ignored doc never reaches a commit.
+test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fails locally as in CI', () => {
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n' });
+  writeUntracked(dir, { 'docs/new.md': '# New\n\nAn untracked em dash \u2014 here.\n' });
+  const { code, out, json } = run(dir, ['--only=shape', '--json']);
+  assert.equal(code, 1, out);
+  assert.deepEqual(emPaths(json), ['docs/new.md']);
+});
+
+test('#304: the em dash scan leaves a gitignored doc alone', () => {
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n' });
+  writeUntracked(dir, { 'docs/private.md': '# P\n\nAn ignored em dash \u2014 here.\n' });
+  const { code, out } = run(dir, ['--only=shape']);
+  assert.equal(code, 0, out);
+});
+
+// #304: a new doc not yet added is in the next commit, so the em dash scan
+// reads it the way CI will; an ignored doc never reaches a commit.
+test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fails locally as in CI', () => {
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n' });
+  writeUntracked(dir, { 'docs/new.md': '# New\n\nAn untracked em dash \u2014 here.\n' });
+  const { code, out, json } = run(dir, ['--only=shape', '--json']);
+  assert.equal(code, 1, out);
+  assert.deepEqual(emPaths(json), ['docs/new.md']);
+});
+
+test('#304: the em dash scan leaves a gitignored doc alone', () => {
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n' });
+  writeUntracked(dir, { 'docs/private.md': '# P\n\nAn ignored em dash \u2014 here.\n' });
+  const { code, out } = run(dir, ['--only=shape']);
+  assert.equal(code, 0, out);
 });
 
 test('shape: mode `off` emits no em dash finding anywhere', () => {

@@ -296,6 +296,8 @@ hyphens and most punctuation. Maintainer notes live in the same HTML-comment mec
 Anthropic strips block comments from a CLAUDE.md file before context injection, so they cost no context and are
 excluded from the gate.
 
+Added 2026-10-19 (#307): the marker never covered the em-dash scan, by design, since a record's punctuation is a separate question from its stale names; a verbatim record is excluded through `modules.docs.config.emDash.exclude` with its `why`.
+
 Two repo-a documents show the opt-out is not only for finished history. repo-b's
 `okrs/README.md` treats a closed OKR cycle the same way: a new cycle is a sibling directory,
 never an in-place edit, and the lookup that resolves the current cycle fails closed on a missing

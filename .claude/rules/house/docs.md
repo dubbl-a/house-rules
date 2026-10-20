@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.21.5 module=docs source=modules/docs/rules/docs.md body-sha256=b988491dd0a8f4c04a0463dd11346061c9bad0553363bf38684a1a13140140ce DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.5 module=docs source=modules/docs/rules/docs.md body-sha256=a3266e33ab8b4c53a28522bb11419d748c780fd4c1bde56cb5023b0ec8463415 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -92,6 +92,7 @@ Receipts: `docs/handbook/docs.md#split-a-file-only-when-splitting-narrows-what-l
 
 Scan the archive tier by default: a repo's docs are checked for drift unless it says otherwise. Opt a point-in-time document out at file level with its reason in the marker: a day-captured survey, a superseded design doc, a spec with deliberate forward references. Stale names there are a record, not a bug; never fix one.
 Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (an archive tier excluded wholesale, not marked file by file) instead of scan-by-default; this is a real difference in what gets caught, so say plainly which posture it runs.
+The file-level marker covers drift only; the em-dash scan ignores it, so a verbatim record keeps its punctuation through a `modules.docs.config.emDash.exclude` entry with its reason.
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what happened instead of deleting it, and state the supersession inside the new doc.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
 Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in block-level HTML comments, which the harness strips from a CLAUDE.md file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader.
