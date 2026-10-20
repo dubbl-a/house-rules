@@ -4,7 +4,7 @@ paths:
   - ".githooks/**"
   - ".env.example"
 ---
-<!-- house-managed v0.21.5 module=github source=modules/github/rules/github.md body-sha256=3f180569fe917f0053eeab61b90c8502a1ce3bb8c3f8a1cbcaff9dce3a9c412d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.5 module=github source=modules/github/rules/github.md body-sha256=3a48b76d23b3c5a6644bdf782ad32206877d2b85ca118a41eb00cbdb522c8715 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -33,6 +33,7 @@ Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin
 Treat CI minutes as one pool shared by every repo on the account, billed per job with a per-job minimum, so run count costs like duration.
 Pause an expensive cron by hand, then ship a one-shot job to re-enable it, since a token cannot re-enable another repo's workflow.
 Read the check-run annotation when a run dies at startup: a billing failure carries no logs and looks nothing like code failure.
+Set `timeout-minutes` on every job near a small multiple of its normal run time, so a hung job costs minutes rather than GitHub's 360-minute default against the shared pool; `plugins/house/templates/pr-checks.yml` sets 5.
 Set the slot to null on a public repo, since its minutes are unmetered, and let the check say so instead of estimating against a stale budget.
 Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow caps nothing; its minutes draw from the same pool.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`

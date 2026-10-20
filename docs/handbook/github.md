@@ -47,6 +47,8 @@ Both timers were disabled by hand on 2026-08-24. Each repo now carries its own o
 
 Native floor, as of 2026-09-02: the GitHub Action's own cost levers, `--max-turns`, workflow timeouts, and concurrency, all opt-in, with nothing capping cost at the Action level and runner minutes drawn from the same account pool as every other job (https://code.claude.com/docs/en/github-actions.md#manage-costs).
 
+**A hung job bills 360 minutes, 2026-10-19 (#298).** GitHub's default job timeout is 360 minutes, so a hung job on the account whose 2,000-minute shared budget ran out on 2026-08-23 would have spent most of a month's pool in one run. `plugins/house/templates/pr-checks.yml` already sets `timeout-minutes: 5`; the rule asks every job to carry a cap of that kind.
+
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
 
 **repo-a, `.github/workflows/link-check.yml`.** Runs monthly (`0 9 1 * *`) and opens an issue on a broken external link rather than failing the run: "A 503 on someone else's campaign site is not a broken build, and a red X every month would train us to ignore it. The issue is the signal."

@@ -2,7 +2,7 @@
 paths:
   - "plugins/house/evals/**"
 ---
-<!-- house-managed v0.21.5 module=evals source=modules/evals/rules/evals.md body-sha256=e6628c3d159dc22c191064407c5e5e2880dbd8f73b3e738776792f3013d007d8 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.5 module=evals source=modules/evals/rules/evals.md body-sha256=2772d59ce0ccde6da4eb02c100e420a2083c56b5409ff7df609518f9abe3c7fd DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Evals
 
@@ -35,7 +35,7 @@ Receipts: `docs/handbook/evals.md#never-let-a-gate-mint-the-answer-key-it-grades
 ## Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero
 
 Give a gate a verdict for "could not evaluate" and never let it print an unearned pass, because an invented zero reads exactly like real data.
-Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; and warn rather than fail when the local copy is only a worksheet.
+Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; emit a null delta when a number was not measured; warn rather than fail when the local copy is only a worksheet; and when a gate compares two systems, record the mode each ran in (full, fallback, partial) and pass only when both ran the mode under test, since two identical fallbacks are NOT EVALUABLE, never equal.
 Anchor: a verdict set that includes NOT EVALUABLE and a null-delta sentinel, eval case `not-evaluable-verdict`; the harness marks a run partial only when it stops early, omits a delta when its arms are not comparable, and scores a run that ends on an API error as 0 without grading it while failing the suite, so carrying a could-not-evaluate outcome in every verdict is this repo's addition
 Receipts: `docs/handbook/evals.md#report-not-evaluable-and-not-measured-rather-than-a-fabricated-zero`
 
