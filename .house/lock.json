@@ -16,7 +16,7 @@
       "path": ".claude/rules/house/docs.md",
       "module": "docs",
       "source": "modules/docs/rules/docs.md",
-      "bodySha256": "cf565e43a6209b1cc387512840c22ffcb5fa05af189b199dcdfd2840cc0d9af1"
+      "bodySha256": "28fc6efb5457c74cc84d46b344423b92e08bf0e668f12af37a4a66e79505f80f"
     },
     {
       "path": ".claude/rules/house/engineering.md",
@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "f498668fae90338a56c59eb849f3cd8d7d98991d8911a621f24c259731e46780"
+      "bodySha256": "43ff914cacdf1c765360ecc9f8a2f5e4ead38411c4415ed37739ad46794d9905"
     },
     {
       "path": "AGENTS.md",
@@ -271,6 +271,11 @@
         "maxCoLoadLines": 400,
         "emDash": {
           "mode": "all",
+          "paths": [
+            "README.md",
+            "CHANGELOG.md",
+            "docs/**/*.md"
+          ],
           "exclude": [
             {
               "path": "docs/handbook/sources/**",

@@ -105,6 +105,11 @@
         "maxCoLoadLines": 400,
         "emDash": {
           "mode": "all",
+          "paths": [
+            "README.md",
+            "CHANGELOG.md",
+            "docs/**/*.md"
+          ],
           "exclude": [
             {
               "path": "docs/handbook/sources/**",

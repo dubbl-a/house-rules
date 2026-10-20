@@ -126,14 +126,17 @@ and body prose never carries an em dash.
 
 Which surfaces that em-dash ban covers is a per-repo call, so it is a config slot rather than a
 constant in the checker: `modules.docs.config.emDash` takes a `mode` of `public` (the default:
-`README.md`, `CHANGELOG.md`, and `docs/**/*.md`), `all` (those plus every rule file), or `off`,
+`README.md` only), `all` (those plus every rule file), or `off`,
 with `paths` and `exclude` lists matched the way every other docs path slot is. The default is
-public prose rather than rule files because the reader who notices the tell is the one who landed
-on the repo, and the rule files are already gated for a different reason. An `exclude` entry takes
+the README rather than rule files or internal docs because the reader who notices the tell is the
+one who landed on the repo, and the rule files are already gated for a different reason; a site or
+knowledge base people read opts in through `paths`. An `exclude` entry takes
 the `{path, why}` form, so an exemption carries its justification in the same line that grants it.
 This package runs `all`, and holds out `docs/handbook/sources/**`: those are point-in-time research
 notes quoted from other repositories, and rewriting a quotation to satisfy a house rule would make
 the receipt worth less than the rule it supports.
+
+Added 2026-10-19 (#307): the default once swept internal docs (an adopter's archived handover drew 74 findings), so the owner narrowed it to `README.md`; an adopter opts a site or knowledge base in through `modules.docs.config.emDash.paths`.
 
 The receipts pointer itself needs a reason to be checked, not just written. repo-a's
 sibling gate for in-page anchors states it plainly: "a missing fragment does not 404," so nothing
@@ -295,6 +298,8 @@ inline: only the closing `-->` terminates the reason text, so the reason itself 
 hyphens and most punctuation. Maintainer notes live in the same HTML-comment mechanism, since
 Anthropic strips block comments from a CLAUDE.md file before context injection, so they cost no context and are
 excluded from the gate.
+
+Added 2026-10-19 (#307): the marker never covered the em-dash scan, by design, since a record's punctuation is a separate question from its stale names; a verbatim record is excluded through `modules.docs.config.emDash.exclude` with its `why`.
 
 Two repo-a documents show the opt-out is not only for finished history. repo-b's
 `okrs/README.md` treats a closed OKR cycle the same way: a new cycle is a sibling directory,

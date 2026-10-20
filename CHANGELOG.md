@@ -12,6 +12,12 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - The README's "To move a pin" covers a marketplace declared in `extraKnownMarketplaces` with a `ref`: update the `ref` and re-add the marketplace in the same step, since a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the marketplace (#306).
 - github: every job sets `timeout-minutes` near a small multiple of its normal run time, so a hung job costs minutes rather than the 360-minute default (#298).
 - evals: a gate comparing two systems records the mode each ran in and passes only when both ran the mode under test; two identical fallbacks are NOT EVALUABLE (#299).
+- The docs rule says the file-level opt-out marker covers drift only, and a verbatim record keeps its punctuation through a `modules.docs.config.emDash.exclude` entry with its reason (#307).
+- The adopter default for `modules.docs.config.emDash` narrows to `README.md` (was README, CHANGELOG, and `docs/**/*.md`), since the ban is for the README and for sites or knowledge bases people read, not agent-facing files or verbatim records. It loosens the check, so no adopter's CI turns red; opt a site or knowledge base back in through `emDash.paths` (#307).
+
+### Fixed
+
+- The em-dash scan reads untracked, non-ignored docs as the drift scan does, so a new doc with an em dash fails the local run as it fails CI (#304).
 
 ## [0.21.5] - 2026-10-19
 

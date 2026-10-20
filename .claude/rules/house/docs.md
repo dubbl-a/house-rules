@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.21.5 module=docs source=modules/docs/rules/docs.md body-sha256=b988491dd0a8f4c04a0463dd11346061c9bad0553363bf38684a1a13140140ce DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.5 module=docs source=modules/docs/rules/docs.md body-sha256=08e6d65bf28b910ee0209614d39c223bbc7854a78d713715344436d53906fc3f DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -47,7 +47,7 @@ Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belong
 
 Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to its receipt. A reader who disagrees needs the why and the evidence in front of them, or the rule gets worked around, not revised.
 Cite a receipt by its quoted heading so the pointer survives a reorder, and title each archive entry as a one-line lesson so it reads as a claim, not a filename.
-Pitch each rule at the right altitude: specific enough to act on, general enough to leave judgment open. End every rule file with a `## Don't` section, and keep em dashes out of prose, naming the ban's surfaces in `modules.docs.config.emDash`.
+Pitch each rule at the right altitude: specific enough to act on, general enough to leave judgment open. End every rule file with a `## Don't` section, and keep em dashes out of prose. The README always gets the scan; a repo adds, through `modules.docs.config.emDash.paths`, any website or knowledge base people read, public or internal to a team. Agent-facing files and verbatim records stay out.
 The why and the Anchor line are what the harness's prompt audit looks for when it judges a prohibition by its provenance and an instruction by whether anything enforces it; keep each `## Don't` line the negative of a rule above, so it inherits that rule's reason instead of reading as a bare ban.
 Anchor: `npm run check:house` (shape) requires an imperative heading, an `Anchor:` line per rule, a `## Don't` section, and no em dash in any file `modules.docs.config.emDash` puts in scope.
 Receipts: `docs/handbook/docs.md#state-a-rule-as-imperative-why-anchor-receipts`
@@ -92,6 +92,7 @@ Receipts: `docs/handbook/docs.md#split-a-file-only-when-splitting-narrows-what-l
 
 Scan the archive tier by default: a repo's docs are checked for drift unless it says otherwise. Opt a point-in-time document out at file level with its reason in the marker: a day-captured survey, a superseded design doc, a spec with deliberate forward references. Stale names there are a record, not a bug; never fix one.
 Set `scanArchive: false` in `house.json` to keep a repo's prior opt-in posture (an archive tier excluded wholesale, not marked file by file) instead of scan-by-default; this is a real difference in what gets caught, so say plainly which posture it runs.
+The file-level marker covers drift only; the em-dash scan ignores it, so a verbatim record keeps its punctuation through a `modules.docs.config.emDash.exclude` entry with its reason.
 Open such a file with its contract: read each entry as an observation from its date, and keep the rule it taught in the rule file. Head a superseded doc with a banner naming what happened instead of deleting it, and state the supersession inside the new doc.
 Treat a closed cycle the same way: a new cycle is a sibling directory, never an in-place edit, and resolution fails closed on a missing set.
 Say honestly when a repo has no archive yet; the first is created when a domain earns it. Maintainer notes belong in block-level HTML comments, which the harness strips from a CLAUDE.md file before context but keeps inside a code block and in any file opened with the Read tool, so write those for that reader.
