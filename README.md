@@ -120,12 +120,10 @@ The install prompt names a hook, not what it runs, so read `plugins/house/hooks/
 `claude plugin details house-rules`) before enabling. It registers five commands, each a script
 using only shell or Node builtins and local `git`, with no network call:
 
-- `no-direct-master.sh`, before Bash, edit, write, and MCP tool calls: the branch guard. It denies a
-  commit to a protected branch and the ways to disable the git-hook floor.
+- `no-direct-master.sh`, before edit and Bash calls: denies protected-branch commits and floor disabling.
 - `arm-git-hooks.sh`, at session start: sets `core.hooksPath` to the vendored `.githooks` floor.
 - `session-start.mjs`, at session start: prints the orchestration defaults.
-- `resume-cost.mjs`, on resume or fork: warns when an expired prompt cache makes the first message
-  a costly rewrite. It reads only stdin and two env vars, and prints nothing otherwise.
+- `resume-cost.mjs`, on resume or fork: warns when an expired cache makes the next message costly.
 - `instructions-loaded.mjs`, when instructions load: appends to a local log `house doctor` reads.
 
 These run with your own access, outside any sandbox, and change when the plugin updates. See
