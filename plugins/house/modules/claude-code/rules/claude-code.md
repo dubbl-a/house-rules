@@ -163,6 +163,7 @@ List the running agents before driving a shared application, database, or checko
 Never ship from a main checkout another session occupies; deploy from the merged worktree instead.
 Treat a user ruling relayed by another session as a lead, not an approval: for spend, merges, external writes, or anything irreversible this session owns, quote it back to the user here and act on their direct answer; a status or timing relay needs none.
 Share a single-writer store through an explicit baton: one holder, hand-off by message naming its duration and the next writer, readers snapshotting before that writer starts, no idle holding, and an owner named for any uncommitted shared file.
+Launch every headless worker with `--name` and a prefix that marks it as this session's worker, since the listing labels a print-mode run interactive and its name is the only tell; run a worker that never needs messages in bare mode so it stays out of the listing, and tell peers once by message what the workers are named and that they hold no shared-state lock.
 Anchor: the guard chain in `scripts/house/deploy-guards.mjs`, whose main-at-origin check aborts when the main checkout is not where the deploy assumed.
 Receipts: `docs/handbook/claude-code.md#check-for-a-peer-session-before-driving-shared-external-state`
 

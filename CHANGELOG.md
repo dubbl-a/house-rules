@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- The claude-code rule's peer-session section says to launch headless workers with `--name` and a worker prefix, run message-free ones in bare mode, and tell peers once what the workers are named and that they hold no lock (#283).
+
 ## [0.21.6] - 2026-10-19
 
 A patch release under ADR 0012: the `/deep-research` fork stops refuting faithful quotes from weak sources, the em-dash scan reads untracked docs and its adopter default narrows to `README.md`, and three rule sentences and a README note land. Nothing the guard denies changes, no heading is renamed, and neither the `house.json` nor the `.house/` layout changes. The em-dash default only loosens: a repo that relied on it for CHANGELOG or `docs/` lists those in `modules.docs.config.emDash.paths` to keep them. Upgrading from 0.21.5: run `/house-rules:sync`, then rerun `check-deep-research-upstream.mjs --install`.
