@@ -2170,6 +2170,125 @@ expect_deny "ACCEPTED FALSE DENY: Edit on a .githooks file in a branchPolicy dir
 expect_allow "Edit on a .githooks file in a repo that never adopted house" \
   "$(mk_file_payload Edit "$n/.githooks/pre-push" "$n")"
 
+# ── the clause split: linear in the command's length, and byte-safe (#290) ─
+# split_clauses used to run eleven `${c//pat/repl}` substitutions, each
+# quadratic in the text's length on macOS's bash 3.2, and it runs about
+# eleven times a call: a 10 KB heredoc took a minute and the 5 s timeout
+# blocked the call with no reason. The cases below are #290's shape, a few
+# clauses and a heredoc of JS.
+# The time limits guard against the quadratic blow-up coming back; they are
+# not speed targets. Before the fix these cases took 59 s (100 lines), 534 s
+# (200 lines) and 127 s (the deny behind 200 lines), so 20 s and 30 s still
+# fail on a regression while tolerating a loaded CI runner. What remains is a
+# linear per-clause cost (the here-string reads in git_split and the clause
+# scans), tracked separately from #290. Each case asserts its decision too.
+sc="$TMP_ROOT/split"; new_repo "$sc"; adopt "$sc"
+git -C "$sc" checkout -q -b feat/sc
+_sg="gi""t"; _sph="hooks""Path"
+_heredoc_cmd() {
+  local i body=''
+  for ((i = 0; i < $1; i++)); do
+    body+="const r$i = files.filter((f) => f.endsWith('.md') && !seen.has(f)).map((f) => ({ f, n: $i }));"$'\n'
+  done
+  printf '%s' "S=/tmp/probe-x; rm -rf \$S; mkdir -p \$S/a \$S/b; cd $sc && $_sg archive HEAD docs | tar -x -C \$S/a; $_sg -C $sc archive HEAD docs | tar -x -C \$S/b; cat > \$S/cmp.mjs <<'EOF'"$'\n'"${body}EOF"$'\n'"node \$S/cmp.mjs \$S/a \$S/b$2"
+}
+for _case in 100:20000 200:30000; do
+  _lines="${_case%%:*}"; _limit="${_case#*:}"
+  _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+  run_hook "$(mk_payload "$(_heredoc_cmd "$_lines" '')" "$sc")"
+  _end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+  _ms=$((_end - _start))
+  if [[ "$HOOK_CODE" -eq 0 && -z "$HOOK_OUT" && "$_ms" -lt "$_limit" ]]; then
+    pass "a $_lines-line JS heredoc on a feature branch is allowed in ${_ms} ms"
+  else
+    fail "a $_lines-line JS heredoc on a feature branch is allowed under $_limit ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fi
+done
+# The clause behind the heredoc is still read: the split skips nothing.
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_payload "$(_heredoc_cmd 200 "; $_sg config core.$_sph /dev/null")" "$sc")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 30000 ]]; then
+  pass "a hooks-path write behind a 200-line heredoc is denied in ${_ms} ms"
+else
+  fail "a hooks-path write behind a 200-line heredoc is denied under 30000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+fi
+# Bytes that are not UTF-8 ahead of a denied clause. jq hands the hook U+FFFD
+# for them, so this payload is decided as written; the split itself is pinned
+# on raw bytes below.
+expect_deny "a hooks-path write behind bytes that are not UTF-8" \
+  "$(printf '{"tool_name":"Bash","tool_input":{"command":"caf\xc3\xa9 && <\xff\xfe> | z ; %s config core.%s /dev/null"},"cwd":"%s"}' "$_sg" "$_sph" "$sc")" "disables or moves"
+# The one place this suite reaches past the entry point: the hook's own
+# split_clauses, lifted out of the script, against the implementation it
+# replaced, kept here and only here as the reference. Same clauses, same
+# order, on every separator, redirect and substitution spelling, and on raw
+# bytes that are not UTF-8, which the old `tr` met in a UTF-8 locale with
+# "Illegal byte sequence": its output stopped there, and inside the hook the
+# ERR trap fired in that subshell and its JSON became clause text, so every
+# clause after the bad bytes went unscanned. The reference runs under
+# LC_ALL=C, where it never failed; the hook's runs under a UTF-8 locale.
+_split_old() {
+  local c="$1"
+  c="${c//>&/>$'\x01'}"
+  c="${c//\|\|/$'\n'}"; c="${c//\|&/$'\n'}"; c="${c//&&/$'\n'}"; c="${c//;/$'\n'}"
+  c="${c//&/$'\n'}"; c="${c//\|/$'\n'}"
+  c="${c//\(/ }"; c="${c//\)/ }"; c="${c//\`/ }"
+  c=$(printf '%s' "$c" | tr '\001' '&')
+  CLAUSES="$c"
+}
+_split_new_src=$(sed -n '/^split_clauses() {$/,/^}$/p' "$HOOK")
+_split_cases=(
+  "$_sg status 2>&1 | head"
+  'a||b|&c&&d;e&f|g'
+  'x >&2 & y'
+  "echo \$($_sg rev-parse HEAD) \`pwd\` (sub)"
+  '&&&& |||| ;;'
+  '>&>&>&'
+  'cmd &>out; other'
+  '|&|&'
+  'a >& b && c'
+  ''
+  '   '
+  $'a\x01b\x02c\n\nx;;y'
+  $'trailing;\n\n'
+  $'caf\xc3\xa9 && \xff\xfe | z ; tail'
+  "$(_heredoc_cmd 0 '')"
+  "$(_heredoc_cmd 10 '')"
+  "$(_heredoc_cmd 25 " ; $_sg config core.$_sph /x")"
+)
+_split_bad=0
+for _c in "${_split_cases[@]}"; do
+  _old=$(export LC_ALL=C; _split_old "$_c"; printf '%s.' "$CLAUSES")
+  _new=$(set -Euf -o pipefail; trap 'echo "ERR in split_clauses"; exit 1' ERR
+         export LC_ALL=C.UTF-8; eval "$_split_new_src"; split_clauses "$_c"; printf '%s.' "$CLAUSES")
+  if [[ "$_old" != "$_new" ]]; then
+    _split_bad=$((_split_bad + 1))
+    printf '        differs on %q\n          old=%q\n          new=%q\n' "$_c" "$_old" "$_new"
+  fi
+done
+if [[ -n "$_split_new_src" && "$_split_bad" -eq 0 ]]; then
+  pass "split_clauses matches the old substitutions on ${#_split_cases[@]} inputs, bytes that are not UTF-8 included"
+else
+  fail "split_clauses matches the old substitutions" "$_split_bad of ${#_split_cases[@]} inputs differ (src=${#_split_new_src} bytes)"
+fi
+
+# A failing sed or tr inside split_clauses must deny, not come back as clause
+# text: errtrace runs the ERR trap inside the $(...) subshell, whose crash JSON
+# would become CLAUSES while the parent carried on and emitted no deny.
+_split_err=$(bash -c 'set -Euf -o pipefail
+  eval "$1"
+  crashed() { trap - ERR EXIT; printf "DENIED"; exit 0; }
+  trap crashed ERR
+  sed() { return 3; }
+  split_clauses "a; b"
+  printf "CONTINUED[%s]" "$CLAUSES"' _ "$_split_new_src" 2>/dev/null)
+if [[ -n "$_split_new_src" && "$_split_err" == DENIED ]]; then
+  pass "a failing sed inside split_clauses fires the deny, not clause text"
+else
+  fail "a failing sed inside split_clauses fires the deny" "got: $_split_err"
+fi
+
 # ── the harness side of failing closed: the guard's entry in hooks.json ───
 # Every case above is the script's own decision. A guard that cannot start,
 # outlasts its timeout, or exits with a code the harness does not expect
