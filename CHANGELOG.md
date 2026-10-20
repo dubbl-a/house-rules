@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.21.6] - 2026-10-19
+
+A patch release under ADR 0012: the `/deep-research` fork stops refuting faithful quotes from weak sources, the em-dash scan reads untracked docs and its adopter default narrows to `README.md`, and three rule sentences and a README note land. Nothing the guard denies changes, no heading is renamed, and neither the `house.json` nor the `.house/` layout changes. The em-dash default only loosens: a repo that relied on it for CHANGELOG or `docs/` lists those in `modules.docs.config.emDash.paths` to keep them. Upgrading from 0.21.5: run `/house-rules:sync`, then rerun `check-deep-research-upstream.mjs --install`.
+
 ### Changed
 
 - The `/deep-research` fork no longer refutes a faithful quote for a weak source (#295). The native verify prompt refuted for "low-quality source for strong claim / marketing fluff", so a correctly quoted named practitioner's opinion went 0-3 and the synthesis reported no guidance. Verdicts now carry a `basis` (supported, weak-source, unsupported, contradicted, outdated); a verifier refutes only when the source does not say the claim, and the tally counts a refute with basis `weak-source` as a surviving vote. The synthesis marks such claims `Weak source` and reports them as opinion, and the run returns a `tierNote` with the content-refuted, weak-source-kept, and rescued counts. Upgrading: rerun `check-deep-research-upstream.mjs --install`.
