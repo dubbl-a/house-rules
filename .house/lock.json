@@ -34,13 +34,13 @@
       "path": ".claude/rules/house/evals.md",
       "module": "evals",
       "source": "modules/evals/rules/evals.md",
-      "bodySha256": "e947f52b5bdb047bd8e73e9e99d884753ad54c5d4f159914dd35f9502718b220"
+      "bodySha256": "c9d639b65412492aca00ed3ffa81ea767eebcbed1f4df4ff672340b1b35573aa"
     },
     {
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "18aedb1f87cc295cd450bcd58357cdb424ee40819b243e54ff9eccc3bd638fdf"
+      "bodySha256": "16cc4d5f368067ce3f367e163cfb3d66a336aba3592142b7681053cac77a5b2e"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",

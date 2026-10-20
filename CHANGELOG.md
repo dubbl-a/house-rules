@@ -9,6 +9,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Changed
 
 - The `/deep-research` fork no longer refutes a faithful quote for a weak source (#295). The native verify prompt refuted for "low-quality source for strong claim / marketing fluff", so a correctly quoted named practitioner's opinion went 0-3 and the synthesis reported no guidance. Verdicts now carry a `basis` (supported, weak-source, unsupported, contradicted, outdated); a verifier refutes only when the source does not say the claim, and the tally counts a refute with basis `weak-source` as a surviving vote. The synthesis marks such claims `Weak source` and reports them as opinion, and the run returns a `tierNote` with the content-refuted, weak-source-kept, and rescued counts. Upgrading: rerun `check-deep-research-upstream.mjs --install`.
+- The README's "To move a pin" covers a marketplace declared in `extraKnownMarketplaces` with a `ref`: update the `ref` and re-add the marketplace in the same step, since a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the marketplace (#306).
+- github: every job sets `timeout-minutes` near a small multiple of its normal run time, so a hung job costs minutes rather than the 360-minute default (#298).
+- evals: a gate comparing two systems records the mode each ran in and passes only when both ran the mode under test; two identical fallbacks are NOT EVALUABLE (#299).
 
 ## [0.21.5] - 2026-10-19
 

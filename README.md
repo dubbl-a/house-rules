@@ -84,7 +84,10 @@ Install the plugin once per machine, pinned to a release tag:
 The plugin resolves from the marketplace's checkout, so the `#v0.21.5` tag is the pin. Without it
 you follow the default branch. To move a pin, read
 `git diff v0.21.5..vX.Y.Z -- plugins/house/hooks`, remove the marketplace (which uninstalls its
-plugins), then run the one command with the new tag. Whether auto-update respects a pin is undocumented,
+plugins), then run the one command with the new tag. If `~/.claude/settings.json` declares the marketplace in
+`extraKnownMarketplaces` with a `ref`, update that `ref` and re-add the marketplace in the same step, never
+just one: a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the
+marketplace, so new sessions start with no house plugin. Whether auto-update respects a pin is undocumented,
 so leave it off (its third-party default).
 
 In the target repo:
