@@ -442,3 +442,48 @@ test('shape: a site root that resolves to the repo root is not scanned, and says
   const nested = run(sandbox({ ...SRC, 'site/.vitepress/config.mts': 'export default {};\n', 'site/a.md': DASH, 'notes.md': DASH }), ['--only=shape', '--json']);
   assert.deepEqual(emPaths(nested.json), ['site/a.md']);
 });
+
+for (const skipped of ['.claude/skills/wiki/SKILL.md', '.claude/commands/kb/x.md', '.house/kb/a.md', 'vendor/pkg/handbook/a.md']) {
+  test(`shape: detection never claims ${skipped}`, () => {
+    const { code, out } = run(sandbox({ ...SRC, [skipped]: DASH }), ['--only=shape']);
+    assert.equal(code, 0, out);
+  });
+}
+
+test('shape: a .vitepress under docs/ still detects docs/', () => {
+  const { json } = run(sandbox({ ...SRC, 'docs/.vitepress/config.mts': 'export default {};\n', 'docs/a.md': DASH }), ['--only=shape', '--json']);
+  assert.deepEqual(emPaths(json), ['docs/a.md']);
+});
+
+test('shape: an explicit empty emDash.paths turns detection off too', () => {
+  const { code, out } = run(sandbox({ ...SRC, 'house.json': emHouse({ paths: [] }), 'wiki/a.md': DASH }), ['--only=shape']);
+  assert.equal(code, 0, out);
+});
+
+test('shape: mkdocs docs_dir takes a whole quoted value with spaces', () => {
+  const { json } = run(sandbox({ ...SRC, 'mkdocs.yml': 'docs_dir: "my docs"\n', 'my docs/a.md': DASH }), ['--only=shape', '--json']);
+  assert.deepEqual(emPaths(json), ['my docs/a.md']);
+});
+
+for (const val of ['/etc/docs', '../elsewhere', '.']) {
+  test(`shape: mkdocs docs_dir ${val} is reported as unbounded, not scanned`, () => {
+    const { code, out } = run(sandbox({ ...SRC, 'mkdocs.yml': `docs_dir: ${val}\n`, 'notes.md': DASH }), ['--only=shape']);
+    assert.equal(code, 0, out);
+    assert.match(out, /could not be bounded/);
+    assert.doesNotMatch(out, /scanning site content/);
+  });
+}
+
+test('shape: hugo config under config/_default resolves content/ beside config/', () => {
+  const { json } = run(sandbox({ ...SRC, 'web/config/_default/hugo.toml': 'title = "S"\n', 'web/content/p.md': DASH }), ['--only=shape', '--json']);
+  assert.deepEqual(emPaths(json), ['web/content/p.md']);
+});
+
+test('shape: a root with no Markdown prints no scanning line; a directory-name root names its full path; nested roots keep the outer', () => {
+  const empty = run(sandbox({ ...SRC, 'astro.config.mjs': 'export default {};\n' }), ['--only=shape']);
+  assert.doesNotMatch(empty.out, /scanning site content/);
+  const named = run(sandbox({ ...SRC, 'a/b/wiki/x.md': '# X\n' }), ['--only=shape']);
+  assert.match(named.out, /scanning site content: a\/b\/wiki \(a\/b\/wiki\)/);
+  const nested = run(sandbox({ ...SRC, 'site/.vitepress/config.mts': 'x\n', 'site/wiki/x.md': '# X\n' }), ['--only=shape', '--json']);
+  assert.equal(nested.json.info.length, 1);
+});
