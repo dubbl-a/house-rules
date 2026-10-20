@@ -368,3 +368,68 @@ test('shape: a tracked rule file deleted from disk is not checked; one on disk s
   assert.equal(control.code, 1, `positive control: the same file on disk is a finding\n${control.out}`);
   assert.match(control.out, /kept\.md \[shape\] missing required `## Don't` section/);
 });
+
+// Site and knowledge-base detection (2026-10-20): each detector adds its
+// markdown to the default em-dash scan, so a README-only repo still scans it.
+const DASH = '# P\n\nAn em dash — here.\n';
+const SRC = { 'src/placeholder.ts': 'export const x = 1;\n' };
+
+const DETECTORS = [
+  ['mkdocs default docs_dir', { 'mkdocs.yml': 'site_name: S\n', 'docs/a.md': DASH }, 'docs/a.md'],
+  ['mkdocs custom docs_dir', { 'mkdocs.yaml': 'site_name: S\ndocs_dir: pages\n', 'pages/a.md': DASH, 'docs/b.md': DASH }, 'pages/a.md'],
+  ['docusaurus docs', { 'docusaurus.config.ts': 'export default {};\n', 'docs/a.mdx': DASH }, 'docs/a.mdx'],
+  ['docusaurus blog', { 'docusaurus.config.js': 'module.exports = {};\n', 'blog/p.md': DASH }, 'blog/p.md'],
+  ['vitepress parent', { 'guide/.vitepress/config.mts': 'export default {};\n', 'guide/a.md': DASH }, 'guide/a.md'],
+  ['astro src/content', { 'astro.config.mjs': 'export default {};\n', 'src/content/p.md': DASH }, 'src/content/p.md'],
+  ['hugo.toml content', { 'hugo.toml': 'title = "S"\n', 'content/p.md': DASH }, 'content/p.md'],
+  ['config.toml with baseURL', { 'config.toml': 'baseURL = "https://x.test"\n', 'content/p.md': DASH }, 'content/p.md'],
+  ['conventional wiki dir', { 'wiki/home.md': DASH }, 'wiki/home.md'],
+  ['conventional kb dir', { 'kb/a.md': DASH }, 'kb/a.md'],
+  ['conventional handbook dir', { 'handbook/a.md': DASH }, 'handbook/a.md'],
+];
+
+for (const [name, files, hit] of DETECTORS) {
+  test(`shape: emDash detection finds ${name}`, () => {
+    const { code, out, json } = run(sandbox({ ...SRC, ...files }), ['--only=shape', '--json']);
+    assert.equal(code, 1, out);
+    assert.deepEqual(emPaths(json), [hit]);
+  });
+}
+
+test('shape: emDash detection finds a nested subproject site', () => {
+  const dir = sandbox({ ...SRC, 'secondarrow/astro.config.mjs': 'export default {};\n', 'secondarrow/src/content/p.md': DASH });
+  const { json } = run(dir, ['--only=shape', '--json']);
+  assert.deepEqual(emPaths(json), ['secondarrow/src/content/p.md']);
+});
+
+test('shape: plain docs/ with no generator stays out of the default scan', () => {
+  const { code, out } = run(sandbox({ ...SRC, 'docs/handover.md': DASH }), ['--only=shape']);
+  assert.equal(code, 0, out);
+});
+
+test('shape: detect false turns site detection off', () => {
+  const dir = sandbox({ ...SRC, 'house.json': emHouse({ detect: false }), 'wiki/home.md': DASH });
+  const { code, out } = run(dir, ['--only=shape']);
+  assert.equal(code, 0, out);
+});
+
+test('shape: exclude beats a detected file', () => {
+  const dir = sandbox({ ...SRC, 'house.json': emHouse({ exclude: [{ path: 'wiki/old.md', why: 'verbatim record' }] }), 'wiki/old.md': DASH, 'wiki/new.md': DASH });
+  const { json } = run(dir, ['--only=shape', '--json']);
+  assert.deepEqual(emPaths(json), ['wiki/new.md']);
+});
+
+test('shape: a malformed emDash detect value falls back to detecting', () => {
+  const dir = sandbox({ ...SRC, 'house.json': emHouse({ detect: 'no' }), 'wiki/home.md': DASH });
+  const { code, out, json } = run(dir, ['--only=shape', '--json']);
+  assert.equal(code, 1, out);
+  assert.deepEqual(emPaths(json), ['wiki/home.md']);
+});
+
+test('shape: each detected root prints one info line naming its source', () => {
+  const dir = sandbox({ ...SRC, 'secondarrow/astro.config.mjs': 'export default {};\n', 'secondarrow/src/content/p.md': '# P\n\nClean.\n' });
+  const { code, out } = run(dir, ['--only=shape']);
+  assert.equal(code, 0, out);
+  assert.match(out, /\[em-dash\] scanning site content: secondarrow\/src\/content \(secondarrow\/astro\.config\.mjs\)/);
+  assert.equal(run(dir, ['--only=shape', '--json']).json.info.length, 1);
+});

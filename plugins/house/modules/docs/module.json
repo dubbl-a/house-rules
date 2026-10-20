@@ -37,7 +37,8 @@
         "paths": [
           "README.md"
         ],
-        "exclude": []
+        "exclude": [],
+        "detect": true
       }
     }
   ],

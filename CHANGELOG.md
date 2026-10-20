@@ -12,6 +12,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- The em-dash scan now detects websites and knowledge bases by default and scans their Markdown with the README: an mkdocs `docs_dir`, docusaurus `docs/` and `blog/`, a `.vitepress` parent, astro `src/content/`, hugo `content/`, and any `site`, `website`, `wiki`, `handbook` or `kb` directory, at any depth, with one info line per detected root. This widens the default, so an adopter with em dashes in detected site or knowledge-base content gets new findings and can fix them, exclude them with a reason, or set `modules.docs.config.emDash.detect` to `false`.
 - The claude-code rule's peer-session section says to launch headless workers with `--name` and a worker prefix, run message-free ones in bare mode, and tell peers once what the workers are named and that they hold no lock (#283).
 
 ## [0.21.6] - 2026-10-19
