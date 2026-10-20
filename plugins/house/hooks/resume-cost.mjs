@@ -35,7 +35,7 @@ try {
     const override = Number.parseFloat(process.env.HOUSE_RESUME_COST_WARN_USD);
     const threshold = Number.isFinite(override) && override >= 0 ? override : DEFAULT_THRESHOLD_USD;
     if (expired === true && Number.isFinite(usd) && Number.isFinite(tokens) && Number.isFinite(secs) && usd >= threshold) {
-      const systemMessage = `house: this session has been idle ${idle(secs)}, so its prompt cache has likely expired. ` +
+      const systemMessage = `house: this session's prompt cache has likely expired (last response ${idle(secs)} ago, or a later compaction replaced it). ` +
         `Your first message will rewrite about ${tokens.toLocaleString('en-US')} tokens of context into the cache, an estimated $${usd.toFixed(2)} at list price. ` +
         'If you do not need this history, /clear and start fresh from a handoff note in the repo; a /compact now would pay the same rewrite first. ' +
         'To silence this, set HOUSE_RESUME_COST_WARN=off, or raise HOUSE_RESUME_COST_WARN_USD (default 0.25), in your shell or the env block of your settings.';

@@ -377,7 +377,7 @@
         "Hand off through the repo, not a standing issue",
         "Check for a peer session before driving shared external state"
       ],
-      "notes": "16 headings and 54 owned rows against 170 lines is 11.3 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/claude-code.md, and the file ends with ## Don't."
+      "notes": "16 headings and 54 owned rows against 170 lines is 10.6 lines per rule including blanks. Comfortable: room for a two-sentence why and one worked contrast per rule. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/claude-code.md, and the file ends with ## Don't."
     },
     {
       "path": "plugins/house/modules/deployment/rules/deployment.md",
