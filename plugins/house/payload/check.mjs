@@ -1778,7 +1778,13 @@ function checkShape(ctx) {
     // Detected site and knowledge-base roots join the configured paths, so
     // `exclude` can still drop any of their files; `detect: false` turns it off.
     const inRoot = (f, root) => SITE_DOC_EXT.test(f) && (root === '' || f.startsWith(`${root}/`));
-    const detected = em.detect ? detectSiteRoots(ctx) : [];
+    const found = em.detect ? detectSiteRoots(ctx) : [];
+    // A root that resolves to the repo root cannot be bounded: scanning it would
+    // sweep in agent-facing files and records, so the operator lists the content.
+    const detected = found.filter((d) => d.root !== '');
+    for (const { source } of found.filter((d) => d.root === '')) {
+      info.push(mk('shape', source, null, 'em-dash', `site content could not be bounded (${source.replace(/\/$/, '')} resolves to the repo root); list it in emDash.paths`));
+    }
     for (const { root, source } of detected) {
       info.push(mk('shape', source, null, 'em-dash', `scanning site content: ${root || '.'} (${source.replace(/\/$/, '')})`));
     }

@@ -433,3 +433,12 @@ test('shape: each detected root prints one info line naming its source', () => {
   assert.match(out, /\[em-dash\] scanning site content: secondarrow\/src\/content \(secondarrow\/astro\.config\.mjs\)/);
   assert.equal(run(dir, ['--only=shape', '--json']).json.info.length, 1);
 });
+
+test('shape: a site root that resolves to the repo root is not scanned, and says so', () => {
+  const dir = sandbox({ ...SRC, '.vitepress/config.mts': 'export default {};\n', 'notes.md': DASH });
+  const { code, out } = run(dir, ['--only=shape']);
+  assert.equal(code, 0, out);
+  assert.match(out, /\[em-dash\] site content could not be bounded .*list it in emDash\.paths/);
+  const nested = run(sandbox({ ...SRC, 'site/.vitepress/config.mts': 'export default {};\n', 'site/a.md': DASH, 'notes.md': DASH }), ['--only=shape', '--json']);
+  assert.deepEqual(emPaths(nested.json), ['site/a.md']);
+});
