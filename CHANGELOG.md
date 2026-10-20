@@ -8,6 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Added
 
+- The claude-code rule gains a session-hygiene section: one task per session, `/clear` between unrelated tasks, a repo handoff and a fresh start rather than resuming a large idle session, and compacting only while the cache is warm. Its anchor is a new SessionStart hook, `resume-cost.mjs`, matched on `resume|fork`, that warns when Claude Code reports an expired prompt cache and an estimated rewrite cost of at least $0.25 (it needs a Claude Code version that reports those fields, and is silent on older ones and on any malformed input). `HOUSE_RESUME_COST_WARN=off` disables it and `HOUSE_RESUME_COST_WARN_USD` sets the threshold, from the shell or the settings env. It never blocks.
 - `house doctor` prints one advisory line comparing the installed plugin with the latest published release of dubbl-a/house-rules (`latest release v0.21.7; installed v0.21.6 (1 behind)`), and the sync skill's report includes it (#305). The pin line compared `house.json` only with the loaded plugin, so a pinned install read "matches" while releases behind. Offline, rate-limited or malformed answers print `latest release: not checked (<reason>)`; the exit code never changes, no response byte is echoed, and a `GITHUB_TOKEN` is sent only to the default URL.
 
 ### Changed
