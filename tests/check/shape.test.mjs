@@ -465,7 +465,7 @@ test('shape: mkdocs docs_dir takes a whole quoted value with spaces', () => {
   assert.deepEqual(emPaths(json), ['my docs/a.md']);
 });
 
-for (const val of ['/etc/docs', '../elsewhere', '.']) {
+for (const val of ['/etc/docs', '../elsewhere', '.', './']) {
   test(`shape: mkdocs docs_dir ${val} is reported as unbounded, not scanned`, () => {
     const { code, out } = run(sandbox({ ...SRC, 'mkdocs.yml': `docs_dir: ${val}\n`, 'notes.md': DASH }), ['--only=shape']);
     assert.equal(code, 0, out);

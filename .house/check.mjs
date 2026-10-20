@@ -1754,7 +1754,7 @@ function detectSiteRoots(ctx) {
   // null when rel leaves the repo (absolute or `..`), '' for the repo root.
   const under = (dir, rel) => {
     if (rel.startsWith('/')) return null;
-    const n = posix.normalize(dir ? `${dir}/${rel}` : rel).replace(/^\.$/, '').replace(/\/+$/, '');
+    const n = posix.normalize(dir ? `${dir}/${rel}` : rel).replace(/\/+$/, '').replace(/^\.$/, '');
     return n === '..' || n.startsWith('../') ? null : n;
   };
   for (const f of files) {
