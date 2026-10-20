@@ -75,8 +75,16 @@
 //                                                (above 400 needs a `coload-ceiling` deviation: manifest family)
 //   modules.docs.config.emDash               object, default                        shape family
 //                                              {"mode":"public","paths":["README.md"],
-//                                              "exclude":[]}
-//                                              Which surfaces the em-dash ban covers. `mode`
+//                                              "exclude":[],"detect":true}
+//                                              Which surfaces the em-dash ban covers. Unless
+//                                              `detect` is false, the markdown of any detected
+//                                              site or knowledge base (mkdocs, docusaurus,
+//                                              vitepress, astro, hugo, or a `site`, `website`,
+//                                              `wiki`, `handbook`, `kb` directory) is added to
+//                                              `paths`, and each root prints an info line. Dot
+//                                              directories, node_modules, vendor and
+//                                              third_party are never claimed. `mode: "off"`,
+//                                              `detect: false`, or `"paths": []` turn it off. `mode`
 //                                              "public" scans `paths`; "all" scans `paths` plus
 //                                              every rule file; "off" scans nothing, and an
 //                                              explicit `"paths": []` is a second off switch
@@ -147,7 +155,7 @@
 
 import { readFileSync, existsSync, writeFileSync, readdirSync, statSync, openSync, readSync, closeSync, realpathSync, accessSync, constants as fsConstants } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { join, resolve, relative, sep, dirname, basename, isAbsolute, normalize } from 'node:path';
+import { join, resolve, relative, sep, dirname, basename, isAbsolute, normalize, posix } from 'node:path';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 
@@ -1695,7 +1703,7 @@ function checkEmDashFile(file, raw, findings) {
   });
 }
 
-const EM_DASH_DEFAULT = { mode: 'public', paths: ['README.md'], exclude: [] };
+const EM_DASH_DEFAULT = { mode: 'public', paths: ['README.md'], exclude: [], detect: true };
 const EM_DASH_MODES = new Set(['public', 'all', 'off']);
 
 // modules.docs.config.emDash, read field by field: a malformed field falls
@@ -1717,7 +1725,77 @@ function emDashConfig(house) {
     mode: EM_DASH_MODES.has(cfg.mode) ? cfg.mode : EM_DASH_DEFAULT.mode,
     paths: list(cfg.paths, EM_DASH_DEFAULT.paths),
     exclude: list(cfg.exclude, EM_DASH_DEFAULT.exclude),
+    pathsEmpty: Array.isArray(cfg.paths) && cfg.paths.length === 0,
+    detect: typeof cfg.detect === 'boolean' ? cfg.detect : EM_DASH_DEFAULT.detect,
   };
+}
+
+const SITE_DIR_NAMES = new Set(['site', 'website', 'wiki', 'handbook', 'kb']);
+const SITE_DOC_EXT = /\.mdx?$/;
+
+// The websites and knowledge bases people read, found from the file list so a
+// subproject counts at any depth. Config files are read with a tolerant line
+// match (no YAML or JS parser); one that cannot be read falls back to the
+// generator's default directory. Agent-facing and vendored paths (a dot
+// segment, node_modules, vendor, third_party) are never claimed. Returns
+// {roots: [{root, source, files}], unbounded: [source]}: a root that resolves
+// to the repo root or outside it cannot be bounded and is reported, not scanned.
+const SITE_SKIP_SEGS = new Set(['node_modules', 'vendor', 'third_party']);
+function detectSiteRoots(ctx) {
+  const skipSeg = (seg) => seg.startsWith('.') || SITE_SKIP_SEGS.has(seg);
+  const files = [...new Set([...ctx.allTracked, ...ctx.untracked])];
+  const roots = new Map();
+  const unbounded = new Set();
+  const add = (root, source) => {
+    if (root === null || root === '') { unbounded.add(source); return; }
+    if (root.split('/').some(skipSeg)) return;
+    if (!roots.has(root)) roots.set(root, source);
+  };
+  // null when rel leaves the repo (absolute or `..`), '' for the repo root.
+  const under = (dir, rel) => {
+    if (rel.startsWith('/')) return null;
+    const n = posix.normalize(dir ? `${dir}/${rel}` : rel).replace(/\/+$/, '').replace(/^\.$/, '');
+    return n === '..' || n.startsWith('../') ? null : n;
+  };
+  for (const f of files) {
+    const dir = posix.dirname(f) === '.' ? '' : posix.dirname(f);
+    const base = posix.basename(f);
+    const segs = f.split('/');
+    const vp = segs.indexOf('.vitepress');
+    if (vp !== -1 && vp < segs.length - 1) {
+      // Evaluated before the dot-segment filter, which would otherwise drop `.vitepress/` itself.
+      add(segs.slice(0, vp).join('/'), `${segs.slice(0, vp + 1).join('/')}/`);
+      continue;
+    }
+    if (dir.split('/').some(skipSeg)) continue;
+    if (/^mkdocs\.ya?ml$/.test(base)) {
+      const m = safeRead(join(ctx.repoRoot, f)).match(/^docs_dir\s*:\s*(?:"([^"]*)"|'([^']*)'|([^#\s]+))/m);
+      const val = m ? (m[1] ?? m[2] ?? m[3]).trim() : 'docs';
+      add(under(dir, val || 'docs'), f);
+    } else if (/^docusaurus\.config\.(js|mjs|cjs|ts)$/.test(base)) {
+      add(under(dir, 'docs'), f);
+      add(under(dir, 'blog'), f);
+    } else if (/^astro\.config\.(mjs|js|ts|cjs)$/.test(base)) {
+      add(under(dir, 'src/content'), f);
+    } else if (/^hugo\.(toml|yaml|json)$/.test(base)
+      || (base === 'config.toml' && /baseURL/.test(safeRead(join(ctx.repoRoot, f))))) {
+      // config/_default/ and config/<env>/ hold the config; the site is the directory holding config/.
+      const site = /(^|\/)config\/[^/]+$/.test(dir) ? posix.dirname(posix.dirname(dir)).replace(/^\.$/, '') : dir;
+      add(under(site, 'content'), f);
+    }
+    segs.slice(0, -1).forEach((seg, i) => {
+      if (SITE_DIR_NAMES.has(seg)) add(segs.slice(0, i + 1).join('/'), `${segs.slice(0, i + 1).join('/')}/`);
+    });
+  }
+  // A root inside another detected root is covered by the outer one.
+  const kept = [...roots].filter(([r]) => ![...roots.keys()].some((o) => o !== r && r.startsWith(`${o}/`)));
+  const out = [];
+  for (const [root, source] of kept) {
+    const own = files.filter((f) => f.startsWith(`${root}/`) && SITE_DOC_EXT.test(f)
+      && !f.slice(root.length + 1).split('/').some(skipSeg));
+    if (own.length) out.push({ root, source, files: new Set(own) });
+  }
+  return { roots: out, unbounded: [...unbounded] };
 }
 
 function checkShape(ctx) {
@@ -1730,11 +1808,27 @@ function checkShape(ctx) {
   }
 
   const em = emDashConfig(ctx.house);
+  const info = [];
   if (em.mode !== 'off') {
+    // Detected site and knowledge-base roots join the configured paths, so
+    // `exclude` can still drop any of their files; `detect: false` turns it off.
+    // An explicit `"paths": []` is an off switch, detection included.
+    const found = em.detect && !em.pathsEmpty ? detectSiteRoots(ctx) : { roots: [], unbounded: [] };
+    // A root that resolves to the repo root or outside it cannot be bounded:
+    // scanning it would sweep in agent-facing files and records, so the
+    // operator lists the content.
+    const detected = found.roots;
+    for (const source of found.unbounded) {
+      info.push(mk('shape', source, null, 'em-dash', `site content could not be bounded (${source.replace(/\/$/, '')} resolves to the repo root or outside it); list it in emDash.paths`));
+    }
+    for (const { root, source } of detected) {
+      info.push(mk('shape', source, null, 'em-dash', `scanning site content: ${root} (${source.replace(/\/$/, '')})`));
+    }
     // #304: a doc not yet added is in the next commit, so it is scanned the way
     // CI will scan it, as the drift scan does since #251; an ignored one is not.
     const inPublic = [...ctx.allTracked, ...ctx.untracked].filter((f) =>
-      em.paths.some((p) => matchesConfigPath(f, p)) && !em.exclude.some((p) => matchesConfigPath(f, p)));
+      (em.paths.some((p) => matchesConfigPath(f, p)) || detected.some((d) => d.files.has(f)))
+      && !em.exclude.some((p) => matchesConfigPath(f, p)));
     // `exclude` narrows the configured paths; under "all" the rule files come
     // back in whatever it says, because they are the surface this ban started
     // on and an exclusion must not be able to quietly drop them.
@@ -1755,7 +1849,7 @@ function checkShape(ctx) {
     }
   }
 
-  return { findings, warnings: [] };
+  return { findings, warnings: [], info };
 }
 
 // ── lengths ──────────────────────────────────────────────────────────────
@@ -2497,8 +2591,11 @@ function checkManifest(ctx) {
           findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.docs.config.emDash.${slot} must be an array of non-empty glob strings or {"path", "why"} objects with non-empty values and no other keys; the shape family uses the default ${JSON.stringify(EM_DASH_DEFAULT[slot])} until it is`));
         }
       }
+      if (em.detect !== undefined && typeof em.detect !== 'boolean') {
+        findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.docs.config.emDash.detect must be true or false (got ${JSON.stringify(em.detect)}); the shape family uses ${EM_DASH_DEFAULT.detect} until it is`));
+      }
       for (const k of Object.keys(em)) {
-        if (!['mode', 'paths', 'exclude'].includes(k)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.docs.config.emDash has unknown key \`${k}\` (expected "mode", "paths", "exclude")`));
+        if (!['mode', 'paths', 'exclude', 'detect'].includes(k)) findings.push(mk('manifest', 'house.json', null, 'manifest', `modules.docs.config.emDash has unknown key \`${k}\` (expected "mode", "paths", "exclude", "detect")`));
       }
     }
   }

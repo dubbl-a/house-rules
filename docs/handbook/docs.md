@@ -126,17 +126,20 @@ and body prose never carries an em dash.
 
 Which surfaces that em-dash ban covers is a per-repo call, so it is a config slot rather than a
 constant in the checker: `modules.docs.config.emDash` takes a `mode` of `public` (the default:
-`README.md` only), `all` (those plus every rule file), or `off`,
+`README.md` plus detected sites and knowledge bases), `all` (those plus every rule file), or `off`,
 with `paths` and `exclude` lists matched the way every other docs path slot is. The default is
 the README rather than rule files or internal docs because the reader who notices the tell is the
 one who landed on the repo, and the rule files are already gated for a different reason; a site or
-knowledge base people read opts in through `paths`. An `exclude` entry takes
+knowledge base people read is detected by default (mkdocs, docusaurus, vitepress, astro, hugo, or a
+`site`, `website`, `wiki`, `handbook` or `kb` directory), `paths` adds more, and `detect: false` turns detection off. An `exclude` entry takes
 the `{path, why}` form, so an exemption carries its justification in the same line that grants it.
 This package runs `all`, and holds out `docs/handbook/sources/**`: those are point-in-time research
 notes quoted from other repositories, and rewriting a quotation to satisfy a house rule would make
 the receipt worth less than the rule it supports.
 
 Added 2026-10-19 (#307): the default once swept internal docs (an adopter's archived handover drew 74 findings), so the owner narrowed it to `README.md`; an adopter opts a site or knowledge base in through `modules.docs.config.emDash.paths`.
+
+Added 2026-10-20: the owner settled that websites and knowledge bases people read, public or internal to a team, are scanned by default alongside the README, so the checker detects them from generator configs and conventional directory names; plain `docs/` stays out unless a site generator claims it, so an archived handover there is not swept up.
 
 The receipts pointer itself needs a reason to be checked, not just written. repo-a's
 sibling gate for in-page anchors states it plainly: "a missing fragment does not 404," so nothing
