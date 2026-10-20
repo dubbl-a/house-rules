@@ -181,7 +181,8 @@ function runCli(cliPath, args, env = {}) {
   }
   const res = spawnSync(process.execPath, [cliPath, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
+    // A refused local port unless the test injects a fixture: no test reaches the real releases API.
+    env: { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/', ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
   });
   return { code: res.status, out: res.stdout || '', err: res.stderr || '' };
 }
@@ -503,6 +504,65 @@ test('doctor: prints the effective branch guard in each of the three states, and
   const d = runCli(cliPath, ['doctor', '--repo', repoD]);
   assert.equal(d.code, 0);
   assert.match(d.out, /effective branch guard:\s*NONE \(fail-open: no house\.json\)/);
+});
+
+// #305: the pin check compares house.json with the loaded plugin, never with
+// upstream, so a pinned install never learns it is behind. The release line is
+// advisory: it never changes the exit code and never blocks when offline.
+function releasesFixture(body) {
+  const dir = mkdtempSync(join(tmpdir(), 'house-releases-'));
+  CLEANUP_DIRS.push(dir);
+  const file = join(dir, 'releases.json');
+  writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body));
+  return file;
+}
+const rel = (tag, extra = {}) => ({ tag_name: tag, draft: false, prerelease: false, ...extra });
+
+test('#305 doctor: prints how many releases the installed plugin is behind', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const file = releasesFixture([rel('v10.0.1'), rel('v10.0.0', { prerelease: true }), rel('v9.9.10', { draft: true }), rel('v9.9.9'), rel('v9.9.8')]);
+  const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_FIXTURE: file });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^latest release v10\.0\.1; installed v9\.9\.9 \(1 behind\)$/m);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: file }).out);
+  assert.equal(j.latestRelease.latest, '10.0.1');
+  assert.equal(j.latestRelease.behind, 1);
+});
+
+test('#305 doctor: says so when the installed plugin is the latest release', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.9'), rel('v9.9.8')]) });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^installed v9\.9\.9 is the latest release$/m);
+});
+
+test('#305 doctor: an unreleased local version is ahead, not behind', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.8'), rel('v9.9.7')]) });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^latest release v9\.9\.8; installed v9\.9\.9 is ahead of it \(unreleased\)$/m);
+});
+
+test('#305 doctor: offline prints not checked and keeps the exit code', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/' });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^latest release: not checked \(.+\)$/m);
+  assert.match(r.out, /effective branch guard:/);
+  const missing = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_FIXTURE: join(repo, 'no-such.json') });
+  assert.equal(missing.code, 0);
+  assert.match(missing.out, /^latest release: not checked \(.+\)$/m);
+});
+
+test('#305 doctor: a malformed response prints not checked', () => {
+  const { cliPath } = buildFixturePlugin();
+  for (const body of ['not json', '{"message":"API rate limit exceeded"}', '[]', '[{"tag_name":"nightly"}]']) {
+    const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture(body) });
+    assert.equal(r.code, 0, body);
+    assert.match(r.out, /^latest release: not checked \(.+\)$/m, body);
+  }
 });
 
 // #32: "plugin" as the effective guard is a real choice, but doctor printed it
