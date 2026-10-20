@@ -2180,8 +2180,8 @@ expect_allow "Edit on a .githooks file in a repo that never adopted house" \
 # not speed targets. Before the fix these cases took 59 s (100 lines), 534 s
 # (200 lines) and 127 s (the deny behind 200 lines), so 20 s and 30 s still
 # fail on a regression while tolerating a loaded CI runner. What remains is a
-# linear per-clause cost (the here-string reads in git_split and the clause
-# scans), tracked separately from #290. Each case asserts its decision too.
+# linear per-clause cost (the clause scans; the here-string reads that were
+# most of it went in #314, below). Each case asserts its decision too.
 sc="$TMP_ROOT/split"; new_repo "$sc"; adopt "$sc"
 git -C "$sc" checkout -q -b feat/sc
 _sg="gi""t"; _sph="hooks""Path"
@@ -2287,6 +2287,84 @@ if [[ -n "$_split_new_src" && "$_split_err" == DENIED ]]; then
   pass "a failing sed inside split_clauses fires the deny, not clause text"
 else
   fail "a failing sed inside split_clauses fires the deny" "got: $_split_err"
+fi
+
+# ── the clause tokens: no here-string per clause, same tokens (#314) ──────
+# Every clause used to be tokenized with `IFS=$' \t\n' read -r -a toks
+# <<<"$clause"`, and on macOS's bash 3.2 each here-string cost about a
+# millisecond, a few thousand of them for a 200-line heredoc: the guard took
+# 5 to 8 s against its 5 s timeout. clause_tokens splits by word splitting
+# instead. The guard fails toward under-stripping, so its tokens must be
+# exactly read's: lifted out of the hook as split_clauses is above, compared
+# count and bytes on every input, in two locales, from a caller that has
+# pathname expansion on (hooks_dir_files turns it on) in a directory where
+# the glob cases match, and from one that has it off, whose setting it must
+# leave as it found it.
+_tok_src=$(sed -n '/^clause_tokens() {$/,/^}$/p' "$HOOK")
+_tok_dir="$TMP_ROOT/tokens"; mkdir -p "$_tok_dir"
+touch "$_tok_dir/aa" "$_tok_dir/ab" "$_tok_dir/.h" "$_tok_dir/{x}"
+_tok_cases=(
+  ''
+  ' '
+  $' \t \t '
+  $'\n'
+  $'\n\nlater line'
+  'one'
+  $'  lead and trail \t'
+  $'tab\tsep\t\tdouble'
+  $'first line\nsecond line'
+  $'first\n'
+  $'a\\\nb'
+  'back\slash \\ end\'
+  'a\ b c\\ d'
+  "\"dq word\" 'sq word' \"\" ''"
+  '$HOME ${x:-y} $(pwd) `pwd` $1 $@ $*'
+  'a* ? [a]b * .* [!z]* ?? **'
+  '{a,b} {1..3} ~ ~/x ~root'
+  $'cr\r end\r'
+  $'v\vf\f'
+  $'ctl\x01a \x7fb \x01\x7f c\x01'
+  $'caf\xc3\xa9 \xff\xfe z \xc3'
+  $'x\xa0y \xe2\x80\x83z'
+  "$_sg -C /tmp/x commit -m 'msg with spaces'"
+  'GIT_DIR=/x git --git-dir=/y push origin HEAD:refs/heads/main'
+  "$(_heredoc_cmd 3 '')"
+)
+_tok_print() { printf '%s|' "${#toks[@]}"; printf '%s\x1f' ${toks[@]+"${toks[@]}"}; printf '|%s' "$-"; }
+_tok_bad=0
+for _loc in C C.UTF-8; do
+  for _glob in on off; do
+    for _c in "${_tok_cases[@]}"; do
+      _old=$(cd "$_tok_dir" && export LC_ALL="$_loc"; set -Euf -o pipefail
+             [[ "$_glob" == on ]] && set +f
+             _f() { local toks=(); IFS=$' \t\n' read -r -a toks <<<"$1"; _tok_print; }; _f "$_c")
+      _new=$(cd "$_tok_dir" && export LC_ALL="$_loc"; set -Euf -o pipefail
+             trap 'echo "ERR in clause_tokens"; exit 1' ERR
+             eval "$_tok_src"
+             [[ "$_glob" == on ]] && set +f
+             _f() { local toks=(); clause_tokens "$1"; _tok_print; }; _f "$_c")
+      if [[ "$_old" != "$_new" ]]; then
+        _tok_bad=$((_tok_bad + 1))
+        printf '        differs (LC_ALL=%s, glob %s) on %q\n          old=%q\n          new=%q\n' "$_loc" "$_glob" "$_c" "$_old" "$_new"
+      fi
+    done
+  done
+done
+if [[ -n "$_tok_src" && "$_tok_bad" -eq 0 ]]; then
+  pass "clause_tokens matches read -r -a on ${#_tok_cases[@]} inputs, in two locales, with globbing on and off"
+else
+  fail "clause_tokens matches read -r -a" "$_tok_bad runs differ (src=${#_tok_src} bytes)"
+fi
+# The issue's payload size, end to end: the scan of a 200-line heredoc ahead
+# of a hooks-path write must still reach that write, well inside the timeout.
+_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+run_hook "$(mk_payload "$(_heredoc_cmd 200 "; $_sg config core.$_sph /dev/null")" "$sc")"
+_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+_ms=$((_end - _start))
+if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 3000 ]]; then
+  pass "a hooks-path write behind a 200-line heredoc is denied in ${_ms} ms, under 3000"
+else
+  fail "a hooks-path write behind a 200-line heredoc is denied under 3000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
 fi
 
 # ── the harness side of failing closed: the guard's entry in hooks.json ───
