@@ -643,23 +643,26 @@ _unquote() { sed -E "s/['\"]//g; s/(^|[[:space:]])#.*\$//"; }
 # clause. Sets CLAUSES rather than printing, so a failure here cannot fire the
 # ERR trap inside a subshell and come back as clause text.
 CLAUSES=''
+# One sed pass, not `${c//pat/repl}`: on macOS's bash 3.2 each substitution
+# costs about matches x length x length, and this runs about eleven times a
+# call, so a 10 KB heredoc took a minute and the 5 s timeout blocked an
+# ordinary command (#290). sed applies the same replacements in the same
+# order, line by line, and none of them spans a newline. sed and tr run under
+# LC_ALL=C: in a UTF-8 locale a byte that is not UTF-8 stops tr with "Illegal
+# byte sequence", and the clauses after it were lost.
 split_clauses() {
-  local c="$1"
+  local nl='\'$'\n' soh=$'\x01'
   # A bare `&` is the backgrounding operator and is a clause break; `>&`, a
   # stream-duplicating redirection (2>&1, 1>&2, >&1, >&2), is not one, and the
-  # `&` split below must not cut it in half. Protected here with a control
+  # `&` split must not cut it in half. Protected first with a control
   # character no shell text carries, and restored once the splits are done.
-  c="${c//>&/>$'\x01'}"
   # `|&` is a pipe that carries stderr too: one break, not the `&` and `|`
-  # splits below cutting it into two with an empty clause between (#147).
-  c="${c//\|\|/$'\n'}"; c="${c//\|&/$'\n'}"; c="${c//&&/$'\n'}"; c="${c//;/$'\n'}"
-  c="${c//&/$'\n'}"; c="${c//\|/$'\n'}"
-  c="${c//\(/ }"; c="${c//\)/ }"; c="${c//\`/ }"
-  # Restored with tr, not `${c//.../>&}`: since bash 5.2 (patsub_replacement)
-  # a bare `&` in the replacement means "the matched text", which put the
-  # placeholder back on CI, and `\&` stays a literal backslash on bash 3.2.
-  c=$(printf '%s' "$c" | tr '\001' '&')
-  CLAUSES="$c"
+  # splits cutting it into two with an empty clause between (#147).
+  # Restored with tr, not in the sed replacement, where `&` means "the
+  # matched text".
+  CLAUSES=$(printf '%s' "$1" | LC_ALL=C sed \
+      -e "s/>&/>$soh/g; s/||/$nl/g; s/|&/$nl/g; s/&&/$nl/g; s/;/$nl/g; s/&/$nl/g; s/|/$nl/g" \
+      -e "s/[()\`]/ /g" | LC_ALL=C tr '\001' '&')
 }
 
 if [[ "$MODE" == bash ]]; then

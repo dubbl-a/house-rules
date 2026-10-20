@@ -15,6 +15,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - The em-dash scan now detects websites and knowledge bases by default and scans their Markdown with the README: an mkdocs `docs_dir`, docusaurus `docs/` and `blog/`, a `.vitepress` parent, astro `src/content/`, hugo `content/`, and any `site`, `website`, `wiki`, `handbook` or `kb` directory, at any depth, with one info line per detected root. This widens the default, so an adopter with em dashes in detected site or knowledge-base content gets new findings and can fix them, exclude them with a reason, or turn detection off with `mode: "off"`, `detect: false`, or `"paths": []` under `modules.docs.config.emDash`. Dot directories, `node_modules`, `vendor` and `third_party` are never claimed.
 - The claude-code rule's peer-session section says to launch headless workers with `--name` and a worker prefix, run message-free ones in bare mode, and tell peers once what the workers are named and that they hold no lock (#283).
 
+### Fixed
+
+- The branch guard splits a command into clauses in one `sed` pass instead of eleven bash substitutions, which macOS's bash 3.2 runs in time quadratic in the command's length: a command carrying a 10 KB heredoc took about a minute to check, so the hook's 5 s timeout blocked it with no reason (#290). The split reads the same text in the same order, and runs under `LC_ALL=C`, so a byte that is not UTF-8 no longer stops it partway. Nothing the guard denies changes.
+
 ## [0.21.6] - 2026-10-19
 
 A patch release under ADR 0012: the `/deep-research` fork stops refuting faithful quotes from weak sources, the em-dash scan reads untracked docs and its adopter default narrows to `README.md`, and three rule sentences and a README note land. Nothing the guard denies changes, no heading is renamed, and neither the `house.json` nor the `.house/` layout changes. The em-dash default only loosens: a repo that relied on it for CHANGELOG or `docs/` lists those in `modules.docs.config.emDash.paths` to keep them. Upgrading from 0.21.5: run `/house-rules:sync`, then rerun `check-deep-research-upstream.mjs --install`.
