@@ -583,6 +583,26 @@ planning has real overhead; and `/clear` after two failed corrections on the sam
 "context polluted with failed approaches loses to a clean session with a better prompt"
 (code.claude.com/docs/en/best-practices, items 5 and 7).
 
+## Keep a session to one task, and start fresh rather than resume a large idle one
+
+Anthropic's cost and prompt-caching documentation (code.claude.com/docs/en/costs and
+code.claude.com/docs/en/prompt-caching) states the mechanism: Claude Code resends the whole
+conversation every request, the first message after an idle gap longer than the cache lifetime
+rewrites the whole context into the cache, `/clear` is free, and `/compact` is itself a request
+that reads everything it summarizes, cheap while the cache is warm and expensive once it expires.
+
+One adopter's token-cost research (`research/token-cost/2026-10-20.md`, PR #318) put numbers on
+it: turns over 200k tokens of context were 84.5% of main-session cost, and 63 idle rebuilds cost
+$247. The rule names the cost and the signal rather than a context size, because the right size
+depends on the model's price and the work.
+
+The hooks reference (code.claude.com/docs/en/hooks) adds, from Claude Code 2.1.251, four fields to
+the SessionStart input on `resume` and `fork`: `seconds_since_last_response`, `context_tokens`,
+`prompt_cache_likely_expired` and `estimated_cache_write_usd`. The hook warns when the cache is
+expired and the estimate reaches a threshold (default $0.25), and fails open on missing fields.
+The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
+magnitude.
+
 ## Treat git state as shared across sessions
 
 repo-b's CLAUDE.md states the rule almost verbatim: "Git state is SHARED across sessions here."

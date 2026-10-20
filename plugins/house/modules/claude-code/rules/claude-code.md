@@ -112,6 +112,17 @@ Re-read the source of a ruling immediately before you act on it, not once at ses
 Anchor: none (because the harness cannot see that a correction failed; the second failed attempt is the signal).
 Receipts: `docs/handbook/claude-code.md#plan-when-the-approach-is-uncertain-and-clear-the-context-after-two-failed-corrections`
 
+## Keep a session to one task, and start fresh rather than resume a large idle one
+
+Claude Code resends the whole conversation on every request, so a long session pays for its history on each turn, and the first message after an idle gap longer than the cache lifetime rewrites the whole context into the cache at the write price.
+Keep a session to one task and `/clear` between unrelated tasks, which costs nothing.
+When stepping away from a session whose context has grown large, leave a handoff in the repo and start fresh rather than resume; resume only when the history itself is the work.
+Compact at a natural break while the cache is warm, never right after an idle gap, since `/compact` is itself a request that reads everything it summarizes.
+Watch `/context` or the status line for size, and the prompt-cache line in `/usage` for misses.
+Correcting a failed approach is the section above's; the handoff's shape is the section below's.
+Anchor: the `plugins/house/hooks/resume-cost.mjs` SessionStart hook, matched on `resume|fork`, which warns when the harness reports an expired cache and an estimated rewrite above a dollar threshold. It only advises: set `HOUSE_RESUME_COST_WARN=off` or `HOUSE_RESUME_COST_WARN_USD` in the shell or the settings env to silence or retune it. It needs a Claude Code version that reports the cache fields on resume, and says nothing on an older one.
+Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fresh-rather-than-resume-a-large-idle-one`
+
 ## Treat git state as shared across sessions
 
 Assume another checkout can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
