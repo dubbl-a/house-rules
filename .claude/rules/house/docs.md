@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.21.5 module=docs source=modules/docs/rules/docs.md body-sha256=a3266e33ab8b4c53a28522bb11419d748c780fd4c1bde56cb5023b0ec8463415 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.5 module=docs source=modules/docs/rules/docs.md body-sha256=08e6d65bf28b910ee0209614d39c223bbc7854a78d713715344436d53906fc3f DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -47,7 +47,7 @@ Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belong
 
 Write each rule as an imperative heading that is itself the rule, then a one-clause why, then the line naming what enforces it, then a pointer to its receipt. A reader who disagrees needs the why and the evidence in front of them, or the rule gets worked around, not revised.
 Cite a receipt by its quoted heading so the pointer survives a reorder, and title each archive entry as a one-line lesson so it reads as a claim, not a filename.
-Pitch each rule at the right altitude: specific enough to act on, general enough to leave judgment open. End every rule file with a `## Don't` section, and keep em dashes out of prose, naming the ban's surfaces in `modules.docs.config.emDash`.
+Pitch each rule at the right altitude: specific enough to act on, general enough to leave judgment open. End every rule file with a `## Don't` section, and keep em dashes out of prose. The README always gets the scan; a repo adds, through `modules.docs.config.emDash.paths`, any website or knowledge base people read, public or internal to a team. Agent-facing files and verbatim records stay out.
 The why and the Anchor line are what the harness's prompt audit looks for when it judges a prohibition by its provenance and an instruction by whether anything enforces it; keep each `## Don't` line the negative of a rule above, so it inherits that rule's reason instead of reading as a bare ban.
 Anchor: `npm run check:house` (shape) requires an imperative heading, an `Anchor:` line per rule, a `## Don't` section, and no em dash in any file `modules.docs.config.emDash` puts in scope.
 Receipts: `docs/handbook/docs.md#state-a-rule-as-imperative-why-anchor-receipts`

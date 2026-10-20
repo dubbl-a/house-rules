@@ -35,9 +35,7 @@
       "default": {
         "mode": "public",
         "paths": [
-          "README.md",
-          "CHANGELOG.md",
-          "docs/**/*.md"
+          "README.md"
         ],
         "exclude": []
       }

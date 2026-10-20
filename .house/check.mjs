@@ -74,8 +74,8 @@
 //   modules.docs.config.maxCoLoadLines       integer, default 400                   coload family
 //                                                (above 400 needs a `coload-ceiling` deviation: manifest family)
 //   modules.docs.config.emDash               object, default                        shape family
-//                                              {"mode":"public","paths":["README.md","CHANGELOG.md",
-//                                              "docs/**/*.md"],"exclude":[]}
+//                                              {"mode":"public","paths":["README.md"],
+//                                              "exclude":[]}
 //                                              Which surfaces the em-dash ban covers. `mode`
 //                                              "public" scans `paths`; "all" scans `paths` plus
 //                                              every rule file; "off" scans nothing, and an
@@ -1695,7 +1695,7 @@ function checkEmDashFile(file, raw, findings) {
   });
 }
 
-const EM_DASH_DEFAULT = { mode: 'public', paths: ['README.md', 'CHANGELOG.md', 'docs/**/*.md'], exclude: [] };
+const EM_DASH_DEFAULT = { mode: 'public', paths: ['README.md'], exclude: [] };
 const EM_DASH_MODES = new Set(['public', 'all', 'off']);
 
 // modules.docs.config.emDash, read field by field: a malformed field falls

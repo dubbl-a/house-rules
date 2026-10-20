@@ -70,7 +70,32 @@ test('shape: an em dash in a rule file is a finding under mode `all`', () => {
   assert.match(out, /em dash/);
 });
 
-test('shape: the default emDash scan covers README, CHANGELOG and docs, not rule files', () => {
+test('shape: with no emDash config, an em dash in CHANGELOG.md or docs/ is not a finding', () => {
+  const dir = sandbox({
+    'src/placeholder.ts': 'export const x = 1;\n',
+    'CHANGELOG.md': DASHED_PUBLIC['CHANGELOG.md'],
+    'docs/x.md': '# X\n\nA docs em dash \u2014 here.\n',
+  });
+  const { code, out, json } = run(dir, ['--only=shape', '--json']);
+  assert.equal(code, 0, out);
+  assert.deepEqual(emPaths(json), []);
+});
+
+test('shape: with no emDash config, an em dash in README.md is one finding; emDash.paths opts docs in', () => {
+  const files = {
+    'src/placeholder.ts': 'export const x = 1;\n',
+    'README.md': DASHED_PUBLIC['README.md'],
+    'docs/x.md': '# X\n\nA docs em dash \u2014 here.\n',
+  };
+  const bare = run(sandbox(files), ['--only=shape', '--json']);
+  assert.equal(bare.code, 1, bare.out);
+  assert.deepEqual(emPaths(bare.json), ['README.md']);
+  const opted = run(sandbox({ ...files, 'README.md': '# R\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) }), ['--only=shape', '--json']);
+  assert.equal(opted.code, 1, opted.out);
+  assert.deepEqual(emPaths(opted.json), ['docs/x.md']);
+});
+
+test('shape: the default emDash scan covers README only, not CHANGELOG, docs or rule files', () => {
   const dir = sandbox({
     'src/placeholder.ts': 'export const x = 1;\n',
     ...DASHED_PUBLIC,
@@ -78,7 +103,7 @@ test('shape: the default emDash scan covers README, CHANGELOG and docs, not rule
   });
   const { code, out, json } = run(dir, ['--only=shape', '--json']);
   assert.equal(code, 1, out);
-  assert.deepEqual(emPaths(json), ['CHANGELOG.md', 'README.md', 'docs/note.md']);
+  assert.deepEqual(emPaths(json), ['README.md']);
 });
 
 test('shape: the default emDash scan leaves an em dash in a rule file alone', () => {
@@ -116,7 +141,7 @@ test('shape: mode `all` adds the rule files to the public set and reports each f
 // #304: a new doc not yet added is in the next commit, so the em dash scan
 // reads it the way CI will; an ignored doc never reaches a commit.
 test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fails locally as in CI', () => {
-  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n' });
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) });
   writeUntracked(dir, { 'docs/new.md': '# New\n\nAn untracked em dash \u2014 here.\n' });
   const { code, out, json } = run(dir, ['--only=shape', '--json']);
   assert.equal(code, 1, out);
@@ -124,7 +149,7 @@ test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fai
 });
 
 test('#304: the em dash scan leaves a gitignored doc alone', () => {
-  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n' });
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) });
   writeUntracked(dir, { 'docs/private.md': '# P\n\nAn ignored em dash \u2014 here.\n' });
   const { code, out } = run(dir, ['--only=shape']);
   assert.equal(code, 0, out);
@@ -133,7 +158,7 @@ test('#304: the em dash scan leaves a gitignored doc alone', () => {
 // #304: a new doc not yet added is in the next commit, so the em dash scan
 // reads it the way CI will; an ignored doc never reaches a commit.
 test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fails locally as in CI', () => {
-  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n' });
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) });
   writeUntracked(dir, { 'docs/new.md': '# New\n\nAn untracked em dash \u2014 here.\n' });
   const { code, out, json } = run(dir, ['--only=shape', '--json']);
   assert.equal(code, 1, out);
@@ -141,7 +166,7 @@ test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fai
 });
 
 test('#304: the em dash scan leaves a gitignored doc alone', () => {
-  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n' });
+  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) });
   writeUntracked(dir, { 'docs/private.md': '# P\n\nAn ignored em dash \u2014 here.\n' });
   const { code, out } = run(dir, ['--only=shape']);
   assert.equal(code, 0, out);
@@ -161,7 +186,7 @@ test('shape: mode `off` emits no em dash finding anywhere', () => {
 test('shape: an exclude entry drops a matched file from the em dash scan', () => {
   const dir = sandbox({
     'src/placeholder.ts': 'export const x = 1;\n',
-    'house.json': emHouse({ exclude: [{ path: 'docs/sources/**', why: 'point-in-time research notes kept verbatim' }] }),
+    'house.json': emHouse({ paths: ['docs/**/*.md'], exclude: [{ path: 'docs/sources/**', why: 'point-in-time research notes kept verbatim' }] }),
     'docs/keep.md': '# Keep\n\nA scanned em dash — here.\n',
     'docs/sources/survey.md': '# Survey\n\nAn excluded em dash — here.\n',
   });
@@ -208,7 +233,7 @@ test('shape: one bad `paths` entry reverts the whole field to the default set, a
   const { code, out, json } = run(dir, ['--only=shape,manifest', '--json'], NO_PLUGIN);
   assert.equal(code, 1, out);
   // Not ['README.md']: the good entry does not survive on its own.
-  assert.deepEqual(emPaths(json), ['CHANGELOG.md', 'README.md', 'docs/note.md']);
+  assert.deepEqual(emPaths(json), ['README.md']);
   const manifest = json.findings.filter((f) => f.family === 'manifest');
   assert.equal(manifest.length, 1, out);
   assert.match(manifest[0].message, /emDash\.paths must be an array/);
