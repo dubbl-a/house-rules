@@ -3580,7 +3580,10 @@ async function fetchReleaseList() {
   // HOUSE_RELEASES_SEND_TOKEN seam lets a test prove the retry below).
   const override = process.env.HOUSE_RELEASES_URL;
   const token = process.env.GITHUB_TOKEN;
-  const mayAuth = token && (!override || process.env.HOUSE_RELEASES_SEND_TOKEN === '1');
+  // The seam is honored only for a loopback override, so a stray env var can
+  // never send the token off this machine.
+  const loopback = (() => { try { return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(override).hostname); } catch { return false; } })();
+  const mayAuth = token && (!override || (process.env.HOUSE_RELEASES_SEND_TOKEN === '1' && loopback));
   const get = (withToken) => {
     const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'house-doctor' };
     if (withToken) headers.Authorization = `Bearer ${token}`;
