@@ -742,6 +742,25 @@ local_hook_is_substantive() {
 }
 
 # ── Reading one clause ───────────────────────────────────────────────────
+# clause_tokens TEXT sets the caller's `toks` to TEXT's words, exactly what
+# `IFS=$' \t\n' read -r -a toks <<<"$TEXT"` gave: the first line only, split
+# on blanks, nothing expanded. That here-string cost about a millisecond a
+# clause on macOS's bash 3.2, and a long heredoc is thousands of clauses
+# (#314). Word splitting does the same split without one, provided pathname
+# expansion is off, which hooks_dir_files briefly undoes; it is forced off
+# here and left as the caller had it. A clause with a newline (an alias body)
+# goes back to read itself: in a UTF-8 locale `${1%%$'\n'*}` is quadratic in
+# the clause's length on bash 3.2, and a 66 KB one-line command took 5 s.
+# tests/hooks/run.sh pins the equivalence.
+clause_tokens() {
+  local s="$1" IFS=$' \t\n' glob=0
+  case "$s" in *$'\n'*) read -r -a toks <<<"$s"; return 0 ;; esac
+  case "$-" in *f*) ;; *) glob=1; set -f ;; esac
+  # shellcheck disable=SC2206 # the split is the point; -f is on
+  toks=($s)
+  if [[ "$glob" -eq 1 ]]; then set +f; fi
+  return 0
+}
 # git_split CLAUSE sets GV_VERB (the first token after `git` that is not a
 # global option, the value-taking ones skipped) and GV_ARGS (the tokens after
 # it, one per line). Returns 1 when the clause runs no git command (GV_BAD=0)
@@ -752,7 +771,7 @@ GV_VERB=''; GV_ARGS=''; GV_BAD=0
 git_split() {
   local toks=() i=0 n tok
   GV_VERB=''; GV_ARGS=''; GV_BAD=0
-  IFS=$' \t\n' read -r -a toks <<<"$1"
+  clause_tokens "$1"
   n="${#toks[@]}"
   while [[ "$i" -lt "$n" ]]; do
     tok="${toks[$i]}"; i=$((i + 1))
@@ -811,7 +830,7 @@ collect_candidates() {
   local text="$1" dir='' clause toks i n tok cdir
   split_clauses "$text"
   while IFS= read -r clause; do
-    IFS=$' \t\n' read -r -a toks <<<"$clause"
+    clause_tokens "$clause"
     n="${#toks[@]}"; i=0
     while [[ "$i" -lt "$n" ]]; do
       tok="${toks[$i]}"; i=$((i + 1))
@@ -874,7 +893,7 @@ disable_scan() {
   case "$clause" in
     *.[gG][iI][tT][hH][oO][oO][kK][sS]*|*.[gG][iI][tT]/[cC][oO][nN][fF][iI][gG]*|*.[gG][iI][tT]/[hH][oO][oO][kK][sS]*) floorish=1 ;;
   esac
-  IFS=$' \t\n' read -r -a toks <<<"$clause"
+  clause_tokens "$clause"
   n="${#toks[@]}"
   # The three key patterns below fire only in a clause that could actually
   # RUN git, or that assigns the key with `=`: prose naming the key (a `gh
@@ -1026,7 +1045,7 @@ dir_is_bare() {
 }
 dir_target_scan() {
   local clause="$1" toks=() i n tok verb ent k d targets=''
-  IFS=$' \t\n' read -r -a toks <<<"$clause"
+  clause_tokens "$clause"
   n="${#toks[@]}"; i=0
   while [[ "$i" -lt "$n" ]]; do
     tok="${toks[$i]}"; i=$((i + 1))
@@ -1427,7 +1446,7 @@ e_worktree_shape() {
   fi
   split_clauses "$rest"
   while IFS= read -r clause; do
-    IFS=$' \t\n' read -r -a toks <<<"$clause"
+    clause_tokens "$clause"
     n="${#toks[@]}"
     [[ "$n" -gt 0 ]] || continue
     clauses=$((clauses + 1))
