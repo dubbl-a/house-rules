@@ -2273,6 +2273,22 @@ else
   fail "split_clauses matches the old substitutions" "$_split_bad of ${#_split_cases[@]} inputs differ (src=${#_split_new_src} bytes)"
 fi
 
+# A failing sed or tr inside split_clauses must deny, not come back as clause
+# text: errtrace runs the ERR trap inside the $(...) subshell, whose crash JSON
+# would become CLAUSES while the parent carried on and emitted no deny.
+_split_err=$(bash -c 'set -Euf -o pipefail
+  eval "$1"
+  crashed() { trap - ERR EXIT; printf "DENIED"; exit 0; }
+  trap crashed ERR
+  sed() { return 3; }
+  split_clauses "a; b"
+  printf "CONTINUED[%s]" "$CLAUSES"' _ "$_split_new_src" 2>/dev/null)
+if [[ -n "$_split_new_src" && "$_split_err" == DENIED ]]; then
+  pass "a failing sed inside split_clauses fires the deny, not clause text"
+else
+  fail "a failing sed inside split_clauses fires the deny" "got: $_split_err"
+fi
+
 # ── the harness side of failing closed: the guard's entry in hooks.json ───
 # Every case above is the script's own decision. A guard that cannot start,
 # outlasts its timeout, or exits with a code the harness does not expect

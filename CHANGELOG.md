@@ -17,7 +17,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Fixed
 
-- The branch guard splits a command into clauses in one `sed` pass instead of eleven bash substitutions, which macOS's bash 3.2 runs in time quadratic in the command's length: a command carrying a 10 KB heredoc took about a minute to check, so the hook's 5 s timeout blocked it with no reason (#290). The split reads the same text in the same order, and runs under `LC_ALL=C`, so a byte that is not UTF-8 no longer stops it partway. Nothing the guard denies changes.
+- The branch guard splits a command into clauses in one `sed` pass instead of eleven bash substitutions, which macOS's bash 3.2 runs in time quadratic in the command's length: a command carrying a 10 KB heredoc took about a minute to check, so the hook's 5 s timeout blocked it with no reason (#290). The split reads the same text in the same order and now runs in linear time; a command with a heredoc of about 50 lines checks in under 3 s where it took 12, though one near 100 lines (about 10 KB) still sits close to the 5 s limit on a loaded machine, tracked in #314. It runs under `LC_ALL=C`, so a byte that is not UTF-8, as in a git alias body, no longer stops it partway, and a failing split now denies instead of coming back as clause text. The guard can deny more than before, never less.
 
 ## [0.21.6] - 2026-10-19
 

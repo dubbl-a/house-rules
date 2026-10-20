@@ -640,8 +640,10 @@ _unquote() { sed -E "s/['\"]//g; s/(^|[[:space:]])#.*\$//"; }
 # is not missed (#1). Parentheses and backticks become SPACES, not clause
 # breaks: a substitution closes with `)` glued to the last token and a space
 # frees it, while a break there would move the rest of the command out of the
-# clause. Sets CLAUSES rather than printing, so a failure here cannot fire the
-# ERR trap inside a subshell and come back as clause text.
+# clause. The substitution clears the ERR trap first, so a failing sed or tr
+# makes the assignment fail in this shell, where the trap denies; inherited
+# under errtrace, the trap would print its deny into CLAUSES and the parent
+# would carry on with no decision.
 CLAUSES=''
 # One sed pass, not `${c//pat/repl}`: on macOS's bash 3.2 each substitution
 # costs about matches x length x length, and this runs about eleven times a
@@ -651,7 +653,7 @@ CLAUSES=''
 # LC_ALL=C: in a UTF-8 locale a byte that is not UTF-8 stops tr with "Illegal
 # byte sequence", and the clauses after it were lost.
 split_clauses() {
-  local nl='\'$'\n' soh=$'\x01'
+  local nl=$'\\\n' soh=$'\x01'
   # A bare `&` is the backgrounding operator and is a clause break; `>&`, a
   # stream-duplicating redirection (2>&1, 1>&2, >&1, >&2), is not one, and the
   # `&` split must not cut it in half. Protected first with a control
@@ -660,7 +662,7 @@ split_clauses() {
   # splits cutting it into two with an empty clause between (#147).
   # Restored with tr, not in the sed replacement, where `&` means "the
   # matched text".
-  CLAUSES=$(printf '%s' "$1" | LC_ALL=C sed \
+  CLAUSES=$(trap - ERR; printf '%s' "$1" | LC_ALL=C sed \
       -e "s/>&/>$soh/g; s/||/$nl/g; s/|&/$nl/g; s/&&/$nl/g; s/;/$nl/g; s/&/$nl/g; s/|/$nl/g" \
       -e "s/[()\`]/ /g" | LC_ALL=C tr '\001' '&')
 }
