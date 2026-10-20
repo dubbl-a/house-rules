@@ -181,7 +181,8 @@ function runCli(cliPath, args, env = {}) {
   }
   const res = spawnSync(process.execPath, [cliPath, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
+    // A refused local port unless the test injects a fixture: no test reaches the real releases API.
+    env: { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/', ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
   });
   return { code: res.status, out: res.stdout || '', err: res.stderr || '' };
 }
@@ -503,6 +504,143 @@ test('doctor: prints the effective branch guard in each of the three states, and
   const d = runCli(cliPath, ['doctor', '--repo', repoD]);
   assert.equal(d.code, 0);
   assert.match(d.out, /effective branch guard:\s*NONE \(fail-open: no house\.json\)/);
+});
+
+// #305: the pin check compares house.json with the loaded plugin, never with
+// upstream, so a pinned install never learns it is behind. The release line is
+// advisory: it never changes the exit code and never blocks when offline.
+function releasesFixture(body) {
+  const dir = mkdtempSync(join(tmpdir(), 'house-releases-'));
+  CLEANUP_DIRS.push(dir);
+  const file = join(dir, 'releases.json');
+  writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body));
+  return file;
+}
+const rel = (tag, extra = {}) => ({ tag_name: tag, draft: false, prerelease: false, ...extra });
+
+test('#305 doctor: prints how many releases the installed plugin is behind', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const file = releasesFixture([rel('v10.0.1'), rel('v10.0.0', { prerelease: true }), rel('v9.9.10', { draft: true }), rel('v9.9.9'), rel('v9.9.8')]);
+  const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_FIXTURE: file });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^latest release v10\.0\.1; installed v9\.9\.9 \(1 behind\)$/m);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: file }).out);
+  assert.equal(j.latestRelease.latest, '10.0.1');
+  assert.equal(j.latestRelease.behind, 1);
+});
+
+test('#305 doctor: says so when the installed plugin is the latest release', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.9'), rel('v9.9.8')]) });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^installed v9\.9\.9 is the latest release$/m);
+});
+
+test('#305 doctor: an unreleased local version is ahead, not behind', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.8'), rel('v9.9.7')]) });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^latest release v9\.9\.8; installed v9\.9\.9 is ahead of it \(unreleased\)$/m);
+});
+
+test('#305 doctor: offline prints not checked and keeps the exit code', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/' });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^latest release: not checked \(.+\)$/m);
+  assert.match(r.out, /effective branch guard:/);
+  const missing = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_FIXTURE: join(repo, 'no-such.json') });
+  assert.equal(missing.code, 0);
+  assert.match(missing.out, /^latest release: not checked \(.+\)$/m);
+});
+
+test('#305 doctor: a malformed response prints not checked', () => {
+  const { cliPath } = buildFixturePlugin();
+  for (const body of ['not json', '{"message":"API rate limit exceeded"}', '[]', '[{"tag_name":"nightly"}]']) {
+    const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture(body) });
+    assert.equal(r.code, 0, body);
+    assert.match(r.out, /^latest release: not checked \(.+\)$/m, body);
+  }
+});
+
+// A throwaway releases server in its own process (runCli blocks this one with
+// spawnSync). Modes: hang (accept, never answer), log (answer 200, append each
+// request's Authorization header to a file), auth401 (401 when a token is sent).
+const RELEASES_SERVER_SRC = `
+const http = require('http'); const fs = require('fs');
+const [mode, logFile] = process.argv.slice(1);
+const srv = http.createServer((req, res) => {
+  const a = req.headers.authorization || '';
+  fs.appendFileSync(logFile, JSON.stringify(a) + '\\n');
+  if (mode === 'hang') return;
+  if (mode === 'auth401' && a) { res.statusCode = 401; return res.end('{}'); }
+  res.end(JSON.stringify([{ tag_name: 'v10.0.0', draft: false, prerelease: false }]));
+});
+srv.listen(0, '127.0.0.1', () => console.log(srv.address().port));
+`;
+async function withReleasesServer(mode, fn) {
+  const logFile = join(mkdtempSync(join(tmpdir(), 'house-srv-')), 'auth.log');
+  CLEANUP_DIRS.push(dirname(logFile));
+  writeFileSync(logFile, '');
+  const child = spawn(process.execPath, ['-e', RELEASES_SERVER_SRC, mode, logFile], { stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    const port = await new Promise((resolve) => child.stdout.once('data', (d) => resolve(String(d).trim())));
+    return await fn(`http://127.0.0.1:${port}/`, () => readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
+  } finally { child.kill(); }
+}
+
+test('#305 doctor: a server that never answers times out in seconds, exit code unchanged', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('hang', (url) => {
+    const t0 = Date.now();
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url });
+    assert.ok(Date.now() - t0 < 10000, 'finishes well inside 10 s');
+    assert.equal(r.code, 0);
+    assert.match(r.out, /^latest release: not checked \(timed out after 3s\)$/m);
+  });
+});
+
+test('#305 doctor: response bytes never reach the terminal', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture('x\x1b[31mRED\x07\nINJECTED') });
+  assert.equal(r.code, 0);
+  assert.doesNotMatch(r.out, /[\x1b\x07]|INJECTED|RED/);
+  assert.match(r.out, /^latest release: not checked \(unexpected response from the releases API\)$/m);
+});
+
+test('#305 doctor: the token never goes to a HOUSE_RELEASES_URL override', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('log', (url, seen) => {
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url, GITHUB_TOKEN: 'secret-token' });
+    assert.match(r.out, /latest release v10\.0\.0/);
+    assert.deepEqual(seen(), ['']);
+  });
+});
+
+test('#305 doctor: a 401 with a token retries once without it', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('auth401', (url, seen) => {
+    // HOUSE_RELEASES_SEND_TOKEN is the test seam that lets the token reach a local URL.
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url, HOUSE_RELEASES_SEND_TOKEN: '1', GITHUB_TOKEN: 'secret-token' });
+    assert.match(r.out, /latest release v10\.0\.0/);
+    assert.deepEqual(seen(), ['Bearer secret-token', '']);
+  });
+});
+
+test('#305 doctor --json: ahead is distinct from current', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const ahead = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.8')]) }).out).latestRelease;
+  assert.equal(ahead.ahead, true);
+  assert.equal(ahead.behind, null);
+  const cur = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.9')]) }).out).latestRelease;
+  assert.equal(cur.ahead, false);
+  assert.equal(cur.behind, 0);
 });
 
 // #32: "plugin" as the effective guard is a real choice, but doctor printed it
