@@ -565,6 +565,84 @@ test('#305 doctor: a malformed response prints not checked', () => {
   }
 });
 
+// A throwaway releases server in its own process (runCli blocks this one with
+// spawnSync). Modes: hang (accept, never answer), log (answer 200, append each
+// request's Authorization header to a file), auth401 (401 when a token is sent).
+const RELEASES_SERVER_SRC = `
+const http = require('http'); const fs = require('fs');
+const [mode, logFile] = process.argv.slice(1);
+const srv = http.createServer((req, res) => {
+  const a = req.headers.authorization || '';
+  fs.appendFileSync(logFile, JSON.stringify(a) + '\\n');
+  if (mode === 'hang') return;
+  if (mode === 'auth401' && a) { res.statusCode = 401; return res.end('{}'); }
+  res.end(JSON.stringify([{ tag_name: 'v10.0.0', draft: false, prerelease: false }]));
+});
+srv.listen(0, '127.0.0.1', () => console.log(srv.address().port));
+`;
+async function withReleasesServer(mode, fn) {
+  const logFile = join(mkdtempSync(join(tmpdir(), 'house-srv-')), 'auth.log');
+  CLEANUP_DIRS.push(dirname(logFile));
+  writeFileSync(logFile, '');
+  const child = spawn(process.execPath, ['-e', RELEASES_SERVER_SRC, mode, logFile], { stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    const port = await new Promise((resolve) => child.stdout.once('data', (d) => resolve(String(d).trim())));
+    return await fn(`http://127.0.0.1:${port}/`, () => readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)));
+  } finally { child.kill(); }
+}
+
+test('#305 doctor: a server that never answers times out in seconds, exit code unchanged', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('hang', (url) => {
+    const t0 = Date.now();
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url });
+    assert.ok(Date.now() - t0 < 10000, 'finishes well inside 10 s');
+    assert.equal(r.code, 0);
+    assert.match(r.out, /^latest release: not checked \(timed out after 3s\)$/m);
+  });
+});
+
+test('#305 doctor: response bytes never reach the terminal', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture('x\x1b[31mRED\x07\nINJECTED') });
+  assert.equal(r.code, 0);
+  assert.doesNotMatch(r.out, /[\x1b\x07]|INJECTED|RED/);
+  assert.match(r.out, /^latest release: not checked \(unexpected response from the releases API\)$/m);
+});
+
+test('#305 doctor: the token never goes to a HOUSE_RELEASES_URL override', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('log', (url, seen) => {
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url, GITHUB_TOKEN: 'secret-token' });
+    assert.match(r.out, /latest release v10\.0\.0/);
+    assert.deepEqual(seen(), ['']);
+  });
+});
+
+test('#305 doctor: a 401 with a token retries once without it', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('auth401', (url, seen) => {
+    // HOUSE_RELEASES_SEND_TOKEN is the test seam that lets the token reach a local URL.
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url, HOUSE_RELEASES_SEND_TOKEN: '1', GITHUB_TOKEN: 'secret-token' });
+    assert.match(r.out, /latest release v10\.0\.0/);
+    assert.deepEqual(seen(), ['Bearer secret-token', '']);
+  });
+});
+
+test('#305 doctor --json: ahead is distinct from current', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  const ahead = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.8')]) }).out).latestRelease;
+  assert.equal(ahead.ahead, true);
+  assert.equal(ahead.behind, null);
+  const cur = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.9')]) }).out).latestRelease;
+  assert.equal(cur.ahead, false);
+  assert.equal(cur.behind, 0);
+});
+
 // #32: "plugin" as the effective guard is a real choice, but doctor printed it
 // identically whether the repo had decided it or had simply never looked. The
 // line now says which, and points at the record that clears the checker's

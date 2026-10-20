@@ -8,7 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Added
 
-- `house doctor` prints one advisory line comparing the installed plugin with the latest published release of dubbl-a/house-rules (`latest release v0.21.7; installed v0.21.6 (1 behind)`), and the sync skill's report includes it (#305). The pin line compared `house.json` only with the loaded plugin, so a pinned install read "matches" while releases behind. Offline, rate-limited or malformed answers print `latest release: not checked (<reason>)`; the exit code never changes.
+- `house doctor` prints one advisory line comparing the installed plugin with the latest published release of dubbl-a/house-rules (`latest release v0.21.7; installed v0.21.6 (1 behind)`), and the sync skill's report includes it (#305). The pin line compared `house.json` only with the loaded plugin, so a pinned install read "matches" while releases behind. Offline, rate-limited or malformed answers print `latest release: not checked (<reason>)`; the exit code never changes, no response byte is echoed, and a `GITHUB_TOKEN` is sent only to the default URL.
 
 ### Changed
 
