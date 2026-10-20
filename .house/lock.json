@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "d5edda3443f28abf6d0bdf7a0703d82e1e269d1beebfab3dbb7c2aa0cadef45d"
+      "bodySha256": "43ff914cacdf1c765360ecc9f8a2f5e4ead38411c4415ed37739ad46794d9905"
     },
     {
       "path": "AGENTS.md",
@@ -271,6 +271,11 @@
         "maxCoLoadLines": 400,
         "emDash": {
           "mode": "all",
+          "paths": [
+            "README.md",
+            "CHANGELOG.md",
+            "docs/**/*.md"
+          ],
           "exclude": [
             {
               "path": "docs/handbook/sources/**",

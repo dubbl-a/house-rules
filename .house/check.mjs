@@ -3712,8 +3712,9 @@ function main() {
   // lock, not this list, so a managed file the lock names stays `[missing]`.
   const deletedFromDisk = new Set(gitLsFilesZ(repoRoot, ['--deleted']));
   const allTracked = gitLsFilesZ(repoRoot).filter((f) => !deletedFromDisk.has(f));
-  // Untracked and not ignored: what the next `add -A` would stage. Only drift
-  // reads it (#251); every other family stays on the tracked set.
+  // Untracked and not ignored: what the next `add -A` would stage. Drift (#251)
+  // and the em dash scan in shape (#304) read it; every other family stays on
+  // the tracked set.
   const untracked = gitLsFilesZ(repoRoot, ['--others', '--exclude-standard']);
 
   const ctx = {

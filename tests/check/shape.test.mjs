@@ -155,23 +155,6 @@ test('#304: the em dash scan leaves a gitignored doc alone', () => {
   assert.equal(code, 0, out);
 });
 
-// #304: a new doc not yet added is in the next commit, so the em dash scan
-// reads it the way CI will; an ignored doc never reaches a commit.
-test('#304: the em dash scan reads an untracked, unignored doc, so a new doc fails locally as in CI', () => {
-  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', 'README.md': '# R\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) });
-  writeUntracked(dir, { 'docs/new.md': '# New\n\nAn untracked em dash \u2014 here.\n' });
-  const { code, out, json } = run(dir, ['--only=shape', '--json']);
-  assert.equal(code, 1, out);
-  assert.deepEqual(emPaths(json), ['docs/new.md']);
-});
-
-test('#304: the em dash scan leaves a gitignored doc alone', () => {
-  const dir = sandbox({ 'src/placeholder.ts': 'export const x = 1;\n', '.gitignore': 'docs/private.md\n', 'house.json': emHouse({ paths: ['docs/**/*.md'] }) });
-  writeUntracked(dir, { 'docs/private.md': '# P\n\nAn ignored em dash \u2014 here.\n' });
-  const { code, out } = run(dir, ['--only=shape']);
-  assert.equal(code, 0, out);
-});
-
 test('shape: mode `off` emits no em dash finding anywhere', () => {
   const dir = sandbox({
     'src/placeholder.ts': 'export const x = 1;\n',
@@ -227,12 +210,13 @@ test('shape: a malformed emDash mode falls back to the default public scan', () 
 test('shape: one bad `paths` entry reverts the whole field to the default set, and says so', () => {
   const dir = sandbox({
     'src/placeholder.ts': 'export const x = 1;\n',
-    'house.json': emHouse({ paths: ['README.md', 42] }),
+    'house.json': emHouse({ paths: ['docs/**/*.md', 42] }),
     ...DASHED_PUBLIC,
   });
   const { code, out, json } = run(dir, ['--only=shape,manifest', '--json'], NO_PLUGIN);
   assert.equal(code, 1, out);
-  // Not ['README.md']: the good entry does not survive on its own.
+  // README.md only (the default): the good `docs/**/*.md` entry does not
+  // survive on its own, so docs/note.md is not reported.
   assert.deepEqual(emPaths(json), ['README.md']);
   const manifest = json.findings.filter((f) => f.family === 'manifest');
   assert.equal(manifest.length, 1, out);
