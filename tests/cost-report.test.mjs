@@ -352,6 +352,47 @@ test('hook: a fresh lock blocks a spawn and a lock older than an hour does not',
   assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
 });
 
+test('hook: two hooks that both judge a lock stale do not each take it', async () => {
+  // A copy of the hook beside a stub scan that outlives the test body, so the scan never
+  // finishes and removes the lock mid-test.
+  const plugin = tmp();
+  mkdirSync(join(plugin, 'hooks'));
+  mkdirSync(join(plugin, 'scripts'));
+  writeFileSync(join(plugin, 'hooks', 'session-start.mjs'), readFileSync(HOOK));
+  writeFileSync(join(plugin, 'scripts', 'cost-report.mjs'), 'setTimeout(() => {}, 4000);\n');
+  const cfg = tmp();
+  const lock = join(cfg, 'house', 'cost-check.lock');
+  mkdirSync(join(cfg, 'house'), { recursive: true });
+  writeFileSync(lock, '1');
+  const old = new Date(Date.now() - 2 * 3600000);
+  utimesSync(lock, old, old);
+  const log = join(cfg, 'spawns.log');
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOUSE_COST_CHECK_SPAWN_LOG: log };
+  delete env.HOUSE_COST_CHECK;
+  const run = (extra) => new Promise((resolve) => {
+    const c = spawn(process.execPath, [join(plugin, 'hooks', 'session-start.mjs')], { env: { ...env, ...extra }, stdio: ['pipe', 'ignore', 'ignore'] });
+    c.on('close', resolve);
+    c.stdin.end(JSON.stringify({ source: 'startup' }));
+  });
+  // The first hook judges the lock stale and sleeps; the second takes it meanwhile; the
+  // first then wakes holding a stale judgement about a lock that is now fresh.
+  const first = run({ HOUSE_COST_CHECK_STALE_DELAY_MS: '2000' });
+  await new Promise((r) => setTimeout(r, 600));
+  await run({});
+  await first;
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
+  assert.ok(existsSync(lock), "the second hook's fresh lock is still in place");
+  assert.deepEqual(readdirSync(join(cfg, 'house')), ['cost-check.lock']);
+});
+
+test('hook: the shown-at write leaves no temp file and a whole state file', () => {
+  const cfg = tmp();
+  seed(cfg);
+  assert.match(hook(cfg).out.systemMessage, /\$35 of \$120/);
+  assert.deepEqual(readdirSync(join(cfg, 'house')).filter((f) => f.endsWith('.tmp')), []);
+  assert.ok(JSON.parse(readFileSync(stateFile(cfg), 'utf8')).shownAt);
+});
+
 test('hook: an unshown over-threshold result is shown before a rescan replaces it', async () => {
   const cfg = tmp();
   put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
