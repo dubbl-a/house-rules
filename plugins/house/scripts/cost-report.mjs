@@ -46,14 +46,15 @@ const REBUILD_TOKENS = 50000;
 const CAUSES = ['model switch', 'idle >1h', 'idle 5m-1h', 'no idle gap'];
 const AVOIDABLE = ['idle >1h', 'idle 5m-1h', 'model switch'];
 
-// `drop` removes one price factor: 'fast', 'us' or 'legacy' (price at the successor model).
+// `drop` removes one price factor: 'fast', 'us' or 'legacy' (price at the successor model), or 'all' for all three.
 function priceRow(r, drop) {
-  const model = (drop === 'legacy' && SUCCESSOR[r.model]) || r.model;
+  const off = (f) => drop === f || drop === 'all';
+  const model = (off('legacy') && SUCCESSOR[r.model]) || r.model;
   let p = PRICES[model];
   if (!p) return null;
   if (model === HAIKU_LONG.model && r.inTok + r.w5 + r.w1 + r.read > HAIKU_LONG.over) p = HAIKU_LONG.prices;
-  let f = r.speed === 'fast' && drop !== 'fast' ? FAST_FACTOR[model] || 1 : 1;
-  if (r.geo === 'us' && drop !== 'us') f *= US_FACTOR;
+  let f = r.speed === 'fast' && !off('fast') ? FAST_FACTOR[model] || 1 : 1;
+  if (r.geo === 'us' && !off('us')) f *= US_FACTOR;
   return p.map((x) => x * f);
 }
 
@@ -120,7 +121,7 @@ export async function scan({ dir, sinceMs, project } = {}) {
   const recs = [...seen.values()];
   const byModel = {};
   const unpriced = new Set();
-  const premiums = { fastUsd: 0, usOnlyUsd: 0, legacyModelUsd: 0 };
+  const premiums = { fastUsd: 0, usOnlyUsd: 0, legacyModelUsd: 0, totalUsd: 0 };
   const contextBands = Object.fromEntries(BANDS.map(([k]) => [k, { requests: 0, usd: 0 }]));
   let totalUsd = 0, fastRequests = 0;
   for (const r of recs) {
@@ -129,6 +130,7 @@ export async function scan({ dir, sinceMs, project } = {}) {
     premiums.fastUsd += c - costOf(r, 'fast');
     premiums.usOnlyUsd += c - costOf(r, 'us');
     premiums.legacyModelUsd += c - costOf(r, 'legacy');
+    premiums.totalUsd += c - costOf(r, 'all');
     if (!r.sub) {
       const band = contextBands[BANDS.filter(([, min]) => r.inTok + r.read + r.w5 + r.w1 >= min).pop()[0]];
       band.requests++;
@@ -180,7 +182,8 @@ export function formatText(d, sinceLabel) {
   const prem = d.premiums;
   if (prem.fastUsd > 0 || prem.usOnlyUsd > 0 || prem.legacyModelUsd > 0) {
     L.push('', 'Price premiums (extra list price over standard speed, global geo and the current model):',
-      `  fast mode: ${usd(prem.fastUsd)}`, `  US-only inference: ${usd(prem.usOnlyUsd)}`, `  legacy models: ${usd(prem.legacyModelUsd)}`);
+      `  fast mode: ${usd(prem.fastUsd)}`, `  US-only inference: ${usd(prem.usOnlyUsd)}`, `  legacy models: ${usd(prem.legacyModelUsd)}`,
+      `  all three together: ${usd(prem.totalUsd)}`);
   }
   if (Object.values(d.contextBands).some((b) => b.requests)) {
     L.push('', 'Main-thread requests by context size (input + cache read + cache write), requests / cost:');

@@ -363,7 +363,7 @@ test('hook: malformed or wrong-shaped state never fails and is treated as no sta
 test('premiums: each factor is the extra cost over the same tokens without it', () => {
   const fast = tmp();
   put(fast, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, out: 1e6, speed: 'fast' })]);
-  assert.deepEqual(report(fast).premiums, { fastUsd: 24, usOnlyUsd: 0, legacyModelUsd: 0 });
+  assert.deepEqual(report(fast).premiums, { fastUsd: 24, usOnlyUsd: 0, legacyModelUsd: 0, totalUsd: 24 });
   const us = tmp();
   put(us, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, geo: 'us' })]);
   const p = report(us).premiums;
@@ -389,6 +389,16 @@ test('premiums: factors are removed one at a time from a request carrying all th
   near(p.fastUsd, 11 - 5.5);
   near(p.usOnlyUsd, 11 - 10);
   near(p.legacyModelUsd, 11 - 8.8);
+});
+
+test('premiums: totalUsd is the cost minus the standard price, not the sum of the overlapping factors', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5', ts: ago(60), inTok: 1e6, speed: 'fast', geo: 'us' })]);
+  const p = report(d).premiums;
+  near(p.totalUsd, 11 - 4);
+  assert.ok(p.fastUsd + p.usOnlyUsd + p.legacyModelUsd > p.totalUsd);
+  const out = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' }).stdout;
+  assert.match(out, /all three together: \$7\.00/);
 });
 
 test('text output prints the premium block only when a premium is above zero', () => {
@@ -454,7 +464,7 @@ test('--state carries the premiums, bands and short-TTL figures', () => {
 
 // ---- weekly notice: premiums, and retry after a crashed scan ----
 
-const premiums = (fastUsd, usOnlyUsd = 0, legacyModelUsd = 0) => ({ fastUsd, usOnlyUsd, legacyModelUsd });
+const premiums = (fastUsd, usOnlyUsd = 0, legacyModelUsd = 0) => ({ fastUsd, usOnlyUsd, legacyModelUsd, totalUsd: fastUsd + usOnlyUsd + legacyModelUsd });
 
 test('hook: premiums alone trigger the notice at the threshold and not below it', () => {
   const below = tmp();
@@ -482,6 +492,20 @@ test('hook: premiums name the largest of the three and join the rebuild line whe
   const us = tmp();
   seed(us, { avoidableUsd: 2, premiums: premiums(1, 20, 2) });
   assert.match(hook(us).out.systemMessage, /US-only inference/);
+});
+
+test('hook: the notice threshold and figure use the combined premium, not the overlapping sum', () => {
+  const state = { avoidableUsd: 0, premiums: { fastUsd: 5.5, usOnlyUsd: 1, legacyModelUsd: 2.2, totalUsd: 7 } };
+  const under = tmp();
+  seed(under, state);
+  assert.equal(hook(under, { env: { HOUSE_COST_CHECK_USD: '8' } }).out.systemMessage, undefined);
+  const at = tmp();
+  seed(at, state);
+  const msg = hook(at, { env: { HOUSE_COST_CHECK_USD: '7' } }).out.systemMessage;
+  assert.match(msg, /added about \$7, mostly fast mode \(\$6\)/);
+  const old = tmp();
+  seed(old, { avoidableUsd: 0, premiums: { fastUsd: 40, usOnlyUsd: 0, legacyModelUsd: 0 } });
+  assert.equal(hook(old).out.systemMessage, undefined);
 });
 
 test('hook: a scan that dies is respawned once its lock is over an hour old, and a finished result stays due a week out', () => {

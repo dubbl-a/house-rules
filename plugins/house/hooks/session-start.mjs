@@ -78,7 +78,8 @@ function costCheck(here) {
   const prem = valid && state.premiums && typeof state.premiums === 'object' ? state.premiums : {};
   const premiumList = [['fast mode', prem.fastUsd], ['US-only inference', prem.usOnlyUsd], ['legacy models', prem.legacyModelUsd]]
     .map(([name, v]) => [name, Number.isFinite(v) ? v : 0]);
-  const premiumTotal = premiumList.reduce((s, [, v]) => s + v, 0);
+  // The factors overlap, so the notice uses the combined premium, not their sum.
+  const premiumTotal = Number.isFinite(prem.totalUsd) ? prem.totalUsd : 0;
   const premiumOver = premiumTotal > 0 && premiumTotal >= threshold;
   if (rebuildOver || premiumOver) {
     state = { ...state, shownAt: new Date().toISOString() };
