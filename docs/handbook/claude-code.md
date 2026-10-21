@@ -603,6 +603,23 @@ expired and the estimate reaches a threshold (default $0.25), and fails open on 
 The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
 magnitude.
 
+The resume hook misses the commoner case. The same research's addendum found that at least 60 of
+one adopter's idle rebuilds happened in sessions left open and returned to, not resumed, and
+native idle compaction (2.1.299), which covers only 200k-plus conversations on the one-hour cache,
+prevented none of the 12 it was eligible for in the following six days (issue #321). A status
+line cache display helps only someone watching it, so `idle-cache-hold.mjs` acts on submit
+instead. UserPromptSubmit input carries no timing or cost, so the hook reads the transcript's last
+main-conversation response: its `timestamp` gives the gap, its `usage` the context size, and
+`usage.cache_creation.ephemeral_1h_input_tokens` against `ephemeral_5m_input_tokens` the cache
+lifetime. It blocks the prompt once per gap, which the hooks reference says leaves the prompt's
+text in the block message and the transcript ("What a blocked prompt leaves behind"), so
+submitting again costs a retype at most. UserPromptSubmit also fires on turns nobody typed:
+background task reports, messages from other sessions, and scheduled or `/loop` prompts. The hook
+recognises the first two by their opening text and the third by a `scheduled_task_fire` entry or
+a `CronCreate` or `ScheduleWakeup` call in the transcript, and only warns there, because a held
+scheduled prompt is not resubmitted and a loop would lose its run. It prices from a dated table of
+cache-write list prices and says nothing for a model the table lacks.
+
 ## Treat git state as shared across sessions
 
 repo-b's CLAUDE.md states the rule almost verbatim: "Git state is SHARED across sessions here."

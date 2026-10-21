@@ -1,5 +1,5 @@
 {
-  "description": "House branch guard: denies the enumerable ways to disable or move the git-hook floor that enforces a repo's branch policy, and commits on a protected branch, in repos that opt in via house.json. Arms the floor (core.hooksPath) at session start, logs InstructionsLoaded events, the rule-load positive control `house doctor` reads, injects the orchestration defaults (roster, model tier, briefs, verification) at session start, and warns on resume when an expired prompt cache makes the first message a costly context rewrite.",
+  "description": "House branch guard: denies the enumerable ways to disable or move the git-hook floor that enforces a repo's branch policy, and commits on a protected branch, in repos that opt in via house.json. Arms the floor (core.hooksPath) at session start, logs InstructionsLoaded events, the rule-load positive control `house doctor` reads, injects the orchestration defaults (roster, model tier, briefs, verification) at session start, warns on resume when an expired prompt cache makes the first message a costly context rewrite, and holds the first typed prompt once after an idle gap that expired the cache.",
   "hooks": {
     "PreToolUse": [
       {
@@ -25,6 +25,13 @@
         "matcher": "resume|fork",
         "hooks": [
           { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/resume-cost.mjs\"", "timeout": 5 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/idle-cache-hold.mjs\"", "timeout": 5 }
         ]
       }
     ],
