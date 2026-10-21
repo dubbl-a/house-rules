@@ -3007,13 +3007,69 @@ function runCommands(lines) {
   return out;
 }
 
-const EVENT_EXPR_RE = /\$\{\{([^}]*)\}\}/g;
-function untrustedExprs(text) {
+// Reads the `${{ }}` expressions in text. A small tokenizer for the GitHub
+// expression language: single-quoted strings (`''` escapes), identifiers
+// (letters, digits, `_`, `-`), and every other character as a one-character
+// operator token. A string's contents never end the expression or read as a
+// name, so `}}` inside `format('{0}}', ...)` does not close it. Called per
+// line, an expression split across lines is not read; an unterminated one is
+// dropped. Returns { raw, toks } with toks as { t: 'str'|'id'|'op', v }.
+function exprsIn(text) {
   const out = [];
-  let m;
-  EVENT_EXPR_RE.lastIndex = 0;
-  while ((m = EVENT_EXPR_RE.exec(text))) if (/\bgithub\s*\.\s*(event\b|head_ref\b)/.test(m[1])) out.push(m[0]);
+  for (let at = text.indexOf('${{'); at !== -1; at = text.indexOf('${{', at)) {
+    const toks = [];
+    let i = at + 3;
+    let end = -1;
+    while (i < text.length) {
+      const c = text[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === '}' && text[i + 1] === '}') { end = i + 2; break; }
+      if (c === "'") {
+        let v = '';
+        for (i++; i < text.length; i++) {
+          if (text[i] !== "'") { v += text[i]; continue; }
+          if (text[i + 1] !== "'") break;
+          v += "'";
+          i++;
+        }
+        if (i >= text.length) break;
+        toks.push({ t: 'str', v });
+        i++;
+      } else if (/[\w-]/.test(c)) {
+        const j = i;
+        while (i < text.length && /[\w-]/.test(text[i])) i++;
+        toks.push({ t: 'id', v: text.slice(j, i) });
+      } else {
+        toks.push({ t: 'op', v: c });
+        i++;
+      }
+    }
+    // No end: drop this `${{` and look for the next, so a stray one (in a
+    // quoted shell string, say) does not hide a real expression after it.
+    if (end === -1) { at += 3; continue; }
+    out.push({ raw: text.slice(at, end), toks });
+    at = end;
+  }
   return out;
+}
+const isOp = (k, v) => k?.t === 'op' && k.v === v;
+// Indexes of an identifier that starts a property chain, not one reached through `.`.
+function chainStarts(toks, name) {
+  return toks.flatMap((k, i) => (k.t === 'id' && k.v === name && !isOp(toks[i - 1], '.') ? [i] : []));
+}
+function untrustedExprs(text) {
+  return exprsIn(text)
+    .filter(({ toks }) => chainStarts(toks, 'github').some((i) => isOp(toks[i + 1], '.') && toks[i + 2]?.t === 'id' && /^(event|head_ref)$/.test(toks[i + 2].v)))
+    .map((x) => x.raw);
+}
+// The secrets one line of workflow text reads: a name for `secrets.X` or
+// `secrets['X']`, '*' for `secrets[expr]` or a bare `secrets` (`toJSON(secrets)`).
+function secretReads(line) {
+  return exprsIn(line).flatMap(({ toks }) => chainStarts(toks, 'secrets').map((i) => {
+    if (isOp(toks[i + 1], '.')) return toks[i + 2]?.t === 'id' ? toks[i + 2].v : '*';
+    if (isOp(toks[i + 1], '[') && toks[i + 2]?.t === 'str' && isOp(toks[i + 3], ']')) return toks[i + 2].v;
+    return '*';
+  }));
 }
 const PR_HEAD_REF_RE = /github\.event\.pull_request\.head\.(sha|ref)\b|github\.head_ref\b/;
 
@@ -3222,25 +3278,7 @@ function checkWorkflows(ctx) {
         // whole by `secrets: inherit`), so a file name like `.secrets.baseline`
         // in a run line is not one. Secret names are case-insensitive.
         raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment).forEach((l, i) => {
-          // Lazy, so a `}` inside the expression (`format('{0}', ...)`) does
-          // not end it; the lookbehind skips a property named secrets
-          // (`steps.secrets.outputs`); a bare `secrets` (`toJSON(secrets)`)
-          // hands over every secret. String literals (single-quoted, `''`
-          // escapes) are blanked to same-length spaces first, so
-          // `hashFiles('secrets/**')` or `needs['secrets']` is not a read;
-          // the bracket form finds its match in the blanked text and reads
-          // its literal name from the raw text at the same offset.
-          const names = [...l.matchAll(/\$\{\{(.*?)\}\}/g)].flatMap((x) => {
-            const code = x[1].replace(/'(?:[^']|'')*'/g, (s) => `'${' '.repeat(s.length - 2)}'`);
-            return [
-              ...[...code.matchAll(/(?<![\w.-])secrets\s*\.\s*([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
-              ...[...code.matchAll(/(?<![\w.-])secrets\s*\[[^\]]*\]/g)].map((m) => {
-                const lit = /^secrets\s*\[\s*'((?:[^']|'')*)'\s*\]$/.exec(x[1].slice(m.index, m.index + m[0].length));
-                return lit ? lit[1].replace(/''/g, "'") : '*';
-              }),
-              ...[...code.matchAll(/(?<![\w.-])secrets\b(?!\s*[.[])/g)].map(() => '*'),
-            ];
-          });
+          const names = secretReads(l);
           const secret = names.find((n) => n.toUpperCase() !== 'GITHUB_TOKEN')
             ?? (/^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? '*' : null);
           if (secret !== null) warn('pr-credential', f, i + 1, `reads \`${secret === '*' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
