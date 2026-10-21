@@ -391,33 +391,41 @@ control launch with no `effort` sent `medium`, the builder's pin, on all 3. Both
 `claude-sonnet-5-5`; the method was reading `output_config.effort` in the subagent transcript
 (issue #344).
 
-Choosing a build's tier, 2026-10-20: the builder is pinned to Sonnet, yet a local scan of one
-adopter's transcripts (2026-10-20, deduplicated by tool-use id) found 64 builder calls with an
-explicit `model: "opus"`, 14 with `sonnet` and 253 with none, so the pin was overridden by the
-per-call `model` the old text invited for any hard build. The rule now ties the choice to what a
-miss costs: where a miss is expensive to detect or redo, the redo outweighs the Opus premium. That
-is a judgment, not a measured result. Opus builds ran a median 111 responses against 43 for Sonnet,
-but they also got the harder builds, so that comparison says nothing either way about cost per
-outcome. Sonnet at high effort is tried first because it is the cheaper way to learn whether the
-task needed more. The builder's frontmatter pins `effort: medium`, and the call-level `effort`
-overrides it (see above), so the rule says Sonnet at high effort, named on the call. A brief that
-cannot state the design is a planning problem, and a bigger builder only builds the wrong thing
-faster. Rough break-even: Sonnet-first stops paying once it fails review about 30 to 40 points more
-often than Opus on a task class; that is arithmetic.
+Choosing a build's tier, 2026-10-21: the rule follows Anthropic's published split, and the local
+evidence neither overturns it nor tests its effort half. Anthropic's effort page says of Sonnet 5.5
+"For agentic coding and multistep tool use, start with `medium` for well-specified tasks and move to
+`high` for harder or longer ones" (https://platform.claude.com/docs/en/build-with-claude/effort).
+The model-config page says `medium` "fits day-to-day engineering work with a clear scope, such as
+implementing a new feature" and `high` suits "Work where verification matters or edge cases are
+likely, such as fixing a bug in an existing codebase" (https://code.claude.com/docs/en/model-config).
+The choosing-a-model page lists Opus 5.5 for "Complex agentic coding" (multihour autonomous coding
+agents, large-scale refactoring, complex systems engineering) and Sonnet 5.5 for "everyday coding"
+(https://platform.claude.com/docs/en/about-claude/models/choosing-a-model). So a build with a clear
+scope goes to Sonnet at the builder's pinned medium, `effort: "high"` is named on the call for
+verification-heavy or harder work, and Opus is for complex agentic coding. An earlier version of
+this section started with Sonnet at high effort and cited a break-even; both are withdrawn. The
+break-even and the per-build cost arithmetic were wrong or confounded by build size, and only 3
+Sonnet 5.5 builds ran at high effort, so effort follows Anthropic, not local data.
 
-Measured later the same day, on the maintainer machine across all projects: every refuter run in
-history, each paired with the most recent earlier builder launch in the same session, counting the
-first verdict per builder. Opus 5.5 builders: 63, of which 33 refuted, first verdict REWORK 15
-(45%). Sonnet 5.5 builders: 208, of which 54 refuted, first verdict REWORK 36 (67%). Sonnet 5
-builders: 53, none paired by the session's count (the script pairs 6). 165 verdicts paired; 76 refuter verdicts had no earlier builder in the
-session. Cost per build over the last 7 days at list price: Opus builder $86.16 over 24 agents
-(about $3.59 each), Sonnet builder $53.60 over 80 agents (about $0.67 each). The gap is 22 points,
-under the 30 to 40 point break-even, so Sonnet-first stands on this data. Even if every Sonnet REWORK led to a
-full Opus rebuild, Sonnet-first costs about 0.67 + 0.67 x 3.59 = $3.08 per build against $3.59 for
-Opus-first. Caveats: the pairing is a heuristic; Opus got the harder builds, so the comparison is
-not controlled, and on matched tasks the gap is likely wider, closer to the break-even; and a REWORK is caught by the refuter, so the quality floor is the review, not the
-builder. `research/token-cost/scripts/verdicts.py` reproduces the table within a few verdicts, apart from the Sonnet 5 row.
-Source: research/token-cost/2026-10-20.md (R3 addendum), issues #324 and #344.
+Local evidence, 2026-10-21, maintainer machine, all projects, 325 builder runs: every refuter run
+paired with the most recent earlier builder launch in the same session, counting the first verdict
+per builder (`research/model-tier/scripts/builder_tier.py`). Effort was medium on every Opus 5.5
+build and on 207 of 210 Sonnet 5.5 builds. First verdict REWORK: Opus 5.5 18 of 37 (49%), Sonnet
+5.5 38 of 57 (67%). Split by deduplicated responses per build, a size proxy: under 30, Opus 62% (8
+refuted, median $0.83) against Sonnet 5.5 62% (39 refuted, median $0.14); 30 to 80, Opus 41% (17,
+$1.96) against Sonnet 78% (18, $0.83); over 80, Sonnet 5.5 has 5 builds and none refuted. Matched
+by band, Opus costs 2.4 to 6 times Sonnet per build. After a Sonnet 5.5 first REWORK the next
+builder was Sonnet 27 times, Opus 3, none 8. The mid-band gap fits Opus for complex work, but it is
+small-sample, size is only a proxy for difficulty, and the comparison is not controlled. The pairing
+is a heuristic, and a REWORK is caught by the refuter, so the quality floor is the review. Source:
+research/model-tier/2026-10-21-builder-tier.md, which supersedes the break-even and arithmetic in
+research/token-cost/2026-10-20.md (R3 addendum); issues #324 and #344.
+
+The debugger stays on Opus. When it fails to find a root cause, the rule offers the user Fable
+instead of escalating on its own, because the model-config page says of Fable "Hand it ambiguous
+problems: root-cause investigations, outage debugging, and architecture decisions are where the
+extra investigation and verification pay off", and Fable never runs on a subagent unless the user
+asks.
 
 Sonnet 5.5 as the default Sonnet, 2026-09-28: Claude Code 2.1.284 made Claude Sonnet 5.5
 (`claude-sonnet-5-5`) the default Sonnet model on the Anthropic API: $2/$10 per Mtok with cache
