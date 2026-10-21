@@ -5,6 +5,10 @@
     "db/",
     "migrations/"
   ],
+  "detectNestedDirs": [
+    "db",
+    "migrations"
+  ],
   "rules": [
     "rules/database.md"
   ],

@@ -3964,6 +3964,43 @@ test('#184 render --apply keeps the execute bit of an executable module file, on
   assert.equal(modeOf(join(repo, 'scripts/house/run.sh')), 0o755, 'a deleted file comes back executable');
 });
 
+// #388: a detect module can name a directory that counts wherever it sits
+// below the root, with the checker's skips for vendored, dot, and test dirs.
+test('#388 init detects a module from a nested detectNestedDirs directory, and skips vendored, dot, and test ones', () => {
+  const fx = buildFixturePlugin();
+  writeTree(fx.dir, {
+    'modules/dbx/module.json': `${JSON.stringify({ name: 'dbx', default: 'detect', rules: [], files: [], configSlots: [], defaultPaths: [], detectPaths: ['db/'], detectNestedDirs: ['db', 'migrations'] }, null, 2)}\n`,
+  });
+  const probe = (files) => JSON.parse(runCli(fx.cliPath, ['init', '--repo', buildTargetRepo({ 'README.md': '# hi\n', ...files }), '--json']).out).proposed.modules.dbx.enabled;
+  assert.equal(probe({ 'app/db/x.sql': 'select 1;\n' }), true, 'nested db/');
+  assert.equal(probe({ 'svc/api/migrations/1.sql': 'select 1;\n' }), true, 'nested migrations/');
+  assert.equal(probe({ 'db/x.sql': 'select 1;\n' }), true, 'the root detectPaths entry still works');
+  assert.equal(probe({}), false, 'no such directory');
+  for (const p of ['node_modules/p/db/x.sql', '.hidden/db/x.sql', 'tests/fixtures/migrations/1.sql', 'spec/db/x.sql', 'src/__tests__/db/x.sql', 'lib/testdata/db/x.sql']) {
+    assert.equal(probe({ [p]: 'select 1;\n' }), false, p);
+  }
+});
+
+test('#388 the shipped database module detects a nested db/ and migrations/', () => {
+  const j = JSON.parse(readFileSync(join(dirname(REAL_CLI_SRC), '..', 'modules', 'database', 'module.json'), 'utf8'));
+  assert.deepEqual(j.detectNestedDirs, ['db', 'migrations']);
+});
+
+test('#388 render keeps a backslash-escaped bracket glob and writes it into paths: so a YAML reader yields the single backslash', () => {
+  const fx = buildFixturePlugin();
+  writeTree(fx.dir, {
+    'modules/dbx/module.json': `${JSON.stringify({ name: 'dbx', default: 'off', rules: ['rules/dbx.md'], files: [], configSlots: ['dbGlobs'], defaultPaths: ['$dbGlobs'] }, null, 2)}\n`,
+    'modules/dbx/rules/dbx.md': BETA_BODY,
+  });
+  const repo = buildTargetRepo({ 'README.md': '# hi\n', 'src/a.js': '//a\n', 'scripts/b.mjs': '//b\n', 'app[1]/db/x.sql': 'select 1;\n' });
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { alpha: { enabled: true, config: {} }, dbx: { enabled: true, config: { dbGlobs: ['app\\[1\\]/db/**'] } } } });
+  const r = runCli(fx.cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const rule = readFileSync(join(repo, '.claude/rules/house/dbx.md'), 'utf8');
+  assert.ok(rule.startsWith('---\npaths:\n  - "app\\\\[1\\\\]/db/**"\n---\n'), rule.slice(0, 120));
+  assert.equal(JSON.parse(rule.split('\n')[2].slice(4)), 'app\\[1\\]/db/**', 'the YAML double-quoted scalar decodes to one backslash');
+});
+
 test('#176 render prints one available line per shipped module that is off or detect and neither enabled, detected, nor declined', () => {
   const fx = buildFixturePlugin();
   const mod = (name, dflt, extra = {}) => ({
