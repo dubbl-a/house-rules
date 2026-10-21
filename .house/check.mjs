@@ -3011,9 +3011,11 @@ function runCommands(lines) {
 // expression language: single-quoted strings (`''` escapes), identifiers
 // (letters, digits, `_`, `-`), and every other character as a one-character
 // operator token. A string's contents never end the expression or read as a
-// name, so `}}` inside `format('{0}}', ...)` does not close it. Called per
-// line, an expression split across lines is not read; an unterminated one is
-// dropped. Returns { raw, toks } with toks as { t: 'str'|'id'|'op', v }.
+// name, so `}}` inside `format('{0}}', ...)` does not close it. Whitespace,
+// newlines included, is skipped, as the runner's lexer does, so an expression
+// may span lines of the text it is given; an unterminated one is dropped.
+// Returns { raw, at, toks }, at being the offset of the `${{` and toks
+// { t: 'str'|'id'|'op', v }.
 function exprsIn(text) {
   const out = [];
   for (let at = text.indexOf('${{'); at !== -1; at = text.indexOf('${{', at)) {
@@ -3047,28 +3049,63 @@ function exprsIn(text) {
     // No end: drop this `${{` and look for the next, so a stray one (in a
     // quoted shell string, say) does not hide a real expression after it.
     if (end === -1) { at += 3; continue; }
-    out.push({ raw: text.slice(at, end), toks });
+    out.push({ raw: text.slice(at, end), at, toks });
     at = end;
   }
   return out;
 }
 const isOp = (k, v) => k?.t === 'op' && k.v === v;
+// Context and property names are case-insensitive in the runner, so they are
+// compared lower-cased; the text reported to the reader is never rewritten.
+const isName = (k, name) => k?.t === 'id' && k.v.toLowerCase() === name;
 // Indexes of an identifier that starts a property chain, not one reached through `.`.
 function chainStarts(toks, name) {
-  return toks.flatMap((k, i) => (k.t === 'id' && k.v === name && !isOp(toks[i - 1], '.') ? [i] : []));
+  return toks.flatMap((k, i) => (isName(k, name) && !isOp(toks[i - 1], '.') ? [i] : []));
 }
-function untrustedExprs(text) {
-  return exprsIn(text)
-    .filter(({ toks }) => chainStarts(toks, 'github').some((i) => isOp(toks[i + 1], '.') && toks[i + 2]?.t === 'id' && /^(event|head_ref)$/.test(toks[i + 2].v)))
-    .map((x) => x.raw);
+// The first property step after toks[i]: `.name` or `['name']` gives the name
+// lower-cased, `[expr]` with a computed index gives null (it may name anything),
+// and anything else gives undefined.
+function nextStep(toks, i) {
+  if (isOp(toks[i + 1], '.')) return toks[i + 2]?.t === 'id' ? toks[i + 2].v.toLowerCase() : undefined;
+  if (!isOp(toks[i + 1], '[')) return undefined;
+  if (toks[i + 2]?.t === 'str' && isOp(toks[i + 3], ']')) return toks[i + 2].v.toLowerCase();
+  return null;
 }
-// The secrets one line of workflow text reads: a name for `secrets.X` or
-// `secrets['X']`, '*' for `secrets[expr]` or a bare `secrets` (`toJSON(secrets)`).
-function secretReads(line) {
-  return exprsIn(line).flatMap(({ toks }) => chainStarts(toks, 'secrets').map((i) => {
-    if (isOp(toks[i + 1], '.')) return toks[i + 2]?.t === 'id' ? toks[i + 2].v : '*';
-    if (isOp(toks[i + 1], '[') && toks[i + 2]?.t === 'str' && isOp(toks[i + 3], ']')) return toks[i + 2].v;
-    return '*';
+// The `${{ }}` expressions in a scalar entry, each with the line its `${{`
+// opens on. The scalar's lines are read as one text, so an expression split
+// across lines is whole. A single-quoted YAML scalar is unescaped first (`''`
+// is one `'`), so the expression language's own string literal inside it is
+// seen as a string. `stripComments` drops a trailing YAML comment from each
+// continuation line.
+function scalarExprs(e, stripComments) {
+  const parts = entryLines(e).map(({ line, text }, k) => ({ line, text: k > 0 && stripComments ? stripYamlComment(text) : text }));
+  if (!parts.length) return [];
+  if (!e.block && e.raw.startsWith("'")) {
+    parts[0].text = parts[0].text.replace(/^'/, '');
+    parts[parts.length - 1].text = parts[parts.length - 1].text.replace(/'$/, '');
+    for (const p of parts) p.text = p.text.replace(/''/g, "'");
+  }
+  let text = '';
+  const starts = parts.map((p) => { const at = text.length; text += `${p.text}\n`; return at; });
+  return exprsIn(text).map((x) => {
+    let k = starts.length - 1;
+    while (starts[k] > x.at) k--;
+    return { ...x, line: parts[k].line };
+  });
+}
+function untrustedExprs(e) {
+  return scalarExprs(e, false)
+    // A computed index (`github[matrix.k]`) may name `event`, so it counts.
+    .filter(({ toks }) => chainStarts(toks, 'github').some((i) => { const step = nextStep(toks, i); return step === null || step === 'event' || step === 'head_ref'; }))
+    .map((x) => ({ line: x.line, expr: x.raw }));
+}
+// The secrets one scalar entry reads, as { line, name }: a name for `secrets.X`
+// or `secrets['X']`, '*' for `secrets[expr]` or a bare `secrets` (`toJSON(secrets)`).
+function secretReads(e) {
+  return scalarExprs(e, true).flatMap(({ toks, line }) => chainStarts(toks, 'secrets').map((i) => {
+    if (isOp(toks[i + 1], '.')) return { line, name: toks[i + 2]?.t === 'id' ? toks[i + 2].v : '*' };
+    if (isOp(toks[i + 1], '[') && toks[i + 2]?.t === 'str' && isOp(toks[i + 3], ']')) return { line, name: toks[i + 2].v };
+    return { line, name: '*' };
   }));
 }
 const PR_HEAD_REF_RE = /github\.event\.pull_request\.head\.(sha|ref)\b|github\.head_ref\b/;
@@ -3243,10 +3280,8 @@ function checkWorkflows(ctx) {
       const isRun = e.key === 'run';
       const isPrompt = e.key !== null && /prompt/i.test(e.key) && parentKey(e) === 'with';
       if (!isRun && !isPrompt) continue;
-      for (const { line, text } of entryLines(e)) {
-        for (const expr of untrustedExprs(text)) {
-          warn('event-in-run', f, line, `interpolates \`${expr}\` into a ${isRun ? '`run:` script' : `\`${e.key}:\` prompt input`}; Actions pastes the value in before it runs, so a crafted branch name or title runs as code or as instructions. Pass it through \`env:\` and read the variable instead.`);
-        }
+      for (const { line, expr } of untrustedExprs(e)) {
+        warn('event-in-run', f, line, `interpolates \`${expr}\` into a ${isRun ? '`run:` script' : `\`${e.key}:\` prompt input`}; Actions pastes the value in before it runs, so a crafted branch name or title runs as code or as instructions. Pass it through \`env:\` and read the variable instead.`);
       }
     }
 
@@ -3277,9 +3312,12 @@ function checkWorkflows(ctx) {
         // A secret is read only inside a `${{ }}` expression (or handed down
         // whole by `secrets: inherit`), so a file name like `.secrets.baseline`
         // in a run line is not one. Secret names are case-insensitive.
+        const reads = new Map();
+        for (const e of entries) {
+          for (const { line, name } of secretReads(e)) if (name.toUpperCase() !== 'GITHUB_TOKEN' && !reads.has(line)) reads.set(line, name);
+        }
         raw.split(YAML_LINE_BREAK_RE).map(stripYamlComment).forEach((l, i) => {
-          const names = secretReads(l);
-          const secret = names.find((n) => n.toUpperCase() !== 'GITHUB_TOKEN')
+          const secret = reads.get(i + 1)
             ?? (/^\s*(?:-\s+)?secrets\s*:\s*inherit\b/.test(l) ? '*' : null);
           if (secret !== null) warn('pr-credential', f, i + 1, `reads \`${secret === '*' ? 'secrets' : `secrets.${secret}`}\` in a workflow that runs on a pull request, so the PR gate holds a credential. Move the credentialed work to a separate workflow that does not run on pull requests.`);
         });
