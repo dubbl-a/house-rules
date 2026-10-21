@@ -6,6 +6,21 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.5] - 2026-10-21
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. The `database` module is now offered for a repo whose database code sits below the root, its nested-directory warning stays quiet on test fixtures and suggests a `dbGlobs` entry Claude Code reads literally, and `house upgrade` names both scopes when the install and the marketplace entry disagree. Upgrading from 0.22.4: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`.
+
+### Changed
+
+- The `database` module is detected from a tracked `db` or `migrations` directory at any depth, not only at the root, at `house init` and in `house render`'s offers; dot, vendored and test-like directories do not count (#388).
+- The nested `db`/`migrations` warning skips a directory with `tests`, `test`, `__tests__`, `spec`, `fixtures`, `__fixtures__` or `testdata` above it (#388).
+- The warning's suggested `dbGlobs` entry escapes glob characters (`app[1]/db/` suggests `app\[1\]/db/**`), since Claude Code reads `[` in a rule's `paths:` as a bracket expression. The checker and render now read `\x` in a glob as a literal `x`, as Claude Code does (#388).
+- `house upgrade` exits 2 with both scopes named when the plugin is installed at one scope and the marketplace entry is at another, instead of saying the plugin is not installed (#386).
+- The release workflow passes `--latest` explicitly, true only for the highest published version, so a re-run of an older release run cannot make that version Latest and sync it over a newer one (#389).
+
+### Fixed
+
+- The checker and the CLI no longer read a `git ls-files` listing over 1 MiB as empty, which made the checker print a clean result it had not earned.
 ## [0.22.4] - 2026-10-21
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house upgrade` moves the plugin to a release in one command, `house changes` prints the release notes between two pins, and `/house-rules:sync` stops on a stale plugin before it writes anything, then opens the sync PR with those notes. Upgrading from 0.22.3: a pinned install runs `house upgrade --apply` (or moves the pin by hand as the README says) and an unpinned one updates the plugin as before; then restart Claude Code, then run `/house-rules:sync`; run the `--install` command `house doctor` prints if it reports the `/deep-research` fork as stale.
