@@ -251,7 +251,7 @@ run_hook() {
 # parse is bash alone so the mark costs the next interval no child process.
 _times_file="$TMP_ROOT/times"
 cpu_mark() {
-  local _tu _ts _x _m _cpu=0
+  local _tu _ts _x _m _cpu=0 LC_ALL=C # `times` prints a comma decimal in some locales
   times >"$_times_file"
   { read -r _x; read -r _tu _ts; } <"$_times_file"
   for _x in "$_tu" "$_ts"; do # each "<m>m<s>.<mmm>s"
@@ -2060,7 +2060,8 @@ HOOK_ENV=()
 expect_allow "the same relative path with no project directory set is an ordinary path" \
   "$(mk_mcp_payload mcp__fs__write_file '{"path": ".githooks/pre-push"}' "$pg/docs")"
 # Many path-like strings: git calls must not scale with them, or the 5 s
-# timeout ends the check with no decision. The deny sorts last.
+# timeout ends the check with no decision. The deny sorts last. The bound is
+# CPU time against that scaling; the 5 s wall timeout is not asserted here.
 mkdir -p "$pg/many"
 _many=$(for ((i = 0; i < 200; i++)); do mkdir -p "$pg/many/d$i"; printf '%s\n' "$pg/many/d$i/.gitkeep"; done | jq -R . | jq -s --arg last "$pg/zz/../.git/config" '{paths: (. + [$last])}')
 cpu_mark _start
@@ -2121,7 +2122,9 @@ expect_deny "300 src/hooks strings past the budget, then a .git path sorting las
   "$(mk_mcp_payload mcp__fs__write_file "$_last" "$n")" "too large to check"
 HOOK_ENV=()
 # At the default budget, the look past it over 8000 weak-marker strings with
-# distinct parents still reaches a .git path sorting last, inside the timeout.
+# distinct parents still reaches a .git path sorting last. The bound is CPU
+# time against the quadratic-expansion regression; the 5 s wall timeout is not
+# asserted here.
 _wide=$(for ((i = 0; i < 8000; i++)); do printf '%s\n' "pkg$i/x/x/x/x/hooks.ts"; done | jq -R . | jq -s '{paths: (. + ["zzz/.git/config"])}')
 cpu_mark _start
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_wide" "$n")"
@@ -2457,7 +2460,9 @@ else
   fail "clause_tokens matches read -r -a" "$_tok_bad runs differ (src=${#_tok_src} bytes)"
 fi
 # The issue's payload size, end to end: the scan of a 200-line heredoc ahead
-# of a hooks-path write must still reach that write, well inside the timeout.
+# of a hooks-path write must still reach that write. The bound is CPU time
+# against the quadratic-expansion regression; the 5 s wall timeout is not
+# asserted here.
 cpu_mark _start
 run_hook "$(mk_payload "$(_heredoc_cmd 200 "; $_sg config core.$_sph /dev/null")" "$sc")"
 cpu_mark _end

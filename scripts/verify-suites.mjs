@@ -11,7 +11,9 @@
 // its output so far is printed, and verify names it as timed out. While suites
 // run, a line on stderr every VERIFY_PROGRESS_S seconds (default 60) names the
 // ones still going. VERIFY_SUITES_JSON, a JSON array of {name, argv}, replaces
-// the suite list; the tests use it to run a stub that sleeps.
+// the suite list; the tests use it to run a stub that sleeps. Each suite is in
+// its own process group, so on SIGINT, SIGTERM or SIGHUP verify signals every
+// suite still running before it exits; without that, Ctrl-C leaves them going.
 // The exit status is set, not forced, so a pipe reader still gets every byte.
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -37,7 +39,7 @@ const run = ({ name, argv }) => new Promise((resolve) => {
   const child = spawn(argv[0], argv.slice(1), { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   child.stdout.on('data', (c) => chunks.push(c));
   child.stderr.on('data', (c) => chunks.push(c));
-  running.set(name, started);
+  running.set(name, { started, pid: child.pid });
   let ended = false;
   let timedOut = false;
   const done = (code, note = '') => {
@@ -59,9 +61,18 @@ const run = ({ name, argv }) => new Promise((resolve) => {
   child.on('close', (code, signal) => done(code ?? (signal ? 1 : 0), signal ? ` (${signal})` : ''));
 });
 
+for (const [sig, code] of Object.entries({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 })) {
+  process.on(sig, () => {
+    for (const { pid } of running.values()) {
+      try { process.kill(-pid, 'SIGTERM'); } catch { /* already gone */ }
+    }
+    process.exit(code);
+  });
+}
+
 const progress = setInterval(() => {
   const now = Date.now();
-  const names = [...running].map(([n, t]) => `${n} (${Math.round((now - t) / 1000)}s)`);
+  const names = [...running].map(([n, r]) => `${n} (${Math.round((now - r.started) / 1000)}s)`);
   if (names.length > 0) process.stderr.write(`still running: ${names.join(', ')}\n`);
 }, PROGRESS_S * 1000);
 
