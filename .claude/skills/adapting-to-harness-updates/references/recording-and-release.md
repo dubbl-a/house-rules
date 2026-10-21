@@ -64,6 +64,10 @@ arrives in their inbox.
    release has nothing to adopt, it opens no PR: it comments the triage on the rolling
    issue titled `Survey pending: Claude Code updates checked, nothing to adopt yet`, and the next
    PR records those versions and closes it.
+   When the delta adds a model, changes a default model or effort, or Anthropic's model guidance
+   changed, it also runs the model path
+   ([model-evaluation.md](model-evaluation.md)), proposes the rule changes in that PR, and opens a
+   `Re-measure: <research note>` issue for each departure whose research measured an older model.
 3. The maintainer reads the pull request's plain summary and merges it, usually from the GitHub app.
 4. `.github/workflows/release.yml` releases and syncs, as in Shipping step 6.
 

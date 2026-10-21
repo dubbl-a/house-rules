@@ -84,7 +84,12 @@ every fact in it still holds. This skill finds all four and fixes them, and find
    enforces. Before accepting an agent's deviation, a reviewer's "non-blocking" note, or a
    "known limit", name the house rule or doc recommendation that governs it and take the
    recommended option unless you can say why not.
-9. **Record** in the three places described in
+9. **Run the model path when the delta calls for it.** When the delta adds a model, changes a
+   default model or effort, or Anthropic's model guidance changed, follow
+   [references/model-evaluation.md](references/model-evaluation.md) to decide each role's model
+   and effort, and fold its changes into this run's PR. A local session runs all of it; the cloud
+   routine runs the part that needs no transcripts and opens a `Re-measure:` issue for the rest.
+10. **Record** in the three places described in
    [references/recording-and-release.md](references/recording-and-release.md). Then prepare the
    release through the flow there; the merge hands the rest to CI.
 
