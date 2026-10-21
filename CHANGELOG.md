@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- `plugins/house/bin/house`, a wrapper that runs `scripts/house` with the same arguments and exit code, so `house <command>` is on PATH in a Claude Code session with the plugin enabled. A plugin distributed through claude.ai organization settings may not carry a top-level `bin/`; this one is distributed through its public GitHub marketplace.
+
 ## [0.22.5] - 2026-10-21
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. The `database` module is now offered for a repo whose database code sits below the root, its nested-directory warning stays quiet on test fixtures and suggests a `dbGlobs` entry Claude Code reads literally, and `house upgrade` names both scopes when the install and the marketplace entry disagree. Upgrading from 0.22.4: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`.
