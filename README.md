@@ -117,13 +117,13 @@ If you removed the plugin first, delete each file `.house/lock.json` lists, the 
 ## What the hooks run
 
 The install prompt names a hook, not what it runs, so read `plugins/house/hooks/hooks.json` (or
-`claude plugin details house-rules`) before enabling. It registers five commands, each a script
+`claude plugin details house-rules`) before enabling. It registers six commands, each a script
 using only shell or Node builtins and local `git`, with no network call:
 
 - `no-direct-master.sh`, before edit and Bash calls: denies protected-branch commits and floor disabling.
 - `arm-git-hooks.sh`, at session start: sets `core.hooksPath` to the vendored `.githooks` floor.
 - `session-start.mjs`, at session start: prints the orchestration defaults, and weekly starts a background cost scan.
-- `resume-cost.mjs`, on resume or fork: warns when an expired cache makes the next message costly.
+- `resume-cost.mjs` (resume) and `idle-cache-hold.mjs` (each prompt): flag a costly cache rewrite.
 - `instructions-loaded.mjs`, when instructions load: appends to a local log `house doctor` reads.
 
 These run with your own access, outside any sandbox, and change when the plugin updates. See
