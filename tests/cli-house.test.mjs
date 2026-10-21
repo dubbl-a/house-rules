@@ -201,10 +201,18 @@ function runCli(cliPath, args, env = {}) {
     configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
     CLEANUP_DIRS.push(configDir);
   }
+  // Doctor also looks at machine state under HOME (the installed Claude Code
+  // binary, for the deep-research fork's native-body check), so it gets a
+  // throwaway HOME too unless the caller supplies one.
+  let home = env.HOME;
+  if (!home && args[0] === 'doctor') {
+    home = mkdtempSync(join(tmpdir(), 'house-home-'));
+    CLEANUP_DIRS.push(home);
+  }
   const res = spawnSync(process.execPath, [cliPath, ...args], {
     encoding: 'utf8',
     // A refused local port unless the test injects a fixture: no test reaches the real releases API.
-    env: { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/', ...process.env, ...env, CLAUDE_CONFIG_DIR: configDir },
+    env: { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/', ...process.env, ...env, ...(home ? { HOME: home } : {}), CLAUDE_CONFIG_DIR: configDir },
   });
   return { code: res.status, out: res.stdout || '', err: res.stderr || '' };
 }
@@ -4326,26 +4334,27 @@ test('#358 render dry run: exactly the files --apply would change show `update`'
 const DR_SCRIPT_REL = join('modules', 'claude-code', 'files', 'check-deep-research-upstream.mjs');
 const sha12 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 12);
 
-function forkFixture({ withScript = true } = {}) {
+function forkFixture({ withScript = true, realScript = false } = {}) {
   const { cliPath } = buildFixturePlugin();
   const script = join(dirname(cliPath), '..', DR_SCRIPT_REL);
-  const scriptText = '// fixture of the plugin script\n';
+  const scriptText = realScript ? readFileSync(join(HERE, '..', 'plugins', 'house', DR_SCRIPT_REL), 'utf8') : '// fixture of the plugin script\n';
   if (withScript) {
     mkdirSync(dirname(script), { recursive: true });
     writeFileSync(script, scriptText);
   }
   const home = mkdtempSync(join(tmpdir(), 'house-home-'));
   CLEANUP_DIRS.push(home);
-  const forkPath = join(home, '.claude', 'workflows', 'deep-research-tiered.js');
+  const configDir = join(home, '.claude');
+  const forkPath = join(configDir, 'workflows', 'deep-research-tiered.js');
   const writeFork = (text) => { mkdirSync(dirname(forkPath), { recursive: true }); writeFileSync(forkPath, text); };
   const markedFork = (id, head = 'export const meta = {}\n\n', body = 'const x = 1\n') => `${head}// house-fork-build: ${id} ${sha12(head + body)}\n${body}`;
-  const doctor = () => {
-    const env = { HOME: home };
-    const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], env);
-    const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', buildTargetRepo(), '--json'], env).out);
+  const doctor = ({ repo = buildTargetRepo(), env: extra = {} } = {}) => {
+    const env = { HOME: home, CLAUDE_CONFIG_DIR: configDir, ...extra };
+    const r = runCli(cliPath, ['doctor', '--repo', repo], env);
+    const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], env).out);
     return { r, fork: j.deepResearchFork };
   };
-  return { script, scriptId: sha12(scriptText), forkPath, writeFork, markedFork, doctor };
+  return { cliPath, script, scriptId: sha12(scriptText), home, forkPath, writeFork, markedFork, doctor };
 }
 
 test('#367 doctor: a fork built by this plugin reads current', () => {
@@ -4489,4 +4498,92 @@ test('#366 changes: no published release in the range says so and exits 0', () =
   const r = runCli(cliPath, ['changes', '9.9.11', '9.9.20'], { HOUSE_RELEASES_FIXTURE: changesList() });
   assert.equal(r.code, 0, r.err);
   assert.equal(r.out, '## house-rules v9.9.11 to v9.9.20\n\nno published releases between v9.9.11 and v9.9.20\n');
+});
+
+// #375 item 2: the fork lives under CLAUDE_CONFIG_DIR when that is set, as it
+// does for the rest of the house script, not always under ~/.claude.
+test('#375 doctor: the fork is read from CLAUDE_CONFIG_DIR, not from ~/.claude', () => {
+  const f = forkFixture();
+  const other = mkdtempSync(join(tmpdir(), 'house-cfg-'));
+  CLEANUP_DIRS.push(other);
+  mkdirSync(join(other, 'workflows'), { recursive: true });
+  writeFileSync(join(other, 'workflows', 'deep-research-tiered.js'), f.markedFork(f.scriptId));
+  const { r, fork } = f.doctor({ env: { CLAUDE_CONFIG_DIR: other } });
+  assert.equal(fork.state, 'current', r.out);
+  assert.equal(fork.forkPath, join(other, 'workflows', 'deep-research-tiered.js'));
+});
+
+test('#375 doctor: with CLAUDE_CONFIG_DIR unset the fork is read from ~/.claude', () => {
+  const f = forkFixture();
+  f.writeFork(f.markedFork(f.scriptId));
+  const repo = buildTargetRepo();
+  const { cliPath } = f;
+  const env = { ...process.env, HOME: f.home, HOUSE_RELEASES_URL: 'http://127.0.0.1:1/' };
+  delete env.CLAUDE_CONFIG_DIR;
+  const res = spawnSync(process.execPath, [cliPath, 'doctor', '--repo', repo, '--json'], { encoding: 'utf8', env });
+  assert.equal(JSON.parse(res.stdout).deepResearchFork.state, 'current', res.stdout + res.stderr);
+});
+
+// #375 item 4: a repo that does not target Claude Code has no use for the fork.
+test('#375 doctor: a repo without the claude-code target prints no fork line', () => {
+  const f = forkFixture();
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, targets: ['codex'] });
+  const { r, fork } = f.doctor({ repo });
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(r.out, /deep-research fork/);
+  assert.equal(fork, null);
+});
+
+test('#375 doctor: a repo targeting claude-code still prints the fork line (negative control)', () => {
+  const f = forkFixture();
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, targets: ['claude-code', 'codex'] });
+  const { r } = f.doctor({ repo });
+  assert.match(r.out, /^deep-research fork: not installed/m);
+});
+
+// #375 item 1: a Claude Code update that changes the native body leaves the
+// fork current by its own marker; the fork records the native body it was
+// built from, and doctor compares that with the installed binary's body.
+const NATIVE_BODY_A = '// deep-research: a\nagentCalls: 1\n}';
+const NATIVE_BODY_B = '// deep-research: b, changed by an update\nagentCalls: 1\n}';
+function nativeBinary(body) {
+  const dir = mkdtempSync(join(tmpdir(), 'house-claude-bin-'));
+  CLEANUP_DIRS.push(dir);
+  const p = join(dir, '2.1.999');
+  writeFileSync(p, Buffer.concat([Buffer.from('\x00junk before `'), Buffer.from(body), Buffer.from('`\x00junk after')]));
+  return p;
+}
+function nativeForkHead(body) {
+  return `export const meta = { whenToUse: 'House fork (Claude Code 2.1.0, native body sha256 ${sha12(body)}). To run it' }\n\n`;
+}
+
+test('#375 doctor: a fork built from an older native body than the installed binary reads stale', () => {
+  const f = forkFixture({ realScript: true });
+  f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
+  const { r, fork } = f.doctor({ env: { CLAUDE_BINARY: nativeBinary(NATIVE_BODY_B) } });
+  assert.equal(fork.state, 'stale', r.out);
+  assert.match(r.out, /^deep-research fork: STALE \(built from an older Claude Code native body\); rebuild with: node .+ --install$/m);
+});
+
+test('#375 doctor: a fork built from the installed native body reads current (negative control)', () => {
+  const f = forkFixture({ realScript: true });
+  f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
+  const { fork } = f.doctor({ env: { CLAUDE_BINARY: nativeBinary(NATIVE_BODY_A) } });
+  assert.equal(fork.state, 'current');
+});
+
+test('#375 doctor: with no Claude Code binary to find, an otherwise current fork stays current', () => {
+  const f = forkFixture({ realScript: true });
+  f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
+  const { fork } = f.doctor({ env: { CLAUDE_BINARY: '', PATH: '/usr/bin:/bin' } });
+  assert.equal(fork.state, 'current');
+});
+
+test('#375 doctor: a binary with no recognisable native body leaves a current fork current', () => {
+  const f = forkFixture({ realScript: true });
+  f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
+  const { fork } = f.doctor({ env: { CLAUDE_BINARY: nativeBinary('nothing recognisable here') } });
+  assert.equal(fork.state, 'current');
 });

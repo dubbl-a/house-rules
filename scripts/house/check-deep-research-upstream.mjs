@@ -23,7 +23,7 @@
 //   node scripts/house/check-deep-research-upstream.mjs --rebuild=<out.js> [--force] [--binary=<path>]
 //   node scripts/house/check-deep-research-upstream.mjs --install[=<path>] [--binary=<path>]
 //
-// --install rebuilds the fork to ~/.claude/workflows/deep-research-tiered.js
+// --install rebuilds the fork to <CLAUDE_CONFIG_DIR or ~/.claude>/workflows/deep-research-tiered.js
 // (or <path>), overwriting any existing file and creating parent dirs. It is
 // mutually exclusive with --rebuild, and a SUNSET (exit 2) never installs.
 // Exit codes (the three-way contract a caller must read, never "non-zero = bad"):
@@ -433,7 +433,7 @@ function parseArgs(argv) {
     if (a.startsWith('--binary=')) out.binary = a.slice(9);
     else if (a.startsWith('--baseline=')) out.baseline = a.slice(11);
     else if (a.startsWith('--rebuild=')) out.rebuild = a.slice(10);
-    else if (a === '--install') out.install = join(homedir(), '.claude', 'workflows', 'deep-research-tiered.js');
+    else if (a === '--install') out.install = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'workflows', 'deep-research-tiered.js');
     else if (a.startsWith('--install=')) out.install = a.slice(10);
     else if (a === '--json') out.json = true;
     else if (a === '--force') out.force = true;

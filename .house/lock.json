@@ -10,7 +10,7 @@
       "path": "scripts/house/check-deep-research-upstream.mjs",
       "module": "claude-code",
       "source": "modules/claude-code/files/check-deep-research-upstream.mjs",
-      "bodySha256": "a19d3211f7964cd31963f08c625a881c38915af32a165e3d287a90022a457cb3"
+      "bodySha256": "f750f9f68561495148bda7a577664d3abbb33f87097c357e6c13b160d5d4e465"
     },
     {
       "path": ".claude/rules/house/docs.md",
