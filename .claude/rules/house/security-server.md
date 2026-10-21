@@ -2,7 +2,7 @@
 paths:
   - "scripts/**"
 ---
-<!-- house-managed v0.22.1 module=security source=modules/security/rules/security-server.md body-sha256=2ac996d5900aa73f0a30283e96e5c2ad6750979d502916dde3240abb3347edc8 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.1 module=security source=modules/security/rules/security-server.md body-sha256=12c7241d9c16079e776218319d2ffbb1c92b72b36ab3dba3fad672580de8b237 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: server code
 
@@ -14,7 +14,7 @@ What a session may trust, install, and release is security.md's, which loads on 
 ## Supply untrusted input as a parameter, never by building a string
 
 Bind values into a query, encode output for its context, pass process arguments as a list, log a value as a field, and validate at the trust boundary against what is allowed and never evaluate it as code; write the hostile case as a test in the change that adds the sink, since generated code takes the concatenating path often when both are open.
-Anchor: a test per sink that feeds a quote, a tag, a newline, and a shell metacharacter and asserts each arrives inert.
+Anchor: a test per sink that feeds a quote, a tag, a newline, and a shell metacharacter and asserts each arrives inert; the security-guidance plugin flags this class only after the edit lands and blocks nothing, and `/security-review` runs only when asked, so the test is the gate.
 Receipts: `docs/handbook/security.md#supply-untrusted-input-as-a-parameter-never-by-building-a-string`
 
 ## Never let a request choose what the server fetches, opens, loads, or runs

@@ -32,7 +32,7 @@ Receipts: `docs/handbook/llm-output.md#report-no-finding-rather-than-manufacture
 
 ## Refute with named lenses, drop by default, and log the drops
 
-The hosted reviewer, where it runs, already fans out one agent per issue class and verifies candidates before reporting; run every draft claim past named lenses, one per failure class, so a reviewer names which lens caught what, not a general impression.
+The hosted reviewer, where it runs, already runs several finder agents in parallel and a verification step that filters false positives before reporting; run every draft claim past named lenses, one per failure class, so a reviewer names which lens caught what, not a general impression.
 Tier the number of passes by stakes, drop anything a lens refutes, and log each drop with its reason so the loss stays visible, not silent.
 Before attributing an oddity to a known failure mode, ask whether both readings could be true; a familiar bug is the cheapest wrong answer.
 Anchor: validator. The validation step refuses to exit clean while a surviving claim lacks a lens verdict or a drop lacks a logged reason.
@@ -74,7 +74,7 @@ Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`
 
 ## Read agreement with a shown suggestion as anchored, not accurate
 
-The harness's skill comparator already judges two outputs without knowing which is which; extend that blinding to every human review, since a person's agreement mark on a finding shown to them is an anchored measure, not a quality one.
+The skill-creator plugin's version comparison already runs a blind A/B between two versions of a skill; extend that blinding to every human review, since a person's agreement mark on a finding shown to them is an anchored measure, not a quality one.
 When a reviewer sees the model's suggestion beside the evidence, their agreement measures anchoring, not accuracy, so that rate is never quotable as a quality number.
 Enforce blinding in the file on disk, not the reviewer's instructions, since an instruction is not a control, and audit every field a review packet prints for provenance: a field the tested process wrote is not evidence about it.
 Read unanimity as a reason to audit the instrument, and score a proposal by whether it would have killed something a person approved, not by its hit rate on the rejections.

@@ -46,7 +46,7 @@ Grep the value out of the built file and out of a cache-busted fetch of the live
 A query-string buster is not always enough, so when pages disagree with each other, fetch the origin that has no cache in front of it.
 Where a platform setting can override a file the repo ships, read the served file first, since the committed one looks correct either way.
 Enumerate the success markers a run must print and require the pre-flight grep to come back empty, so that it worked is checkable rather than asserted.
-Anchor: none (because the URLs worth smoke-testing change with each release; write the fetch and diff commands inline in the runbook and list the markers the run must print).
+Anchor: none (because the URLs worth smoke-testing change with each release; write the fetch and diff commands inline in the runbook as a shell fetch, since WebFetch caches each response and hands back a model's extraction rather than the served bytes, and list the markers the run must print).
 Receipts: `docs/handbook/deployment.md#verify-the-deployed-url-against-the-built-file-with-the-cache-bypassed`
 
 ## Repoint and deploy the consumer before dropping the producer's column

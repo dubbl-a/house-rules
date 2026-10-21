@@ -31,7 +31,7 @@ The issue lists the primary sources behind the map: Barnett et al. (arXiv 2401.0
 
 ## Cite a primary source for every lesson, with the quote and where it was read
 
-Issue #111: lessons and reference material cite primary sources only, with the quote and where it was read. The rule names the risk rather than the "only": a summary of a summary drifts from what was found, and a citation without a quote and a location cannot be checked.
+Issue #111: lessons and reference material cite primary sources only, with the quote and where it was read. The rule names the risk rather than the "only": a summary of a summary drifts from what was found, and a citation without a quote and a location cannot be checked. The WebFetch clause rests on the harness's own docs: for most fetches WebFetch runs the prompt "in a separate model call, and Claude receives the result of that call rather than the raw page," which the page calls "lossy by design" (https://code.claude.com/docs/en/tools-reference#webfetch-tool-behavior, read at Claude Code 2.1.306).
 
 ## Sources
 

@@ -1,0 +1,1074 @@
+# Changelog triage, Claude Code 2.1.284 to 2.1.306
+
+Input: <scratchpad>/changelog/since-2.1.283.md. Survey checked: <repo>/docs/handbook/sources/harness-survey.md, lines 894 to 1200 (line numbers below are survey-file lines).
+
+How the marks were made: each entry has one or more distinctive tokens (feature name, setting key, env var, hook event, command) that were searched, case-insensitively, over survey lines 894 to end. "recorded" names the addendum and line of the match (the entry's own release addendum when it matches there, otherwise the first match under any addendum) and the token matched. "weak match" means the token appears only in a catch-all list sentence (for example "OpenTelemetry additions" or "Code Review setting"), or in an addendum bullet about a different change to the same feature, rather than in a statement about this entry; treat weak matches as partly recorded. Addendum coverage in the survey: 2.1.284, 285, 286, 287, 288, 289, 292 (also covers 290 and 291), 293, 294, 295, 296, 299, 302 (also covers 300 and 301), 303, 304, 306 (also covers 305). Versions 2.1.297 and 2.1.298 have no changelog section in the input. Entries skipped as outside the package surface: pure UI and rendering, platform crash fixes, Claude Tag, admin-page, VS Code panel, Remote Control UI, self-hosted runner internals, Claude apps gateway internals, mod drawing APIs.
+
+## memory-rules
+
+- **2.1.299** "Added `CLAUDE_CODE_DISABLE_FILE_MENTIONS` environment variable: Claude gets the paths of `@` file mentions to read with its file tools, not the files' contents" -- recorded (addendum 2.1.299, line 1105; token "DISABLE_FILE_MENTIONS")
+- **2.1.299** "Improved memory and disk use when PDFs are @-mentioned: their bytes are no longer kept in the session transcript" -- NOT RECORDED
+- **2.1.295** "[Code Review] Fixed Code Review still skipping a large CLAUDE.md's rules when the pull request edits that file" -- NOT RECORDED
+- **2.1.293** "Fixed path-scoped rules and nested CLAUDE.md files not loading when Claude views a file with a single-file cat, head, tail, sed -n or grep command in the Bash tool instead of the Read tool" -- recorded (addendum 2.1.293, line 1030; token "sed -n")
+- **2.1.292** "Fixed "instruction file not loaded" lines going stale or missing after `/cd` or a permission change, and added a transcript line when a nested one isn't loaded" -- recorded (addendum 2.1.292, line 1012; token "not loaded")
+- **2.1.292** "[Code Review] Fixed reviews ignoring a CLAUDE.md's rules when the pull request edits that file; reviews now use its version from the base branch" -- NOT RECORDED
+- **2.1.290** "Fixed a project `CLAUDE.md`, rule or `AGENTS.md` symlinked outside the working directories loading under `permissions.blockReadsOutsideWorkingDirectories` or a `Read` deny rule" -- recorded (addendum 2.1.292, line 1012; token "symlinked outside the working directories")
+- **2.1.290** "Fixed a subdirectory's AGENTS.md not being attached when a file under it is @-mentioned" -- NOT RECORDED
+- **2.1.288** "Fixed path-scoped `.claude/rules` and nested CLAUDE.md files not loading when Write or Edit creates or changes a file in their scope (previously only Read loaded them)" -- recorded (addendum 2.1.288, line 969; token "Write or Edit creates or changes")
+- **2.1.288** "Fixed the InstructionsLoaded hook omitting agent_id and agent_type when a subagent's file access loads a rule or nested CLAUDE.md; rules and nested CLAUDE.md files loaded on file access now also report effort" -- recorded (addendum 2.1.288, line 970; token "InstructionsLoaded")
+- **2.1.287** "Fixed a folder's CLAUDE.md being attached a second time after resuming a session or after a compaction" -- recorded (addendum 2.1.287, line 951; token "attached a second time")
+- **2.1.287** "Fixed repositories added mid-session in cloud and SDK sessions not loading their skills and plugins, and loading CLAUDE.md late, after Claude changed directory" -- NOT RECORDED
+- **2.1.287** "Improved `/memory`: the left and right arrow keys now flip its on/off settings, such as Auto-memory" -- recorded (addendum 2.1.284, line 905; weak match; token "Auto-memory")
+- **2.1.285** "Changed /memory so that Auto-memory can no longer be turned on from a background session or from a session one of Claude Code's own tools started; turning it off there still works" -- recorded (addendum 2.1.285, line 923; token "Auto-memory can no longer be turned on")
+- **2.1.284** "Fixed rules symlinked into `.claude/rules` from outside the project being skipped without ever showing the external-imports approval prompt; a `.claude` directory symlinked from outside the project now asks for the same approval" -- recorded (addendum 2.1.284, line 902; token "symlinked into `.claude/rules`")
+- **2.1.284** "Improved auto-memory loading: invisible characters and tags that imitate Claude Code's own markup are neutralized in `MEMORY.md` and recalled memory notes before they reach Claude" -- recorded (addendum 2.1.284, line 905; token "Auto-memory loading neutralizes")
+
+## hooks-permissions
+
+- **2.1.305** "[VSCode] Added a "Running start-up hooks" spinner status, with a screen reader announcement, while SessionStart or Setup hooks run" -- recorded (addendum 2.1.306, line 1198; token "start-up hook spinner")
+- **2.1.304** "Added a transcript line when a plugin that runs first skips one of your mod's hooks, naming the event and the plugin" -- NOT RECORDED
+- **2.1.304** "Added `decider: "person"` to a mod's `tool.check` answer: only the permission dialog or a host's callback can approve the ask, and it is refused with the mod's reason where nobody can be asked" -- recorded (addendum 2.1.304, line 1172; token "decider")
+- **2.1.304** "Added `e.isReadOnly` to a mod's `tool.check` event, set when the tool call is read-only" -- recorded (addendum 2.1.304, line 1172; token "isReadOnly")
+- **2.1.304** "Added `/auto-mode-setup`: a guided setup that reads your project and recent sessions to teach auto mode about your environment, now also available on Bedrock, Vertex, Foundry, Claude apps gateway and telemetry-disabled sessions" -- recorded (addendum 2.1.304, line 1172; token "auto-mode-setup")
+- **2.1.304** "Fixed `rm -r` of a mounted drive or a folder at its top level (`/Volumes`, `/media`, WSL's `/mnt/c`) not getting the safety prompt that `rm -rf /Applications` gets" -- recorded (addendum 2.1.304, line 1168; token "/Volumes")
+- **2.1.304** "Fixed a PreToolUse hook's deny reason being replaced by a timeout error when an Agent SDK callback hook on the same tool call timed out" -- recorded (addendum 2.1.304, line 1165; token "deny reason")
+- **2.1.304** "[VSCode] Fixed one cause of sessions failing to start with "Subprocess initialization did not complete within 60000ms": time a SessionStart command hook spends running no longer counts toward the limit, up to 10 minutes in total" -- recorded (addendum 2.1.304, line 1173; token "60-second start limit")
+- **2.1.304** "Fixed a failed mod reload removing the tools and commands of the version that stays loaded, and its messages being wrong or silent about whether the previous version is still loaded" -- recorded (addendum 2.1.304, line 1172; weak match; token "reload and sharing fixes")
+- **2.1.302** "Fixed `classifier_category` missing from OpenTelemetry `tool_decision` events for most auto mode classifier blocks, and new `tool_decision` attributes pushing out `tool_use_id`, `tool_source` and `tool_parameters` when `OTEL_LOGRECORD_ATTRIBUTE_COUNT_LIMIT` is low" -- recorded (addendum 2.1.302, line 1125; weak match; token "OpenTelemetry")
+- **2.1.302** "Improved auto mode with the server-side classifier: a conversation too long for the safety check is now compacted, instead of every checked tool call being denied" -- recorded (addendum 2.1.302, line 1124; token "server-side classifier")
+- **2.1.302** "Changed prompt and agent hooks so that at most 12 of one event run at a time; the rest wait their turn" -- recorded (addendum 2.1.302, line 1120; token "At most 12")
+- **2.1.301** "Added `classifier_verdict` and `permission_mode` to OpenTelemetry `tool_decision` events, so auto mode classifier decisions can be told apart from permission rules" -- recorded (addendum 2.1.302, line 1125; weak match; token "OpenTelemetry")
+- **2.1.301** "Added `classifier_category` to OpenTelemetry `tool_decision` events, naming the built-in rule a classifier block matched, when `OTEL_LOG_TOOL_DETAILS=1`" -- recorded (addendum 2.1.302, line 1125; weak match; token "OpenTelemetry")
+- **2.1.301** "Fixed artifact updates being refused where a PreToolUse hook covers Edit or Write; Claude now edits the file and then republishes instead of changing it in the publish call" -- recorded (addendum 2.1.302, line 1132; token "artifact updates no longer refused")
+- **2.1.301** "Fixed a tool call cut off by a message sent mid-turn during its permission check being reported to the model as rejected by the user" -- recorded (addendum 2.1.302, line 1132; token "cut-off permission check")
+- **2.1.301** "Fixed the permission prompt for a plugin or skill hook's `ask` decision not showing which plugin or skill the hook comes from" -- recorded (addendum 2.1.302, line 1132; token "prompt names its source")
+- **2.1.300** "Added OpenTelemetry GenAI semantic-convention attributes to trace spans, such as `gen_ai.provider.name`, `gen_ai.conversation.id`, `gen_ai.tool.name` and `error.type`" -- recorded (addendum 2.1.302, line 1125; weak match; token "OpenTelemetry")
+- **2.1.300** "Added the `prompt.change` mod hook, raised when the prompt box's text changes without a typed edit: a recalled history entry, a clear, an undo, or a plugin's fill" -- NOT RECORDED
+- **2.1.300** "Fixed SessionEnd hooks sometimes not running when you exit while a background command is still running" -- recorded (addendum 2.1.302, line 1140; token "SessionEnd")
+- **2.1.300** "Changed `PermissionRequest` hooks in Cowork cloud sessions: a `setMode` update in a hook's allow is now ignored; the rest of the approval still applies" -- recorded (addendum 2.1.302, line 1140; token "Cowork `PermissionRequest`")
+- **2.1.300** "Changed hooks: `updatedInput` from PreToolUse and PermissionRequest hooks is now validated like Claude's own input: unknown keys are dropped, and input the tool rejects denies the call" -- recorded (addendum 2.1.302, line 1138; token "updatedInput")
+- **2.1.299** "Added a one-time note when plan mode won't ask before most edits or commands because bypass permissions is available" -- recorded (addendum 2.1.299, line 1100; token "bypass permissions keeps it from asking")
+- **2.1.299** "Fixed the Write and Edit tools creating a mod in a session's mods folder without asking in accept-edits mode when the config directory's path has no `.claude` in it" -- NOT RECORDED
+- **2.1.299** "Fixed rm prompts on shell `-c` scripts that don't run `rm`. An rm built at run time in a script Claude Code can't read no longer prompts unless `CLAUDE_CODE_STRICT_INLINE_SHELL_RM_PROMPT=1`" -- recorded (addendum 2.1.299, line 1105; token "CLAUDE_CODE_STRICT_INLINE_SHELL_RM_PROMPT")
+- **2.1.299** "Fixed SDK and headless sessions staying in auto mode after the host switched to a model that doesn't support auto mode" -- NOT RECORDED
+- **2.1.299** "Fixed tools of an MCP server named `constructor` or `toString` asking for permission in auto mode and bypass permissions mode" -- NOT RECORDED
+- **2.1.299** "Fixed a regression in 2.1.296 where cloud and headless sessions could run an approved tool call twice if a new message arrived as the session resumed after a restart" -- NOT RECORDED
+- **2.1.299** "Fixed mods' hooks being handed values with `__proto__` keys silently removed, which could skip a `tool.check` guard on a tool call another mod made" -- NOT RECORDED
+- **2.1.299** "Fixed plan mode running a write (an MCP tool's, a file's, a shell command's) that a `PreToolUse` hook or a mod's `tool.check` hook allowed" -- recorded (addendum 2.1.299, line 1100; token "Plan mode no longer runs a write")
+- **2.1.299** "Windows: Fixed PreToolUse and PermissionRequest hooks that set no shell failing open when Git for Windows isn't installed; a guard that fails now blocks the call" -- recorded (addendum 2.1.299, line 1099; token "Git for Windows")
+- **2.1.299** "Fixed plugin hooks being skipped when they pass a very deeply nested tool input or message on with next()" -- NOT RECORDED
+- **2.1.299** "Improved enforcement of managed permission rules, managed hooks and organization MCP tool names against user-installed mods" -- NOT RECORDED
+- **2.1.299** "Changed actions a plugin hook can block to be refused, not let through, when the hook cannot be handed them or cannot hand back its answer; a tool that already ran has its result withheld" -- recorded (addendum 2.1.299, line 1099; token "refused when the hook cannot be handed them")
+- **2.1.299** "Changed auto mode in Cowork cloud sessions: a `PermissionRequest` hook can no longer approve shell commands or subagents; those prompts wait or are denied" -- recorded (addendum 2.1.299, line 1099; token "PermissionRequest")
+- **2.1.299** "Changed `UserPromptSubmit` hooks to run before a skill or custom slash command expands, so a hook that blocks the prompt now also stops its embedded shell commands" -- recorded (addendum 2.1.299, line 1101; token "UserPromptSubmit")
+- **2.1.299** "Changed a skill's own front-matter `UserPromptSubmit` hook to first run on the prompt after the one that invokes the skill" -- recorded (addendum 2.1.299, line 1101; token "UserPromptSubmit")
+- **2.1.299** "Changed the `turn.start` mod hook to also hear subagents' and teammates' turns, not only the main loop's; tell them apart by `e.agentId` (absent on the main loop)" -- NOT RECORDED
+- **2.1.296** "Fixed managed-settings `PreToolUse` hooks that deny a tool call with `"continue": false`, and managed `prompt` hooks that block one, refusing the call but not ending the turn" -- recorded (addendum 2.1.296, line 1080; token ""continue": false")
+- **2.1.296** "Fixed PostToolUse hooks in managed settings not applying `updatedMCPToolOutput` in some sessions" -- recorded (addendum 2.1.296, line 1080; token "updatedMCPToolOutput")
+- **2.1.296** "Fixed hook output being altered when it contained text resembling a plugin hint tag" -- recorded (addendum 2.1.296, line 1081; token "plugin hint tag")
+- **2.1.296** "Fixed Esc or an interrupt during a `UserPromptSubmit` hook or a mod's `prompt.submit` hook ending headless sessions, clearing the typed prompt, or letting the unchecked prompt through" -- NOT RECORDED
+- **2.1.296** "Fixed SessionStart hooks of a plugin loaded after a headless session starts being skipped when a different plugin with the same name, or another spelling of it, had already run" -- recorded (addendum 2.1.296, line 1081; token "late-loading plugin's SessionStart")
+- **2.1.296** "Fixed Bash permission checks auto-approving some commands that assign the `BASH_ARGV0` shell variable and then use it; these now prompt for approval" -- recorded (addendum 2.1.296, line 1082; token "BASH_ARGV0")
+- **2.1.296** "Fixed a late-loading plugin's SessionStart hook output reaching the new conversation after `/clear` in headless sessions" -- recorded (addendum 2.1.296, line 1081; token "/clear")
+- **2.1.296** "Fixed PowerShell commands not seeing variables that hooks write to CLAUDE_ENV_FILE (when the file holds only plain assignments)" -- recorded (addendum 2.1.295, line 1061; token "CLAUDE_ENV_FILE")
+- **2.1.296** "Windows: Fixed PowerShell commands longer than about 1 KB always asking for permission, so allow rules and read-only detection now apply up to 32 KB" -- recorded (addendum 2.1.296, line 1082; token "32 KB")
+- **2.1.296** "Windows: Fixed `rm -rf /c/Users/<name>` in Git Bash not asking in bypass permissions mode" -- recorded (addendum 2.1.296, line 1082; token "/c/Users")
+- **2.1.296** "Improved auto mode: a tool call that wasn't run because auto mode's check had no usable answer now shows as a dim "Not run" row instead of a red error" -- recorded (addendum 2.1.296, line 1087; weak match; token "auto mode display")
+- **2.1.296** "Improved `--debug` output for hooks: command hooks on tool calls, prompts, SessionStart and Stop now log their command, plugin, outcome and duration when they finish, so a slow hook is identifiable" -- recorded (addendum 2.1.296, line 1081; token "--debug` logs each command hook")
+- **2.1.295** "Added `onFailure: "block"` for command and HTTP hooks: a hook that can't start, times out, or exits with an unexpected code blocks the action instead of letting it through" -- recorded (addendum 2.1.295, line 1052; token "onFailure")
+- **2.1.295** "Fixed Claude in Chrome not applying a site deny rule written with port 80 (`host:80`) to plain `http://` pages on that host" -- NOT RECORDED
+- **2.1.295** "Fixed a mod's hook being handed a deeply nested tool input cut short with no error, so a guard could pass content it never saw" -- recorded (addendum 2.1.295, line 1055; token "deeply nested tool input")
+- **2.1.295** "Fixed commands and hooks in background sessions inheriting `FORCE_COLOR=3`, which put color escape codes into the output Claude reads" -- recorded (addendum 2.1.295, line 1062; token "FORCE_COLOR")
+- **2.1.295** "Fixed Bash permission checks for for-loops over glob patterns, improving permission-check accuracy" -- recorded (addendum 2.1.295, line 1057; token "for-loops")
+- **2.1.295** "Fixed calls a mod makes while it reloads during a plugin hooks worker restart getting past another mod's guard hook that has a `.catch`; such calls are now refused" -- recorded (addendum 2.1.295, line 1055; token "calls a mod makes while it reloads")
+- **2.1.295** "Fixed an async SessionStart hook's unchanged context being added to the conversation again on every resume" -- recorded (addendum 2.1.295, line 1061; token "async SessionStart")
+- **2.1.295** "Fixed variables a SessionStart hook writes to `CLAUDE_ENV_FILE` not reaching the Bash tool after an in-app `/resume` or `/branch`" -- recorded (addendum 2.1.295, line 1061; token "CLAUDE_ENV_FILE")
+- **2.1.295** "Fixed an async hook's JSON output being ignored when it is printed over several lines" -- recorded (addendum 2.1.295, line 1061; token "several lines")
+- **2.1.295** "Fixed Desktop and SDK sessions refusing to switch back to auto mode until restart after `disableAutoMode` was removed from settings" -- NOT RECORDED
+- **2.1.295** "Changed what Claude and you read when a mod denies a tool call after the tool ran: it now says the tool ran and a plugin withheld its result" -- NOT RECORDED
+- **2.1.295** "Fixed web searches and `agent` hook evaluations taking much longer at `xhigh` and `max` effort" -- NOT RECORDED
+- **2.1.294** "Fixed `prompt` and `agent` hooks written as instructions (such as "Block commands that...") allowing what they should block" -- recorded (addendum 2.1.294, line 1045; token "written as instructions")
+- **2.1.294** "Improved how `prompt` hooks on Stop and SubagentStop written as instructions (such as "Carry on if the build is broken") are judged, so Claude is less likely to stop early" -- recorded (addendum 2.1.294, line 1046; token "SubagentStop")
+- **2.1.293** "Added `isDeferred` to `$.tool.register` for mods: `false` lists the tool's schema in the prompt from the start instead of behind tool search" -- recorded (addendum 2.1.293, line 1037; token "isDeferred")
+- **2.1.293** "Fixed `claude agents` offering bypass permissions that background sessions then ignored when consent was saved only in `.claude/settings.local.json` or a `--settings` file; it now asks for consent first, and a session that ignores bypass shows a short notice that stays" -- recorded (addendum 2.1.293, line 1034; token "bypass permissions")
+- **2.1.293** "Fixed a mod's hooks on `classic.*` events being skipped while the plugin hooks worker restarts, which left settings hooks to answer without them" -- NOT RECORDED
+- **2.1.293** "Windows: Fixed stopping a status line, hook, or shell command sometimes terminating an unrelated process that had been given the same process ID" -- NOT RECORDED
+- **2.1.292** "Fixed `rm -rf` on the 8.3 short name or another alternate Windows spelling of the home folder or a drive not being treated as removing it" -- NOT RECORDED
+- **2.1.292** "Security: Fixed PreToolUse hook approvals and auto mode bypassing the permission prompt for file reads from network (UNC) paths" -- recorded (addendum 2.1.292, line 1010; token "UNC paths")
+- **2.1.292** "Fixed a plugin's `tool.check` hook answering allow running a tool that requires your answer (a question, a plan approval) without showing its dialog" -- recorded (addendum 2.1.299, line 1100; weak match; token "tool.check")
+- **2.1.292** "Fixed a mod's hook that called `next(e)` and then failed while the turn was interrupted letting the call through; the call is now rejected" -- NOT RECORDED
+- **2.1.292** "Fixed tool calls made while the plugin hooks worker restarts being answered without the plugins' permission hooks" -- NOT RECORDED
+- **2.1.292** "Fixed plugin `tool.call` hooks seeing some tool calls before misnamed parameters were repaired; a hook now sees the arguments the tool will run with" -- NOT RECORDED
+- **2.1.292** "Fixed a plugin's prompt drop or setting deny being ignored when its reason was longer than 4,096 characters" -- NOT RECORDED
+- **2.1.292** "Improved hook output handling: `<system-reminder>` tags written in a hook's output are escaped before they reach Claude" -- recorded (addendum 2.1.292, line 1011; token "system-reminder")
+- **2.1.291** "Fixed a regression in 2.1.290 where cloud sessions could drop answers to permission prompts" -- NOT RECORDED
+- **2.1.290** "Added `agentId` to the `tool.check` event of plugin hooks, so a hook can tell a subagent's permission check from the main session's" -- recorded (addendum 2.1.299, line 1100; weak match; token "tool.check")
+- **2.1.290** "Added `ceiling` to the question and verdict a mod's `tool.check` hook reads, naming the approval an organization requires for a tool" -- NOT RECORDED
+- **2.1.290** "Fixed plan mode letting the auto mode classifier approve non-read-only connector tools that carry a server-pushed ask policy" -- NOT RECORDED
+- **2.1.290** "Fixed URL allow and deny patterns with a wildcard inside an `xn--` host label matching differently from one process to the next" -- NOT RECORDED
+- **2.1.290** "Fixed plugin hooks reading an empty `answer` on `turn.complete` for a subagent that hands its report back in auto mode" -- NOT RECORDED
+- **2.1.290** "Fixed a case where a user-installed mod could make an organization's guard skip its check; such a mod is now unloaded" -- NOT RECORDED
+- **2.1.290** "Fixed a case where a user-installed mod could get an organization's plugin unloaded; the mod is now the one unloaded" -- NOT RECORDED
+- **2.1.290** "Fixed a deny or ask rule missing a command or path whose name came from a variable set as a prefix on `declare`, `typeset`, `export` or `readonly`" -- recorded (addendum 2.1.292, line 1013; token "declare")
+- **2.1.290** "Fixed Read deny rules not applying to image paths pasted or dragged into the prompt, or to file names listed for an @-mentioned folder" -- recorded (addendum 2.1.292, line 1013; token "pasted image paths")
+- **2.1.290** "Fixed auto mode denials suggesting a permission rule that would skip the classifier for a whole tool or that Claude Code would ignore" -- NOT RECORDED
+- **2.1.290** "Fixed `--channels` permission relay: a reply ID that repeats within a session is now ignored instead of approving a different prompt" -- NOT RECORDED
+- **2.1.290** "Fixed Bash permission checks auto-approving some read-only commands (such as `rg` or `git grep`) whose arguments the shell would still expand as wildcards; these now prompt for approval" -- recorded (addendum 2.1.292, line 1013; token "git grep")
+- **2.1.290** "Fixed Bash permission checks auto-approving certain commands whose variable names zsh reads differently from bash; these now prompt for approval" -- NOT RECORDED
+- **2.1.290** "Fixed sandboxed Monitor tool commands skipping the permission prompt under sandbox auto-allow; they now follow your permission rules" -- recorded (addendum 2.1.292, line 1013; token "Monitor")
+- **2.1.290** "Fixed Bash permission checks not applying Read deny rules or the outside-directory read block to a wildcard in some option values of read-only commands" -- recorded (addendum 2.1.292, line 1013; token "wildcards in read-only command options")
+- **2.1.290** "Fixed background workers honoring `--allow-dangerously-skip-permissions` on respawn without the bypass-permissions disclaimer having been accepted" -- NOT RECORDED
+- **2.1.290** "Fixed Claude replying in an endless loop when a plugin's async Stop hook passes an unquoted script path under a folder with a space, such as Application Support" -- NOT RECORDED
+- **2.1.290** "Fixed some permission rules and safety checks not being applied to a tool call after a PreToolUse hook rewrote its input" -- recorded (addendum 2.1.292, line 1010; token "rewrites its input")
+- **2.1.290** "Fixed sandboxed Bash commands on Linux running `ConfigChange` hooks and reloading settings mid-command when `.claude/settings.json` or `.claude/settings.local.json` does not exist" -- NOT RECORDED
+- **2.1.290** "Changed Claude in Chrome so that a project's settings files can no longer turn it on; use `--chrome`, `/chrome` or your user settings" -- recorded (addendum 2.1.292, line 1019; token "can no longer be set from a project's settings")
+- **2.1.290** "Changed the Bash tool to ask for permission before running `pyright`, which is no longer treated as a read-only command" -- recorded (addendum 2.1.292, line 1013; token "pyright")
+- **2.1.290** "Changed Bash permission checks so that more forms of the `ps` command ask for approval instead of running without asking" -- recorded (addendum 2.1.292, line 1013; token "`ps`")
+- **2.1.290** "Changed plugin hooks so long text is clipped and logged instead of being refused or dropped silently" -- NOT RECORDED
+- **2.1.289** "Fixed a deny or ask rule on a nested part of a compound shell command not holding over a user-installed mod's approval on managed machines" -- recorded (addendum 2.1.289, line 992; token "compound shell command")
+- **2.1.289** "Fixed `Read` deny rules not applying to files @-mentioned, changed, or selected in the IDE through a symlink" -- recorded (addendum 2.1.289, line 994; token "@-mentioned, changed, or selected in the IDE")
+- **2.1.289** "Fixed Bash deny and ask rules missing a command behind an environment variable prefix with an expanded value (e.g. `TZ="$HOME" rm -rf build`) when the sandbox auto-allows commands" -- recorded (addendum 2.1.289, line 993; token "environment variable prefix")
+- **2.1.289** "Fixed a Bash deny or ask rule being skipped under sandbox auto-allow when a bare variable assignment came before the command" -- recorded (addendum 2.1.289, line 993; token "bare variable assignment")
+- **2.1.288** "Added a re-authenticate prompt when an MCP server asks for more OAuth scope during a tool call" -- NOT RECORDED
+- **2.1.288** "Fixed auto mode denials pointing Claude at a Bash permission rule when the blocked tool was not Bash" -- recorded (addendum 2.1.288, line 978; token "non-Bash tool")
+- **2.1.288** "Fixed auto mode on Bedrock and Mantle switching to the local classifier for the rest of the session after a request to an older model, such as a WebFetch summary or a `sonnet` subagent" -- NOT RECORDED
+- **2.1.288** "Fixed permission asks that ended unanswered, in `-p` or on an interrupted turn, emitting no `tool_decision` event" -- NOT RECORDED
+- **2.1.288** "Fixed Bash tool permission check to prompt before a `BASHPID` assignment whose value the shell would evaluate as arithmetic, instead of allowing it silently" -- recorded (addendum 2.1.288, line 973; token "BASHPID")
+- **2.1.288** "Fixed a dangerous `rm` (such as one on `/` or the home directory) inside a `bash -c` or `sh -c` script running without a prompt in bypassPermissions mode or under a shell allow rule (anthropics/claude-code#96300)" -- recorded (addendum 2.1.288, line 972; token "bash -c")
+- **2.1.288** "Fixed `idle_prompt` notification hooks firing while background agents are still running (anthropics/claude-code#93672)" -- recorded (addendum 2.1.288, line 983; token "idle_prompt")
+- **2.1.288** "Fixed PreToolUse and PermissionRequest hooks being skipped when matching them failed or the tool's input could not be serialized to JSON; the call is now blocked" -- recorded (addendum 2.1.288, line 971; token "matching them fails")
+- **2.1.288** "Improved auto mode: when a conversation grows too long for the client-side safety classifier to review, it is now compacted instead of prompting for, or failing, every tool call" -- recorded (addendum 2.1.288, line 978; token "compacts a conversation too long")
+- **2.1.288** "Changed the client-side auto mode classifier to ignore an `ANTHROPIC_DEFAULT_SONNET_MODEL` pin that names Claude Sonnet 5.5 or Opus 5.5 and use Claude Sonnet 5 instead" -- recorded (addendum 2.1.288, line 978; token "ANTHROPIC_DEFAULT_SONNET_MODEL")
+- **2.1.287** "Windows: Added a startup warning when denying the Bash tool also turns off the PowerShell tool, so Claude has no shell tool" -- NOT RECORDED
+- **2.1.287** "Fixed hooks configured with `asyncRewake` waking Claude over and over with "found issues" notifications when the hook's script file is missing; the broken hook is now reported once" -- recorded (addendum 2.1.287, line 957; token "asyncRewake")
+- **2.1.287** "Fixed a dangerous `rm` (such as one on `/` or the home directory) losing its always-ask safeguard when the same command also redirected output to a `~` or wildcard path" -- recorded (addendum 2.1.287, line 952; token "redirects to a `~` or wildcard path")
+- **2.1.287** "Fixed organization per-tool permission ceilings being silently dropped for an MCP tool named `__proto__`" -- NOT RECORDED
+- **2.1.287** "Fixed `claude agents` sometimes not showing the permission prompt a background session is waiting on" -- recorded (addendum 2.1.287, line 956; token "waiting permission prompt")
+- **2.1.287** "Fixed SessionStart hooks from synced plugins not running in new cloud sessions" -- recorded (addendum 2.1.287, line 950; token "synced plugins")
+- **2.1.287** "Fixed the transcript's "N hooks ran" summary and the verbose debug log's matched-hooks count including Claude Code's internal callbacks, so one configured hook no longer shows as two" -- recorded (addendum 2.1.287, line 957; token "N hooks ran")
+- **2.1.287** "Changed a shell write through a repo-committed symlink onto a sensitive file or out of the working tree to name where it lands and wait for a person, on lines with a `~` target too" -- recorded (addendum 2.1.287, line 952; token "repo-committed symlink")
+- **2.1.287** "Changed whole-tool `Bash` allow rules and allowing hooks to prompt for, not run, shell writes to files Claude Code's file tools refuse outright (the Anthropic profile store, the host credentials file)" -- recorded (addendum 2.1.287, line 952; token "whole-tool `Bash` allow")
+- **2.1.286** "Fixed API 400 errors after a tool or hook returned an object, number or boolean instead of text, including in resumed sessions" -- NOT RECORDED
+- **2.1.286** "Improved `/hooks`: the closing line of a hook's detail screen now says "this hook" instead of "it"" -- recorded (addendum 2.1.286, line 941; token "/hooks")
+- **2.1.286** "Changed `/hooks` to open on one list of your configured hooks grouped by event, so viewing a hook takes one Enter instead of three" -- recorded (addendum 2.1.286, line 941; token "/hooks")
+- **2.1.285** "Fixed `claude -p --permission-prompt-tool`: a background subagent's permission request now goes to the prompt tool instead of being auto-denied" -- NOT RECORDED
+- **2.1.285** "Fixed hooks and SDK permission callbacks seeing a missing or outdated plan on ExitPlanMode when the plan was written in the same response" -- recorded (addendum 2.1.285, line 918; token "ExitPlanMode")
+- **2.1.285** "Fixed synchronous hooks hanging Claude Code while a background process the hook started (for example `some-daemon &`) kept its output open; the hook now finishes shortly after its own process exits" -- recorded (addendum 2.1.285, line 917; token "Synchronous hooks no longer hang")
+- **2.1.285** "Fixed an `Artifact` allow rule ("don't ask again") letting the Artifact tool publish a file outside the working directories without asking; add the file's folder with `--add-dir` for the rule to cover it" -- NOT RECORDED
+- **2.1.285** "Fixed auto mode skipping its classifier for Artifact tool asset uploads and reads of someone else's artifact when you had approved that artifact earlier in another permission mode" -- NOT RECORDED
+- **2.1.285** "Fixed the PowerShell tool's permission check skipping deny and ask rules, and caching that failure for later checks, when its command parser failed to start (for example when the machine was out of memory)" -- NOT RECORDED
+- **2.1.285** "Fixed a cancelled shell command or hook still starting, and running to its end, when the cancel arrived while it was being set up" -- recorded (addendum 2.1.285, line 917; token "cancelled hook no longer starts")
+- **2.1.285** "Fixed a reply sent from `claude agents` to a background session waiting on a permission prompt sometimes approving the pending command" -- NOT RECORDED
+- **2.1.285** "[VSCode] Fixed a hook's reason for blocking or stopping a prompt disappearing after a window reload" -- NOT RECORDED
+- **2.1.284** "Added a "Yes, but ask again next time" answer to auto mode's prompt before a read outside the working directories, so you can allow that one read and still be asked about later ones" -- NOT RECORDED
+- **2.1.284** "Fixed the debug log dropping a failed hook's stderr when the hook also wrote to stdout, and logging nothing for a failed hook with no output; failed hooks now also log their status code" -- recorded (addendum 2.1.284, line 904; token "stderr in the debug log")
+- **2.1.284** "Fixed `{"decision":"block"}` returned by Elicitation and ElicitationResult hooks being ignored; it now declines the MCP elicitation, as exit code 2 does" -- NOT RECORDED
+- **2.1.284** "Changed interactive terminal and VS Code sessions to start in auto mode when no permission mode is configured, on every plan and provider; `permissions.defaultMode` still overrides it" -- recorded (addendum 2.1.284, line 899; token "start in auto mode when no permission mode")
+- **2.1.299** "Fixed a user-installed mod's `$.env.set` changing the environment or shell prefix that command hooks from managed settings start with" -- NOT RECORDED
+- **2.1.296** "Fixed a prompt sent while SessionStart hooks were still running vanishing when `←` moved the session to the background; it is still not sent, but `↑` now brings it back" -- NOT RECORDED
+- **2.1.292** "Fixed a spurious "could not be examined" note for @-words that name no file when a Read deny rule is set and the working directory is under a symlink" -- NOT RECORDED
+- **2.1.292** "Fixed plugin interface calls made while the plugin hooks worker restarts running without the hooks other plugins put on them" -- NOT RECORDED
+- **2.1.292** "Fixed a mod's guard hook with a `.catch` being skipped silently for calls another mod's hook makes beneath the guard's own `$` call; its `.catch` is now asked" -- recorded (addendum 2.1.295, line 1055; weak match; token "guard hook")
+- **2.1.285** "Improved per-turn performance when many permission deny rules and MCP tools are configured" -- NOT RECORDED
+
+## plugins
+
+- **2.1.305** "Changed plugins that Claude Desktop mounts by path to no longer keep their `allowed-tools` when your organization's managed settings set `allowManagedPermissionRulesOnly`" -- recorded (addendum 2.1.306, line 1191; token "Claude Desktop mounts")
+- **2.1.304** "Fixed a claude.ai Directory plugin's skills not running as commands when picked from the "/" menu in Cowork cloud sessions" -- NOT RECORDED
+- **2.1.304** "Removed the notes from `claude plugin validate` that predicted where a mod's hooks would run" -- recorded (addendum 2.1.304, line 1171; token "predicting where a mod")
+- **2.1.302** "Fixed `claude plugin` and other subcommands sometimes exiting before a queued settings or config write finished, which could lose the change or leave a `.tmp` file behind" -- recorded (addendum 2.1.302, line 1122; token "queued settings")
+- **2.1.302** "Fixed plugin marketplaces re-cloning on every refresh, and newly installed git plugins showing version "unknown", when git defaults to the reftable ref format" -- recorded (addendum 2.1.302, line 1122; token "reftable")
+- **2.1.302** "Fixed `claude plugin details <name>@builtin` suggesting `claude plugin list`, which never shows built-in plugins, when the plugin isn't found; it now points to `/plugin`" -- NOT RECORDED
+- **2.1.302** "Improved startup time with many plugins enabled: plugin command and agent files now take far fewer file system calls to load, most of all on Windows" -- recorded (addendum 2.1.302, line 1125; weak match; token "startup")
+- **2.1.299** "Added a note in `/plugin` and `claude plugin validate` naming a mod's hooks that are skipped where an organization manages Claude Code" -- NOT RECORDED
+- **2.1.299** "Fixed a spurious "synced[0] commands path not found" plugin error at startup when another Claude Code process had just updated a claude.ai-synced plugin" -- NOT RECORDED
+- **2.1.299** "Fixed Cowork cloud sessions staying on an old account plugin after a plugin reload that timed out or a restart that reused a recent sync" -- NOT RECORDED
+- **2.1.299** "Fixed Cowork cloud sessions running the old version of an account plugin changed, removed or disabled from another device until the session restarted" -- NOT RECORDED
+- **2.1.299** "Fixed the `plugin_loaded` telemetry event reporting `has_hooks` as false for plugins whose hooks are a hooks module, built-in plugins included" -- NOT RECORDED
+- **2.1.299** "Fixed `/reload-plugins` not loading a plugin installed from another terminal a moment earlier" -- NOT RECORDED
+- **2.1.296** "Added a note in `/plugin` on a plugin whose hooks are left out because another enabled plugin has the same name" -- recorded (addendum 2.1.296, line 1081; token "same-named plugin")
+- **2.1.296** "Fixed `claude plugin marketplace add`, `marketplace update` and `plugin install` failing with an internal error for a marketplace named like `constructor`; `add` now refuses such names clearly" -- recorded (addendum 2.1.296, line 1087; weak match; token "plugin marketplace naming")
+- **2.1.296** "Fixed a plugin secret named `constructor` or `prototype` being deleted by the next save of that plugin's options" -- NOT RECORDED
+- **2.1.296** "Fixed a plugin synced from claude.ai being disabled when the marketplace dependency it declares was also synced from claude.ai" -- recorded (addendum 2.1.296, line 1087; weak match; token "claude.ai sync")
+- **2.1.296** "Windows: Fixed `claude plugin install` failing for GitHub `owner/repo` plugin sources on machines with no GitHub SSH key; the clone is now retried over HTTPS" -- recorded (addendum 2.1.288, line 983; weak match; token "falls back to HTTPS")
+- **2.1.295** "Added a warning to `claude plugin install`, `enable`, `disable` and `marketplace add` when the settings file they write to does not load" -- recorded (addendum 2.1.295, line 1065; token "settings file they write to does not load")
+- **2.1.295** "Added advice to `claude plugin validate` when a plugin's README has no install line: it prints the line to paste and never changes the exit code, even with `--strict`" -- recorded (addendum 2.1.295, line 1065; token "README")
+- **2.1.295** "Fixed `/plugin`'s Errors tab removing a marketplace that failed to load, and uninstalling its plugins, on Enter without asking first" -- NOT RECORDED
+- **2.1.295** "Fixed `claude plugin marketplace add` reporting success for a marketplace whose name no plugin can be installed under; such an add is now refused" -- recorded (addendum 2.1.295, line 1065; token "no plugin can be installed under")
+- **2.1.295** "Fixed plugin marketplaces whose repository has large git submodules failing to add or refresh: only the submodules that hold plugin files are now fetched" -- NOT RECORDED
+- **2.1.295** "Fixed plugins whose hooks module nests code thousands of levels deep failing to load or validate with a bare stack-overflow message" -- NOT RECORDED
+- **2.1.295** "Fixed plugin options named `constructor` or `prototype` always reading as their default and never reloading the plugin when edited" -- NOT RECORDED
+- **2.1.295** "Fixed generated type files being written into a `--plugin-dir` plugin's folder in `-p` and SDK sessions; they are now written only where a mod is being developed" -- NOT RECORDED
+- **2.1.295** "Fixed claude.ai-synced plugin hooks failing with "Plugin directory does not exist" in long-running sessions after another session synced a plugin update" -- recorded (addendum 2.1.296, line 1087; weak match; token "claude.ai sync")
+- **2.1.295** "Improved `claude plugin validate` and plugin loading: when a hooks module is refused over a rebound top-level `var`, the error now names the line that rebinds it, the cause, and a fix" -- NOT RECORDED
+- **2.1.292** "Added `--marketplace <source>` to `claude plugin install`: adds the marketplace if needed, under the same policy checks as `claude plugin marketplace add`, then installs the plugin from it" -- recorded (addendum 2.1.292, line 1020; token "--marketplace")
+- **2.1.292** "Fixed `claude plugin` commands such as `marketplace add` and `install` running before an organization's managed settings had loaded on a first run" -- NOT RECORDED
+- **2.1.292** "Improved the steps shown when a marketplace declared in a settings file has a name that looks like an official Anthropic marketplace" -- NOT RECORDED
+- **2.1.290** "Added to `claude plugin validate`: each hook a mod registers at a gating site is listed with whether it has a `.catch` (`gatingHooks` under `--json`)" -- recorded (addendum 2.1.292, line 1017; token "gating hooks")
+- **2.1.290** "Fixed a marketplace named after another GitHub marketplace's download folder stopping that marketplace from downloading" -- NOT RECORDED
+- **2.1.289** "Fixed `plugin list`, `plugin eval` and `plugin update` showing a stale copy of a plugin installed from a local folder marketplace, and hot reload for a symlinked `--plugin-dir`" -- recorded (addendum 2.1.289, line 996; token "stale copy")
+- **2.1.289** "Fixed installed mods not loading in the first session after an upgrade" -- recorded (addendum 2.1.289, line 999; token "mods not loading")
+- **2.1.289** "Fixed a user-installed plugin being able to rewrite the descriptions of an organization-managed MCP server's sign-in tools" -- recorded (addendum 2.1.289, line 997; token "sign-in tools")
+- **2.1.289** "Fixed `claude plugin validate` skipping the plugin when the folder also holds a marketplace manifest" -- recorded (addendum 2.1.289, line 995; token "marketplace manifest")
+- **2.1.289** "Fixed `claude plugin validate` failing an Anthropic marketplace's own plugin and listing a clean `plugin.json` in `--json`" -- recorded (addendum 2.1.289, line 995; token "Anthropic marketplace's own plugin")
+- **2.1.288** "Fixed `git-subdir` plugin installs failing, or caching an incomplete plugin, on older git (before 2.39, e.g. Ubuntu 22.04's 2.34)" -- NOT RECORDED
+- **2.1.288** "Fixed plugins loaded with `--plugin-dir` not showing "Configure options" in `/plugin`" -- NOT RECORDED
+- **2.1.288** "Fixed plugin LSP servers receiving literal `${user_config.*}` and `${CLAUDE_PLUGIN_ROOT}` placeholders in `initializationOptions` and `settings` instead of substituted values or manifest defaults" -- recorded (addendum 2.1.288, line 983; token "LSP")
+- **2.1.288** "Fixed `claude plugin install` failing for GitHub-source plugins on macOS and Linux machines with no GitHub SSH key: the clone now falls back to HTTPS and prints a notice" -- recorded (addendum 2.1.288, line 983; token "falls back to HTTPS")
+- **2.1.288** "Fixed `owner/repo` plugin marketplaces showing only the second attempt's error when both the SSH and HTTPS fetch fail; both errors are now shown, with the transport tried first on top" -- recorded (addendum 2.1.288, line 983; token "both transport errors")
+- **2.1.288** "Fixed LSP tool calls hanging indefinitely when a language server uses dynamic capability registration or stops responding; requests now time out after 60s (per-server `requestTimeout`)" -- NOT RECORDED
+- **2.1.287** "Added Claude Mods: plugins may now modify deeper behavior" -- recorded (addendum 2.1.287, line 949; token "Claude Mods")
+- **2.1.287** "Added You should know, a built-in mod where a side agent watches your back and flags things you or Claude might miss. Turn it on with `/plugin enable cc-plugin-you-should-know@builtin` (for first-party sessions with telemetry on)" -- recorded (addendum 2.1.287, line 949; token "You should know")
+- **2.1.287** "Fixed `claude plugin marketplace add --sparse` and `git-subdir` plugin installs failing with "transport 'http' not allowed" when the repository is served over plain http" -- NOT RECORDED
+- **2.1.287** "Fixed a plugin reload that overlapped the startup `--plugin-url` download corrupting the session's cached copy of the plugin archive" -- NOT RECORDED
+- **2.1.287** "Improved plugin marketplace errors to say in plain words why a marketplace was ignored or refused, and what to do" -- NOT RECORDED
+- **2.1.287** "Improved plugin listings to note when a plugin's dependencies were not installed, and updating a plugin now retries an install that did not finish" -- NOT RECORDED
+- **2.1.286** "Changed plugin installs to refuse npm sources that are git repositories or folders, and to install plugin dependencies only from registry packages" -- recorded (addendum 2.1.286, line 936; token "npm sources")
+- **2.1.285** "Added `claude plugin configure <plugin>` to show a plugin's options and which are unset, or save new values read from stdin with `--values-stdin`" -- recorded (addendum 2.1.285, line 924; token "plugin configure")
+- **2.1.285** "Added `<server>.<key>=<value>` to `claude plugin install --config`, so a bundled `.mcpb` MCP server's own settings can be set at install time and it starts without visiting `/plugin` → Configure" -- recorded (addendum 2.1.285, line 924; token "--config")
+- **2.1.285** "Fixed plugin and marketplace installs and updates over SSH ignoring the ssh program set in `GIT_SSH` or in your git config's `core.sshCommand`" -- recorded (addendum 2.1.285, line 924; token "GIT_SSH")
+- **2.1.285** "Fixed `claude plugin disable` and `enable` with a full `name@marketplace` id changing a settings entry in another letter case instead of the installed plugin's own" -- NOT RECORDED
+- **2.1.285** "Fixed installing a plugin with `claude plugin install` or `/plugin` putting it into an installed plugin's cache or data folder when their ids differ only in `.`, `-`, `@` or (macOS, Windows) capitals; the install is now refused" -- recorded (addendum 2.1.285, line 924; token "collides")
+- **2.1.285** "Fixed plugins silently skipping a bundled `.mcpb` MCP server that still needs configuration: `/plugin`, the install message and `claude plugin install` now say so and point to Configure" -- recorded (addendum 2.1.285, line 924; token ".mcpb")
+- **2.1.285** "Improved plugin marketplace errors to name why a git address is refused instead of citing enterprise policy" -- NOT RECORDED
+- **2.1.285** "Improved validation of git URLs for plugins, marketplaces and the current repository's remote" -- NOT RECORDED
+- **2.1.284** "Fixed the `/plugin` configure screen: boolean options are now a true/false choice instead of free text, number options refuse invalid input, and ←/→ change an options field instead of switching tabs" -- NOT RECORDED
+- **2.1.284** "Fixed `sparsePaths` plugin marketplaces cloning empty and replacing a working local copy on older git (before 2.39), which failed every refresh with "marketplace.json file is no longer present"" -- NOT RECORDED
+- **2.1.284** "Fixed plugins from marketplaces, claude.ai and npm pre-approving their own tools via `allowed-tools` under managed `allowManagedPermissionRulesOnly`; only plugins from an official Anthropic source or a source that managed settings vouch for keep that pre-approval" -- recorded (addendum 2.1.284, line 903; token "allowManagedPermissionRulesOnly")
+- **2.1.284** "Fixed a failed first `claude plugin install` leaving the plugin enabled and recorded when a dependency's version range could not be met" -- NOT RECORDED
+- **2.1.284** "Improved `claude plugin marketplace add` to say when it replaces a marketplace already added under the same name from a different source, and how to undo it" -- NOT RECORDED
+- **2.1.286** "Fixed plugins enabled on claude.ai occasionally going missing from Claude Code for a session after a transient server error" -- recorded (addendum 2.1.296, line 1087; weak match; token "claude.ai sync")
+- **2.1.286** "Fixed plugin errors for a marketplace Claude Code refuses to load: they now say why and how to fix it instead of "not found"" -- NOT RECORDED
+
+## skills-commands
+
+- **2.1.304** "Added `/claude-api managed-agents-secure`, which compares a Managed Agents agent's settings with Anthropic's published security guide, without changing anything" -- recorded (addendum 2.1.304, line 1172; token "managed-agents-secure")
+- **2.1.304** "Fixed `claude --help` text for `--tools`, `--resume`, `--debug`, `--json-schema`, `--disable-slash-commands`, `--system-prompt-snapshot` and `claude update` to match actual behavior" -- recorded (addendum 2.1.304, line 1172; token "`claude --help` corrections")
+- **2.1.304** "Fixed resumed and cloud sessions sending Claude the whole skill list again each time plugins reloaded at startup" -- recorded (addendum 2.1.304, line 1166; token "skill list")
+- **2.1.304** "Fixed a skill's `once` hook also removing another skill's identical hook after it ran" -- recorded (addendum 2.1.304, line 1167; token "`once` hook")
+- **2.1.304** "Changed skill hooks: the skills of one source (a repo, your own folder, or a plugin) can register at most 1,024 hooks and 16,384 matcher characters per session" -- recorded (addendum 2.1.304, line 1167; token "1,024")
+- **2.1.304** "Changed skills under a policy that allows hooks from plugins only: a skill used in the main conversation whose hooks are kept out no longer gets its `allowed-tools`" -- recorded (addendum 2.1.304, line 1167; token "kept out")
+- **2.1.304** "Updated the /claude-api skill to use the `ant` CLI on Claude Platform on AWS instead of falling back to the SDK or curl" -- NOT RECORDED
+- **2.1.301** "Fixed skills and commands with very many or very long argument names stalling for seconds when invoked; only the first 64 names, each up to 64 characters, are now filled in" -- recorded (addendum 2.1.302, line 1132; token "skill argument caps")
+- **2.1.301** "Fixed skills, commands and hooks using very large amounts of memory when their arguments fill many placeholders" -- recorded (addendum 2.1.302, line 1132; weak match; token "skill argument caps")
+- **2.1.299** "Added the skill's frontmatter, source, plugin name and file path to what a mod's `skill.prompt` hook receives" -- NOT RECORDED
+- **2.1.299** "Fixed a custom slash command's embedded shell line running twice when a newer message interrupted the command while its prompt was being checked" -- NOT RECORDED
+- **2.1.299** "Improved the Skill tool's "Unknown skill" error to suggest a skill's listed name when Claude wrongly adds the `anthropic-skills:` prefix to it" -- NOT RECORDED
+- **2.1.299** "Improved `/reload-skills` to say it re-sends the full skill list to Claude, which is how to get skills back after compaction" -- recorded (addendum 2.1.299, line 1103; token "/reload-skills")
+- **2.1.299** "Changed skill and command loading: one whose file or folder name has hidden, direction-changing or blank-like characters, `<` or `>` is no longer offered until renamed; such a `name:` is ignored" -- recorded (addendum 2.1.299, line 1102; token "hidden, direction-changing")
+- **2.1.296** "Fixed skills synced from claude.ai never finishing their install, and being downloaded again at every sync, when several sessions share a config directory" -- recorded (addendum 2.1.296, line 1087; weak match; token "claude.ai sync")
+- **2.1.295** "Fixed a skill's `allowed-tools` and `effort` being dropped when the Skill tool finished before the response stream ended, which denied the skill's Bash commands in `-p` runs" -- recorded (addendum 2.1.295, line 1060; token "allowed-tools` and `effort")
+- **2.1.293** "Fixed a claude.ai-synced skill's edited description sometimes not reaching the model until a new conversation or `/clear`" -- recorded (addendum 2.1.293, line 1037; weak match; token "claude.ai skill sync")
+- **2.1.293** "Changed claude.ai skill syncing to check for changes about every 40 minutes, instead of every 10, while no session is in use" -- recorded (addendum 2.1.293, line 1037; token "sync timing")
+- **2.1.292** "Fixed a skill's or slash command's `allowed-tools` rule coming back in a later turn when you leave auto mode or plan mode partway through that turn" -- recorded (addendum 2.1.292, line 1014; token "`allowed-tools` no longer returns")
+- **2.1.292** "Fixed a compaction summary that repeated `/name` letting Claude invoke a skill that is reserved for the user" -- recorded (addendum 2.1.292, line 1009; token "compaction summary that repeated")
+- **2.1.290** "Fixed skills not being found when asked for by the name in SKILL.md when their folder has a different name (for example a non-English name): the skill listing now shows both names" -- recorded (addendum 2.1.292, line 1014; token "found by their SKILL.md name")
+- **2.1.290** "Changed skills and custom commands to refuse a `!` shell command that contains raw control characters other than tab and newline, with a message that shows where they are" -- recorded (addendum 2.1.292, line 1014; token "`!` shell command")
+- **2.1.287** "Fixed `--output-format stream-json` and the SDK not streaming the turns of a `context: fork` skill run by typing `/<skill>` as the prompt, as they do for the Skill tool's fork" -- NOT RECORDED
+- **2.1.287** "Improved `/skill` names typed mid-message: Claude is now told they are skills, including `disable-model-invocation` ones" -- recorded (addendum 2.1.287, line 955; token "disable-model-invocation")
+- **2.1.286** "Improved commit guidance: when your project or user skills include one named `verify`, Claude is now told to run it right before committing, except for docs-only and tests-only commits" -- recorded (addendum 2.1.286, line 935; token "`verify`")
+- **2.1.286** "Changed the send-now key (ctrl+enter) to move a skill's own shell command to the background instead of ending it" -- NOT RECORDED
+- **2.1.284** "Changed `/recap` to decline with a short notice when it arrives relayed from a chat thread (your own included) or from a routine or webhook; typed in the terminal, the Claude apps, Remote Control, `-p` or an SDK host, it runs as before" -- NOT RECORDED
+- **2.1.290** "Windows: Fixed multi-line `!` shell blocks in skills and commands failing when the file is saved with CRLF line endings" -- NOT RECORDED
+
+## evals
+
+- **2.1.299** "Added `--disallow-tools` and a `disallowed_tools` case field to `claude plugin eval` to keep specific built-in tools, such as Agent, out of eval runs" -- recorded (addendum 2.1.299, line 1093; token "--disallow-tools")
+- **2.1.299** "Fixed `claude plugin eval` passing runs that the API refused: a run that ends on an API error now scores 0 without grading and makes the suite exit 1" -- recorded (addendum 2.1.299, line 1095; token "API refused")
+- **2.1.295** "Fixed `claude plugin test` passing a `session.append` hook that removes tool call, tool result or thinking blocks that a real session keeps" -- recorded (addendum 2.1.292, line 1017; weak match; token "claude plugin test")
+- **2.1.293** "Fixed `claude plugin test` failing for mods that call `$.session.append`; tests can read the appended rows back with the new `mock.session`" -- recorded (addendum 2.1.293, line 1036; token "$.session.append")
+- **2.1.293** "Fixed `claude plugin eval` refusing every Bash-granting run on Macs with Docker Desktop (links under `~/.docker/bin`); the refusal now names which part of a credential store held the link" -- recorded (addendum 2.1.293, line 1036; token "Docker Desktop")
+- **2.1.292** "Changed `claude plugin test`: a failed `expect` inside a hook the test registered, or a stub answer the engine refuses, now fails the test instead of passing silently" -- recorded (addendum 2.1.292, line 1017; token "failed `expect` inside a registered hook")
+- **2.1.285** "Fixed the `/claude-api` eval runner scaffold and report builder writing through a symlink or hard link planted at an output file" -- NOT RECORDED
+- **2.1.285** "Fixed the `/claude-api` eval runner scaffold counting responses cut off at `max_tokens` in the score averages; they are now marked truncated and counted separately" -- NOT RECORDED
+- **2.1.284** "Improved `/claude-api`: `hillclimb` no longer spends rounds on prompt rewordings too small for the eval to measure, and an extra page you ask for beside `report.html` is built as one local file that loads nothing from the network" -- NOT RECORDED
+
+## sessions-worktrees
+
+- **2.1.306** "Fixed an API error being replaced by "prompt is too long", and an unneeded compaction, in sessions with many MCP tools" -- recorded (addendum 2.1.306, line 1184; token "prompt is too long")
+- **2.1.305** "Fixed new worktrees in a bare repository sometimes starting from local HEAD instead of the default branch, and unchanged subagent worktrees sometimes not being cleaned up" -- recorded (addendum 2.1.306, line 1193; token "bare repository")
+- **2.1.305** "Fixed cloud sessions and teammates not telling Claude when a compaction had to leave the oldest messages out of its summary to fit" -- recorded (addendum 2.1.306, line 1197; token "compaction overflow")
+- **2.1.305** "Fixed Remote Control leaving empty "(session)" entries in `/resume` after switching conversations with `/resume`" -- recorded (addendum 2.1.306, line 1198; weak match; token "Remote Control")
+- **2.1.304** "Added a warning on Pro and Max plans when resuming an inactive conversation would use a noticeable share of your 5-hour usage limit: resume anyway, or start a new conversation and Claude can look up the previous one if you refer to it" -- recorded (addendum 2.1.304, line 1172; token "resuming an inactive conversation")
+- **2.1.304** "Fixed `CLAUDE_CODE_TRANSCRIPT_LOCAL_GC` dropping messages from the saved transcript when the disk filled up while the file was being trimmed" -- recorded (addendum 2.1.304, line 1170; token "TRANSCRIPT_LOCAL_GC")
+- **2.1.304** "Fixed a "Context limit reached" or "Prompt is too long" error after stopping a turn while Claude Code was compacting a conversation the API had rejected as too long" -- recorded (addendum 2.1.304, line 1173; weak match; token "compaction error")
+- **2.1.304** "Fixed `claude --worktree` removing the worktree and its branch without asking at exit when HEAD was detached or on another branch, which could lose commits" -- recorded (addendum 2.1.304, line 1164; token "--worktree")
+- **2.1.304** "Fixed self-paced `/loop` wakeups scheduled at the 1-hour maximum firing just after the 1-hour prompt cache expired, so those wakeups no longer re-read the conversation uncached" -- recorded (addendum 2.1.304, line 1173; weak match; token "/loop")
+- **2.1.304** "Improved session file size in auto mode: the safety classifier's context is no longer stored with every request" -- NOT RECORDED
+- **2.1.304** "Improved resume of large compacted sessions in SDK and headless mode: the first request after resuming is sent sooner" -- NOT RECORDED
+- **2.1.304** "Changed compaction to send Claude the skill list again afterwards; `/reload-skills` now sends only new or changed skills" -- recorded (addendum 2.1.304, line 1166; token "skill list again")
+- **2.1.302** "Added an `Idle compaction` row to `/config` for turning idle compaction off or back on; the notices shown after an idle compaction now say how to turn it off" -- recorded (addendum 2.1.302, line 1125; token "Idle compaction")
+- **2.1.302** "Fixed a "Prompt is too long" error when stopping a turn while the conversation was being compacted" -- recorded (addendum 2.1.304, line 1173; weak match; token "compaction error")
+- **2.1.302** "Fixed a prompt cache miss when a tool added mid-session was loaded again through ToolSearch or after compaction" -- recorded (addendum 2.1.302, line 1125; weak match; token "prompt cache")
+- **2.1.302** "Fixed worktree isolation refusing to create or resume worktrees under git 2.56 or later when a stray `.git` file points at a directory that doesn't exist" -- recorded (addendum 2.1.302, line 1122; token "git 2.56")
+- **2.1.302** "Changed where the Claude in Chrome instructions sit in the system prompt so that new conversations can read them from the shared prompt cache" -- NOT RECORDED
+- **2.1.301** "Fixed quitting removing a worktree made by a `WorktreeCreate` hook without asking when it may hold unpushed commits" -- recorded (addendum 2.1.302, line 1129; token "WorktreeCreate")
+- **2.1.301** "Fixed a case where switching to a model with a smaller context window could spend usage credits on a summary by the previous model without asking first" -- NOT RECORDED
+- **2.1.301** "Fixed conversations being compacted over and over, on a model you didn't pick, behind an LLM gateway whose responses name a different model than the one requested" -- NOT RECORDED
+- **2.1.301** "Improved switching to a model with a smaller context window: a conversation too long for the new model is now summarized by the previous model first" -- NOT RECORDED
+- **2.1.300** "Added `cache_creation_5m_tokens` and `cache_creation_1h_tokens` to the OpenTelemetry `api_request` event, splitting cache writes by lifetime" -- NOT RECORDED
+- **2.1.300** "Fixed `/autocompact` warning about high token usage when you choose a smaller auto-compact window" -- recorded (addendum 2.1.306, line 1195; weak match; token "/autocompact")
+- **2.1.300** "Fixed `claude --help` naming a removed tool in its description of `--restricted`" -- recorded (addendum 2.1.302, line 1142; token "--restricted")
+- **2.1.300** "Fixed the first transcript entry written after resuming a session being lost when a crash had cut the transcript's last line short" -- NOT RECORDED
+- **2.1.300** "Fixed `/branch` dropping messages, and `claude purge` skipping subfolder projects, when they contain a Unicode line or paragraph separator (U+2028, U+2029)" -- recorded (addendum 2.1.296, line 1087; weak match; token "claude purge")
+- **2.1.300** "Fixed plugin `WorktreeCreate` and `WorktreeRemove` hooks not running when Claude Code starts with `--worktree` (not yet with `--tmux`)" -- recorded (addendum 2.1.302, line 1141; token "WorktreeRemove")
+- **2.1.300** "Fixed `--worktree` sessions sometimes starting from the wrong commit when a tag or branch was named like a commit ID, and their starting git status naming a branch other than the new worktree's" -- recorded (addendum 2.1.302, line 1141; weak match; token "base-commit")
+- **2.1.300** "Fixed the branch showing as ".invalid" and `--worktree` failing to reopen a worktree in repositories using git's reftable ref storage" -- recorded (addendum 2.1.302, line 1122; weak match; token "reftable")
+- **2.1.300** "Fixed `--worktree` failing in a worktree of a bare repository when origin's default branch can't be fetched; the fallback base is now the current checkout's HEAD, not the main repository's" -- recorded (addendum 2.1.306, line 1193; weak match; token "bare repository")
+- **2.1.300** "Fixed resuming a headless or Agent SDK session losing the recent messages a compaction had kept, when the compaction followed a reply cut at the output token limit (compactions from this version on)" -- NOT RECORDED
+- **2.1.300** "Fixed resuming a headless or Agent SDK session losing its compaction summary or bringing back pre-compaction history, when the compaction followed a retried or unfinished reply in the same turn" -- NOT RECORDED
+- **2.1.299** "Added idle compaction in the terminal: a 200K+ token conversation left idle for about 54 minutes is compacted before its one-hour prompt cache expires, so your next message doesn't reprocess it all" -- recorded (addendum 2.1.299, line 1103; token "idle compaction")
+- **2.1.299** "Added `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS` to change idle compaction's 200K-token minimum; `"idleCompaction": false` in settings.json turns it off. Both need v2.1.290 or later" -- recorded (addendum 2.1.299, line 1103; token "IDLE_COMPACT_MIN_TOKENS")
+- **2.1.299** "Fixed sessions on a gateway-specific model name behind a custom `ANTHROPIC_BASE_URL` ending with "Prompt is too long · automatic compaction failed" near 200K tokens instead of sending the request" -- NOT RECORDED
+- **2.1.299** "Fixed scheduled wakeups (ScheduleWakeup) not firing while a background task was running in Agent SDK, IDE and `claude remote-control` sessions" -- NOT RECORDED
+- **2.1.299** "Fixed scheduled tasks being announced for the wrong minute: the scheduling tools now report each job's actual next run time" -- NOT RECORDED
+- **2.1.299** "Fixed a prompt starting with `/`, sent with the Agent SDK's `verbatimPrompts` option, running as a slash command when `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` re-ran it after a restart" -- NOT RECORDED
+- **2.1.299** "Fixed background sessions started with `--safe-mode` silently leaving safe mode when the session was woken or restarted" -- NOT RECORDED
+- **2.1.299** "Fixed scheduled tasks and loops firing again after every turn, or firing early, during the repeated hour when daylight saving time ends" -- NOT RECORDED
+- **2.1.299** "Fixed `--worktree` sessions leaving a folder behind in `.git/worktrees` in repositories using git's reftable ref storage" -- recorded (addendum 2.1.302, line 1122; weak match; token "reftable")
+- **2.1.299** "Fixed replies cut off at the output token limit ending the turn silently, with no retry or error, after a request fell back to non-streaming mode" -- NOT RECORDED
+- **2.1.299** "Improved the error shown when a worktree cannot be created because its base commit does not resolve: it now says how the lookup ended and the likely reasons, such as a repository without a commit" -- NOT RECORDED
+- **2.1.299** "Improved the error for creating a worktree at a bare-repository layout's root: it now explains the layout instead of an unrelated git error" -- NOT RECORDED
+- **2.1.299** "Changed the resume command printed at exit: it names the session by its ID and no longer by its name, so that nothing in a session name can run when the line is pasted" -- recorded (addendum 2.1.299, line 1104; token "names the session by ID")
+- **2.1.299** "Changed the resume command printed at exit of a worktree session: it uses `-w` and `-r` if the long flags do not fit the terminal. If neither fits a kept worktree, rows above it say where to run it" -- recorded (addendum 2.1.299, line 1104; weak match; token "names the session by ID")
+- **2.1.296** "Fixed `--teleport` opening an empty conversation when the session's history could not be read" -- recorded (addendum 2.1.296, line 1087; weak match; token "--teleport")
+- **2.1.296** "Fixed `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` re-running a finished turn after a restart when an MCP tool result had ended that turn" -- NOT RECORDED
+- **2.1.296** "Fixed `CLAUDE_CODE_TRANSCRIPT_LOCAL_GC` dropping a message from the saved transcript when its text held a Unicode line or paragraph separator (U+2028, U+2029)" -- recorded (addendum 2.1.296, line 1087; token "transcript garbage collection")
+- **2.1.296** "Fixed `claude purge` leaving a prompt in the history file when its text held a Unicode line or paragraph separator (U+2028, U+2029)" -- recorded (addendum 2.1.296, line 1087; token "claude purge")
+- **2.1.296** "Improved `CLAUDE_CODE_TRANSCRIPT_LOCAL_GC`: a large transcript file is no longer rewritten when that would free under 10% of it" -- recorded (addendum 2.1.296, line 1087; weak match; token "transcript garbage collection")
+- **2.1.295** "Added a line on stderr, when it is a terminal, that says what a `claude -p` run is waiting for when it stays open after its last turn" -- NOT RECORDED
+- **2.1.295** "Fixed `claude -p` text output dropping earlier responses when background work started another turn; each turn's response now prints when the turn ends" -- NOT RECORDED
+- **2.1.295** "Fixed a background session's `/loop` stopping without notice when its next wakeup came due while the session's process was down; the session now says so and Claude is told" -- NOT RECORDED
+- **2.1.293** "Fixed Claude sometimes treating its own last actions before a context compaction as done after it, and retracting or redoing finished work" -- recorded (addendum 2.1.293, line 1031; token "own last actions before a compaction")
+- **2.1.293** "Reverted the auto mode denial message change from 2.1.281 that told Claude a denial covers the outcome, not only the exact command" -- recorded (addendum 2.1.293, line 1035; token "2.1.281")
+- **2.1.293** "Reverted the 2.1.290 fix for cloud sessions staying asleep after a container restart lost a pending `/loop` wakeup or scheduled task; Claude is no longer told, and the session stays asleep" -- recorded (addendum 2.1.293, line 1035; token "2.1.290 cloud wakeup fix")
+- **2.1.292** "Added prompt caching to `$.model.complete` for mods: `prompt` and `system` take blocks of text, and `cache: true` on a block caches the request up to it" -- NOT RECORDED
+- **2.1.292** "Fixed one-shot `claude -p` and Agent SDK runs stopping a background command 5 seconds after the final result, and one-shot `claude -p` runs dropping a scheduled wakeup; both are now waited for" -- NOT RECORDED
+- **2.1.292** "Fixed plan mode not being restored when resuming a session from the `claude --resume` session picker or with `/resume`" -- NOT RECORDED
+- **2.1.292** "Fixed saved scheduled tasks created after `/resume`, `/branch` or `/clear` never firing, and saved tasks ignoring later creates and deletes after two writes to the tasks file milliseconds apart" -- NOT RECORDED
+- **2.1.292** "Fixed a background session's `/loop` silently stopping when the session's process restarted (for example after a crash), because its pending wakeup was lost" -- NOT RECORDED
+- **2.1.292** "Improved startup of `claude -p` and SDK sessions: the first turn no longer waits for HTTP and SSE MCP servers to answer `resources/list`" -- NOT RECORDED
+- **2.1.291** "Fixed a regression in 2.1.288 where the last messages of a session could be lost when quitting" -- NOT RECORDED
+- **2.1.290** "Fixed scheduled tasks (`/loop` with an interval, reminders) silently not coming back on resume once the conversation was compacted; covers compactions made from this version on" -- NOT RECORDED
+- **2.1.290** "Fixed scheduled tasks set in the foreground never firing after a ← or `/background` hand-off, and recurring ones firing an extra run on every resume, respawn or fork" -- NOT RECORDED
+- **2.1.290** "Fixed headless `--json-schema` runs exiting non-zero with `is_error: true` on a `success` result when the connection dropped after the structured output was already delivered" -- recorded (addendum 2.1.292, line 1015; token "--json-schema")
+- **2.1.290** "Fixed plan mode not being restored when resuming a session with `--continue` or `--resume <session-id>` in the terminal" -- NOT RECORDED
+- **2.1.290** "Fixed `/loop` and other recurring session-only scheduled tasks running an extra time after a sandboxed Bash command on Linux or after `.claude/scheduled_tasks.json` was deleted" -- NOT RECORDED
+- **2.1.290** "Changed background sessions waiting on a scheduled wakeup (`/loop`): they are now left running through updates and low memory, where being restarted or shut down could silently lose the wakeup" -- NOT RECORDED
+- **2.1.290** "Fixed automatic compaction giving up with "Prompt is too long" when a Mac went to sleep while it was running" -- NOT RECORDED
+- **2.1.290** "Fixed conversation compaction sometimes failing with a "null is not an object" error" -- NOT RECORDED
+- **2.1.288** "Fixed mid-response API timeouts failing the turn: non-interactive sessions and subagents now continue from the partial response, and thinking-only responses are retried" -- recorded (addendum 2.1.288, line 976; token "Mid-response API timeouts")
+- **2.1.288** "Fixed long conversations failing with "Prompt is too long" instead of auto-compacting when the last reply reported zero token usage" -- NOT RECORDED
+- **2.1.288** "Fixed `--resume` sometimes dropping files and other context that a compaction had just restored" -- recorded (addendum 2.1.288, line 984; token "--resume")
+- **2.1.288** "Fixed a resumed session sometimes not saving the last response of a turn, so that the next `--resume` showed the prompt unanswered" -- recorded (addendum 2.1.288, line 984; token "last response")
+- **2.1.288** "Fixed resume occasionally loading a transcript cut short when the same session rewrote the file during the load" -- recorded (addendum 2.1.288, line 984; weak match; token "`--resume` fixes")
+- **2.1.288** "Fixed resuming a conversation started on 2.1.286 or earlier dropping the model's earlier thinking" -- recorded (addendum 2.1.288, line 984; weak match; token "`--resume` fixes")
+- **2.1.288** "Fixed the first request in a fresh environment or after a model switch using the built-in output limit and auto-compact window, not the server's; that request may now wait up to 1.5 seconds" -- NOT RECORDED
+- **2.1.288** "Changed the background command time limit to apply only in unattended sessions (`-p`, Agent SDK, CI, cloud); terminal, desktop app and VS Code sessions have no limit" -- recorded (addendum 2.1.288, line 977; token "background command time limit")
+- **2.1.288** "Changed `claude project purge` to `claude purge`; the old name still works and prints a notice" -- recorded (addendum 2.1.296, line 1087; weak match; token "claude purge")
+- **2.1.288** "Changed `/autocompact` to save the auto-compact window per model, so each model keeps its own setting when you switch" -- recorded (addendum 2.1.306, line 1195; weak match; token "/autocompact")
+- **2.1.287** "Fixed background sessions that could not be reopened from `claude agents` after the agent exited and removed the worktree the session was started in" -- NOT RECORDED
+- **2.1.286** "Fixed `claude --resume` and `--continue` sometimes losing every turn after a batch of parallel tool calls when the earlier session crashed or was killed" -- recorded (addendum 2.1.288, line 984; weak match; token "`--resume` fixes")
+- **2.1.286** "Changed `--bare` to connect only the MCP servers named on the command line, send the model no system reminders, and start no background tasks; under `--bare`, a shell command that reaches its timeout now stops instead of moving to the background" -- recorded (addendum 2.1.286, line 934; token "--bare")
+- **2.1.286** "Changed `/exit`'s Remove worktree to run after Claude Code stops the servers and shells it started there, which on Windows could keep the folder from being deleted" -- recorded (addendum 2.1.286, line 938; token "Remove worktree")
+- **2.1.285** "Fixed compacting or resuming a session failing, opening without its history, or crashing when its saved transcript holds a compaction marker or loop wakeup entry with missing or malformed fields" -- NOT RECORDED
+- **2.1.285** "Fixed `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` re-running a turn that had ended at `--max-turns`" -- NOT RECORDED
+- **2.1.285** "Fixed a failing API request being retried up to 21 times when streaming kept failing; the non-streaming fallback now shares the request's retry budget instead of getting a fresh set of retries" -- recorded (addendum 2.1.286, line 939; weak match; token "14 requests")
+- **2.1.285** "Improved `/resume` and `claude --resume` on a session that is running in the background: they now open that session instead of refusing, and a prompt given with `claude --resume <id> "prompt"` is sent to it as its next turn" -- recorded (addendum 2.1.285, line 922; token "open a session running in the background")
+- **2.1.285** "Changed background Bash and PowerShell commands to stop after a time limit (their `timeout` with `run_in_background`, default 30 min, max 2 h); Claude is notified when one is stopped" -- recorded (addendum 2.1.285, line 916; token "30 minutes")
+- **2.1.284** "Fixed "Prompt is too long" errors that persisted after compacting: when the compacted request is still too long, Claude Code now compacts once more, keeping less of the recent conversation" -- NOT RECORDED
+- **2.1.284** "Changed retries after a dropped connection mid-response to share one budget with the rest of the request's retries, so a failing request gives up sooner" -- recorded (addendum 2.1.286, line 939; weak match; token "14 requests")
+- **2.1.299** "Fixed worktree-isolated sessions accepting some awk programs the isolation guard should refuse" -- NOT RECORDED
+- **2.1.299** "Fixed cloud sessions and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` sometimes answering a finished turn again after a restart, when a tool ended the turn and a skill loaded in the same step" -- NOT RECORDED
+- **2.1.295** "Improved headless `rate_limit_event` usage-limit warnings to say whether the account has extra usage turned on" -- NOT RECORDED
+- **2.1.290** "Fixed cloud sessions staying asleep after a container restart lost a pending `/loop` wakeup or scheduled task; Claude is now told and can schedule it again" -- recorded (addendum 2.1.293, line 1035; token "2.1.290 cloud wakeup fix")
+- **2.1.290** "Fixed sessions moved to the background while idle reopening as "no saved transcript" after a restart or idle cleanup; they now resume their conversation" -- NOT RECORDED
+- **2.1.288** "Fixed headless (`-p` / SDK) sessions occasionally ignoring SIGTERM when a supervisor such as `timeout` or systemd sends SIGCONT alongside it" -- NOT RECORDED
+- **2.1.284** "Fixed `/loop` status updates in self-paced mode often not being shown because Claude wrote them only in its reasoning; Claude now writes each update, and the outcome when the loop stops, as visible text" -- NOT RECORDED
+- **2.1.299** "Fixed queued prompts sent as content blocks over `--input-format stream-json` running together without a line break when merged into one turn" -- NOT RECORDED
+
+## agents-models
+
+- **2.1.305** "Fixed `/effort` and `/autocompact` settings not applying when the model name differed from a `modelOverrides` value by letter case or a `[1m]` tag" -- recorded (addendum 2.1.306, line 1195; token "modelOverrides")
+- **2.1.305** "Fixed Claude naming the wrong model for a subagent's work after the subagent switched to a fallback model" -- recorded (addendum 2.1.306, line 1194; token "wrong model for a subagent")
+- **2.1.305** "Fixed more cases of scheduled Cowork cloud sessions waiting five minutes for each subagent whose WebFetch needed a URL approval that nobody was there to give" -- recorded (addendum 2.1.306, line 1197; token "scheduled Cowork subagents")
+- **2.1.304** "Fixed a plugin keeping a headless run going past `--max-turns`, Stop, or ended input by spawning subagents or re-running a finished one" -- recorded (addendum 2.1.304, line 1163; token "--max-turns")
+- **2.1.304** "Fixed subagents sometimes forgetting their most recent work when they were messaged or resumed right after finishing" -- recorded (addendum 2.1.304, line 1169; token "forgot their most recent work")
+- **2.1.304** "Fixed `/effort status`, `/effort ultracode` and the prompt's effort indicator showing a guessed effort level when `CLAUDE_CODE_EFFORT_LEVEL` is `auto` or `unset` and no level is sent" -- NOT RECORDED
+- **2.1.304** "Fixed agent teams: approving a shutdown request from the main session no longer exits the whole CLI" -- recorded (addendum 2.1.304, line 1169; token "shutdown")
+- **2.1.304** "Improved responsiveness and throughput when many subagents are running at the same time" -- recorded (addendum 2.1.304, line 1169; token "many concurrent subagents")
+- **2.1.304** "Fixed scheduled Cowork cloud sessions waiting five minutes again for each subagent whose WebFetch needed a URL approval that nobody was there to give" -- recorded (addendum 2.1.306, line 1197; weak match; token "scheduled Cowork subagents")
+- **2.1.302** "Fixed `/autocompact` and `/effort` saving to the wrong model when a gateway names Opus 4 or 4.1 with a prefix, such as `anthropic/claude-opus-4-1`" -- recorded (addendum 2.1.306, line 1195; weak match; token "/autocompact")
+- **2.1.302** "Changed fork subagents (`subagent_type: "fork"`) to be on by default in `claude -p`, the Agent SDK, the desktop app and VS Code, as they already are in the terminal; `CLAUDE_CODE_FORK_SUBAGENT=0` turns them off, and `claude mcp serve` never offers them" -- recorded (addendum 2.1.302, line 1118; token "CLAUDE_CODE_FORK_SUBAGENT=0")
+- **2.1.302** "Changed the desktop app and VS Code to always run the main conversation's subagents in the background, as the terminal does, rather than let Claude choose; a subagent's own Agent calls in `claude -p`, the Agent SDK, the desktop app and VS Code now run in the foreground by default" -- recorded (addendum 2.1.302, line 1119; token "in the background")
+- **2.1.301** "Fixed the `fable` (and `best`) model alias erroring on the Anthropic API when the newest Fable model is not available to your organization: Claude Code now retries once on the previous Fable model" -- recorded (addendum 2.1.302, line 1130; token "previous Fable model")
+- **2.1.301** "Fixed a mod's `$.model.fork` returning `nothing-to-fork` when called before the first response of a new Claude Code process had finished, as in `claude -p` runs and cloud sessions" -- NOT RECORDED
+- **2.1.300** "Added `/advisor` on Claude Platform on AWS; no advisor runs until you pick one with `/advisor`, `advisorModel` or `--advisor`, and `CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1` turns it off" -- recorded (addendum 2.1.302, line 1144; token "advisorModel")
+- **2.1.300** "Fixed subagents you had typed messages to disappearing from `/tasks` shortly after finishing, leaving no way back to the conversation" -- NOT RECORDED
+- **2.1.300** "Fixed agent hooks ignoring their `model`: aliases like `haiku` now resolve, a subagent's model no longer overrides it, and an unavailable model falls back to the caller's instead of allowing the action" -- recorded (addendum 2.1.302, line 1139; token "honor their `model`")
+- **2.1.299** "Added `/effort` and `/fast` in agent view to set what new sessions start with; a bare `/model`, `/effort` or `/fast` there now opens a picker" -- NOT RECORDED
+- **2.1.299** "Fixed a mod that submits a prompt at the end of every turn keeping a headless run going past `--max-turns`, `--max-budget-usd`, an interrupt, or the end of the host's conversation" -- recorded (addendum 2.1.304, line 1163; weak match; token "--max-turns")
+- **2.1.299** "Fixed Ultracode not being announced to scheduled tasks and other delivered headless turns when `ultracode` is on in settings" -- recorded (addendum 2.1.284, line 900; weak match; token "Ultracode")
+- **2.1.299** "Fixed the `agent.spawn` mod hook not running when a finished subagent or a killed teammate is resumed: the hook's event now carries `resume`, and a mod can refuse it" -- recorded (addendum 2.1.289, line 998; weak match; token "agent.spawn")
+- **2.1.299** "Fixed background subagents in auto mode sometimes sending their final report twice, once as the result and once as a message" -- NOT RECORDED
+- **2.1.299** "Fixed `SendMessage` not finding a subagent by name after the CLI restarted and resumed the session (names given before the last compaction still need the agent ID)" -- recorded (addendum 2.1.299, line 1107; token "finds a subagent by name")
+- **2.1.299** "Improved background agent notifications: they now say when an agent is only waiting on its own background work, got a message too late for its result, or was stopped by a usage limit" -- NOT RECORDED
+- **2.1.299** "Changed WebFetch page reads to pick their effort as web searches do: the caller's level on the caller's own model, otherwise the level settings give the small model" -- NOT RECORDED
+- **2.1.296** "Added `autoCompactWindow` to subagent frontmatter and `--agents` definitions, so a subagent can auto-compact earlier than the main conversation's window" -- recorded (addendum 2.1.296, line 1077; token "autoCompactWindow")
+- **2.1.296** "Fixed token counts for Haiku 5.5 and other models that take only adaptive thinking, which failed behind some gateways and were counted with budget thinking elsewhere" -- recorded (addendum 2.1.296, line 1087; token "adaptive-thinking-only models")
+- **2.1.296** "Fixed resumed subagents being told that the user rejected a tool call that a session shutdown had interrupted" -- NOT RECORDED
+- **2.1.296** "Improved `--debug` output to name unrecognized frontmatter fields in custom agent files, with a hint for likely typos" -- recorded (addendum 2.1.296, line 1078; token "unrecognized frontmatter")
+- **2.1.295** "Fixed `CLAUDE_AUTO_BACKGROUND_TASKS` moving a subagent to the background while an edit or shell command waited behind it, which started that call before the subagent finished" -- NOT RECORDED
+- **2.1.295** "Fixed subagents in their own linked worktree being shown the parent session's git branch, status and recent commits" -- recorded (addendum 2.1.295, line 1058; token "own linked worktree")
+- **2.1.295** "Fixed in-process agent teammates failing their first SendMessage call until they loaded the tool through tool search" -- NOT RECORDED
+- **2.1.295** "Fixed Claude not being told it can resume background subagents with SendMessage after a session was killed and resumed a second time" -- recorded (addendum 2.1.293, line 1032; weak match; token "SendMessage")
+- **2.1.295** "Fixed `/model` saying a Max effort pick was saved as your default for new sessions; Max applies to the current session only" -- recorded (addendum 2.1.295, line 1064; token "Max effort pick")
+- **2.1.295** "Changed subagents to preload at most 32 skills from the `skills` field, each once; a subagent with the Skill tool can still invoke the rest" -- recorded (addendum 2.1.295, line 1059; token "32 skills")
+- **2.1.293** "Added Claude Haiku 5.5 (`claude-haiku-5-5`), now the default Haiku model on the Anthropic API — 1M context, $0.10/$0.50 per Mtok ($0.50/$2.50 for prompts over 100K)" -- recorded (addendum 2.1.293, line 1029; token "claude-haiku-5-5")
+- **2.1.293** "Added `agentType` to the `subagentStatusLine` payload, so scripts can tell custom subagent types apart" -- recorded (addendum 2.1.293, line 1037; token "agentType")
+- **2.1.293** "Fixed `/model` effort ←/→ wrapping past the highest or lowest level, which could accidentally save Low as a model's default effort" -- recorded (addendum 2.1.293, line 1033; token "highest or lowest level")
+- **2.1.293** "Fixed Claude being told to continue or message subagents with `SendMessage` in sessions, including resumed ones, where a host, a permission rule or a `--tools` list removed that tool" -- recorded (addendum 2.1.293, line 1032; token "SendMessage")
+- **2.1.293** "Fixed subagents and `--agent` sessions being told a built-in tool was disabled for the whole session when only their own tool list left it out" -- recorded (addendum 2.1.293, line 1032; token "only their own tool list")
+- **2.1.293** "Changed the order of agent lists and of MCP servers announced to the model: names with non-ASCII characters now sort after ASCII names" -- recorded (addendum 2.1.293, line 1037; token "list ordering")
+- **2.1.292** "Added an `effort` parameter to the Agent tool, so Claude runs a sub-agent at the effort level you ask for" -- recorded (addendum 2.1.292, line 1007; token "`effort` parameter")
+- **2.1.292** "Fixed subagent definitions with `permissionMode: auto` entering auto mode when auto mode is unavailable (disabled by settings, circuit breaker, or a model that doesn't support it)" -- recorded (addendum 2.1.292, line 1014; token "permissionMode: auto")
+- **2.1.292** "Changed agent names to allow at most 256 characters: a longer one is rejected, and a skill's or a plugin file's `name` longer than that is ignored" -- recorded (addendum 2.1.292, line 1014; token "256 characters")
+- **2.1.290** "Added `serverToolUses` to the result of a mod's `turn.step` hook: the tool calls the API ran itself (the advisor), each with its id, name, input, start and end" -- NOT RECORDED
+- **2.1.290** "Fixed resumed subagents and teammates losing their earlier thinking and prompt cache after receiving a message mid-run" -- NOT RECORDED
+- **2.1.290** "Fixed the effort level changing when a flagged message is retried on a fallback model that has a different level saved in settings" -- recorded (addendum 2.1.287, line 953; weak match; token "flagged message")
+- **2.1.290** "Fixed background subagents losing write and Bash access in their worktree after the main session enters or exits a different worktree" -- recorded (addendum 2.1.292, line 1021; token "lose write and Bash access")
+- **2.1.290** "Changed an in-process teammate's `agent_id` in Agent results to its agent ID (its `name@team` address stays in `teammate_id`); TeammateIdle hooks no longer fire from its subagents or forks" -- recorded (addendum 2.1.292, line 1016; token "teammate_id")
+- **2.1.289** "Added `agent.spawn` for teammates, one agent id across plugin hook events, and idle and waiting states in `$.agent.list()`" -- recorded (addendum 2.1.289, line 998; token "agent.spawn")
+- **2.1.288** "Fixed agent teams: a plugin-defined agent spawned by name now runs with its own prompt, tools, disallowedTools and effort instead of the defaults" -- recorded (addendum 2.1.288, line 974; token "plugin-defined agent")
+- **2.1.288** "Fixed Claude reporting a message to another session as delivered when that session held it: the notice now says it wasn't delivered and names the session, and in SDK sessions Claude can now learn of it mid-turn" -- recorded (addendum 2.1.288, line 982; token "not delivered")
+- **2.1.288** "Fixed a stall when launching an agent whose `tools:` lists very many `Agent(...)` entries" -- recorded (addendum 2.1.288, line 975; token "very many `Agent(...)`")
+- **2.1.288** "Fixed the Agent tool in `claude mcp serve` always reporting no available agents and rejecting every subagent_type" -- NOT RECORDED
+- **2.1.288** "Fixed a plugin's `tool.call` hook making Bash fail and file searches read the wrong folder in subagents that run in a worktree" -- recorded (addendum 2.1.288, line 983; token "worktree subagents")
+- **2.1.287** "Fixed picking Fable in `/model` on a claude.ai login saving the current version's id, so your saved default now follows the newest Fable like Opus and Sonnet do" -- recorded (addendum 2.1.287, line 954; token "newest Fable")
+- **2.1.287** "Fixed switching between Opus 5.5 and Sonnet 5.5 (`/model`, `opusplan`) rewriting earlier MCP tool announcements, which could drop earlier extended thinking" -- NOT RECORDED
+- **2.1.287** "Fixed `claude -p` and SDK sessions repeating a model fallback on every later message after the model was switched while a reply was running" -- NOT RECORDED
+- **2.1.287** "Fixed `/advisor` pairing checks: Sonnet 5.5 can now advise Opus 4.7 and 4.8, and advisors the API would refuse are flagged up front instead of being silently dropped" -- NOT RECORDED
+- **2.1.287** "Changed Opus 4.7+ and Fable to use a 1M context window by default on Bedrock, Vertex, Foundry and the Claude apps gateway, with no `[1m]` suffix (`CLAUDE_CODE_DISABLE_1M_CONTEXT=1` keeps 200K)" -- recorded (addendum 2.1.287, line 954; token "1M context")
+- **2.1.287** "Changed replies from `claude agents` to arrive as queued messages; slash commands other than `/stop` sent while a turn is running now run when it ends" -- recorded (addendum 2.1.287, line 956; token "queued messages")
+- **2.1.287** "Changed automatic model switches after a flagged message to keep your current effort level instead of the new model's default" -- recorded (addendum 2.1.287, line 953; token "keeps the current effort level")
+- **2.1.286** "Fixed every turn failing when the Anthropic API refuses the model your default or a model alias resolves to: Claude Code now retries once on the previous model of the same tier" -- recorded (addendum 2.1.286, line 939; token "previous model of the same tier")
+- **2.1.286** "Fixed refusal and `--fallback-model` retries failing when the fallback model can't run fast; they now run at standard speed, with a one-time notice in interactive sessions" -- recorded (addendum 2.1.286, line 939; token "--fallback-model")
+- **2.1.286** "Fixed foreground subagents sometimes missing the task-tracking tools (TaskCreate/Get/Update/List, TodoWrite) in sessions that have them enabled" -- NOT RECORDED
+- **2.1.286** "Fixed subagents spawned with worktree isolation loading the project CLAUDE.md and its imports a second time from the worktree copy on their first file read" -- recorded (addendum 2.1.286, line 937; token "worktree isolation")
+- **2.1.286** "Improved the model fallback notice and the autocompact-thrashing error to say when a fallback dropped the context window from 1M to 200K tokens" -- NOT RECORDED
+- **2.1.286** "Changed how failed API requests are retried: one limit now covers a whole model call, so with the default retry settings a failing call sends at most 14 requests" -- recorded (addendum 2.1.286, line 939; token "14 requests")
+- **2.1.285** "Fixed `claude -p` with `CLAUDE_CODE_FORK_SUBAGENT=1`: a subagent's own Agent call now runs in the foreground, so the subagent gets the child's result" -- recorded (addendum 2.1.285, line 914; token "CLAUDE_CODE_FORK_SUBAGENT=1")
+- **2.1.285** "Fixed switching models mid-session with a `set_model` request (such as the Agent SDK's `setModel`) leaving the new model on the built-in output-token limit and auto-compact window until restart" -- NOT RECORDED
+- **2.1.285** "Fixed fork subagents not keeping the session's plan mode or `dontAsk` mode: a fork now runs under its parent's permission mode and cannot exit plan mode" -- recorded (addendum 2.1.285, line 914; token "cannot exit plan mode")
+- **2.1.285** "Fixed background subagents in auto mode prompting a second, redundant reply after each report" -- NOT RECORDED
+- **2.1.285** "Improved Bedrock and Vertex AI sessions to switch to an older available model of the same tier, instead of failing, when an admin removes access to the default model; session titles and summaries now fall back with it" -- NOT RECORDED
+- **2.1.285** "Improved subagents in auto mode: a subagent's run now ends as soon as it hands its report back to its caller, instead of taking extra turns that reach no one" -- recorded (addendum 2.1.285, line 915; token "ends its run as soon as it hands its report back")
+- **2.1.285** "[VSCode] Fixed the agent map labeling a sub-agent with the session's model instead of the model it actually ran on (e.g. under `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` or an agent's own `model`)" -- NOT RECORDED
+- **2.1.284** "Added Claude Sonnet 5.5 (`claude-sonnet-5-5`), now the default Sonnet model on the Anthropic API — 1M context, $2/$10 per Mtok with $0.20/Mtok cache reads" -- recorded (addendum 2.1.284, line 898; token "claude-sonnet-5-5")
+- **2.1.284** "Fixed sessions launched without the `SendMessage` tool (such as by Claude Desktop) still being told to message other sessions with it" -- NOT RECORDED
+- **2.1.284** "Fixed the Explore subagent switching to Opus on the Claude API when the session runs a model ID Claude Code doesn't recognize, such as a custom model behind a proxy; Explore now inherits that model" -- recorded (addendum 2.1.284, line 901; token "Explore subagent")
+- **2.1.284** "Changed Ultracode into its own toggle in `/effort` (Tab, or `/effort ultracode [on|off]`): it no longer forces xhigh effort and stays on at any effort level" -- recorded (addendum 2.1.284, line 900; token "Ultracode")
+- **2.1.284** "Changed safety-related model switches in sessions that pin an Opus model with `ANTHROPIC_DEFAULT_OPUS_MODEL` or `modelOverrides`: on the Anthropic API, the API now picks the model to switch to for each kind of flag, not the pinned model" -- NOT RECORDED
+- **2.1.300** "Fixed Claude being told a background agent was lost, not resumable, after a cloud session's container was replaced, when the agent had already been resumed once" -- NOT RECORDED
+- **2.1.292** "Improved cloud sessions after a restart: Claude is now told which stopped background agents it can resume by id" -- NOT RECORDED
+- **2.1.288** "Fixed subagents in Claude Desktop's Code tab getting none of the tools of a user-configured MCP server named `memory`" -- NOT RECORDED
+
+## git-github
+
+- **2.1.305** "[Code Review] Fixed Code Review sometimes not reviewing the newest commit when several pushes landed on a pull request during a review" -- recorded (addendum 2.1.306, line 1198; weak match; token "Code Review")
+- **2.1.305** "[Code Review] Changed Code Review re-reviews so they no longer open with LGTM while earlier blocking findings are still open" -- recorded (addendum 2.1.306, line 1198; token "LGTM")
+- **2.1.304** "[Code Review] Added review levels to Code Review: Owners choose Quick, Standard (the default), or Deep for the organization, and can give individual repositories their own level" -- NOT RECORDED
+- **2.1.304** "[Code Review] Added an option in Code Review admin settings to review every repository in a GitHub organization, including ones added later, without selecting them one by one" -- recorded (addendum 2.1.304, line 1173; weak match; token "Code Review setting")
+- **2.1.304** "[Code Review] Fixed pull requests opened within a minute or two of an admin turning on Code Review being silently skipped; they are now retried and reviewed" -- recorded (addendum 2.1.304, line 1173; weak match; token "Code Review")
+- **2.1.302** "[Cloud sessions] Fixed the pull request status bar in cloud sessions flipping a pull request with merge conflicts back to ready while GitHub rechecked it" -- NOT RECORDED
+- **2.1.302** "[Cloud sessions] Fixed the diff view in cloud sessions missing changes or failing to load after the session's GitHub repository was renamed or moved" -- NOT RECORDED
+- **2.1.302** "[Cloud sessions] Fixed a scheduled routine run that failed partway being run again from the start an hour or more later, which could repeat work such as posting the same report twice" -- recorded (addendum 2.1.302, line 1123; token "failed partway")
+- **2.1.300** "Fixed OpenTelemetry `tool_result` events missing `git_commit_id` after `git commit -q` in repositories using reftable ref storage" -- recorded (addendum 2.1.302, line 1125; weak match; token "OpenTelemetry")
+- **2.1.300** "[Code Review] Fixed Code Review ignoring `@claude review` comments from people with write access whose GitHub organization membership is private; their comments now start a review" -- NOT RECORDED
+- **2.1.299** "Added support for turning off the attribution block in Claude Desktop's Code tab: set `CLAUDE_CODE_ATTRIBUTION_HEADER=0` in the `env` of a Claude apps gateway's `code` policy" -- recorded (addendum 2.1.299, line 1105; token "CLAUDE_CODE_ATTRIBUTION_HEADER")
+- **2.1.299** "Added a field to the attribution block in Claude Code sessions behind a Claude apps gateway; remove the block with `CLAUDE_CODE_ATTRIBUTION_HEADER=0`" -- recorded (addendum 2.1.299, line 1105; token "CLAUDE_CODE_ATTRIBUTION_HEADER")
+- **2.1.299** "Changed the errors shown when `/ultrareview` can't upload a repository to stop suggesting `git add .`, which could stage or commit untracked files such as `.env`" -- NOT RECORDED
+- **2.1.296** "Fixed `/code-review` ending on a raw JSON array in cloud sessions, the Agent SDK and IDE integrations; the findings now print as a numbered list" -- recorded (addendum 2.1.296, line 1087; weak match; token "code-review` output")
+- **2.1.296** "Fixed OpenTelemetry `tool_result` events missing `git_commit_id` after `git commit -q` or `git -C <dir> commit`" -- recorded (addendum 2.1.302, line 1125; weak match; token "OpenTelemetry")
+- **2.1.295** "Fixed temporary files left under `~/.claude/seed-admin` by an interrupted `/ultrareview` upload never being removed by the retention cleanup" -- NOT RECORDED
+- **2.1.295** "[Code Review] Fixed Code Review re-reviews saying no issues were found while earlier findings were still open; the comment now says how many remain open" -- NOT RECORDED
+- **2.1.290** "Fixed `claude --teleport` and `/teleport` deleting the files in a folder that had replaced a tracked file of the same name when you chose to stash: the stash is now refused, and says why" -- NOT RECORDED
+- **2.1.290** "Changed `/code-review` at medium effort to also report cleanup and CLAUDE.md conventions findings on models without tuned review settings, including Opus 5.5 and Sonnet 5.5" -- recorded (addendum 2.1.292, line 1008; token "cleanup and CLAUDE.md conventions")
+- **2.1.290** "Changed the built-in `gh api` in cloud sessions: a host other than github.com set in `GH_HOST` or `GH_REPO` is now refused (use `--hostname` or a full URL), and stderr notes requests to other hosts" -- recorded (addendum 2.1.292, line 1018; token "GH_HOST")
+- **2.1.288** "Added a built-in `gh api` to cloud sessions whose image has no GitHub CLI, and fixed the built-in sending control characters from file names, jq filters or GitHub errors to the terminal" -- recorded (addendum 2.1.288, line 980; token "built-in `gh api`")
+- **2.1.288** "Added `--max-findings <n>|all` to /code-review to report more or fewer findings than the usual limit; the choice is reused until you pass `--max-findings default`" -- recorded (addendum 2.1.288, line 979; token "--max-findings")
+- **2.1.287** "Self-hosted runner: Added a built-in `gh api` (REST only) for sessions that use Anthropic-managed git on macOS and Linux machines where the GitHub CLI is not installed" -- recorded (addendum 2.1.287, line 959; token "built-in `gh api`")
+- **2.1.287** "Fixed the commit attribution reminder being delivered inside a tool result after a compaction" -- recorded (addendum 2.1.287, line 961; token "commit attribution reminder")
+- **2.1.287** "[Code Review] Fixed Code Review skipping a pull request after a new push when its review had failed twice on the previous commit; it now reviews the latest commit" -- recorded (addendum 2.1.287, line 960; token "reviews the latest commit")
+- **2.1.287** "[Code Review] Fixed finding comments and their "Why this was flagged" text stopping mid-sentence; they now end on a complete sentence" -- recorded (addendum 2.1.287, line 960; token "complete sentence")
+- **2.1.286** "Fixed the commit attribution reminder being re-sent inside tool output when a model fallback lasts only one turn" -- recorded (addendum 2.1.286, line 940; token "commit attribution reminder")
+- **2.1.285** "Fixed SSH passphrase and new-host prompts from worktree and `/teleport` fetches taking over the terminal; these fetches now fail fast instead of asking" -- NOT RECORDED
+- **2.1.285** "Fixed `/autofix-pr` and `/schedule` saying the Claude GitHub App is not installed on a repository whose install status had not been checked yet" -- NOT RECORDED
+- **2.1.285** "Changed Code Review's pull request reviews and `/ultrareview` to run when `disableWorkflows` is on, unless the machine running the review has it set by its own administrator (MDM or the managed-settings file)" -- recorded (addendum 2.1.285, line 926; token "disableWorkflows")
+- **2.1.285** "[Code Review] Improved the Code Review check run to say when your repository's REVIEW.md wasn't applied, for example on a very large pull request or when REVIEW.md is a symbolic link" -- recorded (addendum 2.1.285, line 926; token "REVIEW.md")
+
+## settings-admin
+
+- **2.1.305** "Added `CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS` so unattended retry mode (`CLAUDE_CODE_RETRY_WATCHDOG`) notices a usage limit that was lifted before its reset" -- recorded (addendum 2.1.306, line 1197; token "RETRY_WATCHDOG_USAGE_LIMIT_RECHECK")
+- **2.1.305** "Fixed an MCP server passed by a cloud session or by the SDK's `setMcpServers` being replaced later in the session by a same-named server from your own settings" -- recorded (addendum 2.1.306, line 1197; token "same-named")
+- **2.1.305** "Fixed startup warnings printing as raw text above the logo: they now go to the debug log, and permission rules that restrict nothing show as warning rows under the banner" -- recorded (addendum 2.1.306, line 1192; token "restrict nothing")
+- **2.1.305** "Changed `allowedMcpServers` to stop filtering `managed-mcp.json` stdio servers that use `${VAR}` only in `env`: one your allowlist left out now loads on upgrade; use `deniedMcpServers` to keep it off" -- recorded (addendum 2.1.306, line 1190; token "deniedMcpServers")
+- **2.1.304** "Fixed the organization policy not refreshing until the hourly check after approving an `ANTHROPIC_API_KEY` at startup or switching "Use custom API key" in `/config`" -- recorded (addendum 2.1.304, line 1173; weak match; token "organization policy")
+- **2.1.304** "Fixed `context_management: Extra inputs are not permitted` errors behind LLM gateways; Claude Code now resends the request without that field" -- NOT RECORDED
+- **2.1.304** "Fixed OpenTelemetry settings delivered through server-managed settings being ignored for the whole session after signing in during first-run setup or the first start after /logout" -- recorded (addendum 2.1.304, line 1173; weak match; token "OpenTelemetry")
+- **2.1.304** "Fixed `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200k` silently setting a 100K window: the variable now accepts `k` and `M` suffixes like `--autocompact`, and warns when a value is out of range or ignored" -- recorded (addendum 2.1.304, line 1170; token "AUTO_COMPACT_WINDOW")
+- **2.1.304** "Improved cloud sessions: a new conversation's first turn no longer waits for the local (stdio) MCP servers of plugins synced from claude.ai, unless a server sets `alwaysLoad: true`" -- recorded (addendum 2.1.285, line 920; weak match; token "alwaysLoad")
+- **2.1.304** "Improved the `claude -p` invalid-settings warning: a file that did not load lists only what stopped it, and long lists are capped per file" -- NOT RECORDED
+- **2.1.304** "Changed mods' `settings.read` hooks to receive each settings layer and rewrite the merged settings, so a managed mod can make an organization's setting a ceiling, including the `cleanupPeriodDays` the retention sweep uses" -- recorded (addendum 2.1.304, line 1172; token "settings.read")
+- **2.1.304** "Changed tool search to be on by default behind a custom `ANTHROPIC_BASE_URL`; a 400 or 422 from the gateway is retried without it" -- recorded (addendum 2.1.304, line 1170; token "Tool search is on by default")
+- **2.1.302** "Added `CLAUDE_CODE_AUTO_MODE_MODEL` to choose the model the client-side auto mode classifier uses; it does not change the model for server-side auto mode" -- recorded (addendum 2.1.302, line 1121; token "AUTO_MODE_MODEL")
+- **2.1.302** "Fixed requests failing with "diagnostics: Extra inputs are not permitted" after switching to Vertex or Bedrock mid-session" -- recorded (addendum 2.1.302, line 1125; weak match; token "Vertex and Bedrock")
+- **2.1.302** "Changed `claude -p` and Agent SDK sessions with no permission mode to start in `default` mode on third-party providers, with telemetry off or on a fresh install; `--permission-mode auto` keeps auto" -- recorded (addendum 2.1.302, line 1117; token "start in `default`")
+- **2.1.301** "Added `CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS` so unattended retry mode (`CLAUDE_CODE_RETRY_WATCHDOG`) ends a request at a usage limit that resets too far away instead of waiting" -- recorded (addendum 2.1.302, line 1133; token "MAX_USAGE_LIMIT_WAIT_MS")
+- **2.1.301** "Fixed switching to a model whose name contains `application-inference-profile` running your `awsAuthRefresh` command and delaying model-switch hooks when the provider is not Bedrock" -- NOT RECORDED
+- **2.1.301** "Self-hosted runner: Fixed sessions started from Slack being unable to find or attach a repository when managed settings restrict MCP servers; use `deniedMcpServers` to keep those tools off" -- recorded (addendum 2.1.306, line 1190; weak match; token "deniedMcpServers")
+- **2.1.300** "Fixed a login refused by `forceLoginOrgUUID` leaving the refused organization's token stored, or live after `/login`" -- NOT RECORDED
+- **2.1.300** "Changed `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` sessions to ignore CA-bundle, tool-proxy, git TLS and git config variables like `SSL_CERT_FILE` in settings; under Claude Desktop, only in project settings" -- NOT RECORDED
+- **2.1.300** "Changed Claude Desktop's Code tab to apply managed settings when `forceLoginGatewayUrl` names an Anthropic-operated gateway that serves the session's hostname; that gateway must be reachable at start" -- recorded (addendum 2.1.295, line 1066; weak match; token "forceLoginGatewayUrl")
+- **2.1.300** "Changed large requests to api.anthropic.com to use gzip compression even when telemetry is disabled; set `CLAUDE_CODE_GZIP_REQUEST_BODIES=0` to turn it off" -- NOT RECORDED
+- **2.1.299** "Added `/usage` warnings for max effort, workflows, always-on context and large tool results" -- recorded (addendum 2.1.299, line 1103; token "`/usage` warns on max effort")
+- **2.1.299** "Fixed `claude mcp list`, `claude doctor` and `/status` reporting an empty `.mcp.json` as invalid" -- NOT RECORDED
+- **2.1.299** "Fixed MCP servers named `constructor` or `prototype` in an MCP config never being connected" -- NOT RECORDED
+- **2.1.299** "Fixed the Claude apps gateway serving models that a policy's `availableModelsMatch: exact` or `deniedModels` blocks; it now answers 400 and leaves them out of its model lists" -- NOT RECORDED
+- **2.1.299** "Fixed streams through a custom `ANTHROPIC_BASE_URL` being aborted after 180 seconds with no data arriving; they now wait 300 seconds, whether or not feature flags are loaded" -- NOT RECORDED
+- **2.1.299** "Fixed a settings file being ignored when `enabledMcpjsonServers` or `disabledMcpjsonServers` held a single server name (letters, digits, - or _) as a plain string" -- recorded (addendum 2.1.299, line 1098; token "enabledMcpjsonServers")
+- **2.1.299** "Fixed `claude -p` saying nothing when a settings file fails validation: text-output runs now list the file and the invalid entry on stderr" -- NOT RECORDED
+- **2.1.299** "Fixed managed settings and organization policy not being fetched when the stored login's plan was changed locally on machines whose MDM or managed-settings file sets `forceLoginOrgUUID`" -- NOT RECORDED
+- **2.1.299** "Fixed MCP connections over HTTP hanging for 30 seconds and failing when a server never ends the body of its reply to a notification (anthropics/claude-code#99014)" -- NOT RECORDED
+- **2.1.299** "Fixed MCP servers added to a running headless or SDK session being connected before some policy checks ran; a blocked server is now reported as failed without being contacted" -- NOT RECORDED
+- **2.1.299** "Fixed `claude mcp list`, `claude mcp get` and subagent MCP servers starting a server that a policy check blocks; it is now reported as blocked without being started" -- NOT RECORDED
+- **2.1.299** "Fixed `forceLoginOrgUUID` and `forceLoginMethod` from MDM or the managed-settings file being hidden or replaced by server-managed settings" -- recorded (addendum 2.1.295, line 1066; weak match; token "forceLoginMethod")
+- **2.1.299** "Fixed MCP OAuth sign-in, token refresh and sign-out not sending configured `headers`/`headersHelper` values, which broke servers behind an authenticating proxy" -- NOT RECORDED
+- **2.1.299** "Changed MCP allow rules to reach only the server they name: `mcp__a` no longer allows a server named `a__b` or `a_`; write `mcp__<server>__*` with the server's whole normalized name" -- recorded (addendum 2.1.299, line 1097; token "mcp__a")
+- **2.1.299** "Changed agent `tools:` lists to take only the named MCP server's tools; list a server whose name contains `__` as `mcp__<whole name>__*`" -- recorded (addendum 2.1.299, line 1097; token "take only the named server's tools")
+- **2.1.299** "Changed cloud session and Remote Control MCP connectors to negotiate MCP protocol version 2026-07-28 by default on installs that fetch no flags; `MCP_PROTOCOL_NEGOTIATION=legacy` opts out" -- recorded (addendum 2.1.302, line 1125; weak match; token "MCP protocol")
+- **2.1.299** "Changed MCP tool descriptions and server instructions from Anthropic's first-party MCP servers at `api.anthropic.com` to reach Claude in full instead of being cut at 4,096 characters" -- recorded (addendum 2.1.296, line 1085; token "4,096")
+- **2.1.296** "Added a `code` key to the Claude apps gateway's `managed.policies[]`: the same settings as `cli`, also applied in Claude Desktop's Code tab; beside `desktop`, it turns on Claude Desktop's gateway mode" -- recorded (addendum 2.1.296, line 1086; token "`code` policy key")
+- **2.1.296** "Added `CLAUDE_CODE_OVERLOADED_RETRY_MAX_DELAY_MS` environment variable to set a longer maximum delay for the backoff when retrying an overloaded (529) request" -- recorded (addendum 2.1.296, line 1086; token "OVERLOADED_RETRY_MAX_DELAY_MS")
+- **2.1.296** "Fixed headless sessions starting a folder's `.mcp.json` or plugin MCP server that was switched off for that folder, after changing directory or reloading plugins" -- NOT RECORDED
+- **2.1.296** "Fixed a Claude apps gateway that serves `allowedProviders` with `"gateway"` locking out laptops that name that gateway in user settings" -- NOT RECORDED
+- **2.1.296** "Fixed a saved Claude apps gateway sign-in being ignored on machines whose managed settings set `forceLoginMethod` to `gateway` with no `forceLoginGatewayUrl` (regression in 2.1.295)" -- recorded (addendum 2.1.295, line 1066; token "forceLoginMethod")
+- **2.1.296** "Changed the default limit on MCP tool descriptions sent up front and on MCP server instructions from 2,048 to 4,096 characters" -- recorded (addendum 2.1.296, line 1085; token "4,096")
+- **2.1.295** "Added support for `forceLoginMethod: "gateway"` and `forceLoginGatewayUrl` in your own user settings on machines with no managed settings, so `/login` opens on that Claude apps gateway" -- recorded (addendum 2.1.295, line 1066; token "forceLoginMethod")
+- **2.1.295** "Added `CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS` to limit how long unattended retry mode (`CLAUDE_CODE_RETRY_WATCHDOG`) waits out 429 and 529 errors" -- NOT RECORDED
+- **2.1.295** "Fixed every request failing on a `[1m]` model when a gateway, Bedrock, Vertex or Foundry refuses the context-1m beta; Claude Code now resends without it" -- NOT RECORDED
+- **2.1.295** "Fixed remote MCP servers in headless and SDK sessions staying disconnected after an outage longer than 15 seconds, or reconnecting in a tight loop to a server that drops each connection right after it connects; repeated drops now back off, up to 30s" -- NOT RECORDED
+- **2.1.295** "Fixed a rare failure to load managed settings at startup right after a login refresh" -- NOT RECORDED
+- **2.1.295** "Fixed Fable models listed in `availableModels` not appearing in the `/model` picker for sessions signed in to a Claude apps gateway; such a model now shows its built-in row in place of a `modelPicker` row added for the same model" -- NOT RECORDED
+- **2.1.295** "Fixed `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` hiding the Claude apps gateway spend limit in `/usage` and the status line. The spend limit request goes to the gateway the session is signed in to" -- NOT RECORDED
+- **2.1.295** "Fixed `--tools` and `--restricted` not applying to built-in tools that register after launch, and deprecated tool names reaching tools outside the caller's tool set" -- recorded (addendum 2.1.295, line 1056; token "--tools")
+- **2.1.295** "Fixed `/model`, `/fast` and `/output-style` saving their setting without asking a plugin's `config.set` hook" -- NOT RECORDED
+- **2.1.295** "Fixed an MCP sign-in or reconnect that finishes late in headless and SDK sessions relisting a server set with `setMcpServers()` as your own" -- NOT RECORDED
+- **2.1.295** "Changed MCP tool descriptions the model loads through tool search to be cut at 16,384 characters instead of 2,048" -- NOT RECORDED
+- **2.1.295** "Changed claude.ai connectors to negotiate MCP protocol version 2026-07-28 by default on installs that fetch no flags; `MCP_PROTOCOL_NEGOTIATION=legacy` opts out" -- recorded (addendum 2.1.302, line 1125; weak match; token "MCP protocol")
+- **2.1.295** "Fixed non-interactive sessions telling you about MCP servers that need authentication when your request doesn't use them" -- NOT RECORDED
+- **2.1.293** "Improved startup for Team and Enterprise organizations: policy and managed settings are fetched earlier, and a stalled request is retried after 3 seconds" -- NOT RECORDED
+- **2.1.292** "Added `CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS` environment variable to set a longer base delay for the backoff when retrying an overloaded (529) request" -- NOT RECORDED
+- **2.1.292** "Fixed `NO_PROXY` being ignored for Claude Code's own API requests (sign-in, policy, feedback, artifacts) when `HTTPS_PROXY` is set" -- NOT RECORDED
+- **2.1.292** "Fixed an MCP tool with a name longer than 128 characters making every request fail; that tool is now left out and an MCP error names it" -- NOT RECORDED
+- **2.1.292** "Improved startup with local (stdio) MCP servers that ignore the newer protocol check: after one slow connect they are remembered for 7 days and connected the older way without the wait" -- NOT RECORDED
+- **2.1.292** "Changed local (stdio) MCP server connections to negotiate protocol version 2026-07-28 by default on every install, including Bedrock, Vertex and Foundry; `MCP_PROTOCOL_NEGOTIATION=legacy` opts out" -- recorded (addendum 2.1.302, line 1125; weak match; token "MCP protocol")
+- **2.1.290** "Added a warning when a managed settings file is a link to a file outside the managed settings folder" -- NOT RECORDED
+- **2.1.290** "Fixed requests failing behind proxies and gateways that reject one of Claude Code's beta headers with a status other than 400, or together with a second beta" -- NOT RECORDED
+- **2.1.290** "Fixed an MCP server provided by your organization being relisted as your own after signing in or reconnecting, including from a late result in headless and SDK sessions" -- NOT RECORDED
+- **2.1.290** "Fixed the `plansDirectory` setting's project-root check for paths that contain a backslash on macOS and Linux" -- NOT RECORDED
+- **2.1.290** "Fixed `disableClaudeAiConnectors` and `allowedMcpServers` URL rules not being applied to some MCP entries declared in `.mcp.json`, plugins or agents" -- NOT RECORDED
+- **2.1.290** "Fixed the first feature-flag request of a session ignoring a proxy or API endpoint set in a project's settings" -- recorded (addendum 2.1.292, line 1019; token "first feature-flag request")
+- **2.1.290** "Fixed slow or failed startup since 2.1.285 under SDK hosts such as the VS Code extension when managed settings deny reads of many paths on a slow filesystem (notably Windows drives under WSL)" -- NOT RECORDED
+- **2.1.290** "Fixed `CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS=5m` being read as 5 ms and cancelling remote dialogs at once; values with a unit suffix now fall back to `dialogExpiry`" -- NOT RECORDED
+- **2.1.290** "Fixed edits to the file a symlinked settings file points at running without the settings-file permission question" -- NOT RECORDED
+- **2.1.290** "Changed `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to also skip the startup connection warm-up" -- NOT RECORDED
+- **2.1.290** "Changed `CLAUDE_CODE_DISABLE_ATTACHMENTS` so a repository's `.claude/settings.json` or `.claude/settings.local.json` can no longer set it; shell, user and managed settings still can" -- recorded (addendum 2.1.292, line 1019; token "DISABLE_ATTACHMENTS")
+- **2.1.288** "Fixed session titles, memory recall and prompt hooks failing on Mantle or behind gateways that reject structured outputs; added `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS` to turn structured outputs off" -- recorded (addendum 2.1.288, line 981; token "CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS")
+- **2.1.288** "Fixed unattended sessions (`CLAUDE_CODE_RETRY_WATCHDOG`) retrying for hours after a very long response stream failed; Claude Code now streams again, and gives up after three timeouts" -- recorded (addendum 2.1.302, line 1133; weak match; token "RETRY_WATCHDOG")
+- **2.1.288** "Fixed restarted cloud sessions restoring a model that the organization's enforced model list refuses" -- NOT RECORDED
+- **2.1.288** "Improved cloud sessions: a new conversation's first turn no longer waits for a stdio MCP server whose config sets `alwaysLoad: false`" -- recorded (addendum 2.1.285, line 920; weak match; token "alwaysLoad")
+- **2.1.288** "Changed MCP URL prompts from servers that can't report when you're done to wait for "I'm done, continue" before the tool call continues, so you can finish in the browser first" -- recorded (addendum 2.1.287, line 958; weak match; token "URL prompts")
+- **2.1.287** "Added URL prompts from MCP servers on the 2025-11-25 protocol, for example to sign in. If a server no longer connects after this update, add "bareElicitationCapability": true to its MCP config entry" -- recorded (addendum 2.1.287, line 958; token "URL prompts")
+- **2.1.287** "Fixed Bedrock and Vertex startup model checks ignoring an enforced `availableModels` list, which could collapse `/model` to one Opus row" -- NOT RECORDED
+- **2.1.287** "Fixed `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` not removing the structured-output format from session-title and prompt-hook requests, which Bedrock-backed gateways reject" -- NOT RECORDED
+- **2.1.287** "Changed MCP server `alwaysLoad: false` to defer all of that server's tools behind tool search" -- recorded (addendum 2.1.287, line 958; token "alwaysLoad")
+- **2.1.285** "Added `allowedProviders` managed setting to limit which API providers a machine may use (Anthropic API, a custom endpoint, Bedrock, Mantle, Vertex AI, Foundry, Claude Platform on AWS, or a Cloud gateway)" -- NOT RECORDED
+- **2.1.285** "Added `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES` environment variable to cap re-sends of a non-streaming fallback request that timed out" -- NOT RECORDED
+- **2.1.285** "Fixed Claude Code refusing to start when the OS denies reading the managed settings file; it now warns and starts without that file's policies. Other read errors and unparseable files stop every session" -- NOT RECORDED
+- **2.1.285** "Fixed switching off an MCP server added mid-session in SDK and `-p` sessions leaving its tools available" -- recorded (addendum 2.1.285, line 920; token "Switching off an MCP server")
+- **2.1.285** "Fixed sessions that authenticate with `ANTHROPIC_AUTH_TOKEN` against the Anthropic API never loading the organization's policy" -- NOT RECORDED
+- **2.1.285** "Fixed `.claude/settings.local.json` allow rules being held back outside a git repository when git's trace2 output is configured" -- NOT RECORDED
+- **2.1.285** "Changed MCP tools so a tool that sets its own `_meta['anthropic/alwaysLoad']` to false stays deferred when its `--mcp-config`, Agent SDK or plugin server is set to `alwaysLoad`" -- recorded (addendum 2.1.285, line 920; token "alwaysLoad")
+- **2.1.285** "Changed sessions behind a custom `ANTHROPIC_BASE_URL` to use the 1M context window of models that have one (Opus 4.7+, Sonnet 5+, Fable); run `/autocompact 200k` if your gateway stops at 200K" -- NOT RECORDED
+- **2.1.285** "Changed the one-time offer to make auto mode your default permission mode to also show on third-party providers and with telemetry off, when your user settings default to another mode" -- NOT RECORDED
+- **2.1.285** "Changed `claude -p` and Python Agent SDK sessions on third-party providers or with telemetry off to start in auto mode when no permission mode is configured, like interactive sessions; `--permission-mode` still overrides it" -- recorded (addendum 2.1.285, line 913; token "start in auto mode")
+- **2.1.285** "Changed the MCP server name `widgets` to be reserved in cloud sessions and on self-hosted runners: your own server under it, or a close spelling such as `widgets_`, no longer loads, so rename it" -- NOT RECORDED
+- **2.1.285** "[Cloud sessions] Changed `MCP_DISCOVERY_CACHE=1`, when set in your cloud environment's variables rather than a settings file, to reuse your connectors' tool lists after a session restart; other MCP servers are no longer cached and connect at startup" -- NOT RECORDED
+- **2.1.284** "Fixed `claude mcp add` reporting success when managed settings restrict MCP servers to plugins; it now refuses and says what to do, instead of saving a server that never loads" -- NOT RECORDED
+- **2.1.284** "Improved the startup refusal when managed settings require a sign-in (`forceLoginMethod` or `forceLoginOrgUUID`) and an API key, token or `apiKeyHelper` is configured: it now names the credential in use, where it is set, and how to remove it" -- recorded (addendum 2.1.295, line 1066; weak match; token "forceLoginMethod")
+- **2.1.284** "Changed the non-interactive first turn to still wait up to 2s for connecting MCP servers named by `--allowedTools` or an `mcp_tool` hook, even when `CLAUDE_CODE_MCP_STARTUP_WAIT_MS` is `0`" -- NOT RECORDED
+- **2.1.284** "[VSCode] Changed `CLAUDE_CONFIG_DIR` in the `claudeCode.environmentVariables` setting to apply only when it is an absolute path, and passed it to terminals that continue the chat" -- NOT RECORDED
+- **2.1.299** "Fixed deny and ask rules for an MCP server (`mcp__<server>`) not applying when the server's normalized name contains a double underscore" -- recorded (addendum 2.1.299, line 1097; token "normalized name contains a double underscore")
+
+## security-data
+
+- **2.1.305** "Added `sandbox.allowNestedUserNamespaces` so sandboxed commands on Linux can create user namespaces (Chromium, rootless podman); this lets them get around the sandbox's file protections" -- recorded (addendum 2.1.306, line 1189; token "allowNestedUserNamespaces")
+- **2.1.304** "Fixed sandboxed commands failing to start on Linux when a `sandbox.filesystem.denyRead` glob contains brackets that are not a character class, such as a `[user-id]` route folder" -- recorded (addendum 2.1.304, line 1173; weak match; token "Sandbox")
+- **2.1.300** "Changed local session transcripts to also record each API request's system prompt, tools and parameters, so a transcript you choose to share can reproduce a request exactly" -- recorded (addendum 2.1.302, line 1144; token "system prompt and tools")
+- **2.1.300** "Removed the `--sandbox` and `--no-sandbox` flags from `claude remote-control`, which had no effect; passing either now exits with an error. Set `sandbox.enabled` in settings to sandbox sessions" -- NOT RECORDED
+- **2.1.299** "Fixed an agent teammate started without a description keeping part of a credential from its prompt in the task description shown for it" -- NOT RECORDED
+- **2.1.299** "Fixed a sandboxed shell command being able to write into a `--plugin-dir` folder, whose code Claude Code reloads and runs outside the sandbox" -- recorded (addendum 2.1.299, line 1107; token "--plugin-dir")
+- **2.1.299** "Fixed sign-in, MCP servers and project trust appearing lost on Linux after a sandboxed command left an empty `.config.json` in the config directory" -- NOT RECORDED
+- **2.1.299** "Fixed `/sandbox` reporting success when its setting could not be saved because the project folder is not writable; it now says nothing changed and why" -- NOT RECORDED
+- **2.1.299** "Fixed the server-managed settings request to Anthropic carrying a third-party gateway's API key when a managed settings file sets `ANTHROPIC_BASE_URL`" -- NOT RECORDED
+- **2.1.299** "Fixed feature flag, startup, fast mode, profile and feedback requests to Anthropic carrying the API key configured for a third-party gateway (`ANTHROPIC_BASE_URL`); Anthropic API keys are still sent" -- NOT RECORDED
+- **2.1.299** "Changed requests to claude.ai's connector proxy and to Anthropic-hosted MCP servers to no longer follow HTTP redirects; redirects by a connector's own server are unaffected" -- NOT RECORDED
+- **2.1.299** "Changed MCP requests in cloud and self-hosted runner sessions to no longer follow HTTP redirects from the session's MCP proxy" -- NOT RECORDED
+- **2.1.296** "Fixed secret redaction in shared transcripts and debug logs missing some values that follow a key with no value, including in JSON written inside a shell string" -- recorded (addendum 2.1.296, line 1087; token "secret redaction")
+- **2.1.295** "Fixed a tampered cache of server-managed settings making a person's own plugin count as organization-managed on machines whose managed settings list or enable plugins" -- NOT RECORDED
+- **2.1.295** "Self-hosted runner: Changed the runner to stop passing `CCR_AUTO_MODE_ALLOW`, `CCR_AUTO_MODE_ENVIRONMENT` and `CCR_AUTO_MODE_SOFT_DENY` into a session's environment" -- NOT RECORDED
+- **2.1.292** "Fixed sandboxed commands being able to read the staged file copies of `/ultrareview` uploads under `~/.claude/seed-admin`" -- NOT RECORDED
+- **2.1.292** "Fixed a managed sandbox read-deny path (and user ones beside it) that appears or re-points mid-session not dropping project grants inside it or ending credential injection from files it covers" -- NOT RECORDED
+- **2.1.292** "Fixed a notebook or PDF read on macOS and Windows being able to return a file outside what was approved, through a link swapped in mid-read" -- NOT RECORDED
+- **2.1.292** "Fixed a tampered on-disk cache of server-managed settings being able to switch off or unseat the built-in policy plugin while the settings fetch failed" -- NOT RECORDED
+- **2.1.292** "Improved sandbox auto-allow: with strict sandbox mode set in user, managed or --settings settings, an interpreter command with an env var prefix like `FOO=bar python3 app.py` runs unprompted" -- NOT RECORDED
+- **2.1.290** "Added a /status and doctor warning when managed settings ignore user-configured sandbox allowRead paths or allowed domains" -- NOT RECORDED
+- **2.1.290** "Fixed an image read on macOS and Windows being able to return a file outside what was approved, through a link swapped in mid-read" -- NOT RECORDED
+- **2.1.290** "Fixed an `@`-mention under the read block or `--restricted` being able to read a file outside the working directories through a link changed mid-read" -- NOT RECORDED
+- **2.1.290** "Fixed a short form of a `git clone` option keeping the sandbox exemption from a git pattern such as `git *` in `sandbox.excludedCommands`; it is now treated like the long form" -- NOT RECORDED
+- **2.1.290** "Fixed `--restricted` (and `CLAUDE_CODE_RESTRICTED=1`) sessions opening the cross-session messaging socket" -- NOT RECORDED
+- **2.1.288** "Fixed `sandbox.credentials.files` entries on git config files not taking effect while `permissions.blockReadsOutsideWorkingDirectories` is on" -- NOT RECORDED
+- **2.1.287** "Added `prompt_text` to the OpenTelemetry `user_prompt` event, a copy of `prompt` for backends that nest dotted keys; drop or mask it wherever you drop or mask `prompt` (anthropics/claude-code#70763)" -- NOT RECORDED
+- **2.1.286** "Fixed MCP error messages showing a credential's value when "Bearer" or "Basic" came before its key name" -- NOT RECORDED
+- **2.1.286** "Fixed percent-encoded Bearer tokens being only partly masked in error messages" -- NOT RECORDED
+- **2.1.286** "Fixed redacted logs and transcripts showing a secret whose key name has an invisible character inside, such as a zero-width space" -- NOT RECORDED
+- **2.1.286** "Fixed logs and transcripts showing part of a URL password that contains punctuation such as `)`, quotes, `]`, `&` or a second `@`, or that runs past a `/` to a bracketed host such as `[::1]` in an ssh URL" -- NOT RECORDED
+- **2.1.285** "Fixed redacted logs and transcripts showing part of a URL password that contains `@`, or all of it when the URL writes its `@` as `%40`" -- NOT RECORDED
+- **2.1.285** "Windows: Changed project and local settings `env` to no longer set `ALLUSERSPROFILE`, `SystemDrive`, or the `CommonProgramFiles` variables; set them in user or managed settings instead" -- NOT RECORDED
+- **2.1.285** "Changed `claude mcp get` to hide the command, arguments, and environment values of stdio MCP servers provided by plugins; variable names are still shown" -- NOT RECORDED
+- **2.1.285** "Changed sandbox settings so project settings cannot widen or turn off an admin-required sandbox, replace the proxy behind a managed deny list, extend a strict allowlist, or reopen managed read-denies" -- recorded (addendum 2.1.285, line 919; token "widen or turn off an admin-required sandbox")
+- **2.1.284** "Fixed sandboxed Bash commands failing to start on Linux when the working directory is write-denied and contains a read-denied directory" -- NOT RECORDED
+- **2.1.299** "Fixed sandboxed commands on macOS being able to read or write a denied path by its real location when the denied path passes through a symlink" -- NOT RECORDED
+- **2.1.299** "Fixed sandbox `denyRead` and `allowRead` globs with braces, parentheses or backslashes in a folder's name being read differently by Claude Code's settings checks than by the sandbox" -- NOT RECORDED
+- **2.1.299** "Fixed sandbox glob `allowRead` and `allowWrite` entries not being re-checked when the directory they start from is replaced by a symlink" -- NOT RECORDED
+
+## checkpointing
+
+- **2.1.302** "[Cloud sessions] Fixed "Rewind to here" failing on every message except the newest in cloud sessions; self-hosted runners need Claude Code v2.1.246 or later" -- NOT RECORDED
+- **2.1.301** "Fixed skills no longer being listed to the model after using `/rewind`" -- NOT RECORDED
+- **2.1.295** "Fixed a stopped scheduled task coming back on resume after a rewind, and a scheduled task being lost on resume after Esc or a rewind following a compaction" -- NOT RECORDED
+- **2.1.295** "Fixed the prompt sent after a `/rewind` being lost, and the removed turns coming back, when the session was moved to the background or resumed after being killed" -- NOT RECORDED
+- **2.1.286** "Fixed `/compact`, `/clear`, and `/rewind` typed while viewing a background agent's or teammate's transcript silently acting on the main conversation: a dialog now names the target and asks first" -- NOT RECORDED
+- **2.1.290** "Fixed `/rewind` not listing a prompt sent while Claude was still working" -- NOT RECORDED
+- **2.1.285** "Fixed Artifact tool publishes after a conversation rewind (Esc Esc) overwriting a file's newer content that Claude had read only in the rewound turns; the publish is now refused until Claude re-reads the file" -- NOT RECORDED
+
+## best-practices
+
+- **2.1.301** "Fixed the "new task? /clear to save tokens" hint coming back right after you interrupt a response" -- NOT RECORDED
+- **2.1.300** "Fixed Claude naming files in the session scratchpad by a bare filename or relative path instead of their full path" -- NOT RECORDED
+
+## tools-context
+
+- **2.1.305** "Fixed every request failing on Vertex, Bedrock and other providers when the endpoint or a gateway rejects tool search, and behind gateways with ToolSearch disallowed or left out of `--tools` (a 2.1.304 regression): Claude Code now retries without it" -- recorded (addendum 2.1.306, line 1197; token "rejects tool search")
+- **2.1.305** "Fixed Bash commands on a full disk failing with a raw `ENOSPC` file path: the error now says the disk is full and that nothing ran" -- recorded (addendum 2.1.306, line 1197; token "ENOSPC")
+- **2.1.302** "Fixed the Read tool loading an image file of any size, or a pipe or device named like an image, entirely into memory; image sources over 128 MB are now refused" -- recorded (addendum 2.1.302, line 1125; token "128 MB")
+- **2.1.302** "Fixed the PowerShell tool not finding commands in a plugin's `bin/` folder, and reporting an error when a search that finds nothing (rg, grep, findstr, git grep) is piped into `Select-Object` or another formatting cmdlet" -- recorded (addendum 2.1.302, line 1125; weak match; token "PowerShell")
+- **2.1.302** "Fixed MCP servers showing no tools, or every tool call failing, when the server negotiates protocol version 2026-07-28 but omits `resultType`, `ttlMs` or `cacheScope`" -- recorded (addendum 2.1.302, line 1125; token "MCP protocol")
+- **2.1.301** "Fixed Grep and Glob reporting no matches when the search program failed unexpectedly before returning any results; they now return an error saying the search failed" -- recorded (addendum 2.1.302, line 1132; token "Grep and Glob report a failed search")
+- **2.1.301** "Fixed the Read tool reading binary files such as .xlsm, .parquet, .epub and .heic as text" -- NOT RECORDED
+- **2.1.300** "Fixed automatic tool search (`ENABLE_TOOL_SEARCH=auto`) turning off part-way through a conversation, for example while MCP servers reconnect after a resume" -- NOT RECORDED
+- **2.1.300** "Fixed a conversation failing on every turn with a 400 error when the API rejected an MCP tool's input schema; Claude Code now sends that tool without parameters for the rest of the conversation" -- NOT RECORDED
+- **2.1.300** "Fixed Claude not being told about an MCP server's tools and instructions until its next tool call, when the server finished connecting after a compaction" -- NOT RECORDED
+- **2.1.300** "Fixed Claude polling a background command's output file or sleeping while it runs" -- recorded (addendum 2.1.302, line 1144; token "no longer polls a background command")
+- **2.1.300** "Fixed Claude searching for deferred tools already loaded earlier in the conversation when a session resumes a history that never listed them" -- NOT RECORDED
+- **2.1.300** "Changed exit to force-kill background commands still running 1.5 seconds after being asked to stop; in fullscreen mode they could previously be left running" -- NOT RECORDED
+- **2.1.299** "Fixed Read garbling UTF-16LE files with a byte-order mark, and Write dropping byte-order marks or silently converting Windows-1252, Shift-JIS, GBK or UTF-16BE files to UTF-8 (now refused)" -- NOT RECORDED
+- **2.1.296** "Added an `allow_large` option to the Read tool so Claude can read a text file past the usual size limits in one call when it needs the whole file and the context has room" -- recorded (addendum 2.1.296, line 1079; token "allow_large")
+- **2.1.296** "Fixed Edit and NotebookEdit replacing every non-ASCII character in files that are not valid UTF-8 (Windows-1252, Shift-JIS, GBK); such edits are now refused" -- recorded (addendum 2.1.296, line 1083; token "valid UTF-8")
+- **2.1.295** "Fixed CSS, JavaScript and XML files returned by MCP tools being saved as .bin, which the Read tool refuses; font and icon files now get their own extension too" -- NOT RECORDED
+- **2.1.295** "Fixed Bash tool calls failing when the model passes `command_description` instead of `description`" -- NOT RECORDED
+- **2.1.295** "Fixed a file being treated as already read after a Bash command such as `cat` ran without printing it" -- NOT RECORDED
+- **2.1.292** "Fixed Grep and Glob reporting no matches when the file or folder they were given could not be read; Claude now retries once or tells you" -- recorded (addendum 2.1.302, line 1132; weak match; token "Grep and Glob report a failed search")
+- **2.1.292** "Fixed @-mentioned text files over 256KB being left out silently: Claude is now told the file's size and to read it in portions" -- NOT RECORDED
+- **2.1.290** "Fixed WebFetch silently dropping page text past 100,000 characters; it now says how much was unread and takes an `offset` to read on" -- NOT RECORDED
+- **2.1.290** "Fixed sandboxed commands that pipe a heredoc into another command (`cat <<EOF | python3`) asking for approval on every run" -- recorded (addendum 2.1.288, line 973; weak match; token "heredoc")
+- **2.1.290** "Changed the interactive session's WebSearch budget to refill over time (100 calls/hour; `CLAUDE_CODE_WEB_SEARCH_REFILLS_PER_HOUR` sets the rate, 0 turns it off) instead of ending after 200 calls" -- NOT RECORDED
+- **2.1.288** "Fixed sandboxed heredocs with an unquoted delimiter (`python3 <<EOF`) asking for approval on every run under sandbox auto-allow when the body holds only plain text and simple `$VAR` references" -- recorded (addendum 2.1.288, line 973; token "heredocs with an unquoted delimiter")
+- **2.1.287** "Fixed Claude being told to page large MCP results saved as JSON with Read's offset and limit, which cannot split one long line" -- NOT RECORDED
+- **2.1.287** "Improved handling of large MCP tool results: less memory, smaller session files, and no extra upload to count tokens for results far over the limit" -- NOT RECORDED
+- **2.1.286** "Changed the WebFetch error for a rate-limited domain safety check to tell Claude not to retry it in a loop" -- NOT RECORDED
+- **2.1.285** "Added `CLAUDE_CODE_DISABLE_WEB_FETCH` environment variable to turn off the WebFetch tool" -- recorded (addendum 2.1.285, line 921; token "DISABLE_WEB_FETCH")
+- **2.1.285** "Fixed sandbox auto-allow asking for approval on every run of many inline scripts (`python3 -c`, `node -e`) just because they contain `=`" -- NOT RECORDED
+- **2.1.285** "Fixed WebFetch reporting a rate-limited domain safety check as a network or enterprise policy block" -- NOT RECORDED
+- **2.1.285** "Changed Team and Enterprise sessions, and sessions whose sign-in plan Claude Code can't determine, to withhold WebFetch until the organization policy loads if it couldn't be loaded at startup" -- recorded (addendum 2.1.285, line 921; token "withhold it until the organization policy loads")
+- **2.1.284** "Fixed MCP tool calls in a resumed session failing with "No such tool available" while their server was still connecting; the call now waits up to 10 seconds for the server" -- NOT RECORDED
+- **2.1.299** "Fixed MCP tool calls in headless and SDK sessions sometimes failing or running twice when a background reconnect closed the connection they were running on" -- NOT RECORDED
+- **2.1.290** "Fixed the Bash tool occasionally losing shell aliases, functions and plugin PATH entries for a whole session when its first command ran seconds after startup on a new config directory" -- NOT RECORDED
+- **2.1.288** "Fixed MCP tool calls sometimes running twice when a remote server's result was over 16 MB or could not be parsed" -- NOT RECORDED
+- **2.1.295** "Fixed Edit treating a file as fully read when its contents changed without its modification time advancing" -- NOT RECORDED
+
+## workflows
+
+- **2.1.305** "Fixed Workflow resume re-running already-completed `pipeline()` and `parallel()` agents instead of serving them from the run's journal" -- recorded (addendum 2.1.306, line 1188; token "Workflow resume")
+- **2.1.301** "Fixed workflow agents sometimes skipping their step, and the run still reporting success, after reading the harness note that their task text carries no user authority" -- recorded (addendum 2.1.302, line 1131; token "skipped their step")
+- **2.1.301** "Fixed workflow scripts asking for permission or being refused when read, edited or re-run after a Bash `cd` in the same session" -- recorded (addendum 2.1.302, line 1132; token "Workflow scripts no longer prompt")
+- **2.1.300** "Added support for rewriting a workflow agent's `prompt` and `model` in the `agent.spawn` mod hook, which could only refuse workflow agents before" -- recorded (addendum 2.1.302, line 1143; token "agent.spawn")
+- **2.1.300** "Changed background sessions to resume a carried workflow through the Workflow tool's approval instead of running it from the handoff file" -- NOT RECORDED
+- **2.1.299** "Changed plugin hooks and workflow scripts to refuse values they hand back that nest deeper than 28,000 levels, with an error naming the limit (workflow scripts allowed 100,000)" -- NOT RECORDED
+- **2.1.296** "Added `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` to run every workflow agent on one model while other subagents keep theirs" -- recorded (addendum 2.1.296, line 1075; token "WORKFLOW_SUBAGENT_MODEL")
+- **2.1.296** "Fixed workflow scripts silently truncating results, agent options and other values nested deeper than about 20,000 levels, and deeply nested results writing huge task output files" -- recorded (addendum 2.1.296, line 1084; token "no longer truncates deeply nested")
+- **2.1.296** "Fixed the Workflow tool refusing script files with CRLF line endings, such as files checked out on Windows" -- recorded (addendum 2.1.296, line 1084; token "CRLF")
+- **2.1.295** "Fixed forked skills invoked from Workflow subagents delivering their results to the main conversation instead of the invoking agent" -- NOT RECORDED
+- **2.1.295** "Fixed Claude being told on resume that an unfinished background workflow may have been stopped by `TaskStop`, which can never be the cause" -- NOT RECORDED
+- **2.1.295** "Improved the Workflow tool's `scriptPath` refusal: it now says to pass the script inline via `script`, the route that works in sessions without a Read tool" -- recorded (addendum 2.1.295, line 1063; token "scriptPath")
+- **2.1.292** "Added workflow agents to the `agent.spawn` mod hook, with their run and index, so a mod can refuse them" -- recorded (addendum 2.1.289, line 998; weak match; token "agent.spawn")
+- **2.1.290** "Fixed background agents failing with "Agent stalled" and Workflow tool subagents restarting from their prompt when a Mac woke from sleep" -- recorded (addendum 2.1.292, line 1021; token "Workflow subagents no longer restart")
+- **2.1.286** "Fixed Workflow tool subagents being restarted from their original prompt when a connection stalled for a few minutes mid-response" -- recorded (addendum 2.1.292, line 1021; weak match; token "Workflow subagents no longer restart")
+- **2.1.285** "Fixed a failed `agent()`, `parallel()` or `pipeline()` call that a workflow script awaits later, or not at all, being treated as an unhandled promise rejection, which could end a background session" -- recorded (addendum 2.1.285, line 925; token "pipeline()")
+- **2.1.284** "Improved Workflow tool sandbox hardening for errors thrown by async script hooks" -- NOT RECORDED
+
+## other
+
+- **2.1.297, 2.1.298**: no changelog section in the input file; nothing to triage.
+- **2.1.306** "Fixed `claude -p` inside cloud sessions reporting "Not logged in" when started without the session's environment variables" -- recorded (addendum 2.1.306, line 1183; token "Not logged in")
+- **2.1.305** "Improved `/usage`: each warning is now a one-line fix that names its source, and `f` applies the fixes; the same fixes appear in VS Code and `/doctor`" -- recorded (addendum 2.1.306, line 1196; token "/usage")
+- **2.1.303** "Bug fixes and reliability improvements" -- recorded (addendum 2.1.303, line 1150; token "Bug fixes and reliability improvements")
+- **2.1.302** "Fixed a cloud session's cost and usage restarting from zero after the session resumed in a new process" -- recorded (addendum 2.1.302, line 1113; weak match; token "cloud session")
+- **2.1.302** "[Cloud sessions] Fixed routine runs showing as Completed after their cloud session stopped unexpectedly, and as Cancelled when archived before they started, instead of failed" -- recorded (addendum 2.1.302, line 1123; token "stopped unexpectedly")
+- **2.1.299** "Fixed `/usage`, the approaching-limit warning (terminal and VS Code) and the status line sometimes showing more than 100% used (anthropics/claude-code#92238)" -- NOT RECORDED
+- **2.1.296** "Updated `/cost`, the status line, `--max-budget-usd` and the SDK's cost figures to price Sonnet 5.5 cache reads at $0.10 per million tokens (was $0.20)" -- recorded (addendum 2.1.296, line 1076; token "$0.10 per million")
+- **2.1.293** "Changed OpenTelemetry `claude_code.at_mention` logging to emit at most 100 agent and 100 MCP-resource events each time a prompt is read" -- NOT RECORDED
+- **2.1.288** "Fixed OpenTelemetry `claude_code.tool.blocked_on_user` spans reporting `unknown` source or decision in `-p` and SDK sessions and for PreToolUse hook approvals" -- NOT RECORDED
+- **2.1.285** "Fixed `/cost` and SDK `modelUsage` reporting a turn under the wrong model when the server answered a refusal with a different fallback model than the client expected" -- NOT RECORDED
+- **2.1.284** "Added dollar amounts to the Claude apps gateway spend limit in `/usage` and the status line (for example "$271.40 / $500.00 spent this month") when the gateway runs this version or later; the status line's `rate_limits.spend_limit` also gains `used_usd`, `limit_usd` and `period`" -- NOT RECORDED
+- **2.1.302** "Fixed prompt suggestions spending usage credits on models your plan pays for only with credits: they are now skipped after a reply billed to credits" -- NOT RECORDED
+- **2.1.286** "Fixed the Claude apps gateway's spend meter pricing 1-hour prompt cache writes at the cheaper 5-minute rate, and counting only the first model call's input tokens on streamed turns that run a server-side tool such as web search" -- NOT RECORDED
+
+## NOT RECORDED
+
+- **2.1.304** (hooks-permissions) "Added a transcript line when a plugin that runs first skips one of your mod's hooks, naming the event and the plugin"
+- **2.1.304** (plugins) "Fixed a claude.ai Directory plugin's skills not running as commands when picked from the "/" menu in Cowork cloud sessions"
+- **2.1.304** (settings-admin) "Fixed `context_management: Extra inputs are not permitted` errors behind LLM gateways; Claude Code now resends the request without that field"
+- **2.1.304** (agents-models) "Fixed `/effort status`, `/effort ultracode` and the prompt's effort indicator showing a guessed effort level when `CLAUDE_CODE_EFFORT_LEVEL` is `auto` or `unset` and no level is sent"
+- **2.1.304** (sessions-worktrees) "Improved session file size in auto mode: the safety classifier's context is no longer stored with every request"
+- **2.1.304** (settings-admin) "Improved the `claude -p` invalid-settings warning: a file that did not load lists only what stopped it, and long lists are capped per file"
+- **2.1.304** (sessions-worktrees) "Improved resume of large compacted sessions in SDK and headless mode: the first request after resuming is sent sooner"
+- **2.1.304** (skills-commands) "Updated the /claude-api skill to use the `ant` CLI on Claude Platform on AWS instead of falling back to the SDK or curl"
+- **2.1.304** (git-github) "[Code Review] Added review levels to Code Review: Owners choose Quick, Standard (the default), or Deep for the organization, and can give individual repositories their own level"
+- **2.1.302** (plugins) "Fixed `claude plugin details <name>@builtin` suggesting `claude plugin list`, which never shows built-in plugins, when the plugin isn't found; it now points to `/plugin`"
+- **2.1.302** (sessions-worktrees) "Changed where the Claude in Chrome instructions sit in the system prompt so that new conversations can read them from the shared prompt cache"
+- **2.1.302** (git-github) "[Cloud sessions] Fixed the pull request status bar in cloud sessions flipping a pull request with merge conflicts back to ready while GitHub rechecked it"
+- **2.1.302** (git-github) "[Cloud sessions] Fixed the diff view in cloud sessions missing changes or failing to load after the session's GitHub repository was renamed or moved"
+- **2.1.302** (checkpointing) "[Cloud sessions] Fixed "Rewind to here" failing on every message except the newest in cloud sessions; self-hosted runners need Claude Code v2.1.246 or later"
+- **2.1.301** (settings-admin) "Fixed switching to a model whose name contains `application-inference-profile` running your `awsAuthRefresh` command and delaying model-switch hooks when the provider is not Bedrock"
+- **2.1.301** (sessions-worktrees) "Fixed a case where switching to a model with a smaller context window could spend usage credits on a summary by the previous model without asking first"
+- **2.1.301** (sessions-worktrees) "Fixed conversations being compacted over and over, on a model you didn't pick, behind an LLM gateway whose responses name a different model than the one requested"
+- **2.1.301** (tools-context) "Fixed the Read tool reading binary files such as .xlsm, .parquet, .epub and .heic as text"
+- **2.1.301** (checkpointing) "Fixed skills no longer being listed to the model after using `/rewind`"
+- **2.1.301** (agents-models) "Fixed a mod's `$.model.fork` returning `nothing-to-fork` when called before the first response of a new Claude Code process had finished, as in `claude -p` runs and cloud sessions"
+- **2.1.301** (sessions-worktrees) "Improved switching to a model with a smaller context window: a conversation too long for the new model is now summarized by the previous model first"
+- **2.1.301** (best-practices) "Fixed the "new task? /clear to save tokens" hint coming back right after you interrupt a response"
+- **2.1.300** (sessions-worktrees) "Added `cache_creation_5m_tokens` and `cache_creation_1h_tokens` to the OpenTelemetry `api_request` event, splitting cache writes by lifetime"
+- **2.1.300** (hooks-permissions) "Added the `prompt.change` mod hook, raised when the prompt box's text changes without a typed edit: a recalled history entry, a clear, an undo, or a plugin's fill"
+- **2.1.300** (agents-models) "Fixed subagents you had typed messages to disappearing from `/tasks` shortly after finishing, leaving no way back to the conversation"
+- **2.1.300** (tools-context) "Fixed automatic tool search (`ENABLE_TOOL_SEARCH=auto`) turning off part-way through a conversation, for example while MCP servers reconnect after a resume"
+- **2.1.300** (settings-admin) "Fixed a login refused by `forceLoginOrgUUID` leaving the refused organization's token stored, or live after `/login`"
+- **2.1.300** (sessions-worktrees) "Fixed the first transcript entry written after resuming a session being lost when a crash had cut the transcript's last line short"
+- **2.1.300** (best-practices) "Fixed Claude naming files in the session scratchpad by a bare filename or relative path instead of their full path"
+- **2.1.300** (tools-context) "Fixed a conversation failing on every turn with a 400 error when the API rejected an MCP tool's input schema; Claude Code now sends that tool without parameters for the rest of the conversation"
+- **2.1.300** (sessions-worktrees) "Fixed resuming a headless or Agent SDK session losing the recent messages a compaction had kept, when the compaction followed a reply cut at the output token limit (compactions from this version on)"
+- **2.1.300** (tools-context) "Fixed Claude not being told about an MCP server's tools and instructions until its next tool call, when the server finished connecting after a compaction"
+- **2.1.300** (sessions-worktrees) "Fixed resuming a headless or Agent SDK session losing its compaction summary or bringing back pre-compaction history, when the compaction followed a retried or unfinished reply in the same turn"
+- **2.1.300** (tools-context) "Fixed Claude searching for deferred tools already loaded earlier in the conversation when a session resumes a history that never listed them"
+- **2.1.300** (settings-admin) "Changed `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` sessions to ignore CA-bundle, tool-proxy, git TLS and git config variables like `SSL_CERT_FILE` in settings; under Claude Desktop, only in project settings"
+- **2.1.300** (tools-context) "Changed exit to force-kill background commands still running 1.5 seconds after being asked to stop; in fullscreen mode they could previously be left running"
+- **2.1.300** (settings-admin) "Changed large requests to api.anthropic.com to use gzip compression even when telemetry is disabled; set `CLAUDE_CODE_GZIP_REQUEST_BODIES=0` to turn it off"
+- **2.1.300** (workflows) "Changed background sessions to resume a carried workflow through the Workflow tool's approval instead of running it from the handoff file"
+- **2.1.300** (security-data) "Removed the `--sandbox` and `--no-sandbox` flags from `claude remote-control`, which had no effect; passing either now exits with an error. Set `sandbox.enabled` in settings to sandbox sessions"
+- **2.1.300** (git-github) "[Code Review] Fixed Code Review ignoring `@claude review` comments from people with write access whose GitHub organization membership is private; their comments now start a review"
+- **2.1.299** (skills-commands) "Added the skill's frontmatter, source, plugin name and file path to what a mod's `skill.prompt` hook receives"
+- **2.1.299** (agents-models) "Added `/effort` and `/fast` in agent view to set what new sessions start with; a bare `/model`, `/effort` or `/fast` there now opens a picker"
+- **2.1.299** (plugins) "Added a note in `/plugin` and `claude plugin validate` naming a mod's hooks that are skipped where an organization manages Claude Code"
+- **2.1.299** (sessions-worktrees) "Fixed sessions on a gateway-specific model name behind a custom `ANTHROPIC_BASE_URL` ending with "Prompt is too long · automatic compaction failed" near 200K tokens instead of sending the request"
+- **2.1.299** (hooks-permissions) "Fixed the Write and Edit tools creating a mod in a session's mods folder without asking in accept-edits mode when the config directory's path has no `.claude` in it"
+- **2.1.299** (security-data) "Fixed an agent teammate started without a description keeping part of a credential from its prompt in the task description shown for it"
+- **2.1.299** (settings-admin) "Fixed `claude mcp list`, `claude doctor` and `/status` reporting an empty `.mcp.json` as invalid"
+- **2.1.299** (sessions-worktrees) "Fixed scheduled wakeups (ScheduleWakeup) not firing while a background task was running in Agent SDK, IDE and `claude remote-control` sessions"
+- **2.1.299** (security-data) "Fixed sign-in, MCP servers and project trust appearing lost on Linux after a sandboxed command left an empty `.config.json` in the config directory"
+- **2.1.299** (security-data) "Fixed `/sandbox` reporting success when its setting could not be saved because the project folder is not writable; it now says nothing changed and why"
+- **2.1.299** (hooks-permissions) "Fixed SDK and headless sessions staying in auto mode after the host switched to a model that doesn't support auto mode"
+- **2.1.299** (settings-admin) "Fixed MCP servers named `constructor` or `prototype` in an MCP config never being connected"
+- **2.1.299** (hooks-permissions) "Fixed tools of an MCP server named `constructor` or `toString` asking for permission in auto mode and bypass permissions mode"
+- **2.1.299** (plugins) "Fixed a spurious "synced[0] commands path not found" plugin error at startup when another Claude Code process had just updated a claude.ai-synced plugin"
+- **2.1.299** (plugins) "Fixed Cowork cloud sessions staying on an old account plugin after a plugin reload that timed out or a restart that reused a recent sync"
+- **2.1.299** (plugins) "Fixed Cowork cloud sessions running the old version of an account plugin changed, removed or disabled from another device until the session restarted"
+- **2.1.299** (settings-admin) "Fixed the Claude apps gateway serving models that a policy's `availableModelsMatch: exact` or `deniedModels` blocks; it now answers 400 and leaves them out of its model lists"
+- **2.1.299** (security-data) "Fixed the server-managed settings request to Anthropic carrying a third-party gateway's API key when a managed settings file sets `ANTHROPIC_BASE_URL`"
+- **2.1.299** (settings-admin) "Fixed streams through a custom `ANTHROPIC_BASE_URL` being aborted after 180 seconds with no data arriving; they now wait 300 seconds, whether or not feature flags are loaded"
+- **2.1.299** (plugins) "Fixed the `plugin_loaded` telemetry event reporting `has_hooks` as false for plugins whose hooks are a hooks module, built-in plugins included"
+- **2.1.299** (security-data) "Fixed feature flag, startup, fast mode, profile and feedback requests to Anthropic carrying the API key configured for a third-party gateway (`ANTHROPIC_BASE_URL`); Anthropic API keys are still sent"
+- **2.1.299** (hooks-permissions) "Fixed a regression in 2.1.296 where cloud and headless sessions could run an approved tool call twice if a new message arrived as the session resumed after a restart"
+- **2.1.299** (sessions-worktrees) "Fixed scheduled tasks being announced for the wrong minute: the scheduling tools now report each job's actual next run time"
+- **2.1.299** (hooks-permissions) "Fixed mods' hooks being handed values with `__proto__` keys silently removed, which could skip a `tool.check` guard on a tool call another mod made"
+- **2.1.299** (settings-admin) "Fixed `claude -p` saying nothing when a settings file fails validation: text-output runs now list the file and the invalid entry on stderr"
+- **2.1.299** (settings-admin) "Fixed managed settings and organization policy not being fetched when the stored login's plan was changed locally on machines whose MDM or managed-settings file sets `forceLoginOrgUUID`"
+- **2.1.299** (settings-admin) "Fixed MCP connections over HTTP hanging for 30 seconds and failing when a server never ends the body of its reply to a notification (anthropics/claude-code#99014)"
+- **2.1.299** (settings-admin) "Fixed MCP servers added to a running headless or SDK session being connected before some policy checks ran; a blocked server is now reported as failed without being contacted"
+- **2.1.299** (settings-admin) "Fixed `claude mcp list`, `claude mcp get` and subagent MCP servers starting a server that a policy check blocks; it is now reported as blocked without being started"
+- **2.1.299** (plugins) "Fixed `/reload-plugins` not loading a plugin installed from another terminal a moment earlier"
+- **2.1.299** (sessions-worktrees) "Fixed a prompt starting with `/`, sent with the Agent SDK's `verbatimPrompts` option, running as a slash command when `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` re-ran it after a restart"
+- **2.1.299** (sessions-worktrees) "Fixed background sessions started with `--safe-mode` silently leaving safe mode when the session was woken or restarted"
+- **2.1.299** (sessions-worktrees) "Fixed scheduled tasks and loops firing again after every turn, or firing early, during the repeated hour when daylight saving time ends"
+- **2.1.299** (skills-commands) "Fixed a custom slash command's embedded shell line running twice when a newer message interrupted the command while its prompt was being checked"
+- **2.1.299** (settings-admin) "Fixed MCP OAuth sign-in, token refresh and sign-out not sending configured `headers`/`headersHelper` values, which broke servers behind an authenticating proxy"
+- **2.1.299** (agents-models) "Fixed background subagents in auto mode sometimes sending their final report twice, once as the result and once as a message"
+- **2.1.299** (sessions-worktrees) "Fixed replies cut off at the output token limit ending the turn silently, with no retry or error, after a request fell back to non-streaming mode"
+- **2.1.299** (tools-context) "Fixed Read garbling UTF-16LE files with a byte-order mark, and Write dropping byte-order marks or silently converting Windows-1252, Shift-JIS, GBK or UTF-16BE files to UTF-8 (now refused)"
+- **2.1.299** (hooks-permissions) "Fixed plugin hooks being skipped when they pass a very deeply nested tool input or message on with next()"
+- **2.1.299** (other) "Fixed `/usage`, the approaching-limit warning (terminal and VS Code) and the status line sometimes showing more than 100% used (anthropics/claude-code#92238)"
+- **2.1.299** (memory-rules) "Improved memory and disk use when PDFs are @-mentioned: their bytes are no longer kept in the session transcript"
+- **2.1.299** (hooks-permissions) "Improved enforcement of managed permission rules, managed hooks and organization MCP tool names against user-installed mods"
+- **2.1.299** (skills-commands) "Improved the Skill tool's "Unknown skill" error to suggest a skill's listed name when Claude wrongly adds the `anthropic-skills:` prefix to it"
+- **2.1.299** (sessions-worktrees) "Improved the error shown when a worktree cannot be created because its base commit does not resolve: it now says how the lookup ended and the likely reasons, such as a repository without a commit"
+- **2.1.299** (sessions-worktrees) "Improved the error for creating a worktree at a bare-repository layout's root: it now explains the layout instead of an unrelated git error"
+- **2.1.299** (agents-models) "Improved background agent notifications: they now say when an agent is only waiting on its own background work, got a message too late for its result, or was stopped by a usage limit"
+- **2.1.299** (workflows) "Changed plugin hooks and workflow scripts to refuse values they hand back that nest deeper than 28,000 levels, with an error naming the limit (workflow scripts allowed 100,000)"
+- **2.1.299** (security-data) "Changed requests to claude.ai's connector proxy and to Anthropic-hosted MCP servers to no longer follow HTTP redirects; redirects by a connector's own server are unaffected"
+- **2.1.299** (security-data) "Changed MCP requests in cloud and self-hosted runner sessions to no longer follow HTTP redirects from the session's MCP proxy"
+- **2.1.299** (agents-models) "Changed WebFetch page reads to pick their effort as web searches do: the caller's level on the caller's own model, otherwise the level settings give the small model"
+- **2.1.299** (hooks-permissions) "Changed the `turn.start` mod hook to also hear subagents' and teammates' turns, not only the main loop's; tell them apart by `e.agentId` (absent on the main loop)"
+- **2.1.299** (git-github) "Changed the errors shown when `/ultrareview` can't upload a repository to stop suggesting `git add .`, which could stage or commit untracked files such as `.env`"
+- **2.1.296** (settings-admin) "Fixed headless sessions starting a folder's `.mcp.json` or plugin MCP server that was switched off for that folder, after changing directory or reloading plugins"
+- **2.1.296** (settings-admin) "Fixed a Claude apps gateway that serves `allowedProviders` with `"gateway"` locking out laptops that name that gateway in user settings"
+- **2.1.296** (agents-models) "Fixed resumed subagents being told that the user rejected a tool call that a session shutdown had interrupted"
+- **2.1.296** (hooks-permissions) "Fixed Esc or an interrupt during a `UserPromptSubmit` hook or a mod's `prompt.submit` hook ending headless sessions, clearing the typed prompt, or letting the unchecked prompt through"
+- **2.1.296** (plugins) "Fixed a plugin secret named `constructor` or `prototype` being deleted by the next save of that plugin's options"
+- **2.1.296** (sessions-worktrees) "Fixed `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` re-running a finished turn after a restart when an MCP tool result had ended that turn"
+- **2.1.295** (sessions-worktrees) "Added a line on stderr, when it is a terminal, that says what a `claude -p` run is waiting for when it stays open after its last turn"
+- **2.1.295** (settings-admin) "Added `CLAUDE_CODE_RETRY_WATCHDOG_MAX_WAIT_MS` to limit how long unattended retry mode (`CLAUDE_CODE_RETRY_WATCHDOG`) waits out 429 and 529 errors"
+- **2.1.295** (settings-admin) "Fixed every request failing on a `[1m]` model when a gateway, Bedrock, Vertex or Foundry refuses the context-1m beta; Claude Code now resends without it"
+- **2.1.295** (sessions-worktrees) "Fixed `claude -p` text output dropping earlier responses when background work started another turn; each turn's response now prints when the turn ends"
+- **2.1.295** (settings-admin) "Fixed remote MCP servers in headless and SDK sessions staying disconnected after an outage longer than 15 seconds, or reconnecting in a tight loop to a server that drops each connection right after it connects; repeated drops now back off, up to 30s"
+- **2.1.295** (tools-context) "Fixed CSS, JavaScript and XML files returned by MCP tools being saved as .bin, which the Read tool refuses; font and icon files now get their own extension too"
+- **2.1.295** (tools-context) "Fixed Bash tool calls failing when the model passes `command_description` instead of `description`"
+- **2.1.295** (hooks-permissions) "Fixed Claude in Chrome not applying a site deny rule written with port 80 (`host:80`) to plain `http://` pages on that host"
+- **2.1.295** (plugins) "Fixed `/plugin`'s Errors tab removing a marketplace that failed to load, and uninstalling its plugins, on Enter without asking first"
+- **2.1.295** (agents-models) "Fixed `CLAUDE_AUTO_BACKGROUND_TASKS` moving a subagent to the background while an edit or shell command waited behind it, which started that call before the subagent finished"
+- **2.1.295** (settings-admin) "Fixed a rare failure to load managed settings at startup right after a login refresh"
+- **2.1.295** (settings-admin) "Fixed Fable models listed in `availableModels` not appearing in the `/model` picker for sessions signed in to a Claude apps gateway; such a model now shows its built-in row in place of a `modelPicker` row added for the same model"
+- **2.1.295** (settings-admin) "Fixed `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` hiding the Claude apps gateway spend limit in `/usage` and the status line. The spend limit request goes to the gateway the session is signed in to"
+- **2.1.295** (workflows) "Fixed forked skills invoked from Workflow subagents delivering their results to the main conversation instead of the invoking agent"
+- **2.1.295** (agents-models) "Fixed in-process agent teammates failing their first SendMessage call until they loaded the tool through tool search"
+- **2.1.295** (workflows) "Fixed Claude being told on resume that an unfinished background workflow may have been stopped by `TaskStop`, which can never be the cause"
+- **2.1.295** (sessions-worktrees) "Fixed a background session's `/loop` stopping without notice when its next wakeup came due while the session's process was down; the session now says so and Claude is told"
+- **2.1.295** (plugins) "Fixed plugin marketplaces whose repository has large git submodules failing to add or refresh: only the submodules that hold plugin files are now fetched"
+- **2.1.295** (plugins) "Fixed plugins whose hooks module nests code thousands of levels deep failing to load or validate with a bare stack-overflow message"
+- **2.1.295** (tools-context) "Fixed a file being treated as already read after a Bash command such as `cat` ran without printing it"
+- **2.1.295** (plugins) "Fixed plugin options named `constructor` or `prototype` always reading as their default and never reloading the plugin when edited"
+- **2.1.295** (settings-admin) "Fixed `/model`, `/fast` and `/output-style` saving their setting without asking a plugin's `config.set` hook"
+- **2.1.295** (security-data) "Fixed a tampered cache of server-managed settings making a person's own plugin count as organization-managed on machines whose managed settings list or enable plugins"
+- **2.1.295** (plugins) "Fixed generated type files being written into a `--plugin-dir` plugin's folder in `-p` and SDK sessions; they are now written only where a mod is being developed"
+- **2.1.295** (checkpointing) "Fixed a stopped scheduled task coming back on resume after a rewind, and a scheduled task being lost on resume after Esc or a rewind following a compaction"
+- **2.1.295** (git-github) "Fixed temporary files left under `~/.claude/seed-admin` by an interrupted `/ultrareview` upload never being removed by the retention cleanup"
+- **2.1.295** (hooks-permissions) "Fixed Desktop and SDK sessions refusing to switch back to auto mode until restart after `disableAutoMode` was removed from settings"
+- **2.1.295** (checkpointing) "Fixed the prompt sent after a `/rewind` being lost, and the removed turns coming back, when the session was moved to the background or resumed after being killed"
+- **2.1.295** (settings-admin) "Fixed an MCP sign-in or reconnect that finishes late in headless and SDK sessions relisting a server set with `setMcpServers()` as your own"
+- **2.1.295** (plugins) "Improved `claude plugin validate` and plugin loading: when a hooks module is refused over a rebound top-level `var`, the error now names the line that rebinds it, the cause, and a fix"
+- **2.1.295** (settings-admin) "Changed MCP tool descriptions the model loads through tool search to be cut at 16,384 characters instead of 2,048"
+- **2.1.295** (hooks-permissions) "Changed what Claude and you read when a mod denies a tool call after the tool ran: it now says the tool ran and a plugin withheld its result"
+- **2.1.295** (security-data) "Self-hosted runner: Changed the runner to stop passing `CCR_AUTO_MODE_ALLOW`, `CCR_AUTO_MODE_ENVIRONMENT` and `CCR_AUTO_MODE_SOFT_DENY` into a session's environment"
+- **2.1.295** (git-github) "[Code Review] Fixed Code Review re-reviews saying no issues were found while earlier findings were still open; the comment now says how many remain open"
+- **2.1.295** (memory-rules) "[Code Review] Fixed Code Review still skipping a large CLAUDE.md's rules when the pull request edits that file"
+- **2.1.295** (hooks-permissions) "Fixed web searches and `agent` hook evaluations taking much longer at `xhigh` and `max` effort"
+- **2.1.295** (settings-admin) "Fixed non-interactive sessions telling you about MCP servers that need authentication when your request doesn't use them"
+- **2.1.293** (hooks-permissions) "Fixed a mod's hooks on `classic.*` events being skipped while the plugin hooks worker restarts, which left settings hooks to answer without them"
+- **2.1.293** (settings-admin) "Improved startup for Team and Enterprise organizations: policy and managed settings are fetched earlier, and a stalled request is retried after 3 seconds"
+- **2.1.293** (other) "Changed OpenTelemetry `claude_code.at_mention` logging to emit at most 100 agent and 100 MCP-resource events each time a prompt is read"
+- **2.1.293** (hooks-permissions) "Windows: Fixed stopping a status line, hook, or shell command sometimes terminating an unrelated process that had been given the same process ID"
+- **2.1.292** (settings-admin) "Added `CLAUDE_CODE_OVERLOADED_RETRY_BASE_DELAY_MS` environment variable to set a longer base delay for the backoff when retrying an overloaded (529) request"
+- **2.1.292** (sessions-worktrees) "Added prompt caching to `$.model.complete` for mods: `prompt` and `system` take blocks of text, and `cache: true` on a block caches the request up to it"
+- **2.1.292** (security-data) "Fixed sandboxed commands being able to read the staged file copies of `/ultrareview` uploads under `~/.claude/seed-admin`"
+- **2.1.292** (security-data) "Fixed a managed sandbox read-deny path (and user ones beside it) that appears or re-points mid-session not dropping project grants inside it or ending credential injection from files it covers"
+- **2.1.292** (security-data) "Fixed a notebook or PDF read on macOS and Windows being able to return a file outside what was approved, through a link swapped in mid-read"
+- **2.1.292** (security-data) "Fixed a tampered on-disk cache of server-managed settings being able to switch off or unseat the built-in policy plugin while the settings fetch failed"
+- **2.1.292** (hooks-permissions) "Fixed `rm -rf` on the 8.3 short name or another alternate Windows spelling of the home folder or a drive not being treated as removing it"
+- **2.1.292** (settings-admin) "Fixed `NO_PROXY` being ignored for Claude Code's own API requests (sign-in, policy, feedback, artifacts) when `HTTPS_PROXY` is set"
+- **2.1.292** (settings-admin) "Fixed an MCP tool with a name longer than 128 characters making every request fail; that tool is now left out and an MCP error names it"
+- **2.1.292** (plugins) "Fixed `claude plugin` commands such as `marketplace add` and `install` running before an organization's managed settings had loaded on a first run"
+- **2.1.292** (sessions-worktrees) "Fixed one-shot `claude -p` and Agent SDK runs stopping a background command 5 seconds after the final result, and one-shot `claude -p` runs dropping a scheduled wakeup; both are now waited for"
+- **2.1.292** (sessions-worktrees) "Fixed plan mode not being restored when resuming a session from the `claude --resume` session picker or with `/resume`"
+- **2.1.292** (sessions-worktrees) "Fixed saved scheduled tasks created after `/resume`, `/branch` or `/clear` never firing, and saved tasks ignoring later creates and deletes after two writes to the tasks file milliseconds apart"
+- **2.1.292** (sessions-worktrees) "Fixed a background session's `/loop` silently stopping when the session's process restarted (for example after a crash), because its pending wakeup was lost"
+- **2.1.292** (tools-context) "Fixed @-mentioned text files over 256KB being left out silently: Claude is now told the file's size and to read it in portions"
+- **2.1.292** (hooks-permissions) "Fixed a mod's hook that called `next(e)` and then failed while the turn was interrupted letting the call through; the call is now rejected"
+- **2.1.292** (hooks-permissions) "Fixed tool calls made while the plugin hooks worker restarts being answered without the plugins' permission hooks"
+- **2.1.292** (hooks-permissions) "Fixed plugin `tool.call` hooks seeing some tool calls before misnamed parameters were repaired; a hook now sees the arguments the tool will run with"
+- **2.1.292** (hooks-permissions) "Fixed a plugin's prompt drop or setting deny being ignored when its reason was longer than 4,096 characters"
+- **2.1.292** (sessions-worktrees) "Improved startup of `claude -p` and SDK sessions: the first turn no longer waits for HTTP and SSE MCP servers to answer `resources/list`"
+- **2.1.292** (plugins) "Improved the steps shown when a marketplace declared in a settings file has a name that looks like an official Anthropic marketplace"
+- **2.1.292** (security-data) "Improved sandbox auto-allow: with strict sandbox mode set in user, managed or --settings settings, an interpreter command with an env var prefix like `FOO=bar python3 app.py` runs unprompted"
+- **2.1.292** (settings-admin) "Improved startup with local (stdio) MCP servers that ignore the newer protocol check: after one slow connect they are remembered for 7 days and connected the older way without the wait"
+- **2.1.292** (memory-rules) "[Code Review] Fixed reviews ignoring a CLAUDE.md's rules when the pull request edits that file; reviews now use its version from the base branch"
+- **2.1.291** (hooks-permissions) "Fixed a regression in 2.1.290 where cloud sessions could drop answers to permission prompts"
+- **2.1.291** (sessions-worktrees) "Fixed a regression in 2.1.288 where the last messages of a session could be lost when quitting"
+- **2.1.290** (agents-models) "Added `serverToolUses` to the result of a mod's `turn.step` hook: the tool calls the API ran itself (the advisor), each with its id, name, input, start and end"
+- **2.1.290** (hooks-permissions) "Added `ceiling` to the question and verdict a mod's `tool.check` hook reads, naming the approval an organization requires for a tool"
+- **2.1.290** (settings-admin) "Added a warning when a managed settings file is a link to a file outside the managed settings folder"
+- **2.1.290** (security-data) "Added a /status and doctor warning when managed settings ignore user-configured sandbox allowRead paths or allowed domains"
+- **2.1.290** (settings-admin) "Fixed requests failing behind proxies and gateways that reject one of Claude Code's beta headers with a status other than 400, or together with a second beta"
+- **2.1.290** (agents-models) "Fixed resumed subagents and teammates losing their earlier thinking and prompt cache after receiving a message mid-run"
+- **2.1.290** (tools-context) "Fixed WebFetch silently dropping page text past 100,000 characters; it now says how much was unread and takes an `offset` to read on"
+- **2.1.290** (sessions-worktrees) "Fixed scheduled tasks (`/loop` with an interval, reminders) silently not coming back on resume once the conversation was compacted; covers compactions made from this version on"
+- **2.1.290** (sessions-worktrees) "Fixed scheduled tasks set in the foreground never firing after a ← or `/background` hand-off, and recurring ones firing an extra run on every resume, respawn or fork"
+- **2.1.290** (hooks-permissions) "Fixed plan mode letting the auto mode classifier approve non-read-only connector tools that carry a server-pushed ask policy"
+- **2.1.290** (hooks-permissions) "Fixed URL allow and deny patterns with a wildcard inside an `xn--` host label matching differently from one process to the next"
+- **2.1.290** (settings-admin) "Fixed an MCP server provided by your organization being relisted as your own after signing in or reconnecting, including from a late result in headless and SDK sessions"
+- **2.1.290** (settings-admin) "Fixed the `plansDirectory` setting's project-root check for paths that contain a backslash on macOS and Linux"
+- **2.1.290** (hooks-permissions) "Fixed plugin hooks reading an empty `answer` on `turn.complete` for a subagent that hands its report back in auto mode"
+- **2.1.290** (security-data) "Fixed an image read on macOS and Windows being able to return a file outside what was approved, through a link swapped in mid-read"
+- **2.1.290** (hooks-permissions) "Fixed a case where a user-installed mod could make an organization's guard skip its check; such a mod is now unloaded"
+- **2.1.290** (hooks-permissions) "Fixed a case where a user-installed mod could get an organization's plugin unloaded; the mod is now the one unloaded"
+- **2.1.290** (settings-admin) "Fixed `disableClaudeAiConnectors` and `allowedMcpServers` URL rules not being applied to some MCP entries declared in `.mcp.json`, plugins or agents"
+- **2.1.290** (security-data) "Fixed an `@`-mention under the read block or `--restricted` being able to read a file outside the working directories through a link changed mid-read"
+- **2.1.290** (hooks-permissions) "Fixed auto mode denials suggesting a permission rule that would skip the classifier for a whole tool or that Claude Code would ignore"
+- **2.1.290** (git-github) "Fixed `claude --teleport` and `/teleport` deleting the files in a folder that had replaced a tracked file of the same name when you chose to stash: the stash is now refused, and says why"
+- **2.1.290** (hooks-permissions) "Fixed `--channels` permission relay: a reply ID that repeats within a session is now ignored instead of approving a different prompt"
+- **2.1.290** (hooks-permissions) "Fixed Bash permission checks auto-approving certain commands whose variable names zsh reads differently from bash; these now prompt for approval"
+- **2.1.290** (security-data) "Fixed a short form of a `git clone` option keeping the sandbox exemption from a git pattern such as `git *` in `sandbox.excludedCommands`; it is now treated like the long form"
+- **2.1.290** (settings-admin) "Fixed slow or failed startup since 2.1.285 under SDK hosts such as the VS Code extension when managed settings deny reads of many paths on a slow filesystem (notably Windows drives under WSL)"
+- **2.1.290** (sessions-worktrees) "Fixed plan mode not being restored when resuming a session with `--continue` or `--resume <session-id>` in the terminal"
+- **2.1.290** (plugins) "Fixed a marketplace named after another GitHub marketplace's download folder stopping that marketplace from downloading"
+- **2.1.290** (memory-rules) "Fixed a subdirectory's AGENTS.md not being attached when a file under it is @-mentioned"
+- **2.1.290** (settings-admin) "Fixed `CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS=5m` being read as 5 ms and cancelling remote dialogs at once; values with a unit suffix now fall back to `dialogExpiry`"
+- **2.1.290** (security-data) "Fixed `--restricted` (and `CLAUDE_CODE_RESTRICTED=1`) sessions opening the cross-session messaging socket"
+- **2.1.290** (hooks-permissions) "Fixed background workers honoring `--allow-dangerously-skip-permissions` on respawn without the bypass-permissions disclaimer having been accepted"
+- **2.1.290** (hooks-permissions) "Fixed Claude replying in an endless loop when a plugin's async Stop hook passes an unquoted script path under a folder with a space, such as Application Support"
+- **2.1.290** (hooks-permissions) "Fixed sandboxed Bash commands on Linux running `ConfigChange` hooks and reloading settings mid-command when `.claude/settings.json` or `.claude/settings.local.json` does not exist"
+- **2.1.290** (sessions-worktrees) "Fixed `/loop` and other recurring session-only scheduled tasks running an extra time after a sandboxed Bash command on Linux or after `.claude/scheduled_tasks.json` was deleted"
+- **2.1.290** (settings-admin) "Fixed edits to the file a symlinked settings file points at running without the settings-file permission question"
+- **2.1.290** (settings-admin) "Changed `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to also skip the startup connection warm-up"
+- **2.1.290** (hooks-permissions) "Changed plugin hooks so long text is clipped and logged instead of being refused or dropped silently"
+- **2.1.290** (sessions-worktrees) "Changed background sessions waiting on a scheduled wakeup (`/loop`): they are now left running through updates and low memory, where being restarted or shut down could silently lose the wakeup"
+- **2.1.290** (tools-context) "Changed the interactive session's WebSearch budget to refill over time (100 calls/hour; `CLAUDE_CODE_WEB_SEARCH_REFILLS_PER_HOUR` sets the rate, 0 turns it off) instead of ending after 200 calls"
+- **2.1.290** (sessions-worktrees) "Fixed automatic compaction giving up with "Prompt is too long" when a Mac went to sleep while it was running"
+- **2.1.290** (sessions-worktrees) "Fixed conversation compaction sometimes failing with a "null is not an object" error"
+- **2.1.288** (hooks-permissions) "Added a re-authenticate prompt when an MCP server asks for more OAuth scope during a tool call"
+- **2.1.288** (sessions-worktrees) "Fixed long conversations failing with "Prompt is too long" instead of auto-compacting when the last reply reported zero token usage"
+- **2.1.288** (hooks-permissions) "Fixed auto mode on Bedrock and Mantle switching to the local classifier for the rest of the session after a request to an older model, such as a WebFetch summary or a `sonnet` subagent"
+- **2.1.288** (other) "Fixed OpenTelemetry `claude_code.tool.blocked_on_user` spans reporting `unknown` source or decision in `-p` and SDK sessions and for PreToolUse hook approvals"
+- **2.1.288** (hooks-permissions) "Fixed permission asks that ended unanswered, in `-p` or on an interrupted turn, emitting no `tool_decision` event"
+- **2.1.288** (plugins) "Fixed `git-subdir` plugin installs failing, or caching an incomplete plugin, on older git (before 2.39, e.g. Ubuntu 22.04's 2.34)"
+- **2.1.288** (plugins) "Fixed plugins loaded with `--plugin-dir` not showing "Configure options" in `/plugin`"
+- **2.1.288** (settings-admin) "Fixed restarted cloud sessions restoring a model that the organization's enforced model list refuses"
+- **2.1.288** (security-data) "Fixed `sandbox.credentials.files` entries on git config files not taking effect while `permissions.blockReadsOutsideWorkingDirectories` is on"
+- **2.1.288** (plugins) "Fixed LSP tool calls hanging indefinitely when a language server uses dynamic capability registration or stops responding; requests now time out after 60s (per-server `requestTimeout`)"
+- **2.1.288** (sessions-worktrees) "Fixed the first request in a fresh environment or after a model switch using the built-in output limit and auto-compact window, not the server's; that request may now wait up to 1.5 seconds"
+- **2.1.288** (agents-models) "Fixed the Agent tool in `claude mcp serve` always reporting no available agents and rejecting every subagent_type"
+- **2.1.287** (security-data) "Added `prompt_text` to the OpenTelemetry `user_prompt` event, a copy of `prompt` for backends that nest dotted keys; drop or mask it wherever you drop or mask `prompt` (anthropics/claude-code#70763)"
+- **2.1.287** (hooks-permissions) "Windows: Added a startup warning when denying the Bash tool also turns off the PowerShell tool, so Claude has no shell tool"
+- **2.1.287** (settings-admin) "Fixed Bedrock and Vertex startup model checks ignoring an enforced `availableModels` list, which could collapse `/model` to one Opus row"
+- **2.1.287** (agents-models) "Fixed switching between Opus 5.5 and Sonnet 5.5 (`/model`, `opusplan`) rewriting earlier MCP tool announcements, which could drop earlier extended thinking"
+- **2.1.287** (agents-models) "Fixed `claude -p` and SDK sessions repeating a model fallback on every later message after the model was switched while a reply was running"
+- **2.1.287** (sessions-worktrees) "Fixed background sessions that could not be reopened from `claude agents` after the agent exited and removed the worktree the session was started in"
+- **2.1.287** (agents-models) "Fixed `/advisor` pairing checks: Sonnet 5.5 can now advise Opus 4.7 and 4.8, and advisors the API would refuse are flagged up front instead of being silently dropped"
+- **2.1.287** (hooks-permissions) "Fixed organization per-tool permission ceilings being silently dropped for an MCP tool named `__proto__`"
+- **2.1.287** (tools-context) "Fixed Claude being told to page large MCP results saved as JSON with Read's offset and limit, which cannot split one long line"
+- **2.1.287** (settings-admin) "Fixed `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` not removing the structured-output format from session-title and prompt-hook requests, which Bedrock-backed gateways reject"
+- **2.1.287** (skills-commands) "Fixed `--output-format stream-json` and the SDK not streaming the turns of a `context: fork` skill run by typing `/<skill>` as the prompt, as they do for the Skill tool's fork"
+- **2.1.287** (plugins) "Fixed `claude plugin marketplace add --sparse` and `git-subdir` plugin installs failing with "transport 'http' not allowed" when the repository is served over plain http"
+- **2.1.287** (plugins) "Fixed a plugin reload that overlapped the startup `--plugin-url` download corrupting the session's cached copy of the plugin archive"
+- **2.1.287** (memory-rules) "Fixed repositories added mid-session in cloud and SDK sessions not loading their skills and plugins, and loading CLAUDE.md late, after Claude changed directory"
+- **2.1.287** (plugins) "Improved plugin marketplace errors to say in plain words why a marketplace was ignored or refused, and what to do"
+- **2.1.287** (plugins) "Improved plugin listings to note when a plugin's dependencies were not installed, and updating a plugin now retries an install that did not finish"
+- **2.1.287** (tools-context) "Improved handling of large MCP tool results: less memory, smaller session files, and no extra upload to count tokens for results far over the limit"
+- **2.1.286** (hooks-permissions) "Fixed API 400 errors after a tool or hook returned an object, number or boolean instead of text, including in resumed sessions"
+- **2.1.286** (security-data) "Fixed MCP error messages showing a credential's value when "Bearer" or "Basic" came before its key name"
+- **2.1.286** (security-data) "Fixed percent-encoded Bearer tokens being only partly masked in error messages"
+- **2.1.286** (security-data) "Fixed redacted logs and transcripts showing a secret whose key name has an invisible character inside, such as a zero-width space"
+- **2.1.286** (security-data) "Fixed logs and transcripts showing part of a URL password that contains punctuation such as `)`, quotes, `]`, `&` or a second `@`, or that runs past a `/` to a bracketed host such as `[::1]` in an ssh URL"
+- **2.1.286** (agents-models) "Fixed foreground subagents sometimes missing the task-tracking tools (TaskCreate/Get/Update/List, TodoWrite) in sessions that have them enabled"
+- **2.1.286** (checkpointing) "Fixed `/compact`, `/clear`, and `/rewind` typed while viewing a background agent's or teammate's transcript silently acting on the main conversation: a dialog now names the target and asks first"
+- **2.1.286** (agents-models) "Improved the model fallback notice and the autocompact-thrashing error to say when a fallback dropped the context window from 1M to 200K tokens"
+- **2.1.286** (tools-context) "Changed the WebFetch error for a rate-limited domain safety check to tell Claude not to retry it in a loop"
+- **2.1.286** (skills-commands) "Changed the send-now key (ctrl+enter) to move a skill's own shell command to the background instead of ending it"
+- **2.1.285** (settings-admin) "Added `allowedProviders` managed setting to limit which API providers a machine may use (Anthropic API, a custom endpoint, Bedrock, Mantle, Vertex AI, Foundry, Claude Platform on AWS, or a Cloud gateway)"
+- **2.1.285** (settings-admin) "Added `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES` environment variable to cap re-sends of a non-streaming fallback request that timed out"
+- **2.1.285** (settings-admin) "Fixed Claude Code refusing to start when the OS denies reading the managed settings file; it now warns and starts without that file's policies. Other read errors and unparseable files stop every session"
+- **2.1.285** (plugins) "Fixed `claude plugin disable` and `enable` with a full `name@marketplace` id changing a settings entry in another letter case instead of the installed plugin's own"
+- **2.1.285** (agents-models) "Fixed switching models mid-session with a `set_model` request (such as the Agent SDK's `setModel`) leaving the new model on the built-in output-token limit and auto-compact window until restart"
+- **2.1.285** (security-data) "Fixed redacted logs and transcripts showing part of a URL password that contains `@`, or all of it when the URL writes its `@` as `%40`"
+- **2.1.285** (git-github) "Fixed SSH passphrase and new-host prompts from worktree and `/teleport` fetches taking over the terminal; these fetches now fail fast instead of asking"
+- **2.1.285** (hooks-permissions) "Fixed `claude -p --permission-prompt-tool`: a background subagent's permission request now goes to the prompt tool instead of being auto-denied"
+- **2.1.285** (tools-context) "Fixed sandbox auto-allow asking for approval on every run of many inline scripts (`python3 -c`, `node -e`) just because they contain `=`"
+- **2.1.285** (agents-models) "Fixed background subagents in auto mode prompting a second, redundant reply after each report"
+- **2.1.285** (settings-admin) "Fixed sessions that authenticate with `ANTHROPIC_AUTH_TOKEN` against the Anthropic API never loading the organization's policy"
+- **2.1.285** (tools-context) "Fixed WebFetch reporting a rate-limited domain safety check as a network or enterprise policy block"
+- **2.1.285** (git-github) "Fixed `/autofix-pr` and `/schedule` saying the Claude GitHub App is not installed on a repository whose install status had not been checked yet"
+- **2.1.285** (hooks-permissions) "Fixed an `Artifact` allow rule ("don't ask again") letting the Artifact tool publish a file outside the working directories without asking; add the file's folder with `--add-dir` for the rule to cover it"
+- **2.1.285** (other) "Fixed `/cost` and SDK `modelUsage` reporting a turn under the wrong model when the server answered a refusal with a different fallback model than the client expected"
+- **2.1.285** (hooks-permissions) "Fixed auto mode skipping its classifier for Artifact tool asset uploads and reads of someone else's artifact when you had approved that artifact earlier in another permission mode"
+- **2.1.285** (hooks-permissions) "Fixed the PowerShell tool's permission check skipping deny and ask rules, and caching that failure for later checks, when its command parser failed to start (for example when the machine was out of memory)"
+- **2.1.285** (sessions-worktrees) "Fixed compacting or resuming a session failing, opening without its history, or crashing when its saved transcript holds a compaction marker or loop wakeup entry with missing or malformed fields"
+- **2.1.285** (sessions-worktrees) "Fixed `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` re-running a turn that had ended at `--max-turns`"
+- **2.1.285** (hooks-permissions) "Fixed a reply sent from `claude agents` to a background session waiting on a permission prompt sometimes approving the pending command"
+- **2.1.285** (settings-admin) "Fixed `.claude/settings.local.json` allow rules being held back outside a git repository when git's trace2 output is configured"
+- **2.1.285** (evals) "Fixed the `/claude-api` eval runner scaffold and report builder writing through a symlink or hard link planted at an output file"
+- **2.1.285** (evals) "Fixed the `/claude-api` eval runner scaffold counting responses cut off at `max_tokens` in the score averages; they are now marked truncated and counted separately"
+- **2.1.285** (agents-models) "Improved Bedrock and Vertex AI sessions to switch to an older available model of the same tier, instead of failing, when an admin removes access to the default model; session titles and summaries now fall back with it"
+- **2.1.285** (plugins) "Improved plugin marketplace errors to name why a git address is refused instead of citing enterprise policy"
+- **2.1.285** (plugins) "Improved validation of git URLs for plugins, marketplaces and the current repository's remote"
+- **2.1.285** (settings-admin) "Changed sessions behind a custom `ANTHROPIC_BASE_URL` to use the 1M context window of models that have one (Opus 4.7+, Sonnet 5+, Fable); run `/autocompact 200k` if your gateway stops at 200K"
+- **2.1.285** (settings-admin) "Changed the one-time offer to make auto mode your default permission mode to also show on third-party providers and with telemetry off, when your user settings default to another mode"
+- **2.1.285** (settings-admin) "Changed the MCP server name `widgets` to be reserved in cloud sessions and on self-hosted runners: your own server under it, or a close spelling such as `widgets_`, no longer loads, so rename it"
+- **2.1.285** (security-data) "Windows: Changed project and local settings `env` to no longer set `ALLUSERSPROFILE`, `SystemDrive`, or the `CommonProgramFiles` variables; set them in user or managed settings instead"
+- **2.1.285** (security-data) "Changed `claude mcp get` to hide the command, arguments, and environment values of stdio MCP servers provided by plugins; variable names are still shown"
+- **2.1.285** (hooks-permissions) "[VSCode] Fixed a hook's reason for blocking or stopping a prompt disappearing after a window reload"
+- **2.1.285** (agents-models) "[VSCode] Fixed the agent map labeling a sub-agent with the session's model instead of the model it actually ran on (e.g. under `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` or an agent's own `model`)"
+- **2.1.285** (settings-admin) "[Cloud sessions] Changed `MCP_DISCOVERY_CACHE=1`, when set in your cloud environment's variables rather than a settings file, to reuse your connectors' tool lists after a session restart; other MCP servers are no longer cached and connect at startup"
+- **2.1.284** (hooks-permissions) "Added a "Yes, but ask again next time" answer to auto mode's prompt before a read outside the working directories, so you can allow that one read and still be asked about later ones"
+- **2.1.284** (other) "Added dollar amounts to the Claude apps gateway spend limit in `/usage` and the status line (for example "$271.40 / $500.00 spent this month") when the gateway runs this version or later; the status line's `rate_limits.spend_limit` also gains `used_usd`, `limit_usd` and `period`"
+- **2.1.284** (sessions-worktrees) "Fixed "Prompt is too long" errors that persisted after compacting: when the compacted request is still too long, Claude Code now compacts once more, keeping less of the recent conversation"
+- **2.1.284** (tools-context) "Fixed MCP tool calls in a resumed session failing with "No such tool available" while their server was still connecting; the call now waits up to 10 seconds for the server"
+- **2.1.284** (settings-admin) "Fixed `claude mcp add` reporting success when managed settings restrict MCP servers to plugins; it now refuses and says what to do, instead of saving a server that never loads"
+- **2.1.284** (plugins) "Fixed the `/plugin` configure screen: boolean options are now a true/false choice instead of free text, number options refuse invalid input, and ←/→ change an options field instead of switching tabs"
+- **2.1.284** (plugins) "Fixed `sparsePaths` plugin marketplaces cloning empty and replacing a working local copy on older git (before 2.39), which failed every refresh with "marketplace.json file is no longer present""
+- **2.1.284** (plugins) "Fixed a failed first `claude plugin install` leaving the plugin enabled and recorded when a dependency's version range could not be met"
+- **2.1.284** (hooks-permissions) "Fixed `{"decision":"block"}` returned by Elicitation and ElicitationResult hooks being ignored; it now declines the MCP elicitation, as exit code 2 does"
+- **2.1.284** (agents-models) "Fixed sessions launched without the `SendMessage` tool (such as by Claude Desktop) still being told to message other sessions with it"
+- **2.1.284** (security-data) "Fixed sandboxed Bash commands failing to start on Linux when the working directory is write-denied and contains a read-denied directory"
+- **2.1.284** (workflows) "Improved Workflow tool sandbox hardening for errors thrown by async script hooks"
+- **2.1.284** (evals) "Improved `/claude-api`: `hillclimb` no longer spends rounds on prompt rewordings too small for the eval to measure, and an extra page you ask for beside `report.html` is built as one local file that loads nothing from the network"
+- **2.1.284** (plugins) "Improved `claude plugin marketplace add` to say when it replaces a marketplace already added under the same name from a different source, and how to undo it"
+- **2.1.284** (agents-models) "Changed safety-related model switches in sessions that pin an Opus model with `ANTHROPIC_DEFAULT_OPUS_MODEL` or `modelOverrides`: on the Anthropic API, the API now picks the model to switch to for each kind of flag, not the pinned model"
+- **2.1.284** (settings-admin) "Changed the non-interactive first turn to still wait up to 2s for connecting MCP servers named by `--allowedTools` or an `mcp_tool` hook, even when `CLAUDE_CODE_MCP_STARTUP_WAIT_MS` is `0`"
+- **2.1.284** (skills-commands) "Changed `/recap` to decline with a short notice when it arrives relayed from a chat thread (your own included) or from a routine or webhook; typed in the terminal, the Claude apps, Remote Control, `-p` or an SDK host, it runs as before"
+- **2.1.284** (settings-admin) "[VSCode] Changed `CLAUDE_CONFIG_DIR` in the `claudeCode.environmentVariables` setting to apply only when it is an absolute path, and passed it to terminals that continue the chat"
+- **2.1.302** (other) "Fixed prompt suggestions spending usage credits on models your plan pays for only with credits: they are now skipped after a reply billed to credits"
+- **2.1.300** (agents-models) "Fixed Claude being told a background agent was lost, not resumable, after a cloud session's container was replaced, when the agent had already been resumed once"
+- **2.1.299** (tools-context) "Fixed MCP tool calls in headless and SDK sessions sometimes failing or running twice when a background reconnect closed the connection they were running on"
+- **2.1.299** (security-data) "Fixed sandboxed commands on macOS being able to read or write a denied path by its real location when the denied path passes through a symlink"
+- **2.1.299** (security-data) "Fixed sandbox `denyRead` and `allowRead` globs with braces, parentheses or backslashes in a folder's name being read differently by Claude Code's settings checks than by the sandbox"
+- **2.1.299** (security-data) "Fixed sandbox glob `allowRead` and `allowWrite` entries not being re-checked when the directory they start from is replaced by a symlink"
+- **2.1.299** (sessions-worktrees) "Fixed worktree-isolated sessions accepting some awk programs the isolation guard should refuse"
+- **2.1.299** (sessions-worktrees) "Fixed cloud sessions and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN` sometimes answering a finished turn again after a restart, when a tool ended the turn and a skill loaded in the same step"
+- **2.1.299** (hooks-permissions) "Fixed a user-installed mod's `$.env.set` changing the environment or shell prefix that command hooks from managed settings start with"
+- **2.1.296** (hooks-permissions) "Fixed a prompt sent while SessionStart hooks were still running vanishing when `←` moved the session to the background; it is still not sent, but `↑` now brings it back"
+- **2.1.295** (sessions-worktrees) "Improved headless `rate_limit_event` usage-limit warnings to say whether the account has extra usage turned on"
+- **2.1.292** (hooks-permissions) "Fixed a spurious "could not be examined" note for @-words that name no file when a Read deny rule is set and the working directory is under a symlink"
+- **2.1.292** (hooks-permissions) "Fixed plugin interface calls made while the plugin hooks worker restarts running without the hooks other plugins put on them"
+- **2.1.292** (agents-models) "Improved cloud sessions after a restart: Claude is now told which stopped background agents it can resume by id"
+- **2.1.290** (skills-commands) "Windows: Fixed multi-line `!` shell blocks in skills and commands failing when the file is saved with CRLF line endings"
+- **2.1.290** (tools-context) "Fixed the Bash tool occasionally losing shell aliases, functions and plugin PATH entries for a whole session when its first command ran seconds after startup on a new config directory"
+- **2.1.290** (sessions-worktrees) "Fixed sessions moved to the background while idle reopening as "no saved transcript" after a restart or idle cleanup; they now resume their conversation"
+- **2.1.288** (sessions-worktrees) "Fixed headless (`-p` / SDK) sessions occasionally ignoring SIGTERM when a supervisor such as `timeout` or systemd sends SIGCONT alongside it"
+- **2.1.288** (tools-context) "Fixed MCP tool calls sometimes running twice when a remote server's result was over 16 MB or could not be parsed"
+- **2.1.288** (agents-models) "Fixed subagents in Claude Desktop's Code tab getting none of the tools of a user-configured MCP server named `memory`"
+- **2.1.286** (other) "Fixed the Claude apps gateway's spend meter pricing 1-hour prompt cache writes at the cheaper 5-minute rate, and counting only the first model call's input tokens on streamed turns that run a server-side tool such as web search"
+- **2.1.286** (plugins) "Fixed plugin errors for a marketplace Claude Code refuses to load: they now say why and how to fix it instead of "not found""
+- **2.1.285** (hooks-permissions) "Improved per-turn performance when many permission deny rules and MCP tools are configured"
+- **2.1.284** (sessions-worktrees) "Fixed `/loop` status updates in self-paced mode often not being shown because Claude wrote them only in its reasoning; Claude now writes each update, and the outcome when the loop stops, as visible text"
+- **2.1.299** (sessions-worktrees) "Fixed queued prompts sent as content blocks over `--input-format stream-json` running together without a line break when merged into one turn"
+- **2.1.295** (tools-context) "Fixed Edit treating a file as fully read when its contents changed without its modification time advancing"
+- **2.1.290** (checkpointing) "Fixed `/rewind` not listing a prompt sent while Claude was still working"
+- **2.1.285** (checkpointing) "Fixed Artifact tool publishes after a conversation rewind (Esc Esc) overwriting a file's newer content that Claude had read only in the rewound turns; the publish is now refused until Claude re-reads the file"

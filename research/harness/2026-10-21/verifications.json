@@ -1,0 +1,62 @@
+[
+ {
+  "item": "plugins/house/modules/claude-code/rules/claude-code.md",
+  "heading": "Keep a skill body short, its references one level deep, and its name equal to its directory",
+  "votes": [
+   {
+    "lens": "doc-accuracy",
+    "refuted": false,
+    "reason": "I fetched https://code.claude.com/docs/en/skills.md and it supports the claim. The `name` field is described as the \"Command name shown in the `/` menu. Defaults to the directory name.\" For a personal or project skill, the page says `name` \"sets the command that the `/` menu shows and that you type\", and the directory name also invokes the skill. The rule's sentence says the harness \"treats a personal or project skill's name as a display label, invoking it by directory\", which contradicts that. The plugin half of the rule matches the docs, since `name` replaces the last command segment. The 500-line figure appears as \"Keep SKILL.md under 500 lines\" in a tip callout, so it is advisory guidance, not a hard ceiling. The rule's phrase \"documented ceiling\" overstates it. The 1,536-character cap on the description plus `when_to_use` is documented as the rule says. The name-equals-directory check is still a sound complement, as the claim concedes. I did not read the last 10,500 characters of the page, and I did not fetch the plugins/components page.",
+    "citation": "https://code.claude.com/docs/en/skills.md (\"How a skill gets its command name\"; frontmatter table, `name`; \"Keep SKILL.md under 500 lines\" tip)",
+    "downgradeTo": "none"
+   },
+   {
+    "lens": "enforcement",
+    "refuted": true,
+    "reason": "Through the enforcement lens the CONFLICT disposition does not hold. The rule's operative content is mechanical enforcement the harness lacks. check.mjs `shape` fails any skill whose name differs from its directory, plugin skills included. check.mjs `lengths` warns on a body over 500 lines and on description plus when_to_use over 1,536 characters. The harness only offers advisory docs guidance and a truncated listing, and it neither fails nor warns on a name/directory mismatch. A legal mismatch is permitted natively, so the house check adds a stricter posture on top; it does not contradict the harness. The rule's description of native behavior is a framing of how the harness treats name (display label for personal and project skills, namespaced last segment for plugin skills), and the claim offers no verified contradiction of it. The docs the claim cites say name defaults to the directory, which is consistent with the rule. The wording \"documented ceiling\" for 500 lines is at most imprecise, since the docs treat it as guidance. That is a wording nit and does not make the rule a conflict. The \"resolve-conflict\" action is unwarranted; at most a small wording tweak is needed. Because the rule adds blocking (shape) and warning (lengths) enforcement plus reference-depth and TOC posture the harness lacks, it should be COMPLEMENT. I did not re-fetch the docs; this rests on the rule text and its anchors.",
+    "citation": "<repo>/plugins/house/modules/claude-code/rules/claude-code.md lines 46-55 (Anchor: check.mjs lengths warns, shape fails name != directory); claim's docs at https://code.claude.com/docs/en/skills.md (name defaults to directory; 500 lines is guidance)",
+    "downgradeTo": "COMPLEMENT"
+   }
+  ]
+ },
+ {
+  "item": "plugins/house/modules/claude-code/rules/claude-code.md",
+  "heading": "Plan when the approach is uncertain, and clear the context after two failed corrections",
+  "votes": [
+   {
+    "lens": "doc-accuracy",
+    "refuted": false,
+    "reason": "I fetched https://code.claude.com/docs/en/best-practices.md and the page supports the claim at the scope asserted. The \"Explore first, then plan, then code\" section says \"Planning is most useful when you're uncertain about the approach, when the change modifies multiple files, or when you're unfamiliar with the code being modified. If you could describe the diff in one sentence, skip the plan.\" It also says plan mode \"adds overhead\". That matches the rule's first line almost word for word, including the overhead point. The \"Avoid common failure patterns\" section lists \"Correcting over and over\" with the fix \"After two failed corrections, `/clear` and write a better initial prompt incorporating what you learned\". The \"Course-correct early and often\" section adds \"A clean session with a better prompt almost always outperforms a long session with accumulated corrections\", which matches the rule's second line. The native guidance is advisory prose with no hook or enforcement, so \"same advisory enforcement\" is accurate. The rule's third line (re-read the source of a ruling before acting) has no counterpart on the page, and the claim already says only that line adds anything. One small mismatch is that one native passage says \"more than twice\" and another says \"after two\", but the failure-pattern fix gives the same threshold the rule uses. DUPLICATE is supported, and a reword that cites the native floor and keeps the re-read line is reasonable.",
+    "citation": "https://code.claude.com/docs/en/best-practices.md#explore-first-then-plan-then-code and #avoid-common-failure-patterns (also #course-correct-early-and-often), fetched 2026-10-21",
+    "downgradeTo": "none"
+   },
+   {
+    "lens": "enforcement",
+    "refuted": true,
+    "reason": "On enforcement, the claim holds for two of the rule's three lines. Native best-practices only advises planning and advises /clear after repeated failed corrections. The house rule has no anchor (\"none, because the harness cannot see that a correction failed\"), so it adds no enforcement over the native floor on those lines. The rule file has a third line that native best-practices does not cover: \"Re-read the source of a ruling immediately before you act on it, not once at session start, since a ruling can land mid-session.\" That is a house-specific posture about the session's own working rulings. It is advisory like the rest, but it has no native counterpart. The rule also adds a rationale for the count and a \"skip it when the diff fits in one sentence\" qualifier that the house wording ties to its own cost reasoning. A whole-rule DUPLICATE label therefore overstates the overlap. The offered evidence admits that one line adds something, and the proposed reword-to-cite-native-floor action would keep that line while citing native for the rest. That is a COMPLEMENT disposition, not DUPLICATE. I did not re-fetch the cited best-practices.md sections. The native content is taken from the claim's own description, and my lens is enforcement. I read the rule file only.",
+    "citation": "<repo>/plugins/house/modules/claude-code/rules/claude-code.md lines 108-114 (Plan when the approach is uncertain, and clear the context after two failed corrections; \"Anchor: none\"; re-read-the-ruling line 112). The native pages were not re-fetched: https://code.claude.com/docs/en/best-practices.md#explore-first-then-plan-then-code and #avoid-common-failure-patterns.",
+    "downgradeTo": "COMPLEMENT"
+   }
+  ]
+ },
+ {
+  "item": "plugins/house/modules/testing/rules/testing.md",
+  "heading": "Give the agent a check it can run before you walk away",
+  "votes": [
+   {
+    "lens": "doc-accuracy",
+    "refuted": true,
+    "reason": "The claim says nothing in the facts supports the rule's statement that the harness tells Claude to run `verify` before each commit. The cited skills.md page does support it. Under \"Run your checks before each commit\", it says that when a session starts with a skill named `verify` or `simplify` in place, Claude Code's commit instructions tell Claude to run it right before each commit, except for docs or tests changes. The conditions are v2.1.286 or later, a project, personal, enterprise or `.claude/commands` location, Claude able to invoke the skill, and `includeGitInstructions` not turned off. The bundled /verify does not count, so the rule's wording (\"when the repo ships it as a project skill, name the skill `verify`\") matches the docs. The docs do confirm that a repo-root `verify` skill replaces the bundled one, so the rule is not in conflict with the bundled skill. The recorded recipe in .claude/skills/verify/SKILL.md is itself a project skill, so a suite-chaining `verify` skill would take its place. This is deliberate replacement, not a collision, and the rule is compatible with it. The right classification is that the native feature complements the rule: the bundled /verify gives an app-driving check, the project `verify` skill gives the chained suite, and the harness supplies the commit-time nudge. It is not a conflict. I could not read the final 10,500 characters of the page, which probably include the \"Built-in commands vs bundled skills\" section.",
+    "citation": "https://code.claude.com/docs/en/skills.md, sections \"Run your checks before each commit\", \"Run and verify your app\", and \"Resolve skills that share a name\"",
+    "downgradeTo": "COMPLEMENT"
+   },
+   {
+    "lens": "enforcement",
+    "refuted": true,
+    "reason": "The CONFLICT label does not hold on enforcement reality. The rule's core obligation is a repo-owned command that runs with nobody watching, exits non-zero on failure, chains the suite, the guard tests and the repo checker, and is named in the root file. The bundled /verify skill does a different job. By the claim's own evidence it builds and runs the app, explicitly without falling back to tests or type checks, and it runs only when invoked. So it neither chains those checks nor gives a non-zero exit across them. The best-practices page (\"give Claude a way to verify its work\") is advice, not a mechanism, so it does not make a concrete, named, exit-coded command redundant. The rule also defers enforcement to claude-code.md's hook ladder, so it does not claim the check is enforced itself. A name collision is possible if an adopter's project skill is called `verify`, since a repo-root skill replaces the bundled one. That is a narrow naming hazard in one clause. It could be fixed by wording or by a different skill name, and it does not mean the harness already covers the obligation. The claim itself concedes the core obligation holds up. The unsupported clause (\"the harness then tells Claude to run it before each commit\") is a factual-accuracy problem to correct in the rule text. It is not a reason to call the rule a conflict. I did not re-fetch the cited docs and judged from the rule text and the claim's quoted facts. The rule should be downgraded to COMPLEMENT: it adds the suite-chaining, non-zero-exit, root-file-named check, while the native feature runs and records an app-level recipe. Separately, fix or drop the \"harness tells Claude to run it before each commit\" clause and avoid the name `verify`, or flag the collision.",
+    "citation": "<repo>/plugins/house/modules/testing/rules/testing.md lines 6-10 (rule text and its deferral to claude-code.md's hook ladder); docs cited in the claim not re-fetched.",
+    "downgradeTo": "COMPLEMENT"
+   }
+  ]
+ }
+]

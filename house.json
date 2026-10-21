@@ -100,7 +100,8 @@
         "lengthLimits": {
           "CLAUDE.md": 40,
           "README.md": 160,
-          ".claude/rules/house/*.md": 200
+          ".claude/rules/house/*.md": 200,
+          "plugins/house/orchestration/ORCHESTRATION.md": { "bytes": 9500 }
         },
         "maxCoLoadLines": 400,
         "emDash": {

@@ -3328,7 +3328,7 @@ function checkWorkflows(ctx) {
 const RISKY_AGENT_SETTINGS = [
   { keys: ['env', 'ANTHROPIC_BASE_URL'], hit: (v) => isNonEmptyString(v), why: 'sends every request, with its credential, to an endpoint this repo chose' },
   { keys: ['enableAllProjectMcpServers'], hit: (v) => v === true, why: 'approves every server in `.mcp.json`, including one a pull request adds' },
-  { keys: ['permissions', 'defaultMode'], hit: (v) => v === 'bypassPermissions', why: 'opens every session in this repo with no permission prompt' },
+  { keys: ['permissions', 'defaultMode'], hit: (v) => v === 'bypassPermissions', why: 'opens every session in this repo with no permission prompt on a Claude Code older than 2.1.257; newer clients ignore it from project settings' },
 ];
 
 function checkAgentConfig(ctx) {

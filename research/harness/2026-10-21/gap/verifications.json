@@ -1,0 +1,22 @@
+[
+  {
+    "item": "House hooks, cost tooling, deep-research fork, harness-watch routine, and security.md least-privilege and agent-config rules judged against the newly researched native areas (MCP, headless, workflows, scheduled and remote work, cost and context, sandbox and telemetry)",
+    "heading": "deep-research-pinned fork",
+    "votes": [
+      {
+        "lens": "doc-accuracy",
+        "refuted": false,
+        "reason": "The cited docs support the claim. (1) The workflows page, \"How a workflow runs\", says Claude can start a workflow only from a script file the session is already allowed to read, and that /add-dir or a Read allow rule makes another directory usable. The rule at plugins/house/modules/claude-code/rules/claude-code.md line 74 says the Workflow tool only runs a script inside the working directory, an added directory, or the scratchpad, which is narrower than the docs because it leaves out Read allow rules. The page also says a workflow saved to ~/.claude/workflows/ runs as /<name>, and that input arrives through the args global. The installed ~/.claude/workflows/deep-research-tiered.js has meta name 'deep-research-pinned', and this session already lists a deep-research-pinned skill. So the scratchpad-copy instruction is a workaround, and the native route is the /<name> command. (2) The sub-agents page, \"Run every subagent on one model\", says CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 applies one model to every workflow agent and ignores any model Claude passes. The rule's model-override sentence (line 68) names only \"the workflow model variable\". It never mentions FORCE, although the handbook (docs/handbook/claude-code.md line 218) does. The Cost section confirms that a model the script names counts as the per-invocation model in the resolution order. The resume clause agrees with the docs: before v2.1.305, completed pipeline and parallel agents could rerun, and from v2.1.305 they do not. The docs never use the name resumeFromRunId. The conflict is narrow, as a precision and omission problem, but the claim describes it at the scope it actually has.",
+        "citation": "https://code.claude.com/docs/en/workflows#how-a-workflow-runs ; https://code.claude.com/docs/en/workflows#save-the-workflow-for-reuse ; https://code.claude.com/docs/en/workflows#cost ; https://code.claude.com/docs/en/sub-agents#run-every-subagent-on-one-model ; https://code.claude.com/docs/en/workflows#resume-after-a-pause",
+        "downgradeTo": "none"
+      },
+      {
+        "lens": "enforcement",
+        "refuted": true,
+        "reason": "The claim does not hold as a CONFLICT. (1) The rule's statement that the Workflow tool runs a script from the working directory, an added directory, or the scratchpad is a safe subset of the documented readable-file rule, not a contradiction. Copying the fork into the scratchpad is an always-works posture that needs no /add-dir or Read allow rule, which differ per machine and session. The docs make ~/.claude/workflows/ an option for saved workflows. They do not make the copy step wrong or show that it fails. It also keeps the exact script in a session-local, inspectable place and states the depth up front, which are the fork's own enforcement points. (2) The missing CLAUDE_CODE_SUBAGENT_MODEL_FORCE warning is an omission to patch, not a conflict. The rule's job is to pin per-stage models and a depth-scaled budget, which the bundled /deep-research does not do. A docs-described override env var does not make that pinning redundant, and nothing in the docs replaces it. The evidence itself says the fork complements the harness and that the resume clause agrees with the docs. The right action is to keep the rule, optionally add a one-line FORCE caveat, and optionally mention the ~/.claude/workflows/ alternative. Resolving a conflict by deleting or rewriting the copy-to-scratchpad step would remove working enforcement. I did not re-fetch the docs pages. This rests on the claim's own evidence, and I defaulted to refuted because I could not confirm the conflict.",
+        "citation": "https://code.claude.com/docs/en/workflows#how-a-workflow-runs (script must be a readable file, /add-dir or Read allow rule); https://code.claude.com/docs/en/sub-agents#run-every-subagent-on-one-model (FORCE env var override, a missing caveat rather than a contradiction)",
+        "downgradeTo": "COMPLEMENT"
+      }
+    ]
+  }
+]

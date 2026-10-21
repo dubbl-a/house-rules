@@ -1197,4 +1197,52 @@ Claude Code 2.1.305 and 2.1.306 (changelog: https://raw.githubusercontent.com/an
 - Compaction, MCP, retry, provider, and Cowork fixes besides those above (requests no longer failing when a provider or gateway rejects tool search, a cloud or SDK MCP server no longer replaced by a same-named settings server, the compaction overflow notice to cloud sessions and teammates, scheduled Cowork subagents waiting on WebFetch approval), `CLAUDE_CODE_RETRY_WATCHDOG_USAGE_LIMIT_RECHECK_MS`, and the full-disk `ENOSPC` message. No impact: no package text claims these behaviors, and none of the settings or variables redirects the endpoint, approves servers wholesale, or bypasses permissions, so `RISKY_AGENT_SETTINGS` needs no change for them.
 - Screen reader, startup warnings moved from raw text to the debug log, Remote Control, mod, `/artifacts`, self-hosted runner, VS Code, cloud environment, Claude Tag, and Code Review changes. No impact: the package ships no mod, runner, IDE integration, or Code Review setting. The VS Code start-up hook spinner covers the plugin's SessionStart hooks in `plugins/house/hooks/hooks.json` without changing them, and Code Review re-reviews no longer opening with LGTM leaves `plugins/house/modules/deployment/files/deploy-guards.mjs` unchanged, since it reads the check's conclusion, not its text.
 
-Depth: delta addendum for these two releases, which are fixes and small features with no new model family or default and no duplicate or conflict. A full re-survey is nonetheless due on the skill's "Choosing the depth" signals, as issue #334 records: the deltas since the 2026-09-28 re-survey span several areas at once, and two native overlaps were missed by the per-release path. It runs as a Workflow on the maintainer's machine and was not run here; neither was the prompt audit. The rule and orchestration rewords are prose with no heading renamed and no guard change, so they ship as a patch.
+Depth: delta addendum for these two releases, which are fixes and small features with no new model family or default and no duplicate or conflict. A full re-survey is nonetheless due on the skill's "Choosing the depth" signals, as issue #334 records: the deltas since the 2026-09-28 re-survey span several areas at once, and two native overlaps were missed by the per-release path. It runs as a Workflow on the maintainer's machine and was not run in the cloud session that wrote this addendum; it ran later the same day, recorded in the next section. The rule and orchestration rewords are prose with no heading renamed and no guard change, so they ship as a patch.
+
+## Re-survey, 2026-10-21 (Claude Code 2.1.306)
+
+Run with the `adapting-to-harness-updates` skill's full path on the maintainer's machine, under `claude --version` 2.1.306, against the head of PR #348 (0.22.1) in a clean detached checkout: the main survey workflow over the same 13 harness areas as 2026-09-28, a gap run over what its completeness critic named, and a changelog triage of 2.1.284 to 2.1.306 beside them. The gate passed under the new CLI before anything was read. The harness's `/doctor prompt-audit` was not run; it is a user command.
+
+### Result
+
+Main run: 165 items (133 rule headings across the twelve modules and 32 mechanisms), 0 confirmed duplicates, 0 confirmed conflicts, 107 complements (3 downgraded from a duplicate or conflict claim), 58 uniques. The critic found no skipped heading but one unclassified file, `plugins/house/modules/security/rules/security-server.md`, and named as unresearched MCP, headless and SDK mode, the Workflow tool and bundled review workflows, scheduled and remote work, cost and context commands, model and effort configuration, and the sandbox, output styles, statusline, and telemetry. Gap run: those six areas, with 63 items judged against them (security-server.md in full, plus the parts of claude-code.md, ORCHESTRATION.md and the roster, evals.md, github.md, the cost hooks, the deep-research fork, and the update routine those areas touch): 0 confirmed duplicates or conflicts, 41 complements (1 downgraded from a conflict claim), 22 uniques.
+
+The downgrades: "Keep a skill body short, its references one level deep, and its name equal to its directory" (conflict; the checks are stricter than the harness, not contrary, but the prose misdescribed how `name` sets the command), "Plan when the approach is uncertain, and clear the context after two failed corrections" (duplicate; the re-read-the-ruling line has no native counterpart), "Give the agent a check it can run before you walk away" (conflict; from 2.1.286 a project skill named `verify` gets a before-each-commit nudge and replaces the bundled one, so the house's `verify` skill builds on it), and the `/deep-research` fork (conflict; the scratchpad copy is a safe subset of the Workflow tool's readable-script rule).
+
+### Rewords, adjudicated
+
+The two runs proposed 68 rewords. Skeptics check only duplicate and conflict claims, so three Opus reviewers checked every proposal against a source line they read (the banked facts, a freshly fetched docs page, or the changelog): 51 were amended and 17 rejected, and none shipped as first proposed. Most rejections were proposals that had missed a line on a page the classifier did fetch: the prompt audit's own prompt does cover provenance, unenforced instructions, volatile specifics, and an empty diff beating a manufactured one, so the four docs.md passages that cite it stand; the memory docs do say "may reduce adherence"; `/code-review` does cover reuse and simplification; auto mode's defaults do hold production migrations; and idle compaction is not cited as a floor, since `docs/handbook/claude-code.md` records it preventing none of the rebuilds measured for #321. The applied amendments, each with its source, are in the bank's `adjudicated-*.md` files. The substantive ones:
+
+- Subagents nest to depth three by default, built-in general-purpose included, so `plugins/house/orchestration/ORCHESTRATION.md` no longer says built-in agents cannot spawn; only the roster cannot, since no roster agent lists the Agent tool.
+- `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` discards every call-level and definition model, so the model rule and ORCHESTRATION.md name it beside the subagent and workflow model variables.
+- Of the events around a tool call, only the pre-tool event blocks on a failing exit; the hook rule had said only the pre-tool event reads one as a block at all, which the stop and prompt events contradict.
+- Auto memory is shared across one repo's worktrees, so the handoff rule no longer calls it never shared.
+- The sandbox covers shell commands only, runs them unsandboxed when it cannot start unless set to fail, and `denyRead` does not stop the Read tool; security.md says so.
+- A cloud session installs no plugin a repo or user declares, so the branch guard's floor is absent there; github.md says so.
+- The eval runner prints a pass ratio and a run count; evals.md's gap is now the estimand, not the ratio.
+- Hosted Code Review never blocks a merge, and no current page says it flags a stale document as a nit; docs.md and database.md say only the first.
+- `defaultMode: "bypassPermissions"` in project or local settings has been ignored since 2.1.257, so the agent-config finding's message says it binds only older clients.
+
+### Changelog, 2.1.284 to 2.1.306
+
+695 entries touch the package's areas (`changelog-triage.md` in the bank, each quoted verbatim and marked against the addenda). 325 are not named in any addendum; nearly all are bug fixes that restore behavior a rule already assumes. Those that bore on this run are cited above: the subagent nesting default, the `_FORCE` variable, the workflow model variable (2.1.296), the `verify` skill nudge (2.1.286), idle compaction (2.1.299, 2.1.302), and the native resume warning (2.1.304).
+
+### Open questions
+
+Settled: the prompt audit's scope; hosted review and stale docs; `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` and the `_FORCE` variant exist; a skill's `name` sets its command; the 2.1.304 resume warning exists; a repo `verify` skill is never overwritten; a settings file drops every parenthesized `mcp__` rule, allow, deny, or ask alike, and only `--disallowedTools` carries a parameter deny; "Git Destructive" covers a remote branch delete; a schema-bound SDK run retries and ends with `error_max_structured_output_retries`, and a success can arrive with no structured output. Still open: what Claude Code's built-in git instructions say; how the agent listing labels a print-mode run; whether `idle-cache-hold.mjs` overprices a resume after an idle compaction; whether an eval grader accepts `match: contains`; whether the update routine's Gmail connector has its non-send tools blocked.
+
+### Proposals for the maintainer
+
+Not applied, since each changes behavior or policy:
+
+- `plugins/house/payload/check.mjs` agent-config still fails on a project `bypassPermissions` default that current clients ignore: keep it for older clients, demote it to a warning, or drop it; `auto` is not checked either.
+- A SessionStart hook in the rendered `.claude/settings.json`, so a single-repo cloud session arms the branch floor without the plugin.
+- github.md's default-branch rule could require that the access an agent pushes through cannot bypass protection, which a routine run's push respects; it may require protection for administrators and so collide with `.github/workflows/release.yml`.
+- The settings template allows `Bash(gh pr merge*)`, which sits awkwardly beside security.md's second-party rule.
+- `RUN_HINT` in `scripts/house/check-deep-research-upstream.mjs` repeats the Workflow-location clause in its narrower form; running the fork by its saved name instead of a scratchpad copy is untested.
+- A `lengths` entry for ORCHESTRATION.md, since SessionStart `additionalContext` past 10,000 characters moves to a file Claude is not told to read.
+- `cost-report` could name the cache-miss causes `/usage` reports and say it ignores a contracted price table (passed to the session that owns #326).
+
+### Where the bank lives
+
+`research/harness/2026-10-21/`, committed: `main-synthesize-report.md`, `main-completeness-critic.md`, `facts.json` (543 facts), `classifications.json`, `verifications.json`, `INDEX.tsv`, `changelog-triage.md`, `gap/` (the gap run's addendum, facts, classifications, and verifications), the `adjudicated-*.md` reviews, and `workflows/` (both scripts as run). Local paths are replaced with `<repo>` and `<scratchpad>`.
