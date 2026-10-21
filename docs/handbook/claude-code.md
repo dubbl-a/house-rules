@@ -364,8 +364,8 @@ description tells the model to set it only when the user or an instruction file 
 specific effort level, never on its own judgment, and says a fork ignores it; this rule asks every
 off-roster call to name an effort but leaves the level to the call, so a model reading the
 description strictly may still omit it, which is why the per-model level in user settings stays
-the floor (observed in a 2.1.292 session, 2026-10-07). A call-level `effort` does override a
-roster agent's frontmatter `effort`: on Claude Code 2.1.306 (2026-10-20), `house-rules:builder`
+the floor (observed in a 2.1.292 session, 2026-10-07). A call-level `effort` overrode the
+builder's frontmatter `effort` (only that agent was probed): on Claude Code 2.1.306 (2026-10-20), `house-rules:builder`
 launched with `effort: "high"` sent `output_config.effort: "high"` on all 3 of its requests, and a
 control launch with no `effort` sent `medium`, the builder's pin, on all 3. Both ran on
 `claude-sonnet-5-5`; the method was reading `output_config.effort` in the subagent transcript
@@ -389,14 +389,14 @@ Measured later the same day, on the maintainer machine across all projects: ever
 history, each paired with the most recent earlier builder launch in the same session, counting the
 first verdict per builder. Opus 5.5 builders: 63, of which 33 refuted, first verdict REWORK 15
 (45%). Sonnet 5.5 builders: 208, of which 54 refuted, first verdict REWORK 36 (67%). Sonnet 5
-builders: 53, none refuted. 165 verdicts paired; 76 refuter verdicts had no earlier builder in the
+builders: 53, none paired by the session's count (the script pairs 6). 165 verdicts paired; 76 refuter verdicts had no earlier builder in the
 session. Cost per build over the last 7 days at list price: Opus builder $86.16 over 24 agents
 (about $3.59 each), Sonnet builder $53.60 over 80 agents (about $0.67 each). The gap is 22 points,
-under the 30 to 40 point break-even, so Sonnet-first stands. Even if every Sonnet REWORK led to a
+under the 30 to 40 point break-even, so Sonnet-first stands on this data. Even if every Sonnet REWORK led to a
 full Opus rebuild, Sonnet-first costs about 0.67 + 0.67 x 3.59 = $3.08 per build against $3.59 for
 Opus-first. Caveats: the pairing is a heuristic; Opus got the harder builds, so the comparison is
-not controlled; and a REWORK is caught by the refuter, so the quality floor is the review, not the
-builder. `research/token-cost/scripts/verdicts.py` reproduces the table, within a few runs.
+not controlled, and on matched tasks the gap is likely wider, closer to the break-even; and a REWORK is caught by the refuter, so the quality floor is the review, not the
+builder. `research/token-cost/scripts/verdicts.py` reproduces the table within a few verdicts, apart from the Sonnet 5 row.
 Source: research/token-cost/2026-10-20.md (R3 addendum), issues #324 and #344.
 
 Sonnet 5.5 as the default Sonnet, 2026-09-28: Claude Code 2.1.284 made Claude Sonnet 5.5
