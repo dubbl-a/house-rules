@@ -3044,7 +3044,9 @@ function exprsIn(text) {
         i++;
       }
     }
-    if (end === -1) break;
+    // No end: drop this `${{` and look for the next, so a stray one (in a
+    // quoted shell string, say) does not hide a real expression after it.
+    if (end === -1) { at += 3; continue; }
     out.push({ raw: text.slice(at, end), toks });
     at = end;
   }

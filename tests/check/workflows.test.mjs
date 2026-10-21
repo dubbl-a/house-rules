@@ -161,6 +161,8 @@ test('pr-credential: the tokenizer reads secrets as a chain start only', () => {
   assert.deepEqual(warns(env("${{ fromJSON('{\"secrets\": 1}') }}")), []);
   assert.deepEqual(warns(env("${{ matrix.secrets }}")), []);
   assert.match(warns(env("${{ secrets['it''s'] }}"))[0].message, /secrets\.it's/);
+  // An unterminated `${{` does not hide a later expression on the same line.
+  assert.deepEqual(kinds(warns(env("x${{ 'a ${{ secrets.API_KEY }}"))), ['pr-credential']);
 });
 
 test('event-in-run: event data in an agent prompt input warns', () => {
