@@ -126,33 +126,43 @@ const FETCH_BYPASS_REPLACEMENT = '      if (fetchSlots <= 0 && (relRank[r.releva
 // source quality and verifies the top N, so a couple of angles with strong
 // sources can take every slot and the rest go unverified (issue #139: all 15
 // standard slots went to two angles). The fork keeps that sort as the order
-// within each angle, then deals the slots round-robin across angles. A claim's
-// angle is its source's, the search angle that found the URL. The agent-count
-// cap scales with the angles that produced claims (verifyCap), and when claims
-// are still dropped the run says how to extend itself (verifyNote).
+// within each angle. A capped run verifies the claims the answer rests on
+// first (#355): the slots fill tier by tier in importance order (every
+// central claim, then supporting, then tangential), and inside a tier they are
+// dealt round-robin across angles. A claim's angle is its source's, the search
+// angle that found the URL. The agent-count cap scales with the angles that
+// produced claims (verifyCap), and when claims are still dropped the run says
+// how to extend itself (verifyNote).
 export const SELECTION_LINE = 'const rankedClaims = [...allClaims]\n  .sort((a, b) => (impRank[a.importance] - impRank[b.importance]) || (qualRank[a.sourceQuality] - qualRank[b.sourceQuality]))\n  .slice(0, MAX_VERIFY_CLAIMS)\n';
 
 /**
  * Take items round-robin across the groups keyOf names, each group in the
- * order given, groups in order of first appearance, up to cap. Deterministic,
- * so the pick at cap K is a prefix of the pick at any larger cap: a run
- * resumed with resumeFromRunId and a raised cap keeps every verify call it
- * already made and appends the rest. The source of this and the two
- * functions below is written into the fork, so each stays self-contained.
+ * order given, groups in order of first appearance, up to cap. With rankOf,
+ * the items are first split into tiers by that number: the lowest tier is
+ * dealt out completely before the next starts, so a cap spends its slots on
+ * the best tier first. Deterministic, so the pick at cap K is a prefix of the
+ * pick at any larger cap (the tier picks concatenate): a run resumed with
+ * resumeFromRunId and a raised cap keeps every verify call it already made
+ * and appends the rest. The source of this and the two functions below is
+ * written into the fork, so each stays self-contained.
  */
-export function pickRoundRobin(items, keyOf, cap) {
-  const groups = new Map();
-  for (const item of items) {
-    const key = keyOf(item);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
-  }
-  const queues = [...groups.values()];
+export function pickRoundRobin(items, keyOf, cap, rankOf) {
+  const ranks = rankOf ? [...new Set(items.map(rankOf))].sort((a, b) => a - b) : [0];
   const out = [];
-  for (let i = 0; out.length < cap && queues.some((q) => i < q.length); i++) {
-    for (const q of queues) {
-      if (out.length >= cap) break;
-      if (i < q.length) out.push(q[i]);
+  for (const rank of ranks) {
+    const groups = new Map();
+    for (const item of items) {
+      if (rankOf && rankOf(item) !== rank) continue;
+      const key = keyOf(item);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    const queues = [...groups.values()];
+    for (let i = 0; out.length < cap && queues.some((q) => i < q.length); i++) {
+      for (const q of queues) {
+        if (out.length >= cap) break;
+        if (i < q.length) out.push(q[i]);
+      }
     }
   }
   return out;
@@ -184,7 +194,7 @@ const claimAngle = new Map(allSources.flatMap(s => s.claims.map(c => [c, s.angle
 const anglesWithClaims = new Set(allClaims.map(c => claimAngle.get(c))).size
 const rankedClaims = pickRoundRobin([...allClaims]
   .sort((a, b) => (impRank[a.importance] - impRank[b.importance]) || (qualRank[a.sourceQuality] - qualRank[b.sourceQuality])),
-  c => claimAngle.get(c), verifyCap(BUDGET, anglesWithClaims))
+  c => claimAngle.get(c), verifyCap(BUDGET, anglesWithClaims), c => impRank[c.importance])
 const VERIFY_NOTE = verifyNote({ verified: rankedClaims.length, total: allClaims.length, angles: anglesWithClaims, votes: VOTES_PER_CLAIM, deepCeiling: DEPTH_PRESETS.deep.maxVerifyCeiling })
 if (VERIFY_NOTE) log(VERIFY_NOTE)
 `;
@@ -286,7 +296,7 @@ log("Efforts: scope=" + EFFORTS.scope + " search=" + EFFORTS.search + " fetch=" 
 const META = (version, sha) => `export const meta = {
   name: 'deep-research-pinned',
   description: 'Deep research harness with per-stage model pins and a depth-scaled budget: fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.',
-  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). To run it, ${RUN_HINT}. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, efforts: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, minPerAngle, maxVerifyCeiling, votes, refutationsRequired}}. A run that drops claims returns verifyNote; extend that same run only when the user agrees. Retire when check-deep-research-upstream.mjs exits 2.',
+  whenToUse: 'House fork of the bundled deep-research workflow (Claude Code ${version}, native body sha256 ${sha.slice(0, 12)}). To run it, ${RUN_HINT}. args: a question string, or {question, depth: "light" | "standard" | "deep", models: {scope, search, fetch, verify, synthesize}, efforts: {scope, search, fetch, verify, synthesize}, budget: {maxFetch, fetchOverflow, maxVerifyClaims, minPerAngle, maxVerifyCeiling, votes, refutationsRequired}}. Before launching, ask the user the verify setting with the depth: all claims (budget.maxVerifyClaims: 500) or a cap. A run that still drops claims returns verifyNote, which says how to extend it. Retire when check-deep-research-upstream.mjs exits 2.',
   phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle"},{"title":"Fetch","detail":"URL-dedup, fetch the top sources the depth allows, extract falsifiable claims"},{"title":"Verify","detail":"Adversarial vote per claim, count and quorum set by the depth"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
 

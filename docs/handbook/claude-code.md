@@ -280,7 +280,10 @@ directory added with `/add-dir` or a Read allow rule
 verify slots on two of five angles, because the native selection sorts every claim globally by
 importance and source quality and takes the top N. The fork keeps that sort as the order within
 each angle (a claim's angle is the search angle that found its source) and deals the slots
-round-robin across angles. The cap also scales with the question: `minPerAngle` slots per angle
+round-robin across angles. Since 2026-10-21 (#355) a capped run also verifies central claims
+first: the slots fill tier by tier (all central, then supporting, then tangential) and are dealt
+round-robin across angles inside each tier, so a tangential claim never takes a slot ahead of a
+central one from another angle. The cap also scales with the question: `minPerAngle` slots per angle
 that produced claims, clamped to `maxVerifyCeiling`, so the depth log states the ceiling-based
 worst case; an explicit `budget.maxVerifyClaims` lifts the ceiling to match, so a request above
 it is honored rather than clamped. A run that still drops claims returns a `verifyNote` naming how
@@ -296,6 +299,17 @@ A changed depth or budget field (votes, say) would rewrite every verify prompt; 
 and a deterministic selection, a larger cap keeps every verify call already made and appends the
 rest. The script cannot read its own run id, so the note says "this run's id" and the session
 supplies the id the tool returned.
+
+Verification thoroughness is now set before the run, 2026-10-21 (#355). A light run verified 8 of
+42 claims and the extension was proposed only after the maintainer read a thin report, so the
+session proposes the verify setting with the depth before launch, each option with its expected
+agent count, and launches only on the answer: all claims, which is `budget.maxVerifyClaims: 500`
+and lifts the ceiling, or a stated cap. "All" is 500 and not a count because a resume with a cap
+equal to the previous total (42) re-extracted 45 claims and left 3 unchecked. After the run the
+session checks that `unverified` is empty and `stats.claimsExtracted` equals
+`stats.claimsVerified` on a full run, or `stats.claims` equals `stats.verified` on an early
+return. The `verifyNote` and `resumeFromRunId` extension stay as the fallback for a run that
+still dropped claims; the presets and the verify cap are unchanged.
 
 The scope agent ran the searches itself, 2026-10-07 (#230): a `standard` run sat in Scope for 20
 minutes and was stopped by hand (run `wf_7669cf26-64a`). The scope agent, on Opus and inheriting
