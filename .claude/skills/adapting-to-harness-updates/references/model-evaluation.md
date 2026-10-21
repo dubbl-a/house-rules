@@ -51,7 +51,6 @@ fixed; the method below applies it and is not a place to reopen it.
    card, or leaderboard entry. A figure not found in a fetched page is recorded as not found, never
    estimated.
 4. **Gather local evidence** (local sessions only, because it reads `~/.claude` transcripts).
-   <!-- docs-drift-ignore: script lands in a parallel PR -->
    `research/model-tier/scripts/builder_tier.py` reports rework rate by builder model, effort, and
    size band, cost per build, refuter cost, and escalation. The A/B method in
    `research/model-tier/scripts/` compares one stage's output on the same inputs: resume a
