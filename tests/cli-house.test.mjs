@@ -18,7 +18,7 @@ import { test as nodeTest, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync, readdirSync,
-  chmodSync, existsSync, statSync, rmSync, realpathSync, lstatSync,
+  chmodSync, existsSync, statSync, rmSync, realpathSync, lstatSync, cpSync,
 } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -5116,4 +5116,62 @@ test('#364 upgrade: usage names the verb, and a stray flag or extra word is a us
   assert.equal(help.code, 0);
   assert.match(help.out, /usage: house upgrade/);
   assert.deepEqual(f.calls(), []);
+});
+
+// #167: --from-source re-renders every managed file from source, for the
+// package's own checkout only. The fixture below is a repo that holds the
+// fixture plugin at plugins/house, with the CLI run from that copy.
+function buildPackageCheckout() {
+  const { dir: pluginDir } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  cpSync(pluginDir, join(repo, 'plugins', 'house'), { recursive: true });
+  return { repo, cliPath: join(repo, 'plugins', 'house', 'scripts', 'house') };
+}
+
+test('#167 render --from-source: refused outside the package checkout, exit 2, nothing written', () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  const ruleFile = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  const edited = `${readFileSync(ruleFile, 'utf8')}\nhand-edited line\n`;
+  writeFileSync(ruleFile, edited);
+
+  const r = runCli(cliPath, ['render', '--from-source', '--apply', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--from-source/);
+  assert.match(r.err, /node plugins\/house\/scripts\/house render --from-source --apply --repo \./);
+  assert.equal(readFileSync(ruleFile, 'utf8'), edited, 'nothing was written');
+});
+
+test('#167 render --from-source: in a package checkout it rewrites a hand-edited rule and checker; dry-run writes nothing', () => {
+  const { repo, cliPath } = buildPackageCheckout();
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const ruleFile = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  const checkFile = join(repo, '.house', 'check.mjs');
+  const ruleOriginal = readFileSync(ruleFile, 'utf8');
+  const checkOriginal = readFileSync(checkFile, 'utf8');
+  writeFileSync(ruleFile, `${ruleOriginal}\nhand-edited line\n`);
+  writeFileSync(checkFile, `${checkOriginal}\n// hand edit\n`);
+  assert.notEqual(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0, 'plain render refuses');
+
+  const dry = runCli(cliPath, ['render', '--from-source', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.equal(readFileSync(ruleFile, 'utf8'), `${ruleOriginal}\nhand-edited line\n`, 'dry-run wrote nothing');
+  assert.equal(readFileSync(checkFile, 'utf8'), `${checkOriginal}\n// hand edit\n`, 'dry-run wrote nothing');
+
+  const applied = runCli(cliPath, ['render', '--from-source', '--apply', '--repo', repo]);
+  assert.equal(applied.code, 0, applied.out + applied.err);
+  assert.equal(readFileSync(ruleFile, 'utf8'), ruleOriginal);
+  assert.equal(readFileSync(checkFile, 'utf8'), checkOriginal);
+});
+
+test('#167 render --from-source=<value> is rejected before anything is written', () => {
+  const { repo, cliPath } = buildPackageCheckout();
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  const r = runCli(cliPath, ['render', '--from-source=1', '--apply', '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /--from-source takes no value/);
+  assert.equal(existsSync(join(repo, '.house', 'lock.json')), false, 'nothing was rendered');
 });

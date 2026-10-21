@@ -1925,10 +1925,21 @@ function expectModuleProblem(args) {
   return null;
 }
 
+// #167: true when this CLI is the plugins/house of the repo being rendered,
+// which is the package's own checkout and nowhere else.
+function isPackageCheckout(repoRoot) {
+  try { return realpathSync(path.join(__dirname, '..')) === realpathSync(path.join(repoRoot, 'plugins', 'house')); }
+  catch { return false; }
+}
+
 function cmdRender(args) {
   const expectProblem = expectModuleProblem(args);
   if (expectProblem) { console.error(`house render: ${expectProblem}`); process.exit(2); }
   const repoRoot = resolveRepoRoot(args);
+  if (args.fromSource && !isPackageCheckout(repoRoot)) {
+    console.error(`house render: --from-source is for the house package's own checkout, and this CLI (${path.join(__dirname, '..')}) is not the plugins/house of ${repoRoot}. Nothing was written. Run the CLI from the checkout being rendered: node plugins/house/scripts/house render --from-source --apply --repo .`);
+    process.exit(2);
+  }
   const housePath = path.join(repoRoot, 'house.json');
   if (!existsSync(housePath)) {
     console.error(`house render: ${housePath} not found. Run \`house init --apply\` first.`);
@@ -1954,7 +1965,7 @@ function cmdRender(args) {
   const pluginVersion = readPluginVersion();
   const modules = findModules();
   // --force-managed may repeat; render sees the set of paths it names (null when none).
-  const forceManagedPath = args.forceManaged.length ? new Set(args.forceManaged.map(normalizeRepoPath)) : null;
+  let forceManagedPath = args.forceManaged.length ? new Set(args.forceManaged.map(normalizeRepoPath)) : null;
   // Read before anything below writes: the lock is rewritten at the end of an
   // --apply, and the scaffold gate needs what it said on the way in.
   const priorLockJson = loadPriorLockJson(repoRoot);
@@ -1968,7 +1979,15 @@ function cmdRender(args) {
   const migration = planOldPreCommitMigration(repoRoot, houseData, modules, loadPriorLock(repoRoot));
   const migrations = migration ? [migration] : [];
   const treatAsAbsent = new Set(migrations.map((m) => m.from));
-  const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets, modulePaths } = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
+  let built = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
+  // #167 --from-source: plan once to learn every managed target, then plan again
+  // with each one named as if by --force-managed. Orphans are not in the plan,
+  // so the sweep below is untouched.
+  if (args.fromSource) {
+    forceManagedPath = new Set([...(forceManagedPath || []), ...built.plan.map((p) => p.target.path)]);
+    built = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
+  }
+  const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets, modulePaths } = built;
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
@@ -4307,7 +4326,7 @@ function cmdHookAdd(args) {
 // ── CLI / main ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const out = { repo: null, apply: false, forceManaged: [], json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [], name: null, stage: null };
+  const out = { repo: null, apply: false, forceManaged: [], fromSource: false, json: false, scaffold: false, why: null, keepConfig: false, discardUntrackedConfig: false, expectModules: [], names: [], name: null, stage: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--repo') out.repo = argv[++i];
@@ -4319,6 +4338,8 @@ function parseArgs(argv) {
       if (argv[i + 1] !== undefined) out.forceManaged.push(argv[++i]); else i++;
     }
     else if (a.startsWith('--force-managed=')) { const v = a.slice('--force-managed='.length); if (v) out.forceManaged.push(v); }
+    else if (a === '--from-source') out.fromSource = true;
+    else if (a.startsWith('--from-source=')) { console.error('house: --from-source takes no value'); process.exit(2); }
     else if (a === '--json') out.json = true;
     else if (a === '--scaffold') out.scaffold = true;
     else if (a === '--keep-config') out.keepConfig = true;
