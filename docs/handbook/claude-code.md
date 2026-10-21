@@ -364,9 +364,12 @@ description tells the model to set it only when the user or an instruction file 
 specific effort level, never on its own judgment, and says a fork ignores it; this rule asks every
 off-roster call to name an effort but leaves the level to the call, so a model reading the
 description strictly may still omit it, which is why the per-model level in user settings stays
-the floor (observed in a 2.1.292 session, 2026-10-07). Whether a call-level `effort` overrides a
-roster agent's frontmatter `effort` is not stated on the sub-agents page (fetched 2026-10-07), so
-the roster pins stay the record for roster agents.
+the floor (observed in a 2.1.292 session, 2026-10-07). A call-level `effort` overrode the
+builder's frontmatter `effort` (only that agent was probed): on Claude Code 2.1.306 (2026-10-20), `house-rules:builder`
+launched with `effort: "high"` sent `output_config.effort: "high"` on all 3 of its requests, and a
+control launch with no `effort` sent `medium`, the builder's pin, on all 3. Both ran on
+`claude-sonnet-5-5`; the method was reading `output_config.effort` in the subagent transcript
+(issue #344).
 
 Choosing a build's tier, 2026-10-20: the builder is pinned to Sonnet, yet a local scan of one
 adopter's transcripts (2026-10-20, deduplicated by tool-use id) found 64 builder calls with an
@@ -376,13 +379,25 @@ miss costs: where a miss is expensive to detect or redo, the redo outweighs the 
 is a judgment, not a measured result. Opus builds ran a median 111 responses against 43 for Sonnet,
 but they also got the harder builds, so that comparison says nothing either way about cost per
 outcome. Sonnet at high effort is tried first because it is the cheaper way to learn whether the
-task needed more. The builder's frontmatter pins `effort: medium`, and whether a call-level
-`effort` overrides it is unverified (see above), so the rule says to confirm the effort in
-`/tasks`, which shows each subagent's model and effort (2.1.243). A brief that cannot state the
-design is a planning problem, and a bigger builder only builds the wrong thing faster. Rough
-break-even: Sonnet-first stops paying once it fails review about 30 to 40 points more often than Opus
-on a task class; that is arithmetic, not a measurement. Revisit with the rework rates from #322.
-Source: research/token-cost/2026-10-20.md (R3 addendum), issue #324.
+task needed more. The builder's frontmatter pins `effort: medium`, and the call-level `effort`
+overrides it (see above), so the rule says Sonnet at high effort, named on the call. A brief that
+cannot state the design is a planning problem, and a bigger builder only builds the wrong thing
+faster. Rough break-even: Sonnet-first stops paying once it fails review about 30 to 40 points more
+often than Opus on a task class; that is arithmetic.
+
+Measured later the same day, on the maintainer machine across all projects: every refuter run in
+history, each paired with the most recent earlier builder launch in the same session, counting the
+first verdict per builder. Opus 5.5 builders: 63, of which 33 refuted, first verdict REWORK 15
+(45%). Sonnet 5.5 builders: 208, of which 54 refuted, first verdict REWORK 36 (67%). Sonnet 5
+builders: 53, none paired by the session's count (the script pairs 6). 165 verdicts paired; 76 refuter verdicts had no earlier builder in the
+session. Cost per build over the last 7 days at list price: Opus builder $86.16 over 24 agents
+(about $3.59 each), Sonnet builder $53.60 over 80 agents (about $0.67 each). The gap is 22 points,
+under the 30 to 40 point break-even, so Sonnet-first stands on this data. Even if every Sonnet REWORK led to a
+full Opus rebuild, Sonnet-first costs about 0.67 + 0.67 x 3.59 = $3.08 per build against $3.59 for
+Opus-first. Caveats: the pairing is a heuristic; Opus got the harder builds, so the comparison is
+not controlled, and on matched tasks the gap is likely wider, closer to the break-even; and a REWORK is caught by the refuter, so the quality floor is the review, not the
+builder. `research/token-cost/scripts/verdicts.py` reproduces the table within a few verdicts, apart from the Sonnet 5 row.
+Source: research/token-cost/2026-10-20.md (R3 addendum), issues #324 and #344.
 
 Sonnet 5.5 as the default Sonnet, 2026-09-28: Claude Code 2.1.284 made Claude Sonnet 5.5
 (`claude-sonnet-5-5`) the default Sonnet model on the Anthropic API: $2/$10 per Mtok with cache
