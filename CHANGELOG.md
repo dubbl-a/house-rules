@@ -6,6 +6,21 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-10-21
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house doctor` now says whether the installed `/deep-research` fork is current, a `hold-sync` label lets a release ship without syncing the adopters, and three fixes land in the render dry run, the self-host gate and the deep-research verify check. Upgrading from 0.22.2: run `/house-rules:sync`, then run the `check-deep-research-upstream.mjs --install` command `house doctor` prints, since every fork built before this release has no build marker and reads as stale.
+
+### Added
+
+- `house doctor` reports the installed `/deep-research` fork (`~/.claude/workflows/deep-research-tiered.js`) as `current`, `STALE` or `not installed`, with the `check-deep-research-upstream.mjs --install` command when it is not current. `--install` now writes a build marker: a hash of the script that built the fork and a hash of the whole fork minus the marker line, so a fork built by another plugin version, or edited by hand anywhere, reads as stale. A Claude Code update that changes the native body still reads `current`; the script's no-flag run covers that drift (part of #367).
+- A `hold-sync` label on the release PR publishes the release without syncing the adopters and opens an `Adopter sync held for vX.Y.Z` issue. `gh workflow run release.yml --ref main -f version=X.Y.Z` runs the held sync later, only while that version is still the latest release, and closes the issue once every adopter leg succeeds. If the run cannot find the merged release PR to read its labels after three tries, it holds the sync rather than guess. A manual run of `release.yml` no longer retries a release: use "Re-run failed jobs" on the push's run (#362).
+
+### Fixed
+
+- `house render` without `--apply` labels a managed file that `--apply` would leave byte-for-byte alone as `unchanged` (`unchanged: true` in `--json`), not `update`, so a dry run on a current tree answers whether anything is pending (#358).
+- `tests/render-drift.test.mjs` fails `npm test` in this repo when a module edit was not re-rendered into the vendored copy. Before, the lock hashed only the vendored copy, so a stale copy matched its own lock and `check:house` reported 0 findings (#343).
+- The deep-research early-return check (`stats.claims` equals `stats.verified`) applies only when `stats.claims` is above 0; a run that extracted no claims has nothing to verify (#357).
+
 ## [0.22.2] - 2026-10-21
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. The cost report gains price premiums, context-size bands and a short-cache rebuild count, and the weekly scan retries a crash within an hour; build guidance follows Anthropic's published model split; `/deep-research` settles the verify setting at launch. Upgrading from 0.22.1: run `/house-rules:sync`, then restart Claude Code so the updated SessionStart hook loads.
