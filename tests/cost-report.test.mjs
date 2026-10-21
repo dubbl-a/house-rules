@@ -319,6 +319,25 @@ test('hook: parallel startups spawn exactly one scan, and the scan releases the 
   assert.ok(done, 'scan wrote its result and removed the lock');
 });
 
+test('hook: a scan that finishes between the due check and the lock acquire is not repeated', async () => {
+  const cfg = tmp();
+  const log = join(cfg, 'spawns.log');
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOUSE_COST_CHECK_PROJECTS_DIR: join(cfg, 'projects'), HOUSE_COST_CHECK_SPAWN_LOG: log, HOUSE_COST_CHECK_LOCK_DELAY_MS: '2000' };
+  delete env.HOUSE_COST_CHECK;
+  const closed = new Promise((resolve) => {
+    const c = spawn(process.execPath, [HOOK], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+    c.on('close', resolve);
+    c.stdin.end(JSON.stringify({ source: 'startup' }));
+  });
+  // The hook has read no state and sleeps before taking the lock; a scan finishing now
+  // leaves a fresh result and no lock, exactly as the real scan does.
+  await new Promise((r) => setTimeout(r, 700));
+  seed(cfg, { avoidableUsd: 2 });
+  await closed;
+  assert.ok(!existsSync(log), 'no second scan after a fresh result landed');
+  assert.ok(!existsSync(join(cfg, 'house', 'cost-check.lock')), 'the lock the hook took is released');
+});
+
 test('hook: a fresh lock blocks a spawn and a lock older than an hour does not', () => {
   const cfg = tmp();
   const lock = join(cfg, 'house', 'cost-check.lock');

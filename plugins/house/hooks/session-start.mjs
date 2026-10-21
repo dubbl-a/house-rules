@@ -59,6 +59,14 @@ function takeLock(lock) {
   return false;
 }
 
+// True when the state file holds no usable checkedAt or the last scan is a week old.
+function scanDue(file) {
+  let state = null;
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch { /* none or malformed: treat as no state */ }
+  const checkedAt = state && typeof state === 'object' ? Date.parse(state.checkedAt) : NaN;
+  return !Number.isFinite(checkedAt) || Date.now() - checkedAt >= WEEK_MS;
+}
+
 // Returns the notice to show, or undefined; spawns the weekly scan when due.
 function costCheck(here) {
   if (String(process.env.HOUSE_COST_CHECK || '').toLowerCase() === 'off') return undefined;
@@ -96,8 +104,18 @@ function costCheck(here) {
   }
   // No claim is written at spawn: a scan that dies leaves no new checkedAt, and the
   // lock (stale after an hour) is what paces the retry.
-  const checkedAt = state ? Date.parse(state.checkedAt) : NaN;
-  if ((!Number.isFinite(checkedAt) || Date.now() - checkedAt >= WEEK_MS) && takeLock(join(dirname(file), 'cost-check.lock'))) {
+  const lock = join(dirname(file), 'cost-check.lock');
+  if (scanDue(file)) {
+    // Test seam: widens the gap between the due check and the lock so a test can land a scan in it.
+    const gap = Number.parseInt(process.env.HOUSE_COST_CHECK_LOCK_DELAY_MS, 10);
+    if (gap > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, gap);
+    if (!takeLock(lock)) return notice;
+    // A scan that finished after the check above has written its result and freed the
+    // lock, so the lock is ours but nothing is due: re-read before spawning a second scan.
+    if (!scanDue(file)) {
+      try { unlinkSync(lock); } catch { /* already gone */ }
+      return notice;
+    }
     const args = [script, '--since', '7d', '--state', file];
     if (process.env.HOUSE_COST_CHECK_PROJECTS_DIR) args.push('--dir', process.env.HOUSE_COST_CHECK_PROJECTS_DIR);
     // Test seam: lets a test count how many parallel hooks spawned a scan.
