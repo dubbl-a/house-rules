@@ -65,7 +65,13 @@ forgotten. Create the label once:
 gh label create hold-sync --description "Publish the release, hold the adopter sync" --color FBCA04
 ```
 
-Run the held sync later from main, naming the released version (the tag `vX.Y.Z` must exist):
+If the workflow cannot find the merged release PR to read its labels (the lookup is retried three
+times, 10 seconds apart), it holds the sync too and says so in the issue: it never syncs on a
+guess.
+
+Run the held sync later from main, naming the released version. It only runs while that version
+is still the latest release, since a sync of an older tag would roll the adopters back and the run
+refuses it; once a newer release exists, that release's sync covers the held one:
 
 ```
 gh workflow run release.yml --ref main -f version=X.Y.Z

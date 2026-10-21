@@ -30,16 +30,20 @@ test('the merged PR without the label syncs', () => {
   assert.deepEqual(verdict(pulls(pr({ labels: [{ name: 'other' }] }))), { code: 0, out: 'sync' });
 });
 
-test('no PR for the commit (a direct push) syncs', () => {
-  assert.deepEqual(verdict(pulls()), { code: 0, out: 'sync' });
+test('no PR for the commit is unread, not sync', () => {
+  assert.deepEqual(verdict(pulls()), { code: 0, out: 'unread' });
 });
 
-test('a labelled PR that merged as another commit does not hold', () => {
-  assert.equal(verdict(pulls(pr({ merge_commit_sha: 'b'.repeat(40), labels: [{ name: LABEL }] }))).out, 'sync');
+test('a labelled PR that merged as another commit is unread', () => {
+  assert.equal(verdict(pulls(pr({ merge_commit_sha: 'b'.repeat(40), labels: [{ name: LABEL }] }))).out, 'unread');
 });
 
-test('a labelled PR that is not merged does not hold', () => {
-  assert.equal(verdict(pulls(pr({ merged_at: null, labels: [{ name: LABEL }] }))).out, 'sync');
+test('a labelled PR that is not merged is unread', () => {
+  assert.equal(verdict(pulls(pr({ merged_at: null, labels: [{ name: LABEL }] }))).out, 'unread');
+});
+
+test('an unlabelled merged PR beside an unrelated one syncs', () => {
+  assert.equal(verdict(pulls(pr({ merge_commit_sha: 'b'.repeat(40), labels: [{ name: LABEL }] }), pr())).out, 'sync');
 });
 
 test('one labelled PR among several holds', () => {
@@ -100,8 +104,26 @@ test('the note job opens the held-sync issue with issues: write and nothing wide
   assert.match(j, /GITHUB_STEP_SUMMARY/);
 });
 
+test('an unread label holds the sync, retried before it gives up', () => {
+  const j = job('release');
+  assert.match(j, /unread\) echo "hold=true"/);
+  assert.match(j, /for TRY in 1 2 3/);
+  assert.match(j, /sleep 10/);
+});
+
+test('a manual sync refuses anything but the latest release', () => {
+  const j = job('sync');
+  assert.match(j, /releases\/latest/);
+  assert.match(j, /"v\$\{VERSION\}" != "\$LATEST"/);
+});
+
+test('the held-sync note says a held sync only runs while it is the latest', () => {
+  assert.match(job('hold-note'), /still the latest release/);
+});
+
 test('a successful manual sync closes the held-sync issue', () => {
   const j = job('close-hold');
+  assert.match(j, /!cancelled\(\)/);
   assert.match(j, /needs\.sync\.result == 'success'/);
   assert.match(j, /workflow_dispatch/);
   assert.match(j, /issues: write/);

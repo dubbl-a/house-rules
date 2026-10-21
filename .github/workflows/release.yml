@@ -39,6 +39,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       hold: ${{ steps.hold.outputs.hold == 'true' }}
+      unread: ${{ steps.hold.outputs.unread == 'true' }}
       released: ${{ steps.publish.outputs.released == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,10 +100,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          PULLS=$(gh api "repos/${REPO}/commits/${GITHUB_SHA}/pulls")
-          VERDICT=$(printf '%s' "$PULLS" | node scripts/release-hold.mjs "$GITHUB_SHA" hold-sync)
+          # Right after a merge the pulls list can still be empty, so an empty
+          # answer is retried. A merged pull request that never turns up is
+          # unread: the sync is held, never run on a guess.
+          for TRY in 1 2 3; do
+            PULLS=$(gh api "repos/${REPO}/commits/${GITHUB_SHA}/pulls")
+            VERDICT=$(printf '%s' "$PULLS" | node scripts/release-hold.mjs "$GITHUB_SHA" hold-sync)
+            echo "try ${TRY}: ${VERDICT}"
+            if [ "$VERDICT" != unread ]; then break; fi
+            if [ "$TRY" -lt 3 ]; then sleep 10; fi
+          done
           echo "adopter sync: ${VERDICT}"
-          if [ "$VERDICT" = hold ]; then echo "hold=true" >> "$GITHUB_OUTPUT"; fi
+          case "$VERDICT" in
+            hold) echo "hold=true" >> "$GITHUB_OUTPUT" ;;
+            unread) echo "hold=true" >> "$GITHUB_OUTPUT"
+                    echo "unread=true" >> "$GITHUB_OUTPUT" ;;
+          esac
       - name: Tag and publish
         id: publish
         if: steps.version.outputs.released == 'pending'
@@ -139,12 +152,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.release.outputs.version }}
+          UNREAD: ${{ needs.release.outputs.unread }}
         run: |
           TITLE="Adopter sync held for v${VERSION}"
           {
-            echo "v${VERSION} is published, but the adopter sync was held (the release PR carried the hold-sync label). No adopter has v${VERSION}."
+            if [ "$UNREAD" = true ]; then
+              echo "v${VERSION} is published, but the adopter sync was held because the merged release PR could not be found to read its hold-sync label. No adopter has v${VERSION}."
+            else
+              echo "v${VERSION} is published, but the adopter sync was held (the release PR carried the hold-sync label). No adopter has v${VERSION}."
+            fi
             echo
-            echo "To run the sync later, from a checkout of this repo:"
+            echo "A held sync can only be run while v${VERSION} is still the latest release; after the next release, that release's sync covers it and this issue can be closed."
+            echo
+            echo "To run the sync, from a checkout of this repo:"
             echo
             echo '```'
             echo "gh workflow run release.yml --ref main -f version=${VERSION}"
@@ -187,11 +207,23 @@ jobs:
       BASE: ${{ matrix.branch }}
       PROTECT: ${{ matrix.protect }}
     steps:
+      # A manual sync only goes to the latest release: render has no downgrade
+      # guard, so syncing an older tag would roll every adopter back.
       - name: Check the version
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::version '${VERSION}' is not X.Y.Z; not syncing"
             exit 1
+          fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            LATEST=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+            if [ "v${VERSION}" != "$LATEST" ]; then
+              echo "::error::v${VERSION} is not the latest release (${LATEST}); a manual sync of an older release would roll the adopters back. Not syncing"
+              exit 1
+            fi
           fi
       - name: Check for the sync token
         env:
@@ -348,7 +380,7 @@ jobs:
   # missing note is not an error.
   close-hold:
     needs: sync
-    if: needs.sync.result == 'success' && github.event_name == 'workflow_dispatch'
+    if: ${{ !cancelled() && needs.sync.result == 'success' && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
