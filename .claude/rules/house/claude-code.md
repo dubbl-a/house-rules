@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.21.6 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=63f80b2e09f64ea807d4e48295e8616880ceee58ee7023485abd2dc5edf2b5dd DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.21.6 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9559d728772161104e644c3312fd39b5a36b12636a5d9e60a701203b4bc40251 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -24,6 +24,7 @@ Write one line per memory as the cue to open the file, not the fact itself, sinc
 Move any fact the index is the only copy of into its topic file before shortening the line; a trim that loses the fact is worse than the long line it replaced.
 The harness reminds Claude to shorten the index after a write that nears its load ceiling and returns an error on one that passes it; treat that as the floor and add what it cannot see.
 Keep the newer cue when a later memory supersedes an earlier one, and let the older topic file record the hand-off so the index never carries two answers.
+Run `house-rules:trim-memory` when the harness's shorten reminder or the checker warning appears.
 Treat the documented load ceiling as a cliff rather than a budget, because everything past it is dropped on the next load and no session says so.
 Anchor: `node .house/check.mjs --only=lengths` warns, and never fails, when the index nears either load ceiling or carries a line too long to be a cue, and stays silent where no memory index exists.
 Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-hold-it-under-its-cap`
@@ -117,6 +118,17 @@ Clear the context after two failed corrections on the same issue; a context full
 Re-read the source of a ruling immediately before you act on it, not once at session start, since a ruling can land mid-session.
 Anchor: none (because the harness cannot see that a correction failed; the second failed attempt is the signal).
 Receipts: `docs/handbook/claude-code.md#plan-when-the-approach-is-uncertain-and-clear-the-context-after-two-failed-corrections`
+
+## Keep a session to one task, and start fresh rather than resume a large idle one
+
+Claude Code resends the whole conversation on every request, so a long session pays for its history on each turn, and the first message after an idle gap longer than the cache lifetime rewrites the whole context into the cache at the write price.
+Keep a session to one task and `/clear` between unrelated tasks, which costs nothing.
+When stepping away from a session whose context has grown large, leave a handoff in the repo and start fresh rather than resume; resume only when the history itself is the work.
+Compact at a natural break while the cache is warm, never right after an idle gap, since `/compact` is itself a request that reads everything it summarizes.
+Watch `/context` or the status line for size, and the prompt-cache line in `/usage` for misses.
+Correcting a failed approach is the section above's; the handoff's shape is the section below's.
+Anchor: the `plugins/house/hooks/resume-cost.mjs` SessionStart hook, matched on `resume|fork`, which warns when the harness reports an expired cache and an estimated rewrite at or above a dollar threshold. It only advises: set `HOUSE_RESUME_COST_WARN=off` or `HOUSE_RESUME_COST_WARN_USD` in the shell or the settings env to silence or retune it. It needs a Claude Code version that reports the cache fields on resume, and says nothing on an older one.
+Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fresh-rather-than-resume-a-large-idle-one`
 
 ## Treat git state as shared across sessions
 

@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "house-rules",
-      "description": "Vendors rule files into a repo, checks them for drift and tampering, and adds a branch guard hook plus bootstrap, sync, conventions, revise-docs, and handoff skills.",
+      "description": "Vendors rule files into a repo, checks them for drift and tampering, and adds a branch guard hook plus bootstrap, sync, conventions, revise-docs, handoff, and trim-memory skills.",
       "source": "./plugins/house",
       "category": "development"
     }
