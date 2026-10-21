@@ -1,0 +1,12 @@
+#!/bin/sh
+# Claude Code puts a plugin's bin/ on the Bash tool's PATH while the plugin is
+# enabled, so `house <cmd>` works in a session. This only forwards to the CLI.
+# Resolve symlinks by hand: macOS has no `readlink -f`, and sh 3.2 is the floor.
+self=$0
+while [ -L "$self" ]; do
+  dir=$(cd "$(dirname "$self")" && pwd)
+  self=$(readlink "$self")
+  case $self in /*) ;; *) self=$dir/$self ;; esac
+done
+dir=$(cd "$(dirname "$self")" && pwd)
+exec node "$dir/../scripts/house" "$@"
