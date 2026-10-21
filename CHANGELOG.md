@@ -8,7 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [0.22.6] - 2026-10-21
 
-A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house` is on PATH in a session with the plugin enabled, and the cost report warns that subagent usage logged before Claude Code 2.1.307 can be a placeholder. Upgrading from 0.22.5: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`.
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house` is on PATH in a session with the plugin enabled, the cost report warns that subagent usage logged before Claude Code 2.1.307 can be a placeholder, and the workflows checks read `${{ }}` expressions with a tokenizer. Upgrading from 0.22.5: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`.
 
 ### Added
 
@@ -17,6 +17,10 @@ A patch release under ADR 0012: no heading renamed, no config slot changed, and 
 ### Changed
 
 - The cost report's caveats add that subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses, so its subagent column can be wrong for a window that reaches back past the upgrade (Claude Code 2.1.307 fixed the placeholder; harness addendum of 2026-10-21).
+
+### Fixed
+
+- The workflows checks read `${{ }}` expressions with one small tokenizer instead of regexes (#232). `event-in-run` now finds the true end of an expression, so a `}` inside a string literal no longer hides event data after it, and `pr-credential` reads a secret as a `secrets` identifier at the start of a property chain. An expression split across lines is still not read.
 
 ## [0.22.5] - 2026-10-21
 
