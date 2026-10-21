@@ -122,7 +122,7 @@ using only shell or Node builtins and local `git`, with no network call:
 
 - `no-direct-master.sh`, before edit and Bash calls: denies protected-branch commits and floor disabling.
 - `arm-git-hooks.sh`, at session start: sets `core.hooksPath` to the vendored `.githooks` floor.
-- `session-start.mjs`, at session start: prints the orchestration defaults.
+- `session-start.mjs`, at session start: prints the orchestration defaults, and weekly starts a background cost scan.
 - `resume-cost.mjs`, on resume or fork: warns when an expired cache makes the next message costly.
 - `instructions-loaded.mjs`, when instructions load: appends to a local log `house doctor` reads.
 

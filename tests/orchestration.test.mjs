@@ -67,7 +67,8 @@ test('roster and text carry no em dash (prose rule)', () => {
 });
 
 test('session-start hook emits the orchestration text under hookSpecificOutput.additionalContext and exits 0', () => {
-  const res = spawnSync(process.execPath, [HOOK], { encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup' }) });
+  // HOUSE_COST_CHECK=off keeps this test from touching the real config dir.
+  const res = spawnSync(process.execPath, [HOOK], { encoding: 'utf8', env: { ...process.env, HOUSE_COST_CHECK: 'off' }, input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup' }) });
   assert.equal(res.status, 0, res.stderr);
   assert.equal(res.stderr, '');
   const out = JSON.parse(res.stdout);
