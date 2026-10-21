@@ -65,6 +65,7 @@ function run(box, { prompt = 'carry on with the refactor', env = {}, raw } = {})
   delete childEnv.HOUSE_IDLE_CACHE_HOLD;
   delete childEnv.HOUSE_IDLE_CACHE_HOLD_USD;
   delete childEnv.CLAUDE_CODE_ENTRYPOINT;
+  delete childEnv.CLAUDE_PROJECT_DIR;
   Object.assign(childEnv, env);
   const payload = raw ?? JSON.stringify({
     session_id: 'abc123',
@@ -224,15 +225,39 @@ test('a scripted run continuing an interactive transcript only warns', () => {
   assert.equal(parsed(run(sandbox([assistant()]), { env: { CLAUDE_CODE_ENTRYPOINT: 'cli' } })).decision, 'block');
 });
 
-test('a durable task saved in the project counts as scheduled work; an empty list does not', () => {
+test('a durable task saved in the project counts as scheduled work; an emptied list does not', () => {
+  // Claude Code writes {"tasks": [...]} and leaves {"tasks": []} after the last task goes.
   const box = sandbox([assistant()]);
   mkdirSync(join(box.dir, '.claude'));
-  writeFileSync(join(box.dir, '.claude', 'scheduled_tasks.json'), JSON.stringify([{ cron: '0 * * * *', prompt: 'check the deploy' }]));
+  writeFileSync(join(box.dir, '.claude', 'scheduled_tasks.json'), JSON.stringify({ tasks: [{ cron: '0 * * * *', prompt: 'check the deploy' }] }));
   assert.equal(parsed(run(box)).decision, undefined);
   const empty = sandbox([assistant()]);
   mkdirSync(join(empty.dir, '.claude'));
-  writeFileSync(join(empty.dir, '.claude', 'scheduled_tasks.json'), '[]');
+  writeFileSync(join(empty.dir, '.claude', 'scheduled_tasks.json'), '{"tasks":[]}');
   assert.equal(parsed(run(empty)).decision, 'block');
+});
+
+test('reads durable tasks from CLAUDE_PROJECT_DIR when the shell cwd has moved', () => {
+  const box = sandbox([assistant()]);
+  mkdirSync(join(box.dir, '.claude'));
+  writeFileSync(join(box.dir, '.claude', 'scheduled_tasks.json'), JSON.stringify({ tasks: [{ cron: '0 * * * *', prompt: 'x' }] }));
+  const sub = join(box.dir, 'sub');
+  mkdirSync(sub);
+  const raw = JSON.stringify({ session_id: 'abc123', transcript_path: box.transcript, cwd: sub, prompt: 'carry on' });
+  assert.equal(parsed(run(box, { raw, env: { CLAUDE_PROJECT_DIR: box.dir } })).decision, undefined);
+});
+
+test('only the terminal client is held; other entrypoints only warn', () => {
+  for (const entrypoint of ['claude-code-github-action', 'remote_trigger', 'sdk-ts']) {
+    const out = parsed(run(sandbox([assistant()]), { env: { CLAUDE_CODE_ENTRYPOINT: entrypoint } }));
+    assert.equal(out.decision, undefined, entrypoint);
+    assert.ok(out.systemMessage, entrypoint);
+  }
+});
+
+test('a compaction before the last response does not silence the hold', () => {
+  const box = sandbox([{ type: 'system', subtype: 'compact_boundary', timestamp: ago(200) }, assistant()]);
+  assert.equal(parsed(run(box)).decision, 'block');
 });
 
 test('a scheduler name inside another tool call is not scheduled work', () => {

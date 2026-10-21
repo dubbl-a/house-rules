@@ -22,10 +22,10 @@
 // gets the text as a systemMessage instead of a hold: the session counts as
 // having scheduled work if its transcript has a scheduled_task_fire entry or
 // a CronCreate or ScheduleWakeup call, or the project has a non-empty
-// .claude/scheduled_tasks.json (durable tasks). A non-interactive run (an
-// sdk entrypoint, read from CLAUDE_CODE_ENTRYPOINT, since `claude -p
-// --continue` can follow an interactive transcript) also only gets the
-// warning. A prompt that starts with "/" is never held, since /clear is the
+// .claude/scheduled_tasks.json (durable tasks). Only the terminal client
+// (entrypoint "cli", read from CLAUDE_CODE_ENTRYPOINT first, since `claude
+// -p --continue` can follow an interactive transcript) is held; sdk,
+// GitHub Action, remote and any other entrypoint only gets the warning. A prompt that starts with "/" is never held, since /clear is the
 // cheap way out.
 //
 // Defaults a user can override from settings env or the shell:
@@ -129,11 +129,14 @@ function lastResponse(path) {
 // definitions (api-request-shape and prompt_snapshot entries), so a bare
 // "ScheduleWakeup" string matches sessions that never scheduled anything.
 const SCHEDULERS = new Set(['CronCreate', 'ScheduleWakeup']);
-function hasScheduledWork(path, cwd) {
-  if (typeof cwd === 'string') {
+// Claude Code writes the durable-task file as {"tasks": [...]} and leaves
+// {"tasks": []} behind when the last task goes, so only a non-empty list
+// counts (the same test Claude Code applies).
+function hasScheduledWork(path, projectDir) {
+  if (typeof projectDir === 'string') {
     try {
-      const saved = JSON.parse(readFileSync(join(cwd, '.claude', 'scheduled_tasks.json'), 'utf8'));
-      if (Array.isArray(saved) ? saved.length > 0 : saved && Object.keys(saved).length > 0) return true;
+      const saved = JSON.parse(readFileSync(join(projectDir, '.claude', 'scheduled_tasks.json'), 'utf8'));
+      if (saved && Array.isArray(saved.tasks) && saved.tasks.length > 0) return true;
     } catch {}
   }
   for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -179,8 +182,8 @@ try {
                 `Sending this prompt rewrites about ${context.toLocaleString('en-US')} tokens of context into the cache, an estimated $${usd.toFixed(2)} at list price. ` +
                 'If you do not need this history, /clear and start fresh from a handoff note in the repo; a /compact now would pay the same rewrite first. ';
               const tune = 'To change this, set HOUSE_IDLE_CACHE_HOLD=off or =warn, or raise HOUSE_IDLE_CACHE_HOLD_USD (default 0.25), in your shell or the env block of your settings.';
-              const interactive = !String(process.env.CLAUDE_CODE_ENTRYPOINT || entry.entrypoint || '').startsWith('sdk');
-              let hold = mode !== 'warn' && interactive && !hasScheduledWork(path, cwd);
+              const interactive = (process.env.CLAUDE_CODE_ENTRYPOINT || entry.entrypoint) === 'cli';
+              let hold = mode !== 'warn' && interactive && !hasScheduledWork(path, process.env.CLAUDE_PROJECT_DIR || cwd);
               if (hold) {
                 try {
                   mkdirSync(STATE_DIR, { recursive: true });

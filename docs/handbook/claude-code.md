@@ -618,9 +618,9 @@ background task reports, messages from other sessions, and scheduled or `/loop` 
 lets the first two through silently, recognised by their opening text, and only warns on the
 third, recognised by a `scheduled_task_fire` entry or a `CronCreate` or `ScheduleWakeup` call in
 the transcript or a durable task saved in the project's scheduled-tasks file, because a held scheduled prompt
-is not resubmitted and a loop would lose its run. A `claude -p` run only warns too, judged by the
-running process's `CLAUDE_CODE_ENTRYPOINT`, since `--continue` can follow an interactive
-transcript. It prices from a dated table of
+is not resubmitted and a loop would lose its run. Only the terminal client (entrypoint `cli`) is held; a
+`claude -p` run and every other entrypoint only warn, judged by the running process's
+`CLAUDE_CODE_ENTRYPOINT`, since `--continue` can follow an interactive transcript. It prices from a dated table of
 cache-write list prices and says nothing for a model the table lacks.
 
 ## Treat git state as shared across sessions
