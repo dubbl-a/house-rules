@@ -4317,3 +4317,95 @@ test('#358 render dry run: exactly the files --apply would change show `update`'
   assert.match(r2.out, /update\s+\.githooks\/pre-commit\b/);
   assert.equal(modeOf(hook), 0o644, 'the dry run must not chmod');
 });
+
+// #367: the installed /deep-research fork is machine state nothing else reports.
+// Doctor reads the marker `--install` writes (the plugin script's own hash plus
+// a hash of the generated body) and compares it to the plugin's copy of the
+// script, so a fork built by another version, edited, or built before the
+// marker existed never reads as current.
+const DR_SCRIPT_REL = join('modules', 'claude-code', 'files', 'check-deep-research-upstream.mjs');
+const sha12 = (s) => createHash('sha256').update(s).digest('hex').slice(0, 12);
+
+function forkFixture({ withScript = true } = {}) {
+  const { cliPath } = buildFixturePlugin();
+  const script = join(dirname(cliPath), '..', DR_SCRIPT_REL);
+  const scriptText = '// fixture of the plugin script\n';
+  if (withScript) {
+    mkdirSync(dirname(script), { recursive: true });
+    writeFileSync(script, scriptText);
+  }
+  const home = mkdtempSync(join(tmpdir(), 'house-home-'));
+  CLEANUP_DIRS.push(home);
+  const forkPath = join(home, '.claude', 'workflows', 'deep-research-tiered.js');
+  const writeFork = (text) => { mkdirSync(dirname(forkPath), { recursive: true }); writeFileSync(forkPath, text); };
+  const markedFork = (id, head = 'export const meta = {}\n\n', body = 'const x = 1\n') => `${head}// house-fork-build: ${id} ${sha12(head + body)}\n${body}`;
+  const doctor = () => {
+    const env = { HOME: home };
+    const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], env);
+    const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', buildTargetRepo(), '--json'], env).out);
+    return { r, fork: j.deepResearchFork };
+  };
+  return { script, scriptId: sha12(scriptText), forkPath, writeFork, markedFork, doctor };
+}
+
+test('#367 doctor: a fork built by this plugin reads current', () => {
+  const f = forkFixture();
+  f.writeFork(f.markedFork(f.scriptId));
+  const { r, fork } = f.doctor();
+  assert.equal(r.code, 0);
+  assert.equal(fork.state, 'current');
+  assert.match(r.out, /^deep-research fork: current \(.+matches this plugin's build\)$/m);
+  assert.doesNotMatch(r.out, /--install/);
+});
+
+test('#367 doctor: a fork built by another plugin version reads stale and prints the install command', () => {
+  const f = forkFixture();
+  f.writeFork(f.markedFork('0123456789ab'));
+  const { r, fork } = f.doctor();
+  assert.equal(fork.state, 'stale');
+  assert.match(r.out, /^deep-research fork: STALE \(built by a different plugin version\); rebuild with: node .+check-deep-research-upstream\.mjs --install$/m);
+  assert.equal(fork.installCommand, `node ${realpathSync(f.script)} --install`);
+  assert.ok(r.out.includes(fork.installCommand), r.out);
+});
+
+test('#367 doctor: a fork whose body was edited after install reads stale even with this plugin\'s id', () => {
+  const f = forkFixture();
+  f.writeFork(f.markedFork(f.scriptId).replace('const x = 1', 'const x = 2'));
+  const { r, fork } = f.doctor();
+  assert.equal(fork.state, 'stale');
+  assert.match(r.out, /^deep-research fork: STALE \(the body differs from what was installed\); rebuild with: node .+ --install$/m);
+});
+
+test('#367 doctor: a hand edit to the meta block above the marker reads stale', () => {
+  const f = forkFixture();
+  f.writeFork(f.markedFork(f.scriptId).replace('export const meta = {}', "export const meta = { name: 'edited' }"));
+  const { r, fork } = f.doctor();
+  assert.equal(fork.state, 'stale');
+  assert.match(r.out, /^deep-research fork: STALE \(the body differs from what was installed\)/m);
+});
+
+test('#367 doctor: a fork with no marker (built before it existed) reads stale', () => {
+  const f = forkFixture();
+  f.writeFork('export const meta = {}\n\nconst x = 1\n');
+  const { r, fork } = f.doctor();
+  assert.equal(fork.state, 'stale');
+  assert.match(r.out, /^deep-research fork: STALE \(no build marker, so it predates this check\); rebuild with: node .+ --install$/m);
+});
+
+test('#367 doctor: no fork is reported neutrally, with the install command, and exits 0', () => {
+  const f = forkFixture();
+  const { r, fork } = f.doctor();
+  assert.equal(r.code, 0);
+  assert.equal(fork.state, 'missing');
+  assert.match(r.out, /^deep-research fork: not installed \(only needed to run the pinned \/deep-research\); install with: node .+ --install$/m);
+  assert.doesNotMatch(r.out, /STALE/);
+});
+
+test('#367 doctor: a plugin without the script says not checked rather than guessing', () => {
+  const f = forkFixture({ withScript: false });
+  f.writeFork(f.markedFork('0123456789ab'));
+  const { r, fork } = f.doctor();
+  assert.equal(r.code, 0);
+  assert.equal(fork.state, 'not-checked');
+  assert.match(r.out, /^deep-research fork: not checked \(.+\)$/m);
+});

@@ -304,6 +304,16 @@ const META = (version, sha) => `export const meta = {
 
 export function sha256(s) { return createHash('sha256').update(s).digest('hex'); }
 
+// The marker --install writes into the fork so `house doctor` can tell a
+// current fork from a stale one (#367): this script's own hash (any change to
+// what it generates changes it, so a fork built by another version never
+// matches) and a hash of the whole fork with the marker line removed (so an
+// edit anywhere, the meta block included, never matches either). house doctor
+// reads both with the same definitions; a fork with no marker predates the
+// check and reads as stale.
+export const FORK_MARKER = '// house-fork-build: ';
+export function forkBuildId() { return sha256(readFileSync(fileURLToPath(import.meta.url))).slice(0, 12); }
+
 /**
  * Find the installed Claude Code binary: --binary, $CLAUDE_BINARY, `claude` on
  * PATH, else the newest versions/ entry. An explicit --binary is never mixed
@@ -413,7 +423,8 @@ export function rebuild(body, version) {
     if (n !== 1) throw new Error(`anchor matched ${n} times, expected 1: ${JSON.stringify(from)}`);
     s = s.replace(from, to);
   }
-  return META(version, sha256(body)) + s;
+  const head = META(version, sha256(body));
+  return head + `${FORK_MARKER}${forkBuildId()} ${sha256(head + s).slice(0, 12)}\n` + s;
 }
 
 function parseArgs(argv) {

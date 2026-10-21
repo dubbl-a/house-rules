@@ -3642,6 +3642,40 @@ async function latestReleaseStatus(pluginVersion) {
   return { checked: true, latest, installed: pluginVersion, behind, ahead: false, line: `latest release v${latest}; installed v${pluginVersion} (${behind} behind)` };
 }
 
+// #367: the installed /deep-research fork is machine state, rebuilt by
+// check-deep-research-upstream.mjs --install, and nothing else tells a machine
+// its fork went stale when a plugin release changed the script. --install writes
+// a marker line: this plugin script's own hash (so a fork built by any other
+// version of it differs) and a hash of the whole fork with the marker line
+// removed (so an edit anywhere, the meta block included, differs). Current
+// needs both to match; a fork with no marker
+// predates this check and reads as stale. The hash definitions mirror
+// forkBuildId() and FORK_MARKER in that script.
+const FORK_MARKER_RE = /^\/\/ house-fork-build: ([0-9a-f]{12}) ([0-9a-f]{12})\n/m;
+
+function deepResearchForkStatus() {
+  const script = path.join(__dirname, '..', 'modules', 'claude-code', 'files', 'check-deep-research-upstream.mjs');
+  const forkPath = path.join(homedir(), '.claude', 'workflows', 'deep-research-tiered.js');
+  const installCommand = `node ${script} --install`;
+  const sha12 = (b) => createHash('sha256').update(b).digest('hex').slice(0, 12);
+  const status = (state, reason, line) => ({ state, reason, forkPath, installCommand, line: `deep-research fork: ${line}` });
+  let scriptBytes;
+  try { scriptBytes = readFileSync(script); } catch {
+    return status('not-checked', 'no copy of the fork builder in this plugin install', 'not checked (this plugin install has no check-deep-research-upstream.mjs)');
+  }
+  if (!existsSync(forkPath)) return status('missing', 'no fork at the install path', `not installed (only needed to run the pinned /deep-research); install with: ${installCommand}`);
+  let text;
+  try { text = readFileSync(forkPath, 'utf8'); } catch (e) {
+    return status('not-checked', 'the fork is unreadable', `not checked (${forkPath} is unreadable: ${e.code || e.message})`);
+  }
+  const stale = (why) => status('stale', why, `STALE (${why}); rebuild with: ${installCommand}`);
+  const m = FORK_MARKER_RE.exec(text);
+  if (!m) return stale('no build marker, so it predates this check');
+  if (m[1] !== sha12(scriptBytes)) return stale('built by a different plugin version');
+  if (m[2] !== sha12(text.replace(m[0], ''))) return stale('the body differs from what was installed');
+  return status('current', null, `current (${forkPath} matches this plugin's build)`);
+}
+
 async function cmdDoctor(args) {
   const repoRoot = resolveRepoRoot(args);
   const pluginVersion = readPluginVersion();
@@ -3710,11 +3744,12 @@ async function cmdDoctor(args) {
 
   const targets = targetLines(houseTargets(houseData), ruleLoadProbe, gitHookFloor);
   const latestRelease = await latestReleaseStatus(pluginVersion);
+  const deepResearchFork = deepResearchForkStatus();
 
   const result = {
     effectiveBranchGuard: guard, guardRecorded, caveat, jqOnPath, pluginVersion,
     housePin: houseData && houseData.version ? houseData.version : null,
-    pinStatus, latestRelease, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests, gitHookFloor, targets,
+    pinStatus, latestRelease, deepResearchFork, npmWiring, settingsLocalExists, ruleLoadProbe, ignoredDests, gitHookFloor, targets,
     atAdoption, houseJsonPresent: houseExists, houseJsonParseError: houseParseError,
   };
 
@@ -3728,6 +3763,7 @@ async function cmdDoctor(args) {
     console.log(`plugin version: ${pluginVersion}`);
     console.log(pinStatus);
     console.log(latestRelease.line);
+    console.log(deepResearchFork.line);
     console.log(`npm wiring (.house/check.mjs referenced by): ${npmWiring.length ? npmWiring.join(', ') : 'none found'}`);
     console.log(`.claude/settings.local.json: ${settingsLocalExists ? 'present' : 'absent'}`);
     if (ruleLoadProbe.source === 'repo') {
