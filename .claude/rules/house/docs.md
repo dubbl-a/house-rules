@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.22.1 module=docs source=modules/docs/rules/docs.md body-sha256=a58c7fd019f26ac835b46c8869f52ca76eadda53c817279988fecfb6c807eeda DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.2 module=docs source=modules/docs/rules/docs.md body-sha256=a58c7fd019f26ac835b46c8869f52ca76eadda53c817279988fecfb6c807eeda DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
