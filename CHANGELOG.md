@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-10-21
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. The cost report gains price premiums, context-size bands and a short-cache rebuild count, and the weekly scan retries a crash within an hour; build guidance follows Anthropic's published model split; `/deep-research` settles the verify setting at launch. Upgrading from 0.22.1: run `/house-rules:sync`, then restart Claude Code so the updated SessionStart hook loads.
+
 ### Added
 
 - `cost-report.mjs` also shows what fast mode, US-only inference and legacy models (Opus 5 and 4.8, Fable 5, Sonnet 5) added to the list price, each on its own and all three together; main-thread requests and cost by context size (under 200k, 200k to 500k, 500k and over); and how many idle 5-minute-to-1-hour rebuilds were written to the 5-minute cache, with a line on `promptCacheTtl: "1h"` (Claude Code 2.1.242+), whose writes cost more. `--state` carries all three. The weekly startup notice now also fires when the combined premium reaches `HOUSE_COST_CHECK_USD`, still one line per result (#326).
