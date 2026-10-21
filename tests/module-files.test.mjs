@@ -1526,7 +1526,7 @@ test('deep-research check: --install writes the build marker house doctor reads 
   assert.ok(m, 'the fork carries a build marker line');
   const sha12 = (b) => createHash('sha256').update(b).digest('hex').slice(0, 12);
   assert.equal(m[1], sha12(readFileSync(DR_CHECK)), 'the id is the hash of this script');
-  assert.equal(m[2], sha12(text.slice(m.index + m[0].length)), 'the body hash covers everything below the marker');
+  assert.equal(m[2], sha12(text.replace(m[0], '')), 'the hash covers the whole fork with the marker line removed');
 });
 
 test('deep-research check: --install=<path> writes to the given path', async () => {

@@ -4338,7 +4338,7 @@ function forkFixture({ withScript = true } = {}) {
   CLEANUP_DIRS.push(home);
   const forkPath = join(home, '.claude', 'workflows', 'deep-research-tiered.js');
   const writeFork = (text) => { mkdirSync(dirname(forkPath), { recursive: true }); writeFileSync(forkPath, text); };
-  const markedFork = (id, body = 'const x = 1\n') => `export const meta = {}\n\n// house-fork-build: ${id} ${sha12(body)}\n${body}`;
+  const markedFork = (id, head = 'export const meta = {}\n\n', body = 'const x = 1\n') => `${head}// house-fork-build: ${id} ${sha12(head + body)}\n${body}`;
   const doctor = () => {
     const env = { HOME: home };
     const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], env);
@@ -4374,6 +4374,14 @@ test('#367 doctor: a fork whose body was edited after install reads stale even w
   const { r, fork } = f.doctor();
   assert.equal(fork.state, 'stale');
   assert.match(r.out, /^deep-research fork: STALE \(the body differs from what was installed\); rebuild with: node .+ --install$/m);
+});
+
+test('#367 doctor: a hand edit to the meta block above the marker reads stale', () => {
+  const f = forkFixture();
+  f.writeFork(f.markedFork(f.scriptId).replace('export const meta = {}', "export const meta = { name: 'edited' }"));
+  const { r, fork } = f.doctor();
+  assert.equal(fork.state, 'stale');
+  assert.match(r.out, /^deep-research fork: STALE \(the body differs from what was installed\)/m);
 });
 
 test('#367 doctor: a fork with no marker (built before it existed) reads stale', () => {

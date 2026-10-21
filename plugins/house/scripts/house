@@ -3646,8 +3646,9 @@ async function latestReleaseStatus(pluginVersion) {
 // check-deep-research-upstream.mjs --install, and nothing else tells a machine
 // its fork went stale when a plugin release changed the script. --install writes
 // a marker line: this plugin script's own hash (so a fork built by any other
-// version of it differs) and a hash of the generated body below the marker (so
-// an edited fork differs). Current needs both to match; a fork with no marker
+// version of it differs) and a hash of the whole fork with the marker line
+// removed (so an edit anywhere, the meta block included, differs). Current
+// needs both to match; a fork with no marker
 // predates this check and reads as stale. The hash definitions mirror
 // forkBuildId() and FORK_MARKER in that script.
 const FORK_MARKER_RE = /^\/\/ house-fork-build: ([0-9a-f]{12}) ([0-9a-f]{12})\n/m;
@@ -3671,7 +3672,7 @@ function deepResearchForkStatus() {
   const m = FORK_MARKER_RE.exec(text);
   if (!m) return stale('no build marker, so it predates this check');
   if (m[1] !== sha12(scriptBytes)) return stale('built by a different plugin version');
-  if (m[2] !== sha12(text.slice(m.index + m[0].length))) return stale('the body differs from what was installed');
+  if (m[2] !== sha12(text.replace(m[0], ''))) return stale('the body differs from what was installed');
   return status('current', null, `current (${forkPath} matches this plugin's build)`);
 }
 

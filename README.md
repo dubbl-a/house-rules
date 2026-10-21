@@ -94,7 +94,7 @@ In the target repo:
 
 - `/house-rules:bootstrap` probes, proposes a `house.json`, and on approval writes the vendored
   rules, templates, and `.house/`.
-- `/house-rules:sync` re-renders after this package or `house.json` changes. `house doctor` adds an advisory line comparing the installed plugin with the latest published release (`latest release v0.21.7; installed v0.21.6 (1 behind)`), since a pin only matches the plugin loaded; offline it prints `not checked`, and its exit code never changes.
+- `/house-rules:sync` re-renders after this package or `house.json` changes. `house doctor` adds an advisory line comparing the installed plugin with the latest published release (`latest release v0.21.7; installed v0.21.6 (1 behind)`), since a pin only matches the plugin loaded; offline it prints `not checked`, and its exit code never changes. It also reports the installed `/deep-research` fork (`~/.claude/workflows/deep-research-tiered.js`) as `current`, `STALE` or `not installed`, with the `check-deep-research-upstream.mjs --install` command when it is not current.
 - `house enable <module...>` prints one plan (paths, files, load cost, checklist). `--apply` acts.
 - `house disable` is its reverse; `--why` records why a default-on module is off.
 - `house confirm` dates a done step. `house decline <module> <step-id> --why "..."` records a step decided against as a dated `declined-step` deviation, and `house doctor` lists it as declined instead of not confirmed. `house hook add <file>` installs your own `.d` hook.
