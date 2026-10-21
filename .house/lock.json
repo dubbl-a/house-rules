@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "ed97c77ccf559089839166cae20617c4df6bfc5530bdf36c1f7052c6f57cac82"
+      "bodySha256": "f302c5a39137e40fa558190bba6f0fe42e3c4b73d99b4d46dd09b4cce75d0504"
     },
     {
       "path": "AGENTS.md",
@@ -266,7 +266,10 @@
         "lengthLimits": {
           "CLAUDE.md": 40,
           "README.md": 160,
-          ".claude/rules/house/*.md": 200
+          ".claude/rules/house/*.md": 200,
+          "plugins/house/orchestration/ORCHESTRATION.md": {
+            "bytes": 9500
+          }
         },
         "maxCoLoadLines": 400,
         "emDash": {

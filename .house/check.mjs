@@ -2047,7 +2047,7 @@ function checkLengths(ctx) {
     const raw = readFileSync(abs, 'utf8');
     if (!perFile.has(file)) {
       const count = countLinesExcludingFrontmatter(raw);
-      if (count > SKILL_BODY_DEFAULT_LINES) warnings.push(mk('lengths', file, null, 'length', `${count} lines, over the ${SKILL_BODY_DEFAULT_LINES}-line default for a SKILL.md body (Claude Code's documented ceiling). Move detail into references one level deep, or set a lengthLimits entry for it.`));
+      if (count > SKILL_BODY_DEFAULT_LINES) warnings.push(mk('lengths', file, null, 'length', `${count} lines, over the ${SKILL_BODY_DEFAULT_LINES}-line default for a SKILL.md body (the length Claude Code's skills docs advise staying under). Move detail into references one level deep, or set a lengthLimits entry for it.`));
     }
     const listed = frontmatterText(raw, 'description').length + frontmatterText(raw, 'when_to_use').length;
     if (listed > SKILL_LISTING_MAX_CHARS) warnings.push(mk('lengths', file, null, 'length', `description plus when_to_use is ${listed} characters, over the ${SKILL_LISTING_MAX_CHARS} the harness keeps in the skill listing; it truncates there silently, so the tail never reaches the model. Put the trigger first and trim the rest.`));

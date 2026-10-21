@@ -1233,15 +1233,16 @@ Settled: the prompt audit's scope; hosted review and stale docs; `CLAUDE_CODE_WO
 
 ### Proposals for the maintainer
 
-Not applied, since each changes behavior or policy:
+The reviewers' proposals, each decided by the maintainer on the session's recommendation:
 
-- `plugins/house/payload/check.mjs` agent-config still fails on a project `bypassPermissions` default that current clients ignore: keep it for older clients, demote it to a warning, or drop it; `auto` is not checked either.
-- A SessionStart hook in the rendered `.claude/settings.json`, so a single-repo cloud session arms the branch floor without the plugin.
-- github.md's default-branch rule could require that the access an agent pushes through cannot bypass protection, which a routine run's push respects; it may require protection for administrators and so collide with `.github/workflows/release.yml`.
-- The settings template allows `Bash(gh pr merge*)`, which sits awkwardly beside security.md's second-party rule.
-- `RUN_HINT` in `scripts/house/check-deep-research-upstream.mjs` repeats the Workflow-location clause in its narrower form; running the fork by its saved name instead of a scratchpad copy is untested.
-- A `lengths` entry for ORCHESTRATION.md, since SessionStart `additionalContext` past 10,000 characters moves to a file Claude is not told to read.
-- `cost-report` could name the cache-miss causes `/usage` reports and say it ignores a contracted price table (passed to the session that owns #326).
+- Applied: a `lengths` entry for `plugins/house/orchestration/ORCHESTRATION.md` in `house.json` (9,500 bytes), since SessionStart `additionalContext` past 10,000 characters moves to a file Claude is not told to read. A planted oversized copy failed it.
+- Filed as #351: a project-level hook in the rendered `.claude/settings.json`, so a single-repo cloud session, which loads no plugin, still arms the branch floor. It is a new hook adopters receive, so it ships in its own release.
+- Declined: demoting the agent-config finding on a project `bypassPermissions` default, since clients older than 2.1.257 still honor it (its message now says so); requiring that the access an agent pushes through cannot bypass default-branch protection, which may require protection for administrators and collide with `.github/workflows/release.yml`; dropping the settings template's `Bash(gh pr merge*)` allow, since the user's explicit merge instruction is the second party security.md asks for; and widening `RUN_HINT` in `scripts/house/check-deep-research-upstream.mjs`, whose scratchpad-copy route is narrower than the Workflow tool's rule but still correct.
+
+Left to the session that holds the file:
+
+- `plugins/house/scripts/cost-report.mjs`'s header could name the last cache miss and its likely cause, as `/usage` does (adjudication C4, passed to the session that owns #326, which holds that file).
+- `.claude/skills/adapting-to-harness-updates/references/routine-prompt.md` could say a cloud session installs no plugin, so the routine's run gets no plugin hooks (adjudication C5, left to the session that holds that skill directory).
 
 ### Where the bank lives
 
