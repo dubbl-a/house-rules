@@ -3,7 +3,7 @@ paths:
   - "tests/**"
   - ".github/workflows/**"
 ---
-<!-- house-managed v0.22.0 module=testing source=modules/testing/rules/testing.md body-sha256=c915e0af33764d5a385ba962a619d4987420b4261e41d08ec775437e839ac07a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.1 module=testing source=modules/testing/rules/testing.md body-sha256=1258684fc34886310da62e4700ad5a87e170978e79760c38397fbb0f05e57fb9 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -26,7 +26,7 @@ Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-r
 ## Test the guard itself, as its own CI step
 
 Test the hook, the gate, and the guard script that protect the workflow, because code that decides whether a change is allowed to land deserves a test more than the code it guards.
-The harness makes a hook the thing that actually blocks, and the eval runner will load a plugin's own hooks inside an isolated run, yet nothing native asserts that a hook still returns its blocking decision, so the guard's own test is the only standing proof that it still fires.
+The harness makes a hook the thing that actually blocks, and the eval runner will load a plugin's own hooks inside an isolated run, yet the only native test runner covers a mod's hooks module, so for a command hook or guard script the guard's own test is the only standing proof that it still fires.
 Run the guard's own test as its own named step rather than folding it into the main suite, so a guard failure reads as a guard failure and not as an unrelated red; the gate's step list is github.md's.
 Ship a guard with its own test in the change that introduces it, and build the guard's literal trigger tokens inside the test instead of writing them out, so the test cannot trip the guard it is exercising.
 Anchor: `tests/hooks/run.sh`, this package's guard test, run as its own step beside the suite; it and the main-module guard's test run only in this package, so an adopter writes the equivalent for their own guard, and the pr-checks template runs a hooks test as its own step only if the adopter defines one.

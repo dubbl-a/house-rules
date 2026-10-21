@@ -25,8 +25,8 @@ every important finding.
 ## Roster
 
 Pinned agents ship with the plugin as `house-rules:<name>`. Each pins its model, effort, and
-tools in frontmatter. A tool left off that list is absent from the agent's session, and none
-lists the Agent tool, so none can spawn an agent.
+tools in frontmatter; `CLAUDE_CODE_EFFORT_LEVEL` beats the effort pin. A tool left off that list
+is absent from the agent's session, and none lists the Agent tool, so none can spawn an agent.
 
 | Agent | Model | For |
 |---|---|---|
@@ -43,10 +43,10 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - The ladder, by capability and cost together: Fable, Opus, Sonnet, Haiku. Opus is the default
   session for most work; reach for Fable for demanding reasoning, long-horizon agentic work,
   or where Opus at higher effort still falls short.
-- The harness runs a subagent, teammate, or workflow agent with no assigned model on the session's
-  model unless `CLAUDE_CODE_SUBAGENT_MODEL` says otherwise, so every off-roster call names a `model`
-  and an `effort` (the Agent tool takes both) below the session unless the task needs the session's
-  tier. Unset `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` for `/deep-research`; it overrides named models.
+- The harness runs a subagent, teammate, or workflow agent with no assigned model on the session's model
+  unless `CLAUDE_CODE_SUBAGENT_MODEL` says otherwise, so every off-roster call names a `model` and an
+  `effort` below the session unless the task needs the session's tier. Unset `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`
+  for any tiered run and `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` for `/deep-research`; each overrides named models.
 - Fable never runs on a subagent unless the user asks for it.
 - Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
   or synthesis whose verdict decides, because the verdict is the product and Opus is moderately
@@ -58,13 +58,13 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - On `/deep-research`, never `Workflow({name: "deep-research"})`, which pins no model. Copy
   `<home>/.claude/workflows/deep-research-tiered.js` into the session scratchpad and run
   `Workflow({scriptPath: <that copy>, args: {question, depth}})`, stating the depth (light,
-  standard, deep; `args.efforts` overrides the per-stage effort); Workflow runs only scripts in
-  the working directory, an added directory, or the scratchpad. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
-  --install` (`scripts/house/`, else the house plugin's claude-code module files). On a
-  `verifyNote` the question warrants, offer the user to extend that run (`resumeFromRunId`, the
-  original args plus the note's `budget.maxVerifyClaims`, the extra agents); never start it unasked.
-- Subagents report back and never spawn subagents. Roster and built-in agents cannot by default; a
-  fork or an off-roster agent with unrestricted tools can, so its brief forbids it under DO NOT.
+  standard, deep; `args.efforts` overrides the per-stage effort); Workflow runs only a script
+  the session can already read. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
+  --install` (`scripts/house/`, else the plugin's claude-code module files). On a warranted
+  `verifyNote`, offer to extend the run (`resumeFromRunId`, same args, the note's `budget.maxVerifyClaims`;
+  it costs the extra agents); never start it unasked.
+- Subagents report back and never spawn subagents. Roster agents cannot; any other, forks and
+  built-in general-purpose included, can by default, so its brief forbids it under DO NOT.
 
 ## Delegation
 

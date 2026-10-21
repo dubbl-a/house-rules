@@ -23,7 +23,7 @@ No incident recorded from inside the fleet; the rule is external, widely-held gu
 
 repo-c's `scripts/test-no-direct-master.sh` is the source incident: a dedicated shell test for the hook that guards the workflow, wired as `npm run test:hook` and run as its own named CI step, justified directly in the workflow comment: "code that guards the workflow deserves a test more than most" (AS-032). Running it as a separate step, rather than folding it into the general suite, is deliberate: a guard failure then reads as a guard failure, not as one more red line inside an unrelated test run that someone might scroll past.
 
-Native floor, as of 2026-09-02: hook debugging, which offers after-the-fact inspection only, the transcript view and a debug log, and proves nothing about whether a guard still fires (https://code.claude.com/docs/en/hooks-guide.md).
+Native floor, as of 2026-09-02: hook debugging, which offers after-the-fact inspection only, the transcript view and a debug log, and proves nothing about whether a guard still fires (https://code.claude.com/docs/en/hooks-guide.md). The CLI's `claude plugin test` runs a mod's own tests "in an environment like the one the mod's hooks run in" (`claude plugin test --help`, Claude Code 2.1.306), which covers a mod's hooks module, not a command hook.
 
 ## Feed a real payload through the real wiring, and never re-implement the logic under test
 

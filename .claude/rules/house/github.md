@@ -4,7 +4,7 @@ paths:
   - ".githooks/**"
   - ".env.example"
 ---
-<!-- house-managed v0.22.0 module=github source=modules/github/rules/github.md body-sha256=3a48b76d23b3c5a6644bdf782ad32206877d2b85ca118a41eb00cbdb522c8715 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.1 module=github source=modules/github/rules/github.md body-sha256=b20c454cce5330c2ca418b9e219937fc27aff764fe120b0e778ec8985dbdfc86 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -17,7 +17,7 @@ Each rule names what enforces it, or says plainly that nothing does.
 Gate on file-only checks, so the gate runs with no database, network, or secret to leak. Push stateful checks to a retro or a local pre-deploy step.
 Name what is deliberately not gated, and why, inside the workflow that gates: an unstated gap reads as coverage.
 Run the same set locally before opening the PR, and fail loudly on a missing secret before any lane starts.
-Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then reports what it reads there, failing on unpinned actions or missing permissions and warning (`pr-credential`) when a pull-request workflow reads a secret other than `GITHUB_TOKEN` or grants a write permission, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check: name it a gap, not a gate.
+Anchor: `.github/workflows/pr-checks.yml`, a scaffold with a wall-time target, concurrency, and a header naming what is not gated, which `house render --apply` writes only where it is absent, and either not offered before or run with --scaffold; `node .house/check.mjs --only=workflows` then reports what it reads there, failing on unpinned actions or missing permissions and warning (`pr-credential`) when a pull-request workflow reads a secret other than `GITHUB_TOKEN` or grants a write permission, and `npm run check:house` runs its checker step locally. A hosted agent review posts a neutral, non-blocking check, and `/code-review`, local or ultra, posts only comments: name each a gap, not a gate.
 Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated`
 
 ## Give a workflow read-only permissions and pin every action by SHA
@@ -25,7 +25,7 @@ Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credenti
 Declare read-only `permissions:` on every workflow and grant write per job, since repo write access can read every configured secret. Write the reason beside the block.
 Pin every third-party action to a full-length commit SHA, the only reference a tag cannot fake.
 Never interpolate event data into a `run:` block or an agent's prompt input; route it through a variable, and never check out untrusted code, or expose a secret to it, in a privileged trigger.
-Anchor: `node .house/check.mjs --only=workflows` fails on a `uses:` not pinned by SHA, a workflow with no top-level `permissions:`, event data in a `run:` block or an agent's prompt input, and a `pull_request_target` checkout of the pull request head; the rendered `.github/workflows/pr-checks.yml` ships the read-only default and SHA pins to copy. A workflow the agent platform's setup installs counts too: same permissions, same pins.
+Anchor: `node .house/check.mjs --only=workflows` fails on a `uses:` not pinned by SHA, a workflow with no top-level `permissions:`, event data in a `run:` block or an agent's prompt input, and a `pull_request_target` checkout of the pull request head; the rendered `.github/workflows/pr-checks.yml` ships the read-only default and SHA pins to copy. A workflow the agent platform's setup installs counts too: same permissions, same pins, though its documented workflows pin the action by version tag; its shared app takes a permission set GitHub will not let you narrow, so where only the action needs an app, a custom one is the least-privilege route.
 Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin-every-action-by-sha`
 
 ## Budget Actions minutes as account-wide money
@@ -35,7 +35,7 @@ Pause an expensive cron by hand, then ship a one-shot job to re-enable it, since
 Read the check-run annotation when a run dies at startup: a billing failure carries no logs and looks nothing like code failure.
 Set `timeout-minutes` on every job near a small multiple of its normal run time, so a hung job costs minutes rather than GitHub's 360-minute default against the shared pool; `plugins/house/templates/pr-checks.yml` sets 5.
 Set the slot to null on a public repo, since its minutes are unmetered, and let the check say so instead of estimating against a stale budget.
-Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow caps nothing; its minutes draw from the same pool.
+Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow sets no turn cap unless its `claude_args` pass `--max-turns`; its minutes draw from the same pool.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
@@ -55,7 +55,7 @@ Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-
 
 ## Protect the default branch at the remote, and name an owner for what runs with privilege
 
-Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it.
+Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it, auto mode allows a push to the default branch by default, and a cloud run's `claude/` branch prefix is a default, not a restriction.
 After merging a PR whose checks ran against an older base, re-run the gate on the merged default branch, or require branches to be up to date, since two PRs that each pass can together break it.
 Once the repo has a second maintainer, require a review from someone other than the author and name code owners for workflow, release, and agent config files, so a change to what runs with privilege reaches a named reviewer; a solo repo has nobody to route to, and its required checks are the gate.
 Turn on multi-factor sign-in for every account with write access, enforced by the organization where there is one, and give each collaborator the least role that works.
@@ -110,7 +110,7 @@ Receipts: `docs/handbook/github.md#never-delete-the-branch-from-the-worktree-bei
 
 Keep env files, account ids, and API keys out of the repo, and set every secret through the platform's secret command, not a config file.
 Load a vendor key from an env-file flag at run time, never a committed file.
-Run a credentialed diagnostic as a workflow so the token stays with the runner and never enters an agent session.
+Run a credentialed diagnostic as a workflow step with no agent in it, so the token stays with the runner and never enters an agent session; in a cloud session, hold a token as a network secret where the proxy can attach it, since anyone using the environment can read its variables.
 Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; remote is the guard, hook the backstop. By default credential files stay readable to a session and a subprocess inherits its environment; a Read deny rule, the sandbox's credential deny or mask, and the subprocess scrub variable narrow that, but none is on until configured.
 Receipts: `docs/handbook/github.md#keep-credentials-out-of-the-repo-the-commit-and-the-chat`
 
@@ -156,7 +156,7 @@ Arm the floor with `core.hooksPath`, set by `house render --apply` and every ses
 Read the policy from `HEAD:house.json`, never the working tree, so a flipped `branchPolicy` counts only once landed.
 Keep the PreToolUse hook's job to verifying the floor is intact (every vendored hook byte-identical to the plugin's copy, `core.hooksPath` pointing at it) and refusing its short disable/bypass list (`--no-verify`, `core.hooksPath` or `include.path` in any form, `GIT_CONFIG_*`, `git replace`, `send-pack`, a `GIT_DIR`-named repo), never inferring a branch or tree from text, since the harness documents text-matched rules as no boundary, lets auto mode push to the default branch by default, and loads no project hooks in a bare or safe-mode session while git still runs its own.
 Read `house doctor` for whether the floor is armed here, or `node .house/check.mjs --floor-status` in a session where `house` is not on PATH, since `core.hooksPath` is machine-local state a repo-only checker cannot see.
-Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb.
+Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb. A cloud session installs no plugin a repo declares, so nothing arms the floor there and the remote branch rule is the only guard.
 Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`
 
 ## Don't

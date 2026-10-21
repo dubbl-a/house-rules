@@ -99,7 +99,10 @@ The mechanism this heading relies on is not settled fact. Anthropic's own docume
 `paths:`-scoped rules load only on matching reads, but an open bug report (anthropics/claude-code#16299)
 claims they can load globally regardless: "do not assume the scoping works without checking
 `/context`." That is the reason the heading's own text says to confirm the scoping really defers
-loading before counting on it.
+loading before counting on it. The memory page now names the check and the failure it catches:
+`/context` lists the rules files loaded at launch, and frontmatter whose YAML does not parse
+loads the rule as if it had no `paths` (https://code.claude.com/docs/en/memory, fetched
+2026-10-21).
 
 **Other agents get a routing table, not the scoping.** Codex and Gemini CLI never read
 `.claude/rules/`, and neither has a `paths:` equivalent. A repo that lists them in `house.json`'s
@@ -160,8 +163,9 @@ never scans `.claude/skills/`, even though `maintaining-docs.md` lists `.claude/
 own `paths:`.
 
 Native floor, as of 2026-09-02: SKILL.md frontmatter fields and the skill listing context
-budget, where a personal or project skill's `name` is a display label and the directory name is
-what invokes it (https://code.claude.com/docs/en/skills).
+budget, where a personal or project skill's `name` sets the command and the directory name also
+invokes it, and where the 500-line figure is a tip rather than a limit
+(https://code.claude.com/docs/en/skills, re-read 2026-10-21).
 
 ## Disable model invocation on a skill with side effects
 
@@ -182,7 +186,10 @@ item 10).
 Native floor, as of 2026-09-02: the `disable-model-invocation` frontmatter flag
 (https://code.claude.com/docs/en/skills), print mode expanding a skill named in the prompt
 string before the turn starts (https://code.claude.com/docs/en/headless), and the auto
-permission mode, where a classifier reviews most actions instead of a person.
+permission mode, where a classifier reviews most actions instead of a person. The skills page
+adds `skillOverrides` set to `user-invocable-only` for a skill whose file you do not edit, which
+plugin skills ignore, and says a `verify` or `simplify` skill Claude cannot invoke no longer runs
+before each commit (https://code.claude.com/docs/en/skills, fetched 2026-10-21).
 
 ## Set the model explicitly on every subagent and workflow agent
 
@@ -218,7 +225,8 @@ session-wide default, but re-verified against the installed v2.1.278 binary (`st
 `~/.local/share/claude/versions/2.1.278`) it is no longer the only one: `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`
 also exists, and when set it makes the harness drop the `model` on every subagent and workflow-agent
 call and warn ("Workflow agent model … ignored: CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set"), forcing
-every one of them to inherit the session model regardless of what a script or an `Agent` call pins
+every one of them onto `CLAUDE_CODE_SUBAGENT_MODEL`, or the session model when that is unset,
+regardless of what a script or an `Agent` call pins
 (https://code.claude.com/docs/en/model-config). Per-call `model` and `effort` options are also no
 longer documented only in the bundled `/workflow-authoring` reference: the public workflows doc
 now covers them too, under its Cost section ("Claude Code picks each workflow agent's model in the
@@ -265,7 +273,10 @@ The fork could not run from its stable path, 2026-10-04 (#139): the Workflow too
 this tool returned, or a file you can already read (the working directory or a directory you have
 added)"), and the run worked only from an unchanged copy in the session scratchpad. The
 session-start text, the claude-code rule, the `--install` message, and the fork's `whenToUse` now
-say to copy the fork into the scratchpad and run the copy. The same run spent all 15 standard
+say to copy the fork into the scratchpad and run the copy. The workflows page, fetched
+2026-10-21, states the rule as a readable file: a script outside the working directory needs its
+directory added with `/add-dir` or a Read allow rule
+(https://code.claude.com/docs/en/workflows). The same run spent all 15 standard
 verify slots on two of five angles, because the native selection sorts every claim globally by
 importance and source quality and takes the top N. The fork keeps that sort as the order within
 each angle (a claim's angle is the search angle that found its source) and deals the slots
@@ -275,9 +286,15 @@ worst case; an explicit `budget.maxVerifyClaims` lifts the ceiling to match, so 
 it is honored rather than clamped. A run that still drops claims returns a `verifyNote` naming how
 many it verified and how to extend the same run: `resumeFromRunId`, the original args unchanged,
 plus a larger `budget.maxVerifyClaims`. The Workflow tool returns completed calls with unchanged
-prompt and options from cache, so a changed depth or budget field (votes, say) would rewrite every
-verify prompt; with the args held and a deterministic selection, a larger cap keeps every verify
-call already made and appends the rest. The script cannot read its own run id, so the note says "this run's id" and the session
+prompt and options from cache. For agents run inside `pipeline()` and `parallel()`, where the fork
+runs every search, fetch, and verify agent, that holds from Claude Code 2.1.305, whose changelog
+(fetched 2026-10-21, https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md)
+reads "Fixed Workflow resume re-running already-completed `pipeline()` and `parallel()` agents
+instead of serving them from the run's journal"; on an older CLI an extension re-runs those
+finished agents, so it costs nearly the whole run again and not the extra agents the note counts.
+A changed depth or budget field (votes, say) would rewrite every verify prompt; with the args held
+and a deterministic selection, a larger cap keeps every verify call already made and appends the
+rest. The script cannot read its own run id, so the note says "this run's id" and the session
 supplies the id the tool returned.
 
 The scope agent ran the searches itself, 2026-10-07 (#230): a `standard` run sat in Scope for 20
@@ -333,7 +350,10 @@ substituted models" (https://code.claude.com/docs/en/workflows#cost). A blocked 
 model is silently stepped down and only warned about, in the `/workflows` progress view for a
 workflow agent or the session transcript for a subagent, never failed. That is why the rule now
 reads a pinned tier as a request the run can silently step down from, with the checker and the
-fork's explicit model map as what makes that request visible again.
+fork's explicit model map as what makes that request visible again. The sub-agents page,
+re-read 2026-10-21, narrows the step-down: only a blocked family alias goes to the newest allowed
+model in its family, any other blocked value falls back to the inherited model, and the warning
+shows in interactive sessions only (https://code.claude.com/docs/en/sub-agents).
 
 The ladder after Opus 5.5, 2026-09-22: Claude Code 2.1.280 made Claude Opus 5.5 the default Opus
 model ($4/$20 per Mtok, 5 percent cache reads, "Moderate" latency, API default effort medium,
@@ -547,7 +567,9 @@ everything judgment-level ships here as a proposal and lands only on the maintai
 A repo-a memory item covers the failure mode on the other side of an interrupt:
 interrupting a turn kills in-flight workflow agents, so the correct recovery is to prefer inline
 work and recover a killed fan-out's finished results from `subagents/workflows/wf_*/agent-*.jsonl`
-rather than re-running it.
+rather than re-running it. The workflows page now documents the native path for a workflow:
+relaunching the same script in the same or a resumed session returns completed agents' saved
+results (https://code.claude.com/docs/en/workflows#resume-after-a-pause, fetched 2026-10-21).
 
 Anthropic's guidance backs both halves of the heading: run an adversarial review in a fresh
 subagent context before calling work done, and tell it to flag only correctness and requirement
@@ -806,8 +828,10 @@ lines from the denied directory. One session each, recorded as observed rows in 
 anyone protecting a file from an agent with a Read deny, an eval answer key or a secrets
 file, is that a repo-wide search is not covered: the position above that a deny list is not a
 boundary already says so in principle, and this is the case that makes it concrete. Keep such
-a path out of a search with a PreToolUse hook or the sandbox, which act independent of the
-command text, and treat inspecting tool results for the path as the fallback detection.
+a path out of a built-in search with a PreToolUse hook and out of a shell search with a sandbox
+read deny, which act independent of the command text, since the sandbox covers shell commands only
+and "A `denyRead` entry doesn't stop the Read tool" (https://code.claude.com/docs/en/sandboxing,
+fetched 2026-10-21), and treat inspecting tool results for the path as the fallback detection.
 
 Native floor, as of 2026-09-02: permission lists merging across scopes rather than overriding
 (https://code.claude.com/docs/en/settings#combine-settings-across-scopes), the allow and deny
@@ -850,7 +874,8 @@ anything re-derivable from the recorded SHA; what remains is exactly the state t
 cannot reconstruct on its own.
 
 Native floor, as of 2026-09-02: auto memory, the harness's own store for ongoing work, which is
-machine-local and shared with nobody (https://code.claude.com/docs/en/memory).
+machine-local, shared by one repository's worktrees on one machine and by no other machine,
+cloud session, or subagent (https://code.claude.com/docs/en/memory, re-read 2026-10-21).
 
 Reversed, dated 2026-09-21: this package's own chain (#2 through #75) is the negative case now.
 It ran the corrected form above for months and still left one issue permanently open at any
@@ -865,7 +890,8 @@ practice now prints the same snapshot in the session and files a real issue only
 item someone will do. A thing deferred by decision is recorded with its reason where the decision
 already lives, and becomes an issue closed as not planned only when no such place exists, since
 that reason is still the one line the next session cannot reconstruct on its own. Auto memory
-stays machine-local and unshared, so it still is not the channel (as of 2026-09-02, above).
+stays machine-local and out of cloud sessions and subagents, so it still is not the channel (as
+of 2026-09-02, above).
 
 Added from aaron-gtm, dated 2026-10-19 (#279): a session deferring a model-choice decision first wrote its issue with its own reading stated as findings, resting on three failures from two single runs it never inspected, with a 35 h build time estimated from parameter count sitting unlabelled beside measured numbers. Aaron's correction was to let a new session reach independent conclusions and to share the earlier research passes. The issue was rewritten into Measured (with n and run count), Estimates (labelled), Limits of these numbers, One session's interpretations (unverified), Prior research, and Where things are. The evals rule covers the ratio and the sample, and research covers UNVERIFIED marks; neither covers the hand-off framing, which is what the sentence adds.
 

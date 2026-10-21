@@ -120,8 +120,13 @@
 # a branch guard and does not defer this one). Deference is a deliberate choice
 # here, not something the harness requires: every matching PreToolUse hook runs
 # and the most restrictive decision wins. It also fails open silently wherever
-# it never runs at all, which a bare, safe or restricted session and Cowork
-# do. That gap is why the floor exists.
+# it never runs at all, which a bare, safe or restricted session, Cowork, and
+# a cloud session (which loads no plugin from repo or user settings) do. That
+# gap is why the floor exists. Native floor beside it: the protected-path
+# check prompts on a write under .git or to .gitconfig in default mode, sends
+# it to the classifier in auto mode and allows it in bypass mode, and
+# worktree isolation refuses git aimed at the main checkout only while the
+# session is isolated; .githooks is on neither list.
 #
 # Fails CLOSED (deny) when jq is missing (cannot parse the payload, so cannot
 # tell a safe command from a dangerous one), when a file tool's payload names

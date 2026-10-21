@@ -31,7 +31,7 @@ Receipts: `docs/handbook/engineering.md#prove-a-check-can-fail-before-trusting-t
 Read the bytes that ship, because source and render diverge, and an option's name is never the evidence.
 Grep the built output for the literal after any value sweep, check an emitted asset's real format and shrink, prove no-visual-change with a computed-style diff across pages and widths, query the upstream rather than your cache, and test on the real client when a preview cannot reproduce the rendering.
 Assert the new content present and the prior content absent, whitespace normalized on both sides, because a page count is not a render check.
-Anchor: a `postbuild` check reading the emitted bytes, eval case `verify-served-artifact`
+Anchor: a `postbuild` check reading the emitted bytes, eval case `verify-served-artifact`; the bundled /verify runs the app only when invoked, so a byte check on every build is this repo's requirement
 Receipts: `docs/handbook/engineering.md#verify-the-served-artifact-not-the-source`
 
 ## Validate the body before writing it, because a status code is not a content check
@@ -124,7 +124,7 @@ Receipts: `docs/handbook/engineering.md#make-an-error-message-teach-the-fix`
 
 Read all config from the environment, so the repo could go open source any moment without leaking a credential.
 Avoid named config groups, which multiply combinations and make deploys brittle; keep build, release, and run strictly separate, give each release a unique id and never mutate one; keep the run stage simple, since a runtime failure happens unwatched; and resist different backing services between development and production, even behind an adapter.
-Anchor: the config module throws at startup on a missing key, and `.env.example` lists every key; the sandbox treats reading a local env file as ordinary, so keeping every secret in the environment and out of the repo is this repo's requirement
+Anchor: the config module throws at startup on a missing key, and `.env.example` lists every key; the sandbox reads a local env file by default and auto mode stops a secret entering a commit only by classifier judgment, so keeping every secret in the environment and out of the repo is this repo's requirement
 Receipts: `docs/handbook/engineering.md#read-config-from-the-environment-and-keep-build-release-and-run-separate`
 
 ## Don't

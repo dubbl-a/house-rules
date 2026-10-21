@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.22.0 module=docs source=modules/docs/rules/docs.md body-sha256=b409f1e6a999ce18a35f649b9c86a2ecc0d94df8cbcbc169db6b46350b95e010 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.1 module=docs source=modules/docs/rules/docs.md body-sha256=a58c7fd019f26ac835b46c8869f52ca76eadda53c817279988fecfb6c807eeda DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -40,7 +40,7 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 
 Give working rules, a runbook, strategy, the changelog, reference, and orientation each their own document (the README for a landing human, the archive for a dated observation), restating neither the code nor the manifest, and index a reference set with a start-here pointer; say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
-Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file).
+Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file); the harness's routing guidance and its checkup's cuts cover instruction files, so routing the README, changelog, and archive is this repo's requirement.
 Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belongs`
 
 ## State a rule as imperative, why, anchor, receipts
@@ -111,7 +111,7 @@ Receipts: `docs/handbook/docs.md#dont-document-a-command-that-does-not-exist`
 ## Ship the docs and changelog edit in the same PR as the change
 
 When a change adds or renames a script, an env variable, an endpoint behavior, or a maintenance step, its docs edit ships in the same pull request; one opened afterward drifts. Say in the body that you checked when no edit was needed, and ship every artifact produced, including ones the script's own instructions forget.
-A hosted reviewer may flag a change that leaves a document outdated, but only as a non-blocking nit where it runs, so the template's binary is what holds it.
+A hosted reviewer, where it runs, flags a change that breaks a CLAUDE.md rule but never blocks the merge, so the template's binary is what holds it.
 A standalone docs pull request is fine with no code change at all; skills follow the docs workflow, not a code deploy.
 Log in the changelog only what the audience would notice, by hand, under an unreleased heading in reverse-chronological dated sections; refactors, infra, and silent fixes live in git history.
 When two open pull requests would add entries at the same position of an append-style document, land the second one's entries after the first merges, and say in its description that they are still owed. The entries still ship in that pull request; only their timing moves.

@@ -1,0 +1,605 @@
+[
+  {
+    "item": "plugins/house/modules/security/rules/security-server.md",
+    "rules": [
+      {
+        "heading": "Supply untrusted input as a parameter, never by building a string",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "security-guidance plugin per-edit pattern check and end-of-turn review; /security-review; MCP tool schema guards",
+        "evidence": "Native coverage of injection is after the fact and does not block. The security-guidance per-edit check pattern-matches eval(, os.system, child_process.exec, innerHTML and similar after the edit lands and only appends a warning. The end-of-turn review catches injection but 'does not block writes'. /security-review is an on-demand diff pass that is 'advice/report, not enforcement'. The plugin is not built in and must be installed. The rule adds what the harness lacks: the safe construction itself, plus a deterministic per-sink hostile-input test committed with the change. For server code written as an MCP server, the MCP facts back the trust-boundary clause: Claude Code flattens root anyOf/oneOf schemas and does not enforce their required lists, so 'server must validate'.",
+        "citation": "https://code.claude.com/docs/en/security-guidance.md ; https://code.claude.com/docs/en/commands (/security-review) ; https://code.claude.com/docs/en/mcp (Tool schema and name guards)",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Bind values into a query, encode output for its context, pass process arguments as a list, log a value as a field, and validate at the trust boundary against what is allowed and never evaluate it as code; write the hostile case as a test in the change that adds the sink, since generated code takes the concatenating path often when both are open. The security-guidance plugin and /security-review flag this class after the code is written and neither blocks it, so the test is what holds the line."
+      },
+      {
+        "heading": "Never let a request choose what the server fetches, opens, loads, or runs",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "security-guidance plugin (per-edit check flags pickle; end-of-turn review catches SSRF); /security-review",
+        "evidence": "The security-guidance per-edit check flags pickle and the end-of-turn review names SSRF among what it catches, but both only warn and are opt-in. /security-review is advisory. Nothing native checks allowlisting after normalization, upload storage outside the served root, or mass-assignment binding, and nothing native runs the per-entry-point refusal test. The sandbox network allowlist and its loopback refusal restrict Claude's own shell commands, not the server code being written, so they are not a counterpart.",
+        "citation": "https://code.claude.com/docs/en/security-guidance.md ; https://code.claude.com/docs/en/commands ; https://code.claude.com/docs/en/sandboxing (Network isolation)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Authenticate every non-public function, and authorize every object on the server",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "security-guidance end-of-turn and commit reviews (authorization bypass, IDOR); /security-review (auth issues)",
+        "evidence": "The security-guidance end-of-turn review names authorization bypass and IDOR, and /security-review names auth issues, but both are model reviews that warn or report and can miss issues. The rule adds deny by default, check and act in one step, and a deterministic unauthenticated and wrong-user test. MCP OAuth, headersHelper and connector controls govern how Claude Code authenticates to servers, not how server code the session writes authorizes its callers, so they do not overlap.",
+        "citation": "https://code.claude.com/docs/en/security-guidance.md ; https://code.claude.com/docs/en/commands ; https://code.claude.com/docs/en/mcp (OAuth and headersHelper)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Use vetted mechanisms for crypto, sessions, and transport",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "security-guidance end-of-turn review (weak crypto)",
+        "evidence": "The end-of-turn review lists weak crypto among what it catches, but it is advisory, opt-in and non-blocking. Nothing native covers session lifetime, revocation, rotation at sign-in, token algorithm and expiry checks, attempt limits, or a ban on disabling certificate checks in test helpers. The harness's own TLS and keychain storage cover Claude Code's credentials, not the application's. The anchor already relies on the house scan rule, not on a native feature.",
+        "citation": "https://code.claude.com/docs/en/security-guidance.md ; https://code.claude.com/docs/en/data-usage.md (Data in transit and at rest)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Fail closed, and tell an outside caller little",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/security-review (data exposure); security-guidance model reviews",
+        "evidence": "/security-review names data exposure, and the security-guidance reviews look at diffs, but both are advisory. The harness's fail-closed matching and error-report redaction apply to Claude Code itself, not to the server's responses or logs. The OpenTelemetry privacy controls (content off by default) govern Claude Code's telemetry, not application logging, so they do not duplicate the logging and data-minimization clauses. The rule's generic-error, structured-log and minimization posture, plus its error-path test, have no native counterpart.",
+        "citation": "https://code.claude.com/docs/en/commands ; https://code.claude.com/docs/en/security.md (Fail-closed matching) ; https://code.claude.com/docs/en/monitoring-usage (Privacy and content controls)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Ship secure defaults, and bound what one caller can consume",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Nothing native covers debug-off, default credentials, CSP, cookie flags, CSRF, or per-caller request size, rate and time limits in server code. The MCP output limits (warning above a token threshold, a maximum token cap, failure on very large HTTP responses) are client-side caps Claude Code applies to what it receives, not limits a server enforces on its callers. The --max-budget-usd and routine rate limits bound Claude Code's own spend and runs. Neither duplicates the rule.",
+        "citation": "https://code.claude.com/docs/en/mcp (MCP output limits) ; https://code.claude.com/docs/en/cli-reference (--max-budget-usd)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Don't",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Each item restates the negative of a rule above and inherits that rule's enforcement. The native counterparts (security-guidance warnings, /security-review) are the same advisory reviews already weighed under those rules, and none blocks. This adds no duplicate or conflict beyond what the parent rules carry.",
+        "citation": "https://code.claude.com/docs/en/security-guidance.md",
+        "action": "keep",
+        "proposedWording": ""
+      }
+    ],
+    "notes": "These rules cover the server code a session writes. The newly researched areas (MCP, headless, workflows, scheduled and remote work, cost and model, sandbox and OTel) cover how the harness itself behaves, so they barely touch these rules. Almost all of the native overlap comes from the main audit's security-data facts: the security-guidance plugin and /security-review. Both are advisory or warn-only, the plugin is not built in, and neither blocks. That makes every rule except the secure-defaults rule a COMPLEMENT and not a DUPLICATE. The rules add the construction posture and a deterministic per-sink test, which no native feature supplies.\n\nI proposed a native-floor cite only on the injection rule. That is the class the per-edit pattern check covers most directly. Repeating the same cite in every rule would be noise. The better home for the full mapping may be the handbook coverage map or the sibling file, security.md. I did not read either, so I can't confirm whether security.md already cites /security-review or security-guidance. If it does, the cite in the injection rule may be unnecessary under the 'neither file restates the other' line.\n\nWhere I was unsure:\n- Whether an MCP server the session writes falls under this file. I assumed it does (it is server code handling requests), so the MCP schema-flattening fact ('server must validate') supports the trust-boundary clause.\n- The 'Don't' section is not a rule with its own posture. I marked it UNIQUE and keep because it only restates the rules above.\n- The /security-review facts come from the commands and skills pages because its dedicated docs URL returned 404. Its exact coverage list beyond injection, auth and data exposure is unconfirmed."
+  },
+  {
+    "item": "plugins/house/modules/claude-code/rules/claude-code.md (scoped headings: model, subagent, session, settings, peer session, model invocation, hook, adversarial review) judged against the new areas: MCP, headless and SDK, workflows and review skills, scheduled and remote work, cost/context/model config, sandbox, output styles, statusline, OTel",
+    "rules": [
+      {
+        "heading": "Keep the auto-memory index to hooks, and hold it under its cap",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Here \"hooks\" means index cues, not harness hooks. The new areas say only that auto memory is re-injected after compaction, is listed by /context, and is read by the SDK whatever settingSources says. None of that touches the index cap or cue shape.",
+        "citation": "https://code.claude.com/docs/en/context-window ; https://code.claude.com/docs/en/agent-sdk/claude-code-features",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Disable model invocation on a skill with side effects",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "disable-model-invocation frontmatter; skillOverrides user-invocable-only; /skill-name expansion in print mode; /loop passing non-invocable skills as plain text",
+        "evidence": "The docs confirm that -p expands a /skill-name written in the prompt (user-invoked skills work), so the rule's \"caller who wrote the string is the gate\" holds. /loop passes disable-model-invocation and skillOverrides skills to Claude as plain text, so the frontmatter also stops a loop iteration. The rule does not cover skills whose frontmatter you cannot edit. Bundled /code-review can be started by Claude on its own and writes with --fix. The native knob for those is skillOverrides {name: user-invocable-only}, and an entry under an alias is honored only in managed settings or --settings. There is a side effect: disable-model-invocation on a skill named verify or simplify removes it from the pre-commit run.",
+        "citation": "https://code.claude.com/docs/en/headless ; https://code.claude.com/docs/en/scheduled-tasks ; https://code.claude.com/docs/en/code-review-local ; https://code.claude.com/docs/en/skills",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, and set a bundled or plugin skill whose frontmatter you cannot edit to user-invocable-only through `skillOverrides`; the harness then blocks a model-initiated call, a loop iteration included, but cannot decide which effects count, and a print-mode run still expands a named skill, so the caller who wrote the string is the gate. Expect the flag to drop a skill named verify or simplify from the harness's run before each commit."
+      },
+      {
+        "heading": "Set the model explicitly on every subagent and workflow agent",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Subagent and workflow model resolution order; CLAUDE_CODE_SUBAGENT_MODEL (a default); CLAUDE_CODE_SUBAGENT_MODEL_FORCE; availableModels substitution; effort resolution; --max-budget-usd; Workflow script-path rule; workflow resume replay",
+        "evidence": "(1) Docs resolution order since the change: per-invocation model, then definition frontmatter, then CLAUDE_CODE_SUBAGENT_MODEL, then the main model. A script-named model counts as per-invocation. This matches \"call-level model still wins\", but CLAUDE_CODE_SUBAGENT_MODEL alone does not change built-in Explore and Plan, so the floor has a gap the rule does not state. (2) The rule leaves out the documented CLAUDE_CODE_SUBAGENT_MODEL_FORCE, which makes Claude Code ignore definition models and stops Claude passing a model. That would wipe out the fork's per-stage pins. (3) CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL is absent from the docs. The rule states its behavior as fact, but only a binary-derived local note supports it. (4) availableModels: a blocked family alias goes to the newest permitted model in that family, while any other blocked value falls back to the inherited model, and the warning is interactive only. The rule says every blocked call steps down within its family. (5) Frontmatter effort loses to CLAUDE_CODE_EFFORT_LEVEL, so the floor should not live in that env var. (6) --max-budget-usd counts subagent spend and refuses spawns. Docs: \"Spend can pass the cap, so leave headroom.\" (7) Workflow docs: start \"only from a script file the session is already allowed to read\" (/add-dir or a Read allow rule). That is broader than the rule's three-location claim. (8) Docs on resume replay: the first agent whose prompt differs reruns, and so does every agent after it. Before the fix, only items that ran more than one agent each re-ran. A fresh session starts a new run, and replay works only in the same session or under claude --resume.",
+        "citation": "https://code.claude.com/docs/en/workflows ; https://code.claude.com/docs/en/sub-agents#choose-a-model ; https://code.claude.com/docs/en/env-vars ; https://code.claude.com/docs/en/model-config ; https://code.claude.com/docs/en/cli-reference",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the third sentence: \"Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor, knowing it is a default that a call-level or definition model beats and that it leaves the built-in Explore and Plan agents on their own models; never set the force variable for subagent models where a tiered run matters, since it discards every call-level and definition model, and leave the workflow model variable unset too, which the docs do not describe but which the binary has been seen to apply the same way to the `/deep-research` fork's per-stage models; Fable never runs on a subagent unless the user asks for it.\" Append to the effort sentence: \"and keep that floor in per-model settings rather than the effort environment variable, which overrides the effort a roster agent pins.\" Replace the substitution sentence: \"Expect the harness to substitute rather than fail: a blocked family alias steps down to the newest allowed model in that family, any other blocked name falls back to the inherited model, and the warning shows only in an interactive session, so the checker and the fork's model map are what make the step-down visible in a scripted run.\" In the budget sentence, after \"not the bill\", add \"and a run can pass it, so leave headroom\". In the fork sentence, replace the Workflow clause with \"since the Workflow tool starts only a script the session can already read, which the scratchpad always is\". In the extend sentence, replace the version clause with \"a current CLI replays every finished agent up to the first whose prompt the change alters, an older one re-runs finished `pipeline()` and `parallel()` items that ran more than one agent, and a fresh session starts a new run instead, so extend it in the same or a resumed session; the spend is the user's to approve.\""
+      },
+      {
+        "heading": "Make a must-hold rule a hook, fail it closed, and test it with real payloads",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "PreToolUse decisions vs permission rules; onFailure block; exit 2 semantics per event; MCP tools in PreToolUse matchers; hook loading under --bare, --settings disableAllHooks, SDK settingSources, and cloud sessions",
+        "evidence": "The rule's floor claims match the docs: a deny rule beats a hook allow, a timed-out PreToolUse hook passes unless onFailure:block is set, and PermissionRequest ignores exit 2. Gaps: (1) \"only the pre-tool event reads a failing exit as a block\" is too broad. Exit 2 also blocks UserPromptSubmit, Stop, SubagentStop, PreCompact and PreModelSwitch, so the claim is accurate only among tool events. (2) The list of sessions that never load hooks leaves out --settings '{\"disableAllHooks\":true}' and cloud sessions. A cloud session does not install plugins declared in repo settings, skips repo hooks in multi-repo and project-thread sessions, and never runs user-level hooks. In the cloud the managed floor is server-managed settings, not device MDM. (3) For MCP tools a matcher needs a trailing wildcard (\"mcp__memory ... matches no tool\"), and plugin servers are named mcp__plugin_<plugin>_<server>__. A bare-server matcher is a silent miss, which supports the rule's \"decide in the script, match broadly\".",
+        "citation": "https://code.claude.com/docs/en/hooks ; https://code.claude.com/docs/en/permissions#extend-permissions-with-hooks ; https://code.claude.com/docs/en/headless ; https://code.claude.com/docs/en/cloud-environments#whats-available-in-cloud-sessions",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the floor sentence: \"Know the floor under the hook: a deny rule is evaluated whatever the hook returns, and a bare, safe-mode, or restricted session, a run launched with settings that disable all hooks, an SDK run whose setting sources leave out the project, and a cloud session, which installs no plugin the repo declares and loads no repo hooks across several repos, never run those hooks, so anything that must survive needs a deny rule in managed settings too, server-managed where the session runs in the cloud.\" Replace the exit sentence: \"Know where that exit stops binding: among tool events only the pre-tool event reads a failing exit as a block, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.\" Add after the filter sentence: \"Match a server's tools with a pattern that ends in a wildcard and also covers a plugin's prefixed server name, since a matcher naming only the server matches no tool, unlike the same name in a permission rule.\""
+      },
+      {
+        "heading": "Run adversarial review in a fresh subagent with a named lens",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/code-review local (background subagent, correctness focus, --fix outside checkpoints, levels, --max-findings); /code-review ultra; workflow resume replay",
+        "evidence": "The docs confirm /code-review reviews the branch diff for correctness bugs in a background subagent with its own context, and that background --fix edits fall outside /rewind checkpoints. The rule's checkpoint line restates that limit as posture, which is acceptable. It reads CLAUDE.md, not REVIEW.md, so a lens has to come from the prompt or CLAUDE.md. The rule's fan-out recovery line conflicts with the native workflow resume, which it ignores. Relaunching the same script replays completed agents' saved results in the same session or under claude --resume, and fails with \"nothing to resume\" instead of starting over. Reading transcripts is needed only for Agent-tool fan-outs.",
+        "citation": "https://code.claude.com/docs/en/code-review-local ; https://code.claude.com/docs/en/workflows#resume-after-a-pause",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Open with: \"The harness's `/code-review` already reviews the branch diff for correctness bugs in its own background subagent; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps.\" Replace the interrupt sentence: \"After an interrupt, work inline; recover a stopped workflow by relaunching the same script in the same or a resumed session, which replays its finished agents, and recover a killed fan-out of plain agent calls from its transcripts rather than re-running it.\""
+      },
+      {
+        "heading": "Keep a session to one task, and start fresh rather than resume a large idle one",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Idle compaction; native resume warning; /usage prompt cache line and recommendations; statusline prompt_cache and context_window fields; prompt cache TTL defaults",
+        "evidence": "Idle compaction is a native floor for the \"stepped away\" case. It is on by default in an interactive terminal session on the one-hour TTL once context passes its threshold, and it compacts about 54 minutes after the last request, before the cache expires. It does not run in -p, on the five-minute TTL (API key, cloud provider, credits), without the feature-flag fetch, or while the machine sleeps. Those are the cases where the rule's handoff advice is the only defense. The rule cites the resume warning but not idle compaction. Its \"never compact right after an idle gap\" matches the prompt-caching docs (compaction after the TTL reprocesses uncached). /usage now gives recommendations and an f fix shortcut, and the statusline exposes prompt_cache and context_window, which matches the rule's \"watch\" line. TTL facts match: the main session gets one hour on a subscription within plan usage, and everything else gets five minutes.",
+        "citation": "https://code.claude.com/docs/en/prompt-caching ; https://code.claude.com/docs/en/settings-reference ; https://code.claude.com/docs/en/costs ; https://code.claude.com/docs/en/statusline",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the stepping-away sentence: \"A subscription session left open in the terminal already gets the harness's idle compaction, which summarizes a large conversation before its cache expires; treat that as the floor, and where it does not run, in print mode, on the short cache lifetime of an API key or cloud provider, or once the session is closed, leave a handoff in the repo and start fresh rather than resume; resume only when the history itself is the work.\""
+      },
+      {
+        "heading": "Treat git state as shared across sessions",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Cloud sessions and scheduled tasks (fresh clone, claude/ branch default, GitHub branch protection as the push control); auto-fix pull requests; cloud plugin and hook reach",
+        "evidence": "Docs: routines push to claude/-prefixed branches by default and \"To control which branches a run can push to, use branch protection rules or rulesets on GitHub\". The prefix is not a hard limit. Auto-fix pushes fixes to a PR branch under your account, so it is a peer that moves the branch mid-run, which is the rule's exact hazard. Cloud sessions do not install plugins declared in repo settings and skip repo hooks in multi-repo sessions. The pre-tool branch guard therefore may not run there, and host-side protection is the floor. --cloud clones the remote branch, so unpushed commits are missing, which supports committing early.",
+        "citation": "https://code.claude.com/docs/en/routines ; https://code.claude.com/docs/en/claude-code-on-the-web#auto-fix-pull-requests ; https://code.claude.com/docs/en/cloud-environments#whats-available-in-cloud-sessions",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Add after the first sentence: \"Count a pull request with auto-fix on, and any scheduled cloud task, as a peer that pushes under your account.\" Add to the anchor: \"A cloud session may not load the guard, since it installs no plugin the repo declares and runs no repo hooks across several repos, so branch protection or rulesets on the host are the floor there.\""
+      },
+      {
+        "heading": "Keep the committed settings narrow and the local settings local",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "disabledMcpjsonServers; --strict-mcp-config; disableClaudeAiConnectors and ENABLE_CLAUDEAI_MCP_SERVERS; mcp__ glob and parameter rules; untrusted -p behavior; sandbox scope, defaults and failIfUnavailable",
+        "evidence": "Most MCP claims already match the docs: -p connects .mcp.json servers with no prompt, the disable list rejects in every session type, deny globs can be unanchored while allow globs need a literal server prefix, and settings drop parameterized mcp__ rules with only the dialog and doctor showing it. Gaps: (1) --strict-mcp-config does not stop claude.ai connectors. They still load unless disableClaudeAiConnectors, strictMcpConfig, or ENABLE_CLAUDEAI_MCP_SERVERS=false is set, so \"connects only what it was handed\" overstates it. (2) In an untrusted -p or SDK run, project permissions.allow is ignored while hooks and servers still run. Since -p now starts in Manual mode, the committed allowlist does nothing for a scripted run on a fresh checkout. (3) \"Only the sandbox or a hook enforces\": the sandbox is off by default, covers shell commands only, and by default falls back silently to unsandboxed execution unless failIfUnavailable is set. (4) \"Keep a path out of a search with a hook or the sandbox\": built-in Read, Grep and Glob run outside the sandbox, and a sandbox denyRead does not stop the Read tool. The sandbox therefore keeps a path out of a shell search only.",
+        "citation": "https://code.claude.com/docs/en/mcp ; https://code.claude.com/docs/en/permissions#what-runs-before-you-trust-a-folder ; https://code.claude.com/docs/en/cli-reference ; https://code.claude.com/docs/en/sandboxing",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the deny-side sentence: \"Pin them from the deny side too, since the disable list binds in every session type including an untrusted checkout, and give a scripted run the strict server-config flag with the account's connectors switched off, since the flag alone still loads them.\" Add after it: \"Expect a print-mode run in a checkout nobody trusted to ignore the committed allow list while still running its hooks and servers, so hand a scripted run its allowed tools on the command line.\" In the boundary sentence, replace \"only the sandbox or a hook enforces independent of command text\" with \"only a hook, or the sandbox for shell commands where it is on and set to fail rather than run unsandboxed, enforces independent of command text\". Replace the search clause: \"keep a path out of a built-in search with a hook and out of a shell search with a sandbox read deny, and read tool results for it as the fallback.\""
+      },
+      {
+        "heading": "Check for a peer session before driving shared external state",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Agent view kinds (interactive, background); --bg rejected with -p; routine saved prompt is not consent; cloud scheduled tasks and auto-fix acting as the user",
+        "evidence": "Agent-view docs list only the interactive and background kinds and say nothing about how a -p run is labeled or whether --bare keeps it out of the listing. The rule's \"the listing labels a print-mode run interactive\" and \"bare mode so it stays out of the listing\" therefore rest on observation, not docs. They are not contradicted, but nothing guarantees them. The relayed-ruling posture matches native routine semantics: the fired prompt \"can't act as approval or consent\". Scheduled cloud tasks and auto-fix PRs act under the user's account and may not show in a local listing, so they are peers the rule's listing step can miss.",
+        "citation": "https://code.claude.com/docs/en/agent-view ; https://code.claude.com/docs/en/cli-reference ; https://code.claude.com/docs/en/routines ; https://code.claude.com/docs/en/claude-code-on-the-web#auto-fix-pull-requests",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the worker sentence's reason: \"Launch every headless worker with `--name` and a prefix that marks it as this session's worker, since the harness documents no distinct label for a print-mode run and its name is the reliable tell; run a worker that never needs messages in bare mode, which in practice keeps it out of the listing, and tell peers once by message what the workers are named and that they hold no shared-state lock.\" Add after the first sentence: \"Count a scheduled cloud task or a pull request with auto-fix on as a peer too, since it acts under your account and may not appear in a local listing.\""
+      }
+    ],
+    "notes": "Headings in scope: the nine above. \"Keep the auto-memory index to hooks\" is included only because its heading literally says hooks. \"Plan when...\", \"Read a resume file...\", \"Hand off...\", \"Make a procedure a skill...\" and \"Don't\" fall outside the keyword scope and were not judged.\n\nPoints I am unsure of:\n(1) /code-review is called a \"forked subagent with own context\". It is unclear whether this kind of fork inherits the conversation. If it does, it would undercut the adversarial-review rule's \"never a fork\" premise for the native review itself. I kept \"its own subagent\".\n(2) CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL is undocumented. The rule's claim rests on a binary-derived local note, so my wording marks it as observed.\n(3) The fork is installed at ~/.claude/workflows/, which the docs name as the personal saved-workflow directory. The harness may therefore list it as /<meta.name>. If its meta.name were deep-research it would replace the bundled command, which conflicts with the memory note \"never run the bundled name\". Check the fork's meta.\n(4) The idle-cache-hold hook and native idle compaction both act on a session left idle. After idle compaction the estimated rewrite should fall below the hook's threshold, but I did not confirm the hook measures the post-compaction size, so double-handling is possible.\n(5) I could not tell from the file whether adopters wire the branch guard as a plugin hook or copy it into .claude/settings.json. Which cloud caveat applies depends on that, so the git-state wording is conditional.\n(6) The facts confirm no SDK budget option name (maxBudgetUsd), and the rule's \"SDK budget option\" stays unverified.\n(7) The --strict-mcp-config flag makes Claude Code exit at startup when managed-mcp.json is deployed. This is relevant only to managed fleets and I left it out of the wording.\n(8) I could not confirm whether a scheduled cloud task's saved prompt expands a side-effect skill by name, so the model-invocation wording names only print mode and loops.\n(9) Version numbers in the existing rule prose, such as the resume-replay fix release, were dropped from my proposed wording per the no-numbers instruction. This loses the version cue the owner may want kept in the receipt."
+  },
+  {
+    "item": "plugins/house/orchestration/ORCHESTRATION.md (all ## sections) plus plugins/house/agents/ roster",
+    "rules": [
+      {
+        "heading": "Roles",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "The split of what the session keeps against what it delegates has no counterpart in MCP, headless, workflow, scheduling, cost/model or sandbox facts. Workflows keep intermediate results out of Claude's context, but that is a mechanism, not a role split.",
+        "citation": "https://code.claude.com/docs/en/workflows",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Workspace",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Worktree entry, no branch creation in the main checkout, and commands in a fenced block for /copy are untouched. The closest facts are about other surfaces: routines push to claude/ prefixed branches by default, with branch limits enforced only on the GitHub side, and /batch spawns agents in isolated worktrees. Neither restates or fights this rule.",
+        "citation": "https://code.claude.com/docs/en/routines ; https://code.claude.com/docs/en/commands (/batch)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Roster",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Subagent model resolution order (frontmatter model is step 2) and CLAUDE_CODE_SUBAGENT_MODEL_FORCE; frontmatter effort vs CLAUDE_CODE_EFFORT_LEVEL; Workflow tool removed from every subagent",
+        "evidence": "The rule is built on native frontmatter pins. The docs confirm the frontmatter model beats CLAUDE_CODE_SUBAGENT_MODEL and the session model. The docs also confirm the Workflow tool is removed from every subagent, which supports 'none can spawn'. Two native overrides that the rule leaves out quietly void the pins. First, with CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 'Claude Code ignores the model field in subagent definitions, and Claude can't pass a model'. Second, frontmatter effort 'overrides session level but not the env var' CLAUDE_CODE_EFFORT_LEVEL, and a managed maxEffortLevel caps it. An availableModels allowlist can also substitute a blocked pinned alias. As written, 'Each pins its model, effort' reads as unconditional.",
+        "citation": "https://code.claude.com/docs/en/sub-agents#choose-a-model ; https://code.claude.com/docs/en/sub-agents#run-every-subagent-on-one-model ; https://code.claude.com/docs/en/model-config (effort resolution, availableModels) ; https://code.claude.com/docs/en/sub-agents (Available tools)",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Pinned agents ship with the plugin as `house-rules:<name>`. Each pins its model, effort, and tools in frontmatter. The harness honors those pins unless `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` is set (it voids the model pin), `CLAUDE_CODE_EFFORT_LEVEL` is set (it beats the effort pin), or a managed model allowlist or effort cap applies; when one is set, say so before relying on the table. A tool left off that list is absent from the agent's session, and none lists the Agent tool, so none can spawn an agent; the harness also removes the Workflow tool from every subagent."
+      },
+      {
+        "heading": "Model tier",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Workflow agent model resolution and CLAUDE_CODE_SUBAGENT_MODEL / CLAUDE_CODE_SUBAGENT_MODEL_FORCE; Workflow script-location rule; workflow resume behavior; /deep-research bundled workflow",
+        "evidence": "Most of the section matches the docs. Unassigned agents run on the session's model unless CLAUDE_CODE_SUBAGENT_MODEL applies, and the order is per-invocation, then frontmatter, then the env var, then main. The bundled /deep-research names no model args, so pinning per stage through the fork adds what the harness lacks. Resume reruns from the first divergence, and the docs record the pre-2.1.305 rerun bug. Three gaps. (1) CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL is absent from the env-vars page. The 'it overrides named models' claim rests on a binary-derived local note, not on docs. (2) The documented CLAUDE_CODE_SUBAGENT_MODEL_FORCE, which 'ignores the model field ... and Claude can't pass a model', is not mentioned. Under it, the 'every off-roster call names a model' tactic and the Opus-for-judgment rule cannot hold. (3) 'Workflow runs only scripts in the working directory, an added directory, or the scratchpad' is narrower than the docs. The docs say the script must be 'a script file the session is already allowed to read' and allow /add-dir 'or a Read allow rule'. That is an overstatement, not a conflict that blocks the copy-to-scratchpad path.",
+        "citation": "https://code.claude.com/docs/en/workflows#cost ; https://code.claude.com/docs/en/workflows#how-a-workflow-runs ; https://code.claude.com/docs/en/workflows#resume-after-a-pause ; https://code.claude.com/docs/en/env-vars (CLAUDE_CODE_SUBAGENT_MODEL, CLAUDE_CODE_SUBAGENT_MODEL_FORCE; absence of CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL) ; https://code.claude.com/docs/en/sub-agents#run-every-subagent-on-one-model",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Second bullet: \"- The harness picks a subagent, teammate, or workflow agent's model in this order: the model named on the call, the agent definition's `model`, `CLAUDE_CODE_SUBAGENT_MODEL`, then the session's model. So every off-roster call names a `model` and an `effort` (the Agent tool takes both) below the session unless the task needs the session's tier. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` voids both the named model and the definition's pin; when it is set, tell the user the tiers below cannot hold. Unset `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` for `/deep-research`: the docs do not list it, and the shipped binary lets it override named models.\" In the /deep-research bullet, replace the clause on where Workflow runs with: \"Workflow starts only a script file the session can already read, so the scratchpad copy needs no added directory or Read rule.\""
+      },
+      {
+        "heading": "Delegation",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Workflow launch approval prompt, workflowSizeGuideline and Large workflow warning, ultracode keyword and /effort ultracode; /batch; routine saved prompt is not consent",
+        "evidence": "The docs call the workflow size guideline 'advice, not a cap' and call the Large workflow warning 'advisory'. The rule's 'advice to stay under rather than a target' agrees with them and adds posture. 'Workflows run only when the user asks' adds a gate the harness lacks in modes where the launch prompt does not appear: bypass, auto after first consent, -p with an allow rule. The rule does not say whether a typed `ultracode` keyword or `/effort ultracode` counts as asking. The docs make both explicit human opt-ins that plan workflows. /batch natively spawns agents that each 'publish' their change, which differs from 'the session pushes and opens the PR' only when the user invokes /batch. The routines docs say a fired prompt 'can't act as approval or consent'. That matches the rule's reliance on the user's live 'merge'.",
+        "citation": "https://code.claude.com/docs/en/workflows#approve-the-plan-before-it-runs ; https://code.claude.com/docs/en/workflows#cost ; https://code.claude.com/docs/en/workflows#have-claude-write-a-workflow ; https://code.claude.com/docs/en/commands (/batch) ; https://code.claude.com/docs/en/routines",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Last bullet: \"- Workflows run only when the user asks; typing `ultracode` or turning on the ultracode effort level is asking, and the harness's launch prompt is not, since some modes skip it. When they do, name the agent count, and treat the harness's workflow size guideline and large-workflow warning as advice to stay under rather than a target.\""
+      },
+      {
+        "heading": "Briefs",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "The six-section brief and output budget have no native counterpart. Workflow agents can take a schema, and -p has --json-schema, but those shape output, not briefs. 'A subagent gets its own prompt and the repo's CLAUDE.md, never the conversation' is consistent with what the new facts say. --append-subagent-system-prompt adds text only in -p and does not pass the conversation.",
+        "citation": "https://code.claude.com/docs/en/cli-reference#system-prompt-flags",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Parallelism",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/batch (one background subagent per unit in an isolated worktree); workflow concurrency caps",
+        "evidence": "Writers in isolated worktrees match the native /batch pattern, which 'spawns one background subagent per unit in an isolated worktree'. Workflow concurrency caps limit how many agents run but say nothing about one file per agent. The house rule adds the one-writer-per-file rule and the builder/refuter split. In /batch each agent 'implements, runs tests and publishes its change', with no separate verifier. So the rule adds posture the native skill lacks without fighting it.",
+        "citation": "https://code.claude.com/docs/en/commands (/batch) ; https://code.claude.com/docs/en/workflows#behavior-and-limits",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Verification",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/code-review (local and ultra), /security-review, /verify and the pre-commit run of verify/simplify skills",
+        "evidence": "The harness now ships review skills that overlap the refuter's job in part. /code-review runs as a forked subagent that reviews branch changes for correctness bugs and is advisory. /security-review reviews the diff against origin's default branch. /verify builds and runs the app, and a recorded repo-root verify skill is run before each commit. None of them reviews against the brief, reruns the suite under stated attacks, or checks git status for agent edits. So the refuter adds scope and posture, and 'Anything settleable by running it gets run' lines up with /verify. The rule names none of these native floors, so a reader cannot tell when the bundled review is enough. /code-review with --fix edits through the permission mode, outside /rewind. That supports the git-status-before-and-after check when a native review is used in place of a refuter.",
+        "citation": "https://code.claude.com/docs/en/code-review-local ; https://code.claude.com/docs/en/commands (/security-review) ; https://code.claude.com/docs/en/skills#run-and-verify-your-app ; https://code.claude.com/docs/en/skills (Run your checks before each commit)",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Add after the second bullet: \"- The bundled `/code-review` and `/security-review` are the floor for a diff with no brief: they look for bugs in the branch, not for drift from a brief, so they do not replace a refuter where the brief or a test rerun decides. Run either without `--fix` when a refuter would be sent, and apply the same status check.\""
+      },
+      {
+        "heading": "Pinned agent roster",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Subagent frontmatter model/effort/tools resolution; CLAUDE_CODE_SUBAGENT_MODEL_FORCE; CLAUDE_CODE_EFFORT_LEVEL; Workflow tool removal from subagents; plugin loading under --bare and in cloud sessions",
+        "evidence": "The five agent files rely on native frontmatter: model sonnet/haiku/opus, effort, and a tools allowlist. The docs rank the definition's model above CLAUDE_CODE_SUBAGENT_MODEL, so the pins hold by default. They are voided by CLAUDE_CODE_SUBAGENT_MODEL_FORCE ('ignores the model field in subagent definitions'). The effort pins lose to CLAUDE_CODE_EFFORT_LEVEL and are capped by a managed maxEffortLevel. The tools lists leave out Agent, and the harness removes Workflow from every subagent, so the no-spawn claim holds natively. The lists also leave out every MCP tool and Monitor, so the agents get none. The roster exists only where the plugin loads. --bare skips installed plugins and subagents. Cloud sessions and routines load neither user-scoped enabledPlugins nor plugins declared in repo settings, so `house-rules:<name>` agents are absent there. Refuter and researcher hold WebFetch/WebSearch, which the docs say sandbox allowedDomains does not limit, so the read-only claim rests on permission rules, not the sandbox. Builder, refuter and debugger hold Bash, so 'no Edit or Write tools' does not make the refuter read-only. ORCHESTRATION's git status check covers that gap.",
+        "citation": "https://code.claude.com/docs/en/sub-agents#choose-a-model ; https://code.claude.com/docs/en/sub-agents#run-every-subagent-on-one-model ; https://code.claude.com/docs/en/model-config ; https://code.claude.com/docs/en/headless#start-faster-with-bare-mode ; https://code.claude.com/docs/en/cloud-environments#whats-available-in-cloud-sessions ; https://code.claude.com/docs/en/sandboxing",
+        "action": "keep",
+        "proposedWording": ""
+      }
+    ],
+    "notes": "Uncertainties: (1) CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL behavior rests only on a local binary note, not docs. I kept the unset instruction but reworded it to say the variable is undocumented. (2) The docs give the subagent effort order only as 'frontmatter effort overrides session level but not the env var'. They do not say whether a per-call Agent `effort` also loses to CLAUDE_CODE_EFFORT_LEVEL, so the Model tier claim 'a call's effort overrides the builder's pinned medium' is not contradicted, but it is not confirmed against the env var either. (3) The /batch tension with 'session pushes and opens the PR' applies only when the user invokes /batch. I judged it no conflict. (4) Preamble (not a ## section): the file is injected by session-start.mjs as SessionStart additionalContext. It is 8,450 chars plus the wrapper tags, under the documented 10,000-char cap with about 1,500 chars of headroom. Past the cap the harness saves the text to a file and shows only a 2,000-char preview, and 'doesn't ask Claude to read the file'. Growth in this file therefore risks silent truncation. The hook matcher already re-runs on compact, which the docs require for the text to survive compaction. In cloud sessions, routines and --bare the plugin is not loaded, so neither the preamble nor the roster applies there. (5) Workflow script location: the house skill and this rule both say working dir, added dir or scratchpad. The docs say only 'readable file', so the scratchpad wording may describe observed behavior that the docs do not state."
+  },
+  {
+    "item": "plugins/house/modules/evals/rules/evals.md",
+    "rules": [
+      {
+        "heading": "Split deterministic tests from model-behavior evals, and give each its own budget and cadence",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "--max-budget-usd and --max-turns (print-mode caps); /usage and json total_cost_usd as client-side estimates",
+        "evidence": "Native -p offers --max-budget-usd, which stops the run once estimated spend reaches the amount, counts subagent spend, but checks a client-side estimate where 'Spend can pass the cap, so leave headroom'; --max-turns exits with an error at its limit. Neither decides where a tier runs or whether it gates a merge. The rule's posture (paid tier off the merge gate, pausable cadence, own ceiling and threshold) is not native; the native caps are the floor a print-mode eval runner can sit on.",
+        "citation": "https://code.claude.com/docs/en/cli-reference (--max-budget-usd, --max-turns) ; https://code.claude.com/docs/en/costs",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Prove an eval can fail, then grade it with the cheapest grader that can",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Headless --json-schema validates output shape and re-prompts on mismatch, but it does not enforce `format`, does not judge content, and builds no with/without arms; the grader ladder and the arm-delta reading have no counterpart in headless, Workflow, or cost-reporting facts.",
+        "citation": "https://code.claude.com/docs/en/headless#get-structured-output",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Never let a gate mint the answer key it grades against",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "No headless, SDK, Workflow, or cost-reporting fact touches answer-key provenance or label sources.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Report NOT EVALUABLE and NOT MEASURED rather than a fabricated zero",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Print-mode result subtypes and structured_output presence (--json-schema); --max-budget-usd / --max-turns stops; workflow usage-limit failure in -p; /deep-research unverified-not-refuted",
+        "evidence": "Headless docs: a --json-schema run that fails validation returns subtype error_max_structured_output_retries with no structured_output, and a run can be subtype success with no structured_output, 'so scripts must check the field is present'; in-run failures such as missing auth are printed as the result on stdout; --max-turns exits with an error; SIGTERM records no result for the in-flight turn; in -p and SDK a workflow agent that hits a usage limit fails rather than waiting. These are native signals of a could-not-evaluate run that a naive scorer would read as a wrong answer or a zero. Native /deep-research already lists unverifiable claims as unverified, not refuted, matching the rule. The rule's verdict set is the posture the harness lacks; it should name these native signals as inputs to NOT EVALUABLE.",
+        "citation": "https://code.claude.com/docs/en/headless#get-structured-output ; https://code.claude.com/docs/en/agent-sdk/structured-outputs#error-handling ; https://code.claude.com/docs/en/cli-reference (--max-turns, --max-budget-usd) ; https://code.claude.com/docs/en/workflows#when-a-run-hits-your-usage-limit ; https://code.claude.com/docs/en/workflows#bundled-workflows",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Zero samples is a failure; report a source gap as its own outcome; treat an errored verify phase as unverified rather than trusting its empty findings list; treat a print-mode run that ends on an error subtype, a turn or budget cap, or a success with no structured output field as NOT EVALUABLE rather than as a wrong answer, since the harness reports those as results, not as missing data; emit a null delta when a number was not measured; warn rather than fail when the local copy is only a worksheet; and when a gate compares two systems, record the mode each ran in (full, fallback, partial) and pass only when both ran the mode under test, since two identical fallbacks are NOT EVALUABLE, never equal."
+      },
+      {
+        "heading": "Show the ratio and the sample, because one number is never the accuracy",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Cost reporting and headless json output report totals and per-model cost, not rates with samples or estimands; nothing native attaches n or an estimand to a pass rate.",
+        "citation": "https://code.claude.com/docs/en/headless#get-structured-output",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Make a measuring instrument reproducible",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "--bare; --strict-mcp-config; --setting-sources / SDK settingSources; --tools / --allowedTools; Manual default permission mode in -p; client-side list-price cost estimate and modelPricing",
+        "evidence": "The rule's invocation clause maps onto documented flags: --bare skips hooks, skills, plugins, MCP, auto memory and CLAUDE.md and is 'the recommended mode for scripted and SDK calls', but authenticates only with ANTHROPIC_API_KEY or apiKeyHelper, which is exactly the rule's fallback trigger. Without --bare, -p loads everything an interactive session does. The fallback list is incomplete against the docs: auto memory is read regardless of settingSources (disable with CLAUDE_CODE_DISABLE_AUTO_MEMORY or autoMemoryEnabled false), and claude.ai connectors load unless the strict MCP flag or an equivalent is set. Since -p now starts in a deny-by-default Manual mode, pinning it explicitly still matters for reproducibility across versions. On cost: json total_cost_usd and /usage are client-side estimates at list price unless a managed modelPricing table applies, and data residency applies a multiplier, so recording the pricing basis is a real addition the harness lacks.",
+        "citation": "https://code.claude.com/docs/en/headless#start-faster-with-bare-mode ; https://code.claude.com/docs/en/agent-sdk/claude-code-features ; https://code.claude.com/docs/en/cli-reference ; https://code.claude.com/docs/en/costs",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "When the instrument drives an agent, pin the bare print-mode invocation, which skips ambient discovery, or where bare mode cannot authenticate the leanest invocation the login allows (the strict server-config flag, project-only setting sources, auto memory turned off since setting sources do not exclude it, an explicit tool list, and the deny-by-default permission mode with an allowlist), and record the pricing basis beside any reported cost, since the harness reports a client-side list-price estimate that a pricing table, rate, or residency multiplier can move without moving the bill."
+      },
+      {
+        "heading": "Evaluate the path a session actually takes",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "--append-system-prompt (vs --system-prompt); --bare omits the skill list; ultracode keyword ignored in -p",
+        "evidence": "Headless docs: --append-system-prompt keeps default tool guidance, safety instructions and coding conventions, while --system-prompt replaces them and drops the git status snapshot, so the append form is the native carrier for the rule's system note and the replace form changes the path being scored. Print-mode facts also show paths that diverge from daily use: under --bare Claude gets no skill list so only explicit /skill-name works, and the ultracode keyword does not trigger from -p prompts. An eval of skill or workflow triggering run that way scores a path no daily session takes. The rule's posture is not native; naming these makes it concrete.",
+        "citation": "https://code.claude.com/docs/en/cli-reference#system-prompt-flags ; https://code.claude.com/docs/en/headless#start-faster-with-bare-mode ; https://code.claude.com/docs/en/workflows#have-claude-write-a-workflow",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Tell the eval session about its environment in an appended system prompt rather than by editing the skill under test or replacing the default prompt, since an instruction that is right for a normal session can send the eval elsewhere, an edited skill is no longer the one being measured, and a replaced prompt drops the guidance daily sessions run with; when bare or print mode hides a trigger that daily sessions see, such as the skill list or a typed keyword, say the score covers explicit invocation only."
+      },
+      {
+        "heading": "Deny the eval session what the project allows, and fail a run whose results contain the key",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Workspace trust in -p; --disallowedTools; deny precedence; .mcp.json servers connected without asking in -p; project skill allowed-tools; settings-file mcp__ rules with parentheses skipped",
+        "evidence": "Docs: in an untrusted -p or SDK run, project permissions.allow is not used, but settings-file hooks, the env block, project skill hooks and allowed-tools, and .mcp.json servers are used, the servers connecting with no approval prompt; in a trusted folder project allows apply too. A deny at any level cannot be overridden, including by --allowedTools or a PreToolUse hook allow, so a command-line deny is the right native carrier. A settings-file mcp__ rule with parentheses is silently dropped in -p, so parameter denies on MCP tools must go through --disallowedTools. The rule's premise ('project settings reach a session that loads them') is true only in a trusted folder and understates the untrusted reach of skills and servers. The result-content check and the re-score path have no native counterpart; transcripts persist unless --no-session-persistence is passed.",
+        "citation": "https://code.claude.com/docs/en/permissions#what-runs-before-you-trust-a-folder ; https://code.claude.com/docs/en/cli-reference (--allowedTools, --disallowedTools, --no-session-persistence) ; https://code.claude.com/docs/en/permissions (Match by input parameter)",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Pass every project allow, project skill tool grant, and project server the eval does not itself grant as a command-line deny, since project allows reach a session in a trusted folder and project skills, hooks, and servers reach a print-mode session even in a folder it never trusted, and a broad allow written for daily work is an open door in a measurement."
+      },
+      {
+        "heading": "Count what the agent did, not only whether it passed",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "stream-json event output; OpenTelemetry tool_result / tool_decision events",
+        "evidence": "Headless stream-json emits every event including tool calls, and OTel emits tool events with names when OTEL_LOG_TOOL_DETAILS is set, so the raw counts exist natively; nothing native prints a per-arm mix beside outcome measures or compares arms. The rule builds its count from saved transcripts, which is consistent.",
+        "citation": "https://code.claude.com/docs/en/headless#get-structured-output ; https://code.claude.com/docs/en/monitoring-usage (Events)",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Split a score gap into its causes from the transcripts before building to close it",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "No headless, Workflow, or cost-reporting fact attributes a score gap to causes; this is reading work.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Fingerprint what two arms compare, and print every field that differs",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "stream-json system/init event (model, tools, mcp_servers, plugins, plugin_errors, mcp_server_errors); silent settings-validation skip in -p",
+        "evidence": "The init event lists the model, tools, MCP servers, plugins and their errors for each run, which are exactly the configuration fields two arms can differ on. Docs show silent divergence sources: in -p 'Settings files that fail validation are silently ignored', and invalid --mcp-config entries are skipped with the run still exiting cleanly, reported only in mcp_server_errors. A report that records the harness version and label fingerprint but not the init lists can pass two arms that loaded different tools. Nothing native compares arms.",
+        "citation": "https://code.claude.com/docs/en/headless#get-structured-output ; https://code.claude.com/docs/en/cli-reference (--mcp-config) ; claude --help (2.1.306)",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Record the harness version, the model, tool, server, and plugin lists the session reports at start, and a fingerprint of the labels in force with each report, compare them between arms, and print one line naming every compared field that differs, since print mode skips a bad settings file or server entry without failing and one changed value among many on a long line is easy to miss."
+      },
+      {
+        "heading": "Don't",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Each prohibition is the negative of a rule above and inherits its disposition; none adds a separate claim about headless, Workflow, or cost-reporting behavior.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      }
+    ],
+    "notes": "Unsure points: (1) Auto memory being read regardless of setting sources is stated for SDK settingSources; I assumed the CLI --setting-sources behaves the same since the SDK runs the same binary. (2) Whether the strict MCP flag alone suppresses claude.ai connectors in the CLI: the headless fact lists strictMcpConfig as a suppressor, which I read as covering --strict-mcp-config. (3) I took 'the runner' in the evals rules to mean the harness's skill eval runner, not claude -p, so --max-budget-usd is a floor only when the eval tier drives print mode. (4) Rules 6 and 7 pull against each other: bare mode is the reproducible invocation but hides the skill list daily sessions see. The proposed rule 7 wording handles that by having the score say it covers explicit invocation only. Treat this as an internal tension to settle, not a native conflict. (5) The rule 8 reword drops the old premise that project settings reach every session that loads them, because project permissions.allow does not apply in an untrusted print-mode folder. Check the instrument's working folder to see whether it is trusted. (6) No rule in this file conflicts with documented behavior, and none duplicates a native feature."
+  },
+  {
+    "item": "plugins/house/modules/github/rules/github.md",
+    "rules": [
+      {
+        "heading": "Gate every PR on checks that need no credential, and name what is not gated",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "GitHub Actions claude-code-action (trigger checks, fork PRs get no secrets); /code-review ultra --post; /code-review local (advisory)",
+        "evidence": "The harness's review paths are all advisory: /code-review local is enforcement advisory and reports findings as text or comments; /code-review ultra --post posts findings to the PR as a comment from the user's account; the agent action's automation mode writes to the run log. None is a required check. Fork PRs get no secrets on public repos, which fits a credential-free gate. The rule adds the gate itself and names the hosted review as a gap, which the harness does not do. Only the managed review's neutral check is named today; the cloud and Action review paths are not.",
+        "citation": "https://code.claude.com/docs/en/code-review-local#escalate-to-ultrareview ; https://code.claude.com/docs/en/code-review-local ; https://code.claude.com/docs/en/github-actions",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the Anchor's last sentence with: A hosted agent review posts a neutral, non-blocking check, and a cloud review posted with `/code-review ultra --post` or a review run by the agent action lands as a comment or a run log: name each a gap, not a gate."
+      },
+      {
+        "heading": "Give a workflow read-only permissions and pin every action by SHA",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/install-github-app setup and anthropics/claude-code-action; the shared Claude GitHub App permission set",
+        "evidence": "/install-github-app installs the app, stores the key as a repo secret and opens a workflow PR; the docs name the action as anthropics/claude-code-action@v1, a version tag, not a SHA. The shared app requests a broad permission set (Actions, Contents, Workflows read/write and more) that GitHub will not let you accept in part; a custom app is the least-privilege route. The harness sets no workflow permissions or pins, so the rule adds posture. Its line that platform-installed workflows count too is right but does not say that the native setup arrives tag-pinned.",
+        "citation": "https://code.claude.com/docs/en/github-actions#setup ; https://code.claude.com/docs/en/github-actions",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the Anchor's last sentence with: A workflow the agent platform's setup installs counts too: `/install-github-app` opens one as a PR naming the action by a version tag, so give it the same read-only permissions and repin it by SHA before merging. The shared app's own permission set is broad and cannot be narrowed; a custom app is the least-privilege route."
+      },
+      {
+        "heading": "Budget Actions minutes as account-wide money",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "GitHub Actions cost controls (--max-turns in claude_args, workflow timeouts, concurrency); cloud scheduled tasks billed to plan usage",
+        "evidence": "The Actions docs give no default --max-turns and no default timeout. They list a turn cap, workflow timeouts and concurrency as opt-in cost practices, and runs use Actions minutes plus API tokens. That confirms 'An agent workflow caps nothing', but the rule does not name the native knobs. Cloud scheduled tasks run on Anthropic infrastructure and draw subscription usage, not Actions minutes, which is useful to name because the minutes check estimates only cron workflows.",
+        "citation": "https://code.claude.com/docs/en/github-actions#manage-costs ; https://code.claude.com/docs/en/routines",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the Anchor's last sentence with: An agent workflow sets no turn cap or job timeout of its own: pass `--max-turns` in its `claude_args`, give its job `timeout-minutes` like any other, and count its minutes in the same pool. A cloud scheduled task bills plan usage instead, so moving a cron there leaves this pool but not the cost."
+      },
+      {
+        "heading": "Open an issue instead of failing a scheduled run, and comment out a cron with its reason",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "claude-code-action automation mode output; cloud scheduled task run status",
+        "evidence": "The Actions docs say that in automation mode, results go to the workflow run log unless the prompt directs posting and a posting tool is allowed. The rule's anchor already cites that. For cloud scheduled tasks, a green run status means only that the session exited without an infrastructure error, which also argues for an issue as the signal. GitHub disables schedules in public repos after a period without activity and runs schedules only from the default branch. The harness has no failure-to-issue policy.",
+        "citation": "https://code.claude.com/docs/en/github-actions ; https://code.claude.com/docs/en/routines",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Turn on push protection, head-branch deletion, and grouped dependency updates",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "No fact about scheduled or remote work, GitHub Actions, or the bundled review workflows covers push protection, head-branch deletion, or Dependabot grouping.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Protect the default branch at the remote, and name an owner for what runs with privilege",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Cloud scheduled task and cloud session push behavior (claude/ prefix default; docs defer to GitHub branch protection and rulesets)",
+        "evidence": "The routines docs say Claude pushes to claude/-prefixed branches unless the prompt directs otherwise. They say 'To control which branches a run can push to, use branch protection rules or rulesets on GitHub', and add that GitHub applies the rules to the connected access, so a rule that access can bypass does not block the push. The prefix is advisory and the harness hands enforcement to this rule's remote protection. Auto-fix PRs push fixes and post replies under the user's account. The rule does not yet say that the remote rule must not be bypassable by the connected access.",
+        "citation": "https://code.claude.com/docs/en/routines ; https://code.claude.com/docs/en/claude-code-on-the-web#auto-fix-pull-requests",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Append to the Anchor: A cloud session or scheduled task pushes through the connected GitHub access, and its `claude/` branch prefix is a default, not a restriction, so the branch rule must be one that access cannot bypass."
+      },
+      {
+        "heading": "Make the PR template force a docs-check answer",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/code-review local and the managed GitHub Code Review service",
+        "evidence": "Bundled /code-review looks for correctness bugs and cleanups, is advisory, and does not read REVIEW.md, which belongs to the managed review service. No native review makes a docs answer mandatory. The template adds what the review paths lack.",
+        "citation": "https://code.claude.com/docs/en/code-review-local",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Close an issue only on purpose, and only on claims you checked",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "The routine GitHub trigger covers only pull_request and release events, and auto-fix responds to CI and review comments. No fact covers closing keywords or issue closure.",
+        "citation": "https://code.claude.com/docs/en/routines",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Ship phased work as commits on one PR",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/batch bundled skill",
+        "evidence": "/batch splits work into 5 to 30 independent units and runs one background subagent per unit, each in its own worktree, and each publishes its own change. That shape suits independent units, not dependent phases. The rule's anchor already asks you to say which shape phased work takes before launching /batch, so it does not conflict.",
+        "citation": "https://code.claude.com/docs/en/commands",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Stage explicit paths, never everything at once",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Staging is outside CI, scheduled work, and review workflows. The pre-commit verify/simplify instruction runs checks, not staging.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Classify a merged branch by its PR state, not by merge detection",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "The routine GitHub trigger can filter on 'is merged', but that starts a session. It does not classify branches for cleanup. Auto-fix cannot react to base-branch merge conflicts. No fact covers branch classification.",
+        "citation": "https://code.claude.com/docs/en/routines",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Never delete the branch from the worktree being merged",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "No fact about scheduled or remote work, Actions, or review workflows covers deleting a branch from a worktree.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Keep credentials out of the repo, the commit, and the chat",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Cloud environment network secrets vs environment variables; claude-code-action repo secrets",
+        "evidence": "The cloud docs say environment variables are visible to anyone using the environment, secrets belong in network secrets (Anthropic-hosted only), and git credentials never enter the VM. claude-code-action runs Claude Code inside a workflow with the key stored as a repo secret, so 'run it as a workflow' keeps the token out of a session only when no agent runs in that step. The rule's workflow advice is sound but does not say that the agent action is itself a session, or how a cloud session should hold a token.",
+        "citation": "https://code.claude.com/docs/en/cloud-environments#network-access ; https://code.claude.com/docs/en/github-actions#setup",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the third line with: Run a credentialed diagnostic as a workflow step with no agent in it, so the token stays with the runner and never enters an agent session. In a cloud session, hold a token as a network secret, never an environment variable, which anyone using the environment can read."
+      },
+      {
+        "heading": "Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "It is a CI build step, but no Actions, scheduled-work, or review fact covers scanning build output or canaries.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Give a restricted key exactly one writable scope",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Out of scope for these areas.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Treat a preview URL as production for exposure",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Out of scope for these areas.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Label a non-secret as a non-secret",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Out of scope for these areas.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Ship the community files the platform looks for, and keep issue intake as forms",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "No fact covers community-profile files or issue forms.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "Enforce the branch policy where git resolves the ref, and let the text scan catch only the ways to disable it",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Hooks and config reach in cloud sessions (repo hooks load only in single-repo sessions); routine and cloud fresh clone per run",
+        "evidence": "Every cloud session and scheduled task gets a fresh clone, so core.hooksPath is unset until the repo's SessionStart hook arms it. Repo .claude/settings.json hooks run in single-repo cloud sessions. Multi-repo sessions load no repo's settings hooks, and project threads load no repo settings hooks, so nothing arms the floor there. The rule says git 'still runs its own' hooks in bare or safe-mode sessions, which holds only on a machine where the floor was armed earlier. On a fresh remote clone that path leaves the floor unarmed, and remote branch protection is the only guard. This is a gap in coverage, not a contradiction.",
+        "citation": "https://code.claude.com/docs/en/cloud-environments#whats-available-in-cloud-sessions ; https://code.claude.com/docs/en/cloud-environments#setup-scripts-vs-sessionstart-hooks ; https://code.claude.com/docs/en/routines",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Append to the Anchor: A fresh clone in a multi-repo cloud session or a project thread loads no repo hooks, so nothing arms the floor there, and the remote branch rule is the only guard."
+      },
+      {
+        "heading": "Don't",
+        "disposition": "UNIQUE",
+        "nativeFeature": "none in the new areas",
+        "evidence": "Each line negates a rule in this file. It adds nothing beyond those rules, and no native feature in these areas matches it.",
+        "citation": "none",
+        "action": "keep",
+        "proposedWording": ""
+      }
+    ],
+    "notes": "1. The claim that /install-github-app writes a workflow naming the action by a version tag is an inference. The docs name anthropics/claude-code-action@v1 and say the command opens a workflow PR, but the exact contents of that PR were not in the facts.\n2. The facts do not say whether SessionStart or other repo hooks fire inside a claude-code-action runner. So whether the floor gets armed on an Actions runner is unverified, and I left it out of the branch-policy wording.\n3. The managed GitHub Code Review service (neutral check, docs nit) is outside these facts except for the REVIEW.md mention. The 'neutral, non-blocking check' wording stays unverified here.\n4. Optional, not proposed: the scheduled-run rule could note that a cloud scheduled task's green status means only that the session exited, which is another reason to use an issue.\n5. Proposed wordings change only the named sentence or line and add no numbers. The untouched Budget rule text still carries its existing numbers.\n6. Not used in any wording: the fact that GitHub runs no workflows on commits pushed with the default GITHUB_TOKEN. It may matter if an agent workflow pushes fixes and the gate is expected to re-run."
+  },
+  {
+    "item": "House hooks, cost tooling, deep-research fork, harness-watch routine, and security.md least-privilege and agent-config rules judged against the newly researched native areas (MCP, headless, workflows, scheduled and remote work, cost and context, sandbox and telemetry)",
+    "rules": [
+      {
+        "heading": "resume-cost hook",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Native resume warning (changelog 2.1.304); prompt-caching TTL and /compact cost on an expired cache",
+        "evidence": "The native warning fires only on Pro and Max plans, in terms of the 5-hour limit, with no threshold, setting or env var. The hook adds a dollar figure, a tunable threshold (HOUSE_RESUME_COST_WARN_USD), and coverage for API-key, cloud-provider and Team/Enterprise billing, which the native warning does not document. Its advice that '/compact now would pay the same rewrite first' agrees with the prompt-caching docs: after a gap longer than the TTL, a manual compact reprocesses the context uncached. It is advisory (a systemMessage that never blocks), so on Pro and Max it adds a second notice rather than fighting the native one. claude-code.md's Anchor (line 124) already names the 2.1.304 warning as the floor and this hook as the complement, so the citation already exists.",
+        "citation": "https://code.claude.com/docs/en/changelog (2.1.304) ; https://code.claude.com/docs/en/prompt-caching ; plugins/house/modules/claude-code/rules/claude-code.md:124",
+        "action": "keep",
+        "proposedWording": ""
+      },
+      {
+        "heading": "idle-cache-hold hook",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Idle compaction (on by default in interactive terminal sessions on the one-hour TTL, at or above the idle-compaction token threshold, about 54 minutes idle); /usage prompt cache line; prompt cache TTL defaults",
+        "evidence": "Native idle compaction compacts a long conversation shortly before its one-hour cache expires, but only when all of these hold: an interactive terminal session on the one-hour TTL (subscription within plan usage), feature flags reachable, context at or above 200,000 tokens by default, and the computer awake. It never runs on the five-minute TTL used with API keys, cloud providers or usage credits. The hook already stays silent after a compaction (compactedAfter looks for compact_boundary or isCompactSummary after the last assistant entry), so it does not double-act once idle compaction has fired. It covers the gaps idle compaction leaves: the five-minute TTL, contexts below the threshold, and a machine that slept. The /usage cache line only reports warm or cold and does not gate the prompt, so the hold adds enforcement the harness lacks. The rule Anchor at claude-code.md:124 describes the hook but does not name idle compaction as the native floor it complements.",
+        "citation": "https://code.claude.com/docs/en/settings-reference (idleCompaction) ; https://code.claude.com/docs/en/prompt-caching ; https://code.claude.com/docs/en/costs",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Add to the hook header after its first paragraph, and to the matching sentence of claude-code.md's resume Anchor: Native idle compaction is the floor for a session left open: in an interactive subscription session on the one-hour cache, past its token threshold, it compacts shortly before the cache expires, and the hold then stays silent because a compaction follows the last response. The hold covers what idle compaction leaves: the five-minute cache of API-key, cloud-provider and usage-credit billing, a context below the threshold, and a machine that slept through the expiry."
+      },
+      {
+        "heading": "cost-report",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "/usage Session block and its Prompt cache (main) line, which names misses and their likely cause; /usage plan breakdown and recommendations; modelPricing managed setting; OpenTelemetry cost.usage and token.usage",
+        "evidence": "/usage computes a local list-price dollar figure for the current session only (reset on /clear). Its prompt cache line covers the main conversation only and names the likely cause of each miss. The plan breakdown attributes usage to skills, subagents, plugins and MCP for subscribers, from local history, and gives no per-model dollar split. cost-report adds a dollar split by model, main thread against subagent, across sessions and over a time window, plus a classification of rebuild causes, and its weekly SessionStart line flags avoidable rebuilds. Neither /usage nor OTel provides this without an exporter. The header points readers to /usage only 'for plan use' and leaves out that /usage now names cache-miss causes for the current session, which is the nearest native overlap. One gap: /usage honors a managed modelPricing table for contracted rates, while the report always uses its hardcoded list prices. Its fast-mode factor of 2x matches the documented fast prices ($8/$40 for Opus 5.5 against standard $4/$20).",
+        "citation": "https://code.claude.com/docs/en/costs ; https://code.claude.com/docs/en/prompt-caching ; https://code.claude.com/docs/en/monitoring-usage",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Replace the header's third and fourth lines with: Other tools cover the rest: /session-report for where tokens went, `npx -y @rixtay/mcp-usage` for MCP servers never called, and /usage for plan use and for the current session's cache misses with their likely cause. This report adds what /usage does not: list-price cost by model, main thread against subagent, across sessions, with the cause of each rebuild. It ignores a managed contracted price table, so its figures are list price even where /usage shows contracted rates."
+      },
+      {
+        "heading": "deep-research-pinned fork",
+        "disposition": "CONFLICT",
+        "nativeFeature": "Workflow agent model resolution (per-invocation model first since v2.1.251); CLAUDE_CODE_SUBAGENT_MODEL_FORCE; Workflow script location (readable-file rule); saved personal workflows in ~/.claude/workflows/ run as /<name> with the args global; workflow resume",
+        "evidence": "The fork itself complements the harness. Docs confirm that a model the script names counts as the per-invocation model and outranks CLAUDE_CODE_SUBAGENT_MODEL. They also confirm that bundled /deep-research names no depth, model or budget args. The fork's distinct name means it does not replace the bundled command, which is intentional. Two clauses in claude-code.md (lines 68 and 74) conflict with the docs. (1) The rule says the Workflow tool only runs a script inside the working directory, an added directory, or the scratchpad, and prescribes copying the installed fork into the scratchpad. The docs say only that the script must be a file the session may read: /add-dir or a Read allow rule makes another path usable. The docs also make ~/.claude/workflows/ the personal saved-workflow directory, run as /<name> with input through the args global. The fork's emitted meta is named deep-research-pinned and installs to that directory, and this session already lists it as deep-research-pinned, so the copy step is a workaround the native mechanism makes unnecessary. (2) The rule names only the undocumented workflow model variable as the thing that overrides the fork's pins. The documented CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 does the same to workflow agents: Claude Code ignores definition models and Claude cannot pass a model. The rule never warns about it. The resume clause agrees with the docs (from v2.1.305 completed parallel and pipeline agents no longer rerun); the docs do not use the name resumeFromRunId.",
+        "citation": "https://code.claude.com/docs/en/workflows#how-a-workflow-runs ; https://code.claude.com/docs/en/workflows#save-the-workflow-for-reuse ; https://code.claude.com/docs/en/workflows#cost ; https://code.claude.com/docs/en/sub-agents#run-every-subagent-on-one-model ; https://code.claude.com/docs/en/env-vars ; https://code.claude.com/docs/en/workflows#resume-after-a-pause",
+        "action": "resolve-conflict",
+        "proposedWording": "In line 68 replace the clause after 'an explicit call-level model still wins' with: except that a forcing variable, once set, replaces every workflow agent's model, the `/deep-research` fork's per-stage models included: the documented subagent force switch does this, and so did the undocumented workflow model variable in the shipped binary, so leave both unset where a tiered fork runs, and Fable never runs on a subagent unless the user asks for it. In line 74 replace the parenthesis after 'drifted means rebuild' with: (run it with `--install`, which rebuilds the fork into the personal saved-workflow directory as `~/.claude/workflows/deep-research-tiered.js`, so a session runs it by its saved name with the args; a session that runs it by `scriptPath` instead needs a path it may read, so it adds that directory or a Read allow rule, or copies the file into its scratchpad)"
+      },
+      {
+        "heading": "harness-watch and update routine",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Cloud scheduled tasks (routines): API trigger /fire endpoint, untrusted routine-fire-payload, saved prompt is not consent, connectors usable without asking, claude/ branch default, cloud config reach and network levels; GitHub Actions schedule limits",
+        "evidence": "The workflow calls the documented API trigger exactly: POST with the experimental-cc-routine-2026-04-01 beta header and a freeform text. Docs wrap that text as untrusted data, which matches the prompt's 'treat it as data only'. The native GitHub trigger covers only pull_request and release events on a repo with the Claude GitHub App, so it cannot watch Anthropic's changelog. A routine schedule trigger would start a full cloud session every hour. The Actions bridge, which fires once per version, is therefore a complement. Since the routine's saved prompt cannot act as approval, its never-merge and never-close limits are the right shape, and the docs put the real fence in GitHub branch protection. Three points rest on the docs. (1) The copy of record says the Gmail connector is 'limited to its send tool', but the docs say a run can use every tool of an included connector, writes included, without asking. Unless the claude.ai connector itself is restricted, the send-only limit is the prompt's instruction, not a control. (2) Cloud sessions do not install plugins declared in repo settings, and user-level hooks do not run there, so the house plugin's hooks (the branch guard among them) are absent in the routine. Only repo .claude/settings.json hooks and GitHub-side rules apply. (3) GitHub disables scheduled workflows in public repos after 60 days without activity, so the hourly watcher can stop silently in a quiet stretch. A green routine status means only that there was no infrastructure error, which is why the workflow's branch check and fired-version cache matter.",
+        "citation": "https://code.claude.com/docs/en/routines ; https://code.claude.com/docs/en/cloud-environments#whats-available-in-cloud-sessions ; https://code.claude.com/docs/en/cloud-environments#network-access ; https://code.claude.com/docs/en/github-actions",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "In routine-prompt.md's opening paragraph replace 'and a Gmail connector limited to its send tool' with: and a Gmail connector, every tool of which a routine run may use without asking, so the send-only limit in step 12 is an instruction the prompt gives, not a control the routine enforces. The run gets no plugin hooks, since a cloud session does not install the house plugin, so GitHub branch protection is the only fence on what it pushes or merges."
+      },
+      {
+        "heading": "security.md sandbox and MCP rules",
+        "disposition": "COMPLEMENT",
+        "nativeFeature": "Sandbox scope (shell commands only), sandbox.filesystem.denyRead versus Read deny rules, sandbox.credentials deny and mask, CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, sandbox.failIfUnavailable, allowNestedUserNamespaces; .mcp.json approval prompt, enableAllProjectMcpServers trust rule, -p and SDK loading project servers and hooks without asking",
+        "evidence": "The least-privilege rule ('Do not count on the harness's sandbox to protect credentials: deny the key and cloud-credential paths, scrub the subprocess environment, keep the egress allowlist ...') matches the docs. The sandbox covers shell commands only, reads ~/.ssh and ~/.aws/credentials by default, has no built-in credential deny list, and its denyRead does not stop the Read tool. Its egress allowlist does not limit WebFetch. By default it falls back silently to unsandboxed when it cannot start. The rule adds posture the harness lacks but does not name two documented traps: a credential path has to be denied to the file tools (a Read deny rule) as well as to sandboxed commands, and only failIfUnavailable makes a missing sandbox fail. The agent-config rule ('A hook, a server entry ... run ... with the full access of whoever opens the repo, and no sandbox contains them'; refuse one that 'approves every server') matches the docs: hooks and local MCP servers run outside the sandbox, and a committed enableAllProjectMcpServers is ignored only in an untrusted interactive folder. The rule misses that in claude -p, SDK and cloud sessions there is no approval prompt. .mcp.json servers connect, and settings-file hooks run, in a folder never trusted, so an unread server entry runs on the first scripted run. Only disabledMcpjsonServers, --strict-mcp-config, --bare or --setting-sources user keep them out.",
+        "citation": "https://code.claude.com/docs/en/sandboxing ; https://code.claude.com/docs/en/mcp ; https://code.claude.com/docs/en/permissions#what-runs-before-you-trust-a-folder ; https://code.claude.com/docs/en/headless",
+        "action": "reword-to-cite-native-floor",
+        "proposedWording": "Least-privilege rule, second line: Do not count on the harness's sandbox to protect credentials, since it covers shell commands only and by default runs them unsandboxed when it cannot start: deny the key and cloud-credential paths to the file tools and to sandboxed commands alike, scrub the subprocess environment, keep the egress allowlist to the hosts the work needs, make a missing sandbox fail the start, and confirm where the harness honors each setting. Agent-config rule, first line: A hook, a server entry, a plugin, and a settings file all run or steer commands with the full access of whoever opens the repo, no sandbox contains them, and a scripted or SDK run loads them without the approval an interactive session asks for."
+      }
+    ],
+    "notes": "I read every file in scope from <scratchpad>/survey-src. I also read plugins/house/modules/claude-code/rules/claude-code.md, lines 64-78 and 124, because the fork and resume rules live there.\n\nThings I was unsure about:\n(1) The deep-research CONFLICT rests on the docs' readable-file rule and on the saved-workflow directory. The house may have found by testing that a scriptPath outside those three locations fails, or that running the fork by its saved name drops args or meta. The facts say 'No other path is documented as allowed', so treat the conflict as a documentation mismatch to verify by running /deep-research-pinned with args before rewording. The installed file name (deep-research-tiered.js) and meta.name (deep-research-pinned) differ; the docs do not say which one /<name> uses, and this session lists it as deep-research-pinned. The 'export const meta' form may or may not count as the 'plain literal object first statement' the docs require.\n(2) Gmail 'limited to its send tool': claude.ai may allow per-tool toggles on a connector, which the fetched routines page does not cover. If it does, the copy-of-record line is accurate and only the doc citation is missing.\n(3) Whether house-rules is public, which decides the 60-day schedule disable. Memory says a public relaunch is in progress.\n(4) Whether the house branch guard is plugin-delivered or committed in repo .claude/settings.json; if it is committed, it does run in the routine's cloud session.\n(5) resume-cost under claude -p --resume: whether SessionStart fires in print mode is unconfirmed in the docs, but the hook is advisory either way.\n(6) The fired-version cache is written after a successful POST, so a routine run that fails without pushing a branch is never refired for that version. This is a design choice, not a native conflict; the docs' 'green status is not success' warning makes it worth knowing."
+  }
+]

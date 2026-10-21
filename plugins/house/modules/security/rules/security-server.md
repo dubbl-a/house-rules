@@ -9,7 +9,7 @@ What a session may trust, install, and release is security.md's, which loads on 
 ## Supply untrusted input as a parameter, never by building a string
 
 Bind values into a query, encode output for its context, pass process arguments as a list, log a value as a field, and validate at the trust boundary against what is allowed and never evaluate it as code; write the hostile case as a test in the change that adds the sink, since generated code takes the concatenating path often when both are open.
-Anchor: a test per sink that feeds a quote, a tag, a newline, and a shell metacharacter and asserts each arrives inert.
+Anchor: a test per sink that feeds a quote, a tag, a newline, and a shell metacharacter and asserts each arrives inert; the security-guidance plugin flags this class only after the edit lands and blocks nothing, and `/security-review` runs only when asked, so the test is the gate.
 Receipts: `docs/handbook/security.md#supply-untrusted-input-as-a-parameter-never-by-building-a-string`
 
 ## Never let a request choose what the server fetches, opens, loads, or runs

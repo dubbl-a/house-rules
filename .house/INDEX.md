@@ -12,9 +12,9 @@
 - Make a procedure a skill, not a rule
   Move a multi-step procedure and its reference material into a skill, where only the description costs context every session.
 - Keep a skill body short, its references one level deep, and its name equal to its directory
-  Hold the body under 500 lines, Claude Code's documented ceiling, or a lower cap you configure, and move detail into references rather than appending, and keep references exactly one level deep; a nested file gets partially read.
+  Hold the body under 500 lines, the length Claude Code's docs recommend, or a lower cap you configure, and move detail into references rather than appending, and keep references exactly one level deep; a nested file gets partially read.
 - Disable model invocation on a skill with side effects
-  Set `disable-model-invocation: true` on any skill that writes, deploys, or spends; the harness then blocks a model-initiated call but cannot decide which effects count, and a print-mode run still expands a named skill, so the caller who wrote the string is the gate.
+  Set `disable-model-invocation: true` on any skill that writes, deploys, or spends, or `user-invocable-only` in `skillOverrides` for one whose file you do not edit (a plugin skill ignores that setting); the harness then blocks a model-initiated call but cannot decide which effects count, and a print-mode run still expands a named skill, so the caller who wrote the string is the gate. Either one also drops a skill named verify or simplify from the run before each commit.
 - Set the model explicitly on every subagent and workflow agent
   Name the model on every agent call, because the harness resolves an omitted one through the subagent model variable and then to the session's model, so a wide fan-out otherwise runs at whatever tier you happened to be in.
 - Make a must-hold rule a hook, fail it closed, and test it with real payloads
@@ -26,7 +26,7 @@
 - Keep a session to one task, and start fresh rather than resume a large idle one
   Claude Code resends the whole conversation on every request, so a long session pays for its history on each turn, and the first message after an idle gap longer than the cache lifetime rewrites the whole context into the cache at the write price.
 - Treat git state as shared across sessions
-  Assume another checkout can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
+  Assume another checkout, or a cloud session such as auto-fix on the pull request, can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
 - Keep the committed settings narrow and the local settings local
   Commit an allowlist covering the repo's own script surface and read-side platform commands, nothing broader, and authorize deploy and egress verbs through a skill instead.
 - Read a resume file as a harness artifact, not a handoff
@@ -120,7 +120,7 @@
 - Evaluate the path a session actually takes
   Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
 - Deny the eval session what the project allows, and fail a run whose results contain the key
-  Pass every project allow the eval does not itself grant as a deny, since project settings reach a session that loads them and a broad allow written for daily work is an open door in a measurement.
+  Pass every project allow, project skill tool grant, and project server the eval does not itself grant as a command-line deny, since a print-mode run uses a project's skill grants and servers even in a folder it never trusted, a trusted folder adds its allows, and a broad allow written for daily work is an open door in a measurement.
 - Count what the agent did, not only whether it passed
   Print the tool-call mix per arm, such as searches, document opens, shell reads, and verification calls, beside the outcome measures, and read it before adopting a change, because a prompt change can alter behaviour nobody asked about while every outcome measure stays flat.
 - Split a score gap into its causes from the transcripts before building to close it
@@ -142,7 +142,7 @@
 - Turn on push protection, head-branch deletion, and grouped dependency updates
   Turn on secret scanning push protection and automatic head-branch deletion, and group dependency updates with security updates left on, so a credential is blocked before history and grouping cuts volume without muting what matters.
 - Protect the default branch at the remote, and name an owner for what runs with privilege
-  Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it.
+  Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it, auto mode allows a push to the default branch by default, and a cloud run's `claude/` branch prefix is a default, not a restriction.
 - Make the PR template force a docs-check answer
   Ask every PR for a summary, a test plan, and a binary docs check: either the docs edit is in this PR, or the PR says why none is needed.
 - Close an issue only on purpose, and only on claims you checked
@@ -178,7 +178,7 @@
 - Give an agent, a key, and a token only what one task needs
   Scope every grant to the job in front of it (the tools, the paths and hosts, what a key may write, how long a token lives) so a leaked credential has a blast radius statable in one sentence; prefer an identity issued per run, and remove a grant when its task ends.
 - Review a change to agent config as code, and keep a second party on every consequential action
-  A hook, a server entry, a plugin, and a settings file all run or steer commands with the full access of whoever opens the repo, and no sandbox contains them.
+  A hook, a server entry, a plugin, and a settings file all run or steer commands with the full access of whoever opens the repo, no sandbox contains them, and a print-mode or SDK run uses a repo's hooks and servers without the approval an interactive session asks for.
 - Bound an agent's loops, spend, and reach from outside it, and keep a record it cannot rewrite
   Set the turn limit, the cost ceiling, and the timeout where the agent cannot raise them, and keep the run log, the transcript, and the audit row where it has no write access, because a cap or a record the agent holds is a suggestion.
 - Install only what was reviewed, and let a new release age first

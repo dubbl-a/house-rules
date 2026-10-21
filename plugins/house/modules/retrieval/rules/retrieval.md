@@ -34,7 +34,7 @@ Receipts: `docs/handbook/retrieval.md#keep-a-map-of-the-classes-of-quality-probl
 ## Cite a primary source for every lesson, with the quote and where it was read
 
 Back each lesson and each line of reference material with the primary source that states it, quoting the passage and naming where it was read, because a summary of a summary drifts from what was found and cannot be checked.
-Treat a secondary write-up as a pointer to the primary source, not a substitute for it.
+Treat a secondary write-up as a pointer to the primary source, not a substitute for it, and a WebFetch result the same way: it is a model's answer about the page, so take the quote from the raw text.
 Anchor: none (because whether a source is primary is a judgment no checker reads); each lesson's citation carries a quote and a location a reviewer can open.
 Receipts: `docs/handbook/retrieval.md#cite-a-primary-source-for-every-lesson-with-the-quote-and-where-it-was-read`
 
