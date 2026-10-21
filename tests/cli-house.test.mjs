@@ -47,6 +47,10 @@ if (SHARD === 0) {
     }
   }
 }
+// Run alone, this file is only its share and looks complete; say so every time.
+if (SHARD === 0) {
+  console.log(`# cli-house: this file is shard 0 of ${SHARDS}; run node --test tests/cli-house*.test.mjs for all`);
+}
 let registered = 0;
 const test = (...args) => (registered++ % SHARDS === SHARD ? nodeTest(...args) : undefined);
 

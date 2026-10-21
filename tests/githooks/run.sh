@@ -36,6 +36,13 @@ fi
 PARTS=3
 part_on() { [[ "${HOUSE_TEST_PART:-all}" == all || "$HOUSE_TEST_PART" == "$1" ]]; }
 
+# A part number outside 1..PARTS would run no cases and still exit 0.
+if [[ -n "${HOUSE_TEST_PART:-}" && "$HOUSE_TEST_PART" != all ]] \
+  && ! [[ "$HOUSE_TEST_PART" =~ ^[1-9][0-9]*$ && "$HOUSE_TEST_PART" -le "$PARTS" ]]; then
+  echo "FATAL: HOUSE_TEST_PART=$HOUSE_TEST_PART is not a part: use 1 to $PARTS, or all." >&2
+  exit 2
+fi
+
 if [[ -z "${HOUSE_TEST_PART:-}" ]]; then
   # A gate naming a part past PARTS would never run, and nothing else would say so.
   _top=$(grep -o 'part_on [0-9][0-9]*' "$SCRIPT_PATH" | awk '{ if ($2 > m) m = $2 } END { print m + 0 }')
@@ -59,6 +66,7 @@ if [[ -z "${HOUSE_TEST_PART:-}" ]]; then
     if [[ -z "$_sum" ]]; then
       echo "FATAL: part $_p ended without a summary line" >&2
       _bad=1
+      _failed=$((_failed + 1))
       continue
     fi
     set -- $_sum

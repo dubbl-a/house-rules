@@ -6,6 +6,7 @@
 // suite's output is held and printed whole, in a fixed order, when all three
 // have finished; a line on stderr says when each one ends. Every suite runs to
 // the end even when another fails, and the exit is 1 if any did.
+// The exit status is set, not forced, so a pipe reader still gets every byte.
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,10 @@ const run = (script) => new Promise((resolve) => {
   const child = spawn('npm', ['run', script], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', (c) => chunks.push(c));
   child.stderr.on('data', (c) => chunks.push(c));
+  let ended = false;
   const done = (code, note = '') => {
+    if (ended) return;
+    ended = true;
     const secs = Math.round((Date.now() - started) / 1000);
     process.stderr.write(`finished npm run ${script}: exit ${code}, ${secs}s${note}\n`);
     resolve({ script, code, secs, out: Buffer.concat(chunks).toString('utf8') });
@@ -35,5 +39,6 @@ for (const r of results) {
 const failed = results.filter((r) => r.code !== 0).map((r) => r.script);
 if (failed.length > 0) {
   console.error(`\nverify: failed: ${failed.join(', ')}`);
-  process.exit(1);
+  // Not process.exit: on a pipe it can cut off output still being flushed.
+  process.exitCode = 1;
 }
