@@ -68,7 +68,9 @@ test('SIGINT to verify takes its running suites down with it', async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let stubPid = 0;
   try {
-    for (let i = 0; i < 100 && !stubPid; i++) {
+    // Bounds are generous because verify itself runs this under load (#374): a
+    // pass returns as soon as the condition holds, so only a failure waits them out.
+    for (let i = 0; i < 300 && !stubPid; i++) {
       await sleep(100);
       if (existsSync(pidFile)) stubPid = Number(readFileSync(pidFile, 'utf8')) || 0;
     }
@@ -77,7 +79,7 @@ test('SIGINT to verify takes its running suites down with it', async () => {
     assert.equal((await exited).code, 130);
     // The stub leads its own process group (detached), so -pid reaches the group.
     let gone = false;
-    for (let i = 0; i < 50 && !gone; i++) {
+    for (let i = 0; i < 150 && !gone; i++) {
       try { process.kill(-stubPid, 0); await sleep(100); } catch (e) { gone = e.code === 'ESRCH'; }
     }
     assert.ok(gone, 'the stub suite process group is gone');
