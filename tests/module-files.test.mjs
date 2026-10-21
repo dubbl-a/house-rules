@@ -16,6 +16,7 @@ import {
   mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, existsSync,
 } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -1511,6 +1512,21 @@ test('deep-research check: --install writes the fork to ~/.claude/workflows/deep
   assert.equal(res.status, 0, res.stdout + res.stderr);
   const target = join(home, '.claude', 'workflows', 'deep-research-tiered.js');
   assert.match(readFileSync(target, 'utf8'), /name: 'deep-research-pinned'/);
+});
+
+test('deep-research check: --install writes the build marker house doctor reads (#367)', async () => {
+  const dir = mktemp('house-dr-');
+  const out = join(dir, 'fork.js');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--install=${out}`]);
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  const text = readFileSync(out, 'utf8');
+  const m = /^\/\/ house-fork-build: ([0-9a-f]{12}) ([0-9a-f]{12})\n/m.exec(text);
+  assert.ok(m, 'the fork carries a build marker line');
+  const sha12 = (b) => createHash('sha256').update(b).digest('hex').slice(0, 12);
+  assert.equal(m[1], sha12(readFileSync(DR_CHECK)), 'the id is the hash of this script');
+  assert.equal(m[2], sha12(text.slice(m.index + m[0].length)), 'the body hash covers everything below the marker');
 });
 
 test('deep-research check: --install=<path> writes to the given path', async () => {
