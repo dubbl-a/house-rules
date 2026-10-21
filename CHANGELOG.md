@@ -6,9 +6,17 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- `cost-report.mjs` also shows what fast mode, US-only inference and legacy models (Opus 5 and 4.8, Fable 5, Sonnet 5) added to the list price, each on its own and all three together; main-thread requests and cost by context size (under 200k, 200k to 500k, 500k and over); and how many idle 5-minute-to-1-hour rebuilds were written to the 5-minute cache, with a line on `promptCacheTtl: "1h"` (Claude Code 2.1.242+), whose writes cost more. `--state` carries all three. The weekly startup notice now also fires when the combined premium reaches `HOUSE_COST_CHECK_USD`, still one line per result (#326).
+
 ### Changed
 
 - The orchestration text's build guidance follows Anthropic's published split instead of Sonnet at high effort first: a build with a clear scope goes to Sonnet at the builder's pinned medium, the call names `effort: "high"` where verification matters or edge cases are likely (a bug fix in existing code) or the build is harder or longer, and Opus is for complex agentic coding (a large refactor, invariants across modules, a multi-hour build, or a Sonnet attempt that failed on reasoning). The "no automated signal" trigger is gone. The debugger stays on Opus, and when it finds no root cause the rule offers the user Fable, which Anthropic names for ambiguous root-cause work; Fable still never runs on a subagent unless the user asks. The handbook's earlier figures are corrected: the 30 to 40 point break-even and the $3.08 against $3.59 arithmetic were wrong or confounded by build size, and a re-measurement over 325 builder runs shows first-verdict REWORK at 49% for Opus 5.5 and 67% for Sonnet 5.5, with the gap concentrated in mid-size builds and Opus costing 2.4 to 6 times as much per build. Effort was untested locally (3 high-effort runs). The note and script are `research/model-tier/2026-10-21-builder-tier.md` and `research/model-tier/scripts/builder_tier.py`.
+
+### Fixed
+
+- A weekly cost scan that dies before writing its result is retried at the first startup after its lock goes stale (about an hour), not a week later (#322).
 
 ## [0.22.1] - 2026-10-21
 
