@@ -619,6 +619,15 @@ expired and the estimate reaches a threshold (default $0.25), and fails open on 
 The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
 magnitude.
 
+Claude Code 2.1.304 added a native warning on Pro and Max plans when resuming an inactive
+conversation would use a noticeable share of the 5-hour usage limit (changelog:
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, 2.1.304 entry). That
+is the floor, and the hook does not replace it. What the hook still adds: it states the cost in
+dollars, and it fires on API-key and cloud-provider billing. The second half is inferred, not
+documented: the changelog names only Pro and Max and says nothing of other billing, and a 5-hour
+usage limit is a subscription concept, so the native warning is not expected to fire elsewhere.
+Not verified on a live API-billed or Bedrock/Vertex session.
+
 The resume hook misses the commoner case. The same research's addendum found that at least 60 of
 one adopter's idle rebuilds happened in sessions left open and returned to, not resumed, and
 native idle compaction (2.1.299), which covers only 200k-plus conversations on the one-hour cache,
