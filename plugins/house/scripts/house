@@ -3618,14 +3618,17 @@ async function fetchReleaseList() {
   return res.text();
 }
 
+// Never echo response bytes: a JSON error quotes the body, which can carry terminal escapes.
+function releaseFetchWhy(e) {
+  return e instanceof SyntaxError ? 'unexpected response from the releases API' : e && e.name === 'TimeoutError' ? `timed out after ${RELEASES_TIMEOUT_MS / 1000}s` : (e && e.cause && e.cause.code) || (e && e.message) || 'request failed';
+}
+
 async function latestReleaseStatus(pluginVersion) {
   let list;
   try {
     list = JSON.parse(await fetchReleaseList());
   } catch (e) {
-    // Never echo response bytes: a JSON error quotes the body, which can carry terminal escapes.
-    const why = e instanceof SyntaxError ? 'unexpected response from the releases API' : e && e.name === 'TimeoutError' ? `timed out after ${RELEASES_TIMEOUT_MS / 1000}s` : (e && e.cause && e.cause.code) || (e && e.message) || 'request failed';
-    return { checked: false, line: `latest release: not checked (${why})` };
+    return { checked: false, line: `latest release: not checked (${releaseFetchWhy(e)})` };
   }
   const versions = Array.isArray(list)
     ? list.filter((r) => isPlainObject(r) && !r.draft && !r.prerelease && typeof r.tag_name === 'string' && SEMVER_TAG.test(r.tag_name))
@@ -3640,6 +3643,52 @@ async function latestReleaseStatus(pluginVersion) {
   if (cmp > 0) return { checked: true, latest, installed: pluginVersion, behind: null, ahead: true, line: `latest release v${latest}; installed v${pluginVersion} is ahead of it (unreleased)` };
   const behind = versions.filter((v) => compareSemver(v, pluginVersion) > 0).length;
   return { checked: true, latest, installed: pluginVersion, behind, ahead: false, line: `latest release v${latest}; installed v${pluginVersion} (${behind} behind)` };
+}
+
+// #366: `house changes <from> [<to>]` prints the release notes of every published
+// release with from < version <= to, oldest first, as Markdown for a sync PR body.
+// The notes are the GitHub release bodies (release.yml builds each from that
+// version's CHANGELOG section); the plugin cache copy has no CHANGELOG.md, so
+// the API is the only source. It reads one page (per_page=100 in RELEASES_URL,
+// newest first), which covers the span of any realistic sync; a range older than
+// that page is simply absent, never invented. A failure prints where to read the
+// notes and exits 0: a sync never fails on it.
+const CHANGES_USAGE = 'usage: house changes <from> [<to>]   (versions as X.Y.Z or vX.Y.Z; <to> defaults to the loaded plugin version)';
+
+async function cmdChanges(args) {
+  const usage = () => { console.error(CHANGES_USAGE); process.exit(2); };
+  if (args.names.length < 1 || args.names.length > 2 || !args.names.every((v) => SEMVER_TAG.test(v))) usage();
+  const [from, to] = [args.names[0], args.names[1] || readPluginVersion()].map((v) => v.replace(/^v/, ''));
+  if (!SEMVER_TAG.test(to)) usage();
+  if (compareSemver(from, to) >= 0) { console.log(`nothing between v${from} and v${to}`); return; }
+  let list;
+  try {
+    list = JSON.parse(await fetchReleaseList());
+    if (!Array.isArray(list)) throw new SyntaxError('not a release list');
+  } catch (e) {
+    console.log(`release notes not available (${releaseFetchWhy(e)}); see https://github.com/dubbl-a/house-rules/releases`);
+    return;
+  }
+  const inRange = list
+    .filter((r) => isPlainObject(r) && !r.draft && !r.prerelease && typeof r.tag_name === 'string' && SEMVER_TAG.test(r.tag_name))
+    .map((r) => ({ version: r.tag_name.replace(/^v/, ''), body: typeof r.body === 'string' ? r.body : '' }))
+    .filter((r) => compareSemver(r.version, from) > 0 && compareSemver(r.version, to) <= 0)
+    .sort((a, b) => compareSemver(a.version, b.version));
+  // Notes are text for a PR body: drop control characters (terminal escapes) but keep line breaks and tabs.
+  const clean = (t) => t.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').trim();
+  // A body's own headings go one level down (capped at h6) so they nest under its release heading; fenced code is left alone.
+  const demote = (t) => {
+    let fence = null;
+    return t.split('\n').map((line) => {
+      const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; return line; }
+      return !fence && /^#{1,6} /.test(line) ? line.replace(/^(#{1,5}) /, '$1# ') : line;
+    }).join('\n');
+  };
+  const parts = [`## house-rules v${from} to v${to}`];
+  if (!inRange.length) parts.push(`no published releases between v${from} and v${to}`);
+  for (const r of inRange) parts.push(`### v${r.version}${clean(r.body) ? `\n\n${demote(clean(r.body))}` : ''}`);
+  console.log(parts.join('\n\n'));
 }
 
 // #367: the installed /deep-research fork is machine state, rebuilt by
@@ -4003,8 +4052,8 @@ function main() {
 
   if (cmd === 'check') { cmdCheck(rest); return; }
 
-  if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'doctor', 'hook'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
+  if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'doctor', 'changes', 'hook'].includes(cmd)) {
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house changes <from> [<to>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
     process.exit(2);
   }
 
@@ -4017,6 +4066,7 @@ function main() {
   if (cmd === 'confirm') return cmdConfirm(args);
   if (cmd === 'decline') return cmdDecline(args);
   if (cmd === 'doctor') return cmdDoctor(args);
+  if (cmd === 'changes') return cmdChanges(args);
   if (cmd === 'hook') return cmdHookAdd(args);
 }
 
