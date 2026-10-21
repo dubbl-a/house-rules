@@ -49,6 +49,38 @@ Release, per the repo's version rules:
    plugin follows the marketplace when its auto-update is on (it is on for the maintainer's
    machine); otherwise run `claude plugin update house-rules@house-rules`.
 
+### Holding the adopter sync
+
+To publish a release without syncing the adopters, put the `hold-sync` label on the release PR
+before merging. The label is read when the push to main lands: the workflow finds the pull request
+that merged as that commit and checks its labels, and the squash merge makes that match exact.
+Adding the label after the merge is too late if the run has already read it, and it cannot stop a
+sync that has started. Decide before merging.
+
+A held release is still tagged and published. The `hold-note` job skips the sync, writes a note to
+the run summary, and opens an issue titled `Adopter sync held for vX.Y.Z` so the hold is not
+forgotten. Create the label once:
+
+```
+gh label create hold-sync --description "Publish the release, hold the adopter sync" --color FBCA04
+```
+
+If the workflow cannot find the merged release PR to read its labels (the lookup is tried three
+times, 10 seconds apart), it holds the sync too and says so in the issue: it never syncs on a
+guess.
+
+Run the held sync later from main, naming the released version. It only runs while that version
+is still the latest release, since a sync of an older tag would roll the adopters back and the run
+refuses it; once a newer release exists, that release's sync covers the held one:
+
+```
+gh workflow run release.yml --ref main -f version=X.Y.Z
+```
+
+That run does only the sync, and closes the held-sync issue for that version once every leg
+finishes. A manual run never tags or releases. To retry a failed release, use "Re-run failed jobs"
+on the push's run.
+
 ## How an update reaches the maintainer
 
 Nothing in this path asks the maintainer to remember a command or a folder; the one human step

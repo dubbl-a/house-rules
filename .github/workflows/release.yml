@@ -2,12 +2,19 @@ name: release
 on:
   push:
     branches: [main]
+  # A manual run syncs the adopters to an existing release, for a sync that was
+  # held with the hold-sync label. It never releases.
   workflow_dispatch:
-# Read-only by default. Only the release job writes to this repo (the tag and
-# the GitHub release); the sync job writes to the adopters through the
-# ADOPTER_SYNC_TOKEN secret, never through this repo's GITHUB_TOKEN. Release
-# and sync share one workflow because a release made with GITHUB_TOKEN does not
-# trigger another workflow.
+    inputs:
+      version:
+        description: 'Released version to sync the adopters to, X.Y.Z (the tag v<version> must exist)'
+        required: true
+        type: string
+# Read-only by default. Only the release job writes contents in this repo (the
+# tag and the GitHub release), and only the two note jobs write issues; the
+# sync job writes to the adopters through the ADOPTER_SYNC_TOKEN secret, never
+# through this repo's GITHUB_TOKEN. Release and sync share one workflow because
+# a release made with GITHUB_TOKEN does not trigger another workflow.
 permissions:
   contents: read
 # One group per commit, so every push to main is evaluated: a single shared
@@ -19,15 +26,20 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    # A manual run is a retry from main, never a release of an unmerged branch.
-    if: github.ref == 'refs/heads/main'
+    # Only a push to main releases. A retry is "Re-run failed jobs" on that
+    # push's run; a manual run only syncs.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # contents: write pushes the vX.Y.Z tag and creates the GitHub release.
+    # contents: write pushes the vX.Y.Z tag and creates the GitHub release;
+    # pull-requests: read lists the pull requests of the pushed commit.
     permissions:
       contents: write
+      pull-requests: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      hold: ${{ steps.hold.outputs.hold == 'true' }}
+      unread: ${{ steps.hold.outputs.unread == 'true' }}
       released: ${{ steps.publish.outputs.released == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,6 +89,33 @@ jobs:
             echo "CHANGELOG.md has no '## [${VERSION}]' section with content; not releasing"
             exit 1
           fi
+      # A squash merge pushes one commit to main, and the pull request that
+      # merged as that commit carries the hold-sync label if the maintainer put
+      # it there before merging. The step runs before the tag, so a lookup
+      # that fails leaves nothing published and a rerun decides again.
+      - name: Read the hold-sync label
+        id: hold
+        if: steps.version.outputs.released == 'pending'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Right after a merge the pulls list can still be empty, so an empty
+          # answer is retried. A merged pull request that never turns up is
+          # unread: the sync is held, never run on a guess.
+          for TRY in 1 2 3; do
+            PULLS=$(gh api "repos/${REPO}/commits/${GITHUB_SHA}/pulls")
+            VERDICT=$(printf '%s' "$PULLS" | node scripts/release-hold.mjs "$GITHUB_SHA" hold-sync)
+            echo "try ${TRY}: ${VERDICT}"
+            if [ "$VERDICT" != unread ]; then break; fi
+            if [ "$TRY" -lt 3 ]; then sleep 10; fi
+          done
+          echo "adopter sync: ${VERDICT}"
+          case "$VERDICT" in
+            hold) echo "hold=true" >> "$GITHUB_OUTPUT" ;;
+            unread) echo "hold=true" >> "$GITHUB_OUTPUT"
+                    echo "unread=true" >> "$GITHUB_OUTPUT" ;;
+          esac
       - name: Tag and publish
         id: publish
         if: steps.version.outputs.released == 'pending'
@@ -99,9 +138,57 @@ jobs:
           esac
           gh release create "v${VERSION}" --verify-tag --title "v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
           echo "released=true" >> "$GITHUB_OUTPUT"
+  # A held release leaves a note in the issue list, so it is not forgotten.
+  hold-note:
+    needs: release
+    if: needs.release.outputs.released == 'true' && needs.release.outputs.hold == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Note the held sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.release.outputs.version }}
+          UNREAD: ${{ needs.release.outputs.unread }}
+        run: |
+          TITLE="Adopter sync held for v${VERSION}"
+          {
+            if [ "$UNREAD" = true ]; then
+              echo "v${VERSION} is published, but the adopter sync was held because the merged release PR could not be found to read its hold-sync label. No adopter has v${VERSION}."
+            else
+              echo "v${VERSION} is published, but the adopter sync was held (the release PR carried the hold-sync label). No adopter has v${VERSION}."
+            fi
+            echo
+            echo "A held sync can only be run while v${VERSION} is still the latest release; after the next release, that release's sync covers it and this issue can be closed."
+            echo
+            echo "To run the sync, from a checkout of this repo:"
+            echo
+            echo '```'
+            echo "gh workflow run release.yml --ref main -f version=${VERSION}"
+            echo '```'
+            echo
+            echo "Or use Actions, release, Run workflow, version ${VERSION}. A successful run closes this issue."
+          } > "$RUNNER_TEMP/note.md"
+          cat "$RUNNER_TEMP/note.md" >> "$GITHUB_STEP_SUMMARY"
+          OPEN=$(gh issue list --repo "$REPO" --state open --search "\"${TITLE}\" in:title" --json title | jq -r --arg t "$TITLE" '[.[] | select(.title == $t)] | length')
+          if [ "$OPEN" != 0 ]; then
+            echo "an issue titled '${TITLE}' is already open"
+            exit 0
+          fi
+          gh issue create --repo "$REPO" --title "$TITLE" --body-file "$RUNNER_TEMP/note.md"
   sync:
     needs: release
-    if: needs.release.outputs.released == 'true'
+    # Push: sync after a release that was not held. Dispatch: sync the tag the
+    # maintainer named, from main only, since this job holds the adopter token.
+    # !cancelled() lets the job run past the release job, which a dispatch skips.
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'push' && needs.release.outputs.released == 'true' && needs.release.outputs.hold != 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -115,11 +202,29 @@ jobs:
           - { repo: torrance-watch, branch: master, protect: torrance-city-meetings-data }
           - { repo: sb-takeover, branch: master, protect: '' }
     env:
-      VERSION: ${{ needs.release.outputs.version }}
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || needs.release.outputs.version }}
       REPO: dubbl-a/${{ matrix.repo }}
       BASE: ${{ matrix.branch }}
       PROTECT: ${{ matrix.protect }}
     steps:
+      # A manual sync only goes to the latest release: render has no downgrade
+      # guard, so syncing an older tag would roll every adopter back.
+      - name: Check the version
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version '${VERSION}' is not X.Y.Z; not syncing"
+            exit 1
+          fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            LATEST=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+            if [ "v${VERSION}" != "$LATEST" ]; then
+              echo "::error::v${VERSION} is not the latest release (${LATEST}); a manual sync of an older release would roll the adopters back. Not syncing"
+              exit 1
+            fi
+          fi
       - name: Check for the sync token
         env:
           TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
@@ -130,7 +235,7 @@ jobs:
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ needs.release.outputs.version }}
+          ref: v${{ env.VERSION }}
           path: house-rules
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -271,3 +376,23 @@ jobs:
           fi
           # The head checked green is the only head that may merge.
           gh pr merge "$URL" --repo "$REPO" --squash --delete-branch --match-head-commit "$GREEN_SHA"
+  # A manual sync that finished closes the note its hold left. Best effort: a
+  # missing note is not an error.
+  close-hold:
+    needs: sync
+    if: ${{ !cancelled() && needs.sync.result == 'success' && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Close the held-sync note
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          TITLE="Adopter sync held for v${VERSION}"
+          for N in $(gh issue list --repo "$REPO" --state open --search "\"${TITLE}\" in:title" --json number,title | jq -r --arg t "$TITLE" '.[] | select(.title == $t) | .number'); do
+            gh issue close "$N" --repo "$REPO" --comment "Synced the adopters to v${VERSION} by a manual run: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}" || echo "could not close #${N}"
+          done
