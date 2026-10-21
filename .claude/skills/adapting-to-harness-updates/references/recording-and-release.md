@@ -81,6 +81,11 @@ That run does only the sync, and closes the held-sync issue for that version onc
 finishes. A manual run never tags or releases. To retry a failed release, use "Re-run failed jobs"
 on the push's run.
 
+Syncs are serialized per adopter across runs, and every leg, push or manual, re-checks that its
+version is still the latest release right before it pushes and before it merges. A leg that finds a
+newer release skips with a notice, leaves any pull request open, and does not fail, so an older sync
+can never roll an adopter back past a newer one.
+
 ## How an update reaches the maintainer
 
 Nothing in this path asks the maintainer to remember a command or a folder; the one human step

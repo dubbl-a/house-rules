@@ -191,6 +191,18 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The workflow-level group is per commit, so two runs sync concurrently. This
+    # group is per adopter and shared by every run, so one adopter is never
+    # synced by two runs at once and a newer sync cannot be overtaken by an older
+    # one; the five adopters still sync in parallel. GitHub keeps one pending job
+    # per group and cancels an older pending one when a newer arrives, which is
+    # acceptable: the newer sync is the one that should win, and a running sync
+    # is never cancelled. Each leg also re-checks the latest release before it
+    # pushes and before it merges, so a leg that waited behind a newer release
+    # skips rather than rolling the adopter back.
+    concurrency:
+      group: adopter-sync-${{ matrix.repo }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -289,8 +301,17 @@ jobs:
         working-directory: adopter
         env:
           GH_TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
+          RELEASE_TOKEN: ${{ github.token }}
         run: |
           HEAD="chore/house-sync-${VERSION}"
+          # The adopter token may not read this repo's releases, so the lookup
+          # uses the workflow token. A failed lookup fails the step: no push on
+          # a guess. A stale leg sets no url, so the wait step is skipped.
+          LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ "v${VERSION}" != "$LATEST" ]; then
+            echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); not syncing"
+            exit 0
+          fi
           git push --force origin "HEAD:refs/heads/${HEAD}"
           URL=$(gh pr list --repo "$REPO" --head "$HEAD" --state open --json url -q '.[0].url')
           if [ -z "$URL" ]; then
@@ -310,9 +331,10 @@ jobs:
       # confirmed by a second one on the same head, so a run that registers
       # late is seen.
       - name: Wait for checks, then merge
-        if: steps.commit.outputs.changed == 'true'
+        if: steps.commit.outputs.changed == 'true' && steps.pr.outputs.url != ''
         env:
           GH_TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
+          RELEASE_TOKEN: ${{ github.token }}
           URL: ${{ steps.pr.outputs.url }}
         run: |
           if [ -d adopter/.github/workflows ]; then HAS_WORKFLOWS=true; else HAS_WORKFLOWS=false; fi
@@ -373,6 +395,14 @@ jobs:
           if [ "$RESULT" != green ]; then
             echo "::error::${REPO}: checks ${RESULT}; leaving ${URL} open"
             exit 1
+          fi
+          # The wait can run long enough for a newer release to land; a newer
+          # sync would then merge first, and this one must not overwrite it. The
+          # pull request stays open, superseded by the newer release's sync.
+          LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ "v${VERSION}" != "$LATEST" ]; then
+            echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); leaving ${URL} open, not merging"
+            exit 0
           fi
           # The head checked green is the only head that may merge.
           gh pr merge "$URL" --repo "$REPO" --squash --delete-branch --match-head-commit "$GREEN_SHA"

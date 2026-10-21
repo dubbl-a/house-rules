@@ -128,3 +128,30 @@ test('a successful manual sync closes the held-sync issue', () => {
   assert.match(j, /workflow_dispatch/);
   assert.match(j, /issues: write/);
 });
+
+test('adopter syncs are serialized per adopter across runs, never cancelling a running one', () => {
+  const j = job('sync');
+  assert.match(j, /\n    concurrency:\n      group: adopter-sync-\$\{\{ matrix\.repo \}\}\n      cancel-in-progress: false\n/);
+});
+
+test('every sync leg re-checks the latest release right before it pushes and before it merges', () => {
+  const j = job('sync');
+  const checks = [...j.matchAll(/no longer the latest release/g)].map((m) => m.index);
+  assert.equal(checks.length, 2, 'one re-check before the push, one before the merge');
+  assert.ok(checks[0] < j.indexOf('git push --force'), 'first re-check precedes the push');
+  assert.ok(checks[0] > j.indexOf('Push and open the pull request'), 'first re-check is inside the push step');
+  assert.ok(checks[1] < j.indexOf('gh pr merge'), 'second re-check precedes the merge');
+  assert.ok(checks[1] > j.indexOf('Wait for checks, then merge'), 'second re-check is inside the merge step');
+});
+
+test('a stale leg skips with a notice, not a failure, and the wait step needs the pushed PR', () => {
+  const j = job('sync');
+  assert.match(j, /::notice::[^\n]*no longer the latest release[^\n]*\n\s+exit 0/);
+  assert.match(j, /steps\.pr\.outputs\.url != ''/);
+});
+
+test('the re-check reads the version from env only, never from an expression in run', () => {
+  const lines = job('sync').split('\n').filter((l) => /releases\/latest|no longer the latest/.test(l));
+  assert.ok(lines.length >= 4, 'both re-checks present');
+  for (const l of lines) assert.doesNotMatch(l, /\$\{\{/, l);
+});
