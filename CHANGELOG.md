@@ -6,6 +6,26 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-10-21
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house upgrade` moves the plugin to a release in one command, `house changes` prints the release notes between two pins, and `/house-rules:sync` stops on a stale plugin before it writes anything, then opens the sync PR with those notes. Upgrading from 0.22.3: a pinned install runs `house upgrade --apply` (or moves the pin by hand as the README says) and an unpinned one updates the plugin as before; then restart Claude Code, then run `/house-rules:sync`; run the `--install` command `house doctor` prints if it reports the `/deep-research` fork as stale.
+
+### Added
+
+- `house upgrade [<tag>] [--apply] [--pin] [--allow-downgrade]` moves the installed plugin to a release (default: the latest). Without `--apply` it prints the plan and changes nothing. For a pinned install it backs up the settings file and sets the `extraKnownMarketplaces` ref, then re-adds the marketplace at the tag and updates the plugin, in the order Claude Code accepts. It keeps a symlinked settings file a link, and runs project- and local-scope commands from the repo. An unpinned install is pinned only with `--pin`. On a failure it prints what was done, the backup, the remaining commands, and for a pinned install one rollback line (#364).
+- `house changes <from> [<to>]` prints the published release notes after `<from>` up to `<to>` (default: the loaded plugin), oldest first, as Markdown for a PR body. Offline it says where to read them and exits 0 (#366).
+- `/house-rules:sync` step 0, before any worktree or render: it stops when the loaded plugin is older than the newest cached version (restart Claude Code), says when the plugin is behind the latest release, and prints the `--install` command for a stale `/deep-research` fork (#365, #367). Step 7b commits with the `house changes` notes as the body and, for `branchPolicy: pr`, opens the PR and merges on the user's word (#366).
+- With the `database` module on, the checker warns about a tracked `db` or `migrations` directory at any depth that the module's rule paths miss, and names the `dbGlobs` entry that covers it (#361).
+
+### Changed
+
+- `house doctor`'s `/deep-research` fork line reads the fork under `CLAUDE_CONFIG_DIR` when that is set (so does `--install`), reports a fork built from an older Claude Code native body as stale, and prints only where the claude-code target is enabled (#375).
+- The release workflow's sync legs re-check the latest release right before they push and before they merge. A leg whose version is no longer the latest skips, and closes its PR as superseded, so a late sync can no longer roll an adopter back.
+
+### Fixed
+
+- The weekly cost check no longer starts a second scan when parallel startups race for its lock, or when two of them take over an hour-old lock at once, and it writes its state file atomically (#374).
+
 ## [0.22.3] - 2026-10-21
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house doctor` now says whether the installed `/deep-research` fork is current, a `hold-sync` label lets a release ship without syncing the adopters, and three fixes land in the render dry run, the self-host gate and the deep-research verify check. Upgrading from 0.22.2: run `/house-rules:sync`, then run the `check-deep-research-upstream.mjs --install` command `house doctor` prints, since every fork built before this release has no build marker and reads as stale.
