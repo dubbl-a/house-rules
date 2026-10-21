@@ -3,8 +3,8 @@
 // dirs; nothing here reads the real ~/.claude.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,47 @@ test('dedupes a response split over entries, keeping the max output', () => {
   const r = report(d);
   assert.equal(r.byModel['claude-opus-5'].requests, 1);
   near(r.totalUsd, 5 + 25);
+});
+
+test('two requests sharing a message id but with different requestIds count twice', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ id: 'same', req: 'x', ts: ago(60), inTok: 1e6 }),
+    entry({ id: 'same', req: 'y', ts: ago(59), inTok: 1e6 }),
+  ]);
+  const r = report(d);
+  assert.equal(r.byModel['claude-opus-5'].requests, 2);
+  near(r.totalUsd, 10);
+});
+
+test('haiku long tier counts cache tokens toward the 100k threshold', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ model: 'claude-haiku-5-5', ts: ago(60), inTok: 50000, read: 60000, out: 1e6 }),
+  ]);
+  // input alone is under 100k, input plus reads is 110k: long tier (0.50 in, 0.05 read, 2.50 out).
+  near(report(d).totalUsd, 0.05 * 0.5 + 0.06 * 0.05 + 2.5);
+});
+
+test('fast and us multipliers apply to cache writes and reads too', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ model: 'claude-opus-5-5', ts: ago(90), w5: 1e6, w1: 1e6, read: 1e6, speed: 'fast' }),
+    entry({ model: 'claude-opus-5', ts: ago(80), w5: 1e6, w1: 1e6, read: 1e6, geo: 'us' }),
+  ]);
+  const r = report(d);
+  near(r.byModel['claude-opus-5-5'].mainUsd, (5 + 8 + 0.2) * 2);
+  near(r.byModel['claude-opus-5'].mainUsd, (6.25 + 10 + 0.5) * 1.1);
+});
+
+test('runs when invoked through a symlink', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
+  const link = join(tmp(), 'cost-report-link.mjs');
+  symlinkSync(CLI, link);
+  const r = spawnSync(process.execPath, [link, '--dir', d, '--json'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  near(JSON.parse(r.stdout).totalUsd, 5);
 });
 
 test('skips <synthetic>', () => {
@@ -244,7 +285,7 @@ async function waitFor(fn, ms = 10000) {
 }
 
 test('hook: no state or stale state claims first, spawns the scan detached, and returns fast', async () => {
-  for (const setup of [() => {}, (cfg) => seed(cfg, { checkedAt: ago(8 * 86400) })]) {
+  for (const setup of [() => {}, (cfg) => seed(cfg, { checkedAt: ago(8 * 86400), avoidableUsd: 2 })]) {
     const cfg = tmp();
     put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
     setup(cfg);
@@ -257,6 +298,51 @@ test('hook: no state or stale state claims first, spawns the scan detached, and 
     });
     assert.ok(done, 'child wrote the scan result');
   }
+});
+
+test('hook: parallel startups spawn exactly one scan, and the scan releases the lock', async () => {
+  const cfg = tmp();
+  put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
+  const log = join(cfg, 'spawns.log');
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOUSE_COST_CHECK_PROJECTS_DIR: join(cfg, 'projects'), HOUSE_COST_CHECK_SPAWN_LOG: log };
+  delete env.HOUSE_COST_CHECK;
+  await Promise.all(Array.from({ length: 8 }, () => new Promise((resolve) => {
+    const c = spawn(process.execPath, [HOOK], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+    c.on('close', resolve);
+    c.stdin.end(JSON.stringify({ source: 'startup' }));
+  })));
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
+  const lock = join(cfg, 'house', 'cost-check.lock');
+  const done = await waitFor(() => {
+    try { return JSON.parse(readFileSync(stateFile(cfg), 'utf8')).totalUsd === 5 && !existsSync(lock); } catch { return false; }
+  });
+  assert.ok(done, 'scan wrote its result and removed the lock');
+});
+
+test('hook: a fresh lock blocks a spawn and a lock older than an hour does not', () => {
+  const cfg = tmp();
+  const lock = join(cfg, 'house', 'cost-check.lock');
+  mkdirSync(join(cfg, 'house'), { recursive: true });
+  writeFileSync(lock, '1');
+  const log = join(cfg, 'spawns.log');
+  hook(cfg, { env: { HOUSE_COST_CHECK_SPAWN_LOG: log } });
+  assert.ok(!existsSync(log), 'fresh lock: no spawn');
+  const old = new Date(Date.now() - 2 * 3600000);
+  utimesSync(lock, old, old);
+  hook(cfg, { env: { HOUSE_COST_CHECK_SPAWN_LOG: log } });
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
+});
+
+test('hook: an unshown over-threshold result is shown before a rescan replaces it', async () => {
+  const cfg = tmp();
+  put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
+  seed(cfg, { checkedAt: ago(8 * 86400) });
+  const { out } = hook(cfg);
+  assert.match(out.systemMessage, /\$35 of \$120/);
+  const done = await waitFor(() => {
+    try { return JSON.parse(readFileSync(stateFile(cfg), 'utf8')).totalUsd === 5; } catch { return false; }
+  });
+  assert.ok(done, 'rescan still ran');
 });
 
 test('hook: malformed or wrong-shaped state never fails and is treated as no state', () => {

@@ -9,7 +9,7 @@
 //
 // --state writes a small JSON summary atomically and prints nothing; the
 // SessionStart hook uses it to run the scan detached once a week.
-import { createReadStream, readdirSync, statSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
+import { createReadStream, readdirSync, statSync, mkdirSync, writeFileSync, renameSync, realpathSync, unlinkSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { join, relative, dirname, sep } from 'node:path';
@@ -193,6 +193,8 @@ async function main() {
     const tmp = `${o.state}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify(out) + '\n');
     renameSync(tmp, o.state);
+    // Release the hook's spawn lock (see session-start.mjs) now the result is in place.
+    try { unlinkSync(join(dirname(o.state), 'cost-check.lock')); } catch { /* none */ }
   } else if (o.json) {
     process.stdout.write(JSON.stringify({ since: o.since, ...d }, null, 2) + '\n');
   } else {
@@ -200,6 +202,10 @@ async function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+function isMain() {
+  try { return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]); } catch { return false; }
+}
+
+if (isMain()) {
   main().catch((err) => { process.stderr.write(`cost-report: ${err.message}\n${USAGE}`); process.exit(1); });
 }
