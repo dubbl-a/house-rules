@@ -62,7 +62,7 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   the session can already read. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
   --install` (`scripts/house/`, else the plugin's claude-code module files). Before launch, ask the verify
   setting with the depth, each with its agent count: all claims (`budget.maxVerifyClaims: 500`) or a cap.
-  After, `unverified` is empty and `stats.claimsExtracted` = `claimsVerified` (early return: `claims` = `verified`).
+  After, `unverified` is empty and `stats.claimsExtracted` = `claimsVerified` (early return with `claims` above 0: `claims` = `verified`).
 - Subagents report back and never spawn subagents. Roster agents cannot; any other, forks and
   built-in general-purpose included, can by default, so its brief forbids it under DO NOT.
 
