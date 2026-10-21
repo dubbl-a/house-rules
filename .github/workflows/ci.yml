@@ -19,6 +19,9 @@ jobs:
       - run: npm test
       - run: npm run check:traceability
       - run: bash tests/hooks/run.sh
+      # Wall time, so it runs alone: the cases above bound CPU time and pass
+      # under load, which lets a sleep or a lock wait in the guard through.
+      - run: npm run test:hooks:wall
       # The runner's git is modern, so this is where the reference-transaction
       # cases actually run; they print SKIP on a git older than 2.28.
       - run: npm run test:githooks
