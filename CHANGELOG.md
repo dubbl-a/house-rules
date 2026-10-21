@@ -6,9 +6,17 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.6] - 2026-10-21
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house` is on PATH in a session with the plugin enabled, and the cost report warns that subagent usage logged before Claude Code 2.1.307 can be a placeholder. Upgrading from 0.22.5: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`.
+
 ### Added
 
 - `plugins/house/bin/house`, a wrapper that runs `scripts/house` with the same arguments and exit code, so `house <command>` is on PATH in a Claude Code session with the plugin enabled. A plugin distributed through claude.ai organization settings may not carry a top-level `bin/`; this one is distributed through its public GitHub marketplace.
+
+### Changed
+
+- The cost report's caveats add that subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses, so its subagent column can be wrong for a window that reaches back past the upgrade (Claude Code 2.1.307 fixed the placeholder; harness addendum of 2026-10-21).
 
 ## [0.22.5] - 2026-10-21
 

@@ -199,6 +199,7 @@ export function formatText(d, sinceLabel) {
   L.push('', 'Caveats:',
     '  - List price, not your bill: on a plan you pay a subscription, not these dollars.',
     '  - Output tokens can be undercounted: a per-step output_tokens can be a placeholder.',
+    '  - Subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses, so the subagent column can be wrong.',
     `  - Prices dated ${PRICES_DATE}, from ${PRICES_SOURCE}`,
     '', 'Next:',
     '  /session-report                  where tokens went (cache breaks, subagents, skills)',
