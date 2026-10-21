@@ -24,6 +24,7 @@ before merging.
 `npm run verify` runs `npm ls --all`, then `npm test`, `npm run test:hooks`, and
 `npm run test:githooks` side by side through `scripts/verify-suites.mjs` (each suite's output is
 printed whole when all three finish, and a failure names its suite), then chains
+`npm run test:hooks:wall` (the guard's wall-clock check, which runs alone because load would fail it),
 `npm run check:traceability`, `npm run check:house`, `npm run test:smoke`, and
 `npm run check:plugin`. The hook suites run their cases in parallel parts; the header of
 `tests/hooks/run.sh` says how to run one part, or all in one process. The last needs the
