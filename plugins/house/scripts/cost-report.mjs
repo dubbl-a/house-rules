@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Cost report over Claude Code transcripts: list-price cost split by model
-// (main thread vs subagent) and the cause of each main-thread cache rebuild.
+// (main thread vs subagent), the cause of each main-thread cache rebuild, how
+// much fast mode, US-only inference and legacy models added to the price,
+// main-thread requests by context size, and the idle 5m-1h rebuilds a
+// one-hour cache would likely have saved.
 // Other tools cover the rest: /session-report for where tokens went,
 // `npx -y @rixtay/mcp-usage` for MCP servers never called, /usage for plan use.
 //
@@ -8,7 +11,9 @@
 //                        [--project <substring>] [--json] [--state <file>]
 //
 // --state writes a small JSON summary atomically and prints nothing; the
-// SessionStart hook uses it to run the scan detached once a week.
+// SessionStart hook uses it to run the scan detached once a week. The hook's
+// spawn lock is removed only after the result is written, so a scan that dies
+// is retried once the lock goes stale.
 import { createReadStream, readdirSync, statSync, mkdirSync, writeFileSync, renameSync, realpathSync, unlinkSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
@@ -34,21 +39,26 @@ const HAIKU_LONG = { model: 'claude-haiku-5-5', over: 100000, prices: [0.5, 0.62
 // Fast mode is 2x for these models (input and output; cache scaled the same, an estimate).
 const FAST_FACTOR = { 'claude-opus-5-5': 2, 'claude-opus-5': 2, 'claude-opus-4-8': 2 };
 const US_FACTOR = 1.1;
+// Current successor of each legacy model, for the legacy-model premium.
+const SUCCESSOR = { 'claude-opus-5': 'claude-opus-5-5', 'claude-opus-4-8': 'claude-opus-5-5', 'claude-fable-5': 'claude-fable-5-1', 'claude-sonnet-5': 'claude-sonnet-5-5' };
+const BANDS = [['under 200k', 0], ['200k-500k', 200000], ['500k and over', 500000]];
 const REBUILD_TOKENS = 50000;
 const CAUSES = ['model switch', 'idle >1h', 'idle 5m-1h', 'no idle gap'];
 const AVOIDABLE = ['idle >1h', 'idle 5m-1h', 'model switch'];
 
-function priceRow(r) {
-  let p = PRICES[r.model];
+// `drop` removes one price factor: 'fast', 'us' or 'legacy' (price at the successor model).
+function priceRow(r, drop) {
+  const model = (drop === 'legacy' && SUCCESSOR[r.model]) || r.model;
+  let p = PRICES[model];
   if (!p) return null;
-  if (r.model === HAIKU_LONG.model && r.inTok + r.w5 + r.w1 + r.read > HAIKU_LONG.over) p = HAIKU_LONG.prices;
-  let f = r.speed === 'fast' ? FAST_FACTOR[r.model] || 1 : 1;
-  if (r.geo === 'us') f *= US_FACTOR;
+  if (model === HAIKU_LONG.model && r.inTok + r.w5 + r.w1 + r.read > HAIKU_LONG.over) p = HAIKU_LONG.prices;
+  let f = r.speed === 'fast' && drop !== 'fast' ? FAST_FACTOR[model] || 1 : 1;
+  if (r.geo === 'us' && drop !== 'us') f *= US_FACTOR;
   return p.map((x) => x * f);
 }
 
-function costOf(r) {
-  const p = priceRow(r);
+function costOf(r, drop) {
+  const p = priceRow(r, drop);
   return p ? (r.inTok * p[0] + r.w5 * p[1] + r.w1 * p[2] + r.read * p[3] + r.out * p[4]) / 1e6 : 0;
 }
 
@@ -110,10 +120,20 @@ export async function scan({ dir, sinceMs, project } = {}) {
   const recs = [...seen.values()];
   const byModel = {};
   const unpriced = new Set();
+  const premiums = { fastUsd: 0, usOnlyUsd: 0, legacyModelUsd: 0 };
+  const contextBands = Object.fromEntries(BANDS.map(([k]) => [k, { requests: 0, usd: 0 }]));
   let totalUsd = 0, fastRequests = 0;
   for (const r of recs) {
     if (!(r.ts >= sinceMs)) continue;
     const c = costOf(r);
+    premiums.fastUsd += c - costOf(r, 'fast');
+    premiums.usOnlyUsd += c - costOf(r, 'us');
+    premiums.legacyModelUsd += c - costOf(r, 'legacy');
+    if (!r.sub) {
+      const band = contextBands[BANDS.filter(([, min]) => r.inTok + r.read + r.w5 + r.w1 >= min).pop()[0]];
+      band.requests++;
+      band.usd += c;
+    }
     if (!PRICES[r.model]) unpriced.add(r.model);
     if (r.speed === 'fast' && FAST_FACTOR[r.model]) fastRequests++;
     const b = (byModel[r.model] ||= { mainUsd: 0, subUsd: 0, requests: 0 });
@@ -125,6 +145,7 @@ export async function scan({ dir, sinceMs, project } = {}) {
   // is not the first in its file. Sequencing uses every request in the file;
   // only those inside the window are counted.
   const byCause = Object.fromEntries(CAUSES.map((k) => [k, { count: 0, usd: 0 }]));
+  const shortTtl = { count: 0, usd: 0 };
   const files = new Map();
   for (const r of recs) if (!r.sub && Number.isFinite(r.ts)) (files.get(r.file) || files.set(r.file, []).get(r.file)).push(r);
   for (const list of files.values()) {
@@ -136,11 +157,15 @@ export async function scan({ dir, sinceMs, project } = {}) {
       const why = prev.model !== r.model ? 'model switch' : dt > 3600 ? 'idle >1h' : dt > 300 ? 'idle 5m-1h' : 'no idle gap';
       byCause[why].count++;
       byCause[why].usd += writeCostOf(r);
+      if (why === 'idle 5m-1h' && r.w5 > r.w1) {
+        shortTtl.count++;
+        shortTtl.usd += writeCostOf(r);
+      }
     }
   }
   const avoidableCount = AVOIDABLE.reduce((s, k) => s + byCause[k].count, 0);
   const avoidableUsd = AVOIDABLE.reduce((s, k) => s + byCause[k].usd, 0);
-  return { totalUsd, avoidableUsd, avoidableCount, byCause, byModel, unpriced: [...unpriced].sort(), fastRequests };
+  return { totalUsd, avoidableUsd, avoidableCount, byCause, byModel, unpriced: [...unpriced].sort(), fastRequests, premiums, contextBands, shortTtl };
 }
 
 const usd = (n) => '$' + n.toFixed(2);
@@ -152,9 +177,22 @@ export function formatText(d, sinceLabel) {
   if (!models.length) L.push('  (no requests in the window)');
   if (d.unpriced.length) L.push(`Unpriced models (counted as $0): ${d.unpriced.join(', ')}`);
   if (d.fastRequests) L.push(`Fast-mode requests priced at 2x (estimate): ${d.fastRequests}`);
+  const prem = d.premiums;
+  if (prem.fastUsd > 0 || prem.usOnlyUsd > 0 || prem.legacyModelUsd > 0) {
+    L.push('', 'Price premiums (extra list price over standard speed, global geo and the current model):',
+      `  fast mode: ${usd(prem.fastUsd)}`, `  US-only inference: ${usd(prem.usOnlyUsd)}`, `  legacy models: ${usd(prem.legacyModelUsd)}`);
+  }
+  if (Object.values(d.contextBands).some((b) => b.requests)) {
+    L.push('', 'Main-thread requests by context size (input + cache read + cache write), requests / cost:');
+    for (const [k] of BANDS) L.push(`  ${k}: ${d.contextBands[k].requests} / ${usd(d.contextBands[k].usd)}`);
+  }
   L.push('', `Main-thread cache rebuilds (over ${REBUILD_TOKENS.toLocaleString('en-US')} tokens written), by cause, priced at the cache-write rate:`);
   for (const k of CAUSES) L.push(`  ${k}: ${d.byCause[k].count} (${usd(d.byCause[k].usd)})`);
   L.push(`Avoidable rebuilds (idle >1h + idle 5m-1h + model switch): ${d.avoidableCount} (${usd(d.avoidableUsd)})`);
+  if (d.shortTtl.count) {
+    L.push(`Of the idle 5m-1h rebuilds, ${d.shortTtl.count} (${usd(d.shortTtl.usd)}) wrote mostly to the 5-minute cache and would likely have been cache hits with a one-hour cache.`,
+      '  promptCacheTtl: "1h" (Claude Code 2.1.242+) sets it; one-hour writes cost more per token (2x input vs 1.25x), so it pays only when such gaps are common.');
+  }
   L.push('', 'Caveats:',
     '  - List price, not your bill: on a plan you pay a subscription, not these dollars.',
     '  - Output tokens can be undercounted: a per-step output_tokens can be a placeholder.',
@@ -188,7 +226,7 @@ async function main() {
   const now = Date.now();
   const d = await scan({ dir: o.dir, sinceMs: parseSince(o.since, now), project: o.project });
   if (o.state) {
-    const out = { checkedAt: new Date(now).toISOString(), since: o.since, totalUsd: d.totalUsd, avoidableUsd: d.avoidableUsd, avoidableCount: d.avoidableCount, byCause: d.byCause, byModel: d.byModel };
+    const out = { checkedAt: new Date(now).toISOString(), since: o.since, totalUsd: d.totalUsd, avoidableUsd: d.avoidableUsd, avoidableCount: d.avoidableCount, byCause: d.byCause, byModel: d.byModel, premiums: d.premiums, contextBands: d.contextBands, shortTtl: d.shortTtl };
     mkdirSync(dirname(o.state), { recursive: true });
     const tmp = `${o.state}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify(out) + '\n');
