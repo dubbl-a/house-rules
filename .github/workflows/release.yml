@@ -122,6 +122,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -136,7 +137,17 @@ jobs:
             *) echo "could not list the remote tags (exit ${RC})"
                exit 1 ;;
           esac
-          gh release create "v${VERSION}" --verify-tag --title "v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
+          # The Latest flag is explicit: a re-run of an older run must not take
+          # Latest from a newer release, or the sync legs (which skip when
+          # releases/latest is not their version) would sync the older one. A
+          # failed fetch or an unreadable answer fails the step.
+          RELEASES=$(gh api "repos/${REPO}/releases" --paginate --slurp)
+          if ! LATEST=$(printf '%s' "$RELEASES" | node scripts/release-latest.mjs "$VERSION"); then
+            echo "could not decide whether v${VERSION} is the latest release"
+            exit 1
+          fi
+          echo "make v${VERSION} latest: ${LATEST}"
+          gh release create "v${VERSION}" --verify-tag --latest="${LATEST}" --title "v${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"
           echo "released=true" >> "$GITHUB_OUTPUT"
   # A held release leaves a note in the issue list, so it is not forgotten.
   hold-note:
