@@ -274,6 +274,8 @@ function globToRegExp(glob) {
       re += '[^/]*'; i += 1; continue;
     }
     if (c === '?') { re += '[^/]'; i += 1; continue; }
+    // `\x` is a literal x, as in Claude Code's `paths:` globs (`\[` for a literal bracket).
+    if (c === '\\' && i + 1 < pat.length) { re += escapeRegExp(pat[i + 1]); i += 2; continue; }
     re += escapeRegExp(c); i += 1;
   }
   return new RegExp(`^${re}$`);
@@ -1741,6 +1743,7 @@ const SITE_DOC_EXT = /\.mdx?$/;
 // {roots: [{root, source, files}], unbounded: [source]}: a root that resolves
 // to the repo root or outside it cannot be bounded and is reported, not scanned.
 const SITE_SKIP_SEGS = new Set(['node_modules', 'vendor', 'third_party']);
+const DB_TEST_SEGS = new Set(['tests', 'test', '__tests__', 'spec', 'fixtures', '__fixtures__', 'testdata']);
 function detectSiteRoots(ctx) {
   const skipSeg = (seg) => seg.startsWith('.') || SITE_SKIP_SEGS.has(seg);
   const files = [...new Set([...ctx.allTracked, ...ctx.untracked])];
@@ -2737,7 +2740,12 @@ function checkManifest(ctx) {
   // rest. Warn once per top-most tracked `db` or `migrations` directory with a
   // tracked file the resolved paths miss, naming the dbGlobs entry that would
   // cover it. Directories under a dot segment or a vendored one are not the
-  // repo's own schema and are skipped, as the site-root scan skips them.
+  // repo's own schema and are skipped, as the site-root scan skips them, and
+  // so are those under a test-like segment (#388: tests/fixtures/migrations
+  // holds sample data, not the repo's schema). The suggested entry escapes
+  // each glob character with a backslash (`app\[1\]/db/**`), the form Claude
+  // Code's `paths:` globs read as a literal bracket; globToRegExp reads it the
+  // same way, so the escaped entry also silences this warning.
   const dbEntry = isPlainObject(d.modules) && isPlainObject(d.modules.database) ? d.modules.database : null;
   if (dbEntry && dbEntry.enabled === true && Object.prototype.hasOwnProperty.call(MODULE_FACTS, 'database')) {
     const dbFacts = MODULE_FACTS.database;
@@ -2748,14 +2756,14 @@ function checkManifest(ctx) {
       const segs = f.split('/').slice(0, -1);
       if (segs.some((seg) => seg.startsWith('.') || SITE_SKIP_SEGS.has(seg))) continue;
       const at = segs.findIndex((seg) => seg === 'db' || seg === 'migrations');
-      if (at < 0) continue;
+      if (at < 0 || segs.slice(0, at).some((seg) => DB_TEST_SEGS.has(seg))) continue;
       const dir = segs.slice(0, at + 1).join('/');
       if (!dbRes.some((re) => re.test(f))) dbDirs.set(dir, true);
       else if (!dbDirs.has(dir)) dbDirs.set(dir, false);
     }
     for (const [dir, uncovered] of dbDirs) {
       if (!uncovered) continue;
-      warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`database\` is enabled, but \`${dir}/\` holds tracked files its rule paths do not match, so the database rule never loads on them: add \`${dir}/**\` to modules.database.config.dbGlobs (keep the default entries you still want), then re-render`));
+      warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`database\` is enabled, but \`${dir}/\` holds tracked files its rule paths do not match, so the database rule never loads on them: add \`${dir.replace(/[\[\]*?{}\\]/g, '\\$&')}/**\` to modules.database.config.dbGlobs (keep the default entries you still want), then re-render`));
     }
   }
 

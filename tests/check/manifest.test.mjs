@@ -903,3 +903,30 @@ test('#361 manifest: a root db/ match plus a nested migrations/ warns for the ne
   assert.match(w[0].message, /`sub\/migrations\/`/);
   assert.match(w[0].message, /`sub\/migrations\/\*\*`/);
 });
+
+// #388: test fixture directories are not the repo's own schema, a glob
+// character in the directory name is escaped in the suggestion, and the
+// escaped entry silences the warning.
+test('#388 manifest: a db/ or migrations/ under a test-like segment is silent', () => {
+  const dir = sandbox({
+    'house.json': dbHouse({}),
+    'tests/fixtures/migrations/1.sql': 'select 1;\n',
+    'app/test/db/x.sql': 'select 1;\n',
+    'app/__tests__/db/x.sql': 'select 1;\n',
+    'spec/db/x.sql': 'select 1;\n',
+    'lib/testdata/db/x.sql': 'select 1;\n',
+    'lib/__fixtures__/migrations/1.sql': 'select 1;\n',
+  });
+  const res = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
+  assert.equal(dbWarnings(res).length, 0, res.out);
+});
+
+test('#388 manifest: a glob character in the directory name is escaped in the dbGlobs suggestion, and the escaped entry silences it', () => {
+  const files = { 'app[1]/db/x.sql': 'select 1;\n' };
+  const w = dbWarnings(run(sandbox({ 'house.json': dbHouse({}), ...files }), ['--only=manifest', '--json'], NO_PLUGIN));
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.ok(w[0].message.includes('`app[1]/db/`'), w[0].message);
+  assert.ok(w[0].message.includes('`app\\[1\\]/db/**`'), w[0].message);
+  const dir = sandbox({ 'house.json': dbHouse({ dbGlobs: ['db/**', 'app\\[1\\]/db/**'] }), ...files });
+  assert.equal(dbWarnings(run(dir, ['--only=manifest', '--json'], NO_PLUGIN)).length, 0);
+});

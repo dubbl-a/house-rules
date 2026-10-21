@@ -26,7 +26,7 @@
 // Module SOURCES always resolve relative to *this script's own location*,
 // never to the target --repo: <scriptdir>/../modules/*/module.json, each
 // shaped { name, default: "on"|"detect"|"off", rules: [path | {file, paths}],
-// files: [...], configSlots: [...], defaultPaths: [...], detectPaths?: [...],
+// files: [...], configSlots: [...], defaultPaths: [...], detectPaths?: [...], detectNestedDirs?: [...],
 // atAdoption?: [{ id, step }] }. The plugin version comes from
 // <scriptdir>/../.claude-plugin/plugin.json.
 //
@@ -96,6 +96,8 @@ function globToRegExp(glob) {
       re += '[^/]*'; i += 1; continue;
     }
     if (c === '?') { re += '[^/]'; i += 1; continue; }
+    // `\x` is a literal x, as in Claude Code's `paths:` globs (`\[` for a literal bracket).
+    if (c === '\\' && i + 1 < pat.length) { re += escapeRegExp(pat[i + 1]); i += 2; continue; }
     re += escapeRegExp(c); i += 1;
   }
   return new RegExp(`^${re}$`);
@@ -594,6 +596,29 @@ function detectPathHit(repoRoot, p) {
 function detectPathMatch(repoRoot, json) {
   for (const p of arr(json && json.detectPaths)) {
     if (typeof p === 'string' && p && detectPathHit(repoRoot, p)) return p;
+  }
+  return detectNestedMatch(repoRoot, json);
+}
+
+// #388: detectPaths only sees the repo root. A module may also list
+// detectNestedDirs, directory names that count wherever they sit below the
+// root (the database module's db and migrations), found among tracked files.
+// Dot and vendored segments are skipped, as are test-like ones above the
+// directory (tests/fixtures/migrations is sample data); the checker's database
+// warning skips the same. Returns the first such directory as `app/db/`, or
+// null. Detection runs here only, at init and render; the checker's own
+// missing-module warning still reads the root detectPaths from the lock.
+const NESTED_SKIP_SEGS = new Set(['node_modules', 'vendor', 'third_party']);
+const NESTED_TEST_SEGS = new Set(['tests', 'test', '__tests__', 'spec', 'fixtures', '__fixtures__', 'testdata']);
+function detectNestedMatch(repoRoot, json) {
+  const names = arr(json && json.detectNestedDirs).filter((n) => typeof n === 'string' && n);
+  if (!names.length) return null;
+  for (const f of gitLsFiles(repoRoot)) {
+    const segs = f.split('/').slice(0, -1);
+    if (segs.some((seg) => seg.startsWith('.') || NESTED_SKIP_SEGS.has(seg))) continue;
+    const at = segs.findIndex((seg) => names.includes(seg));
+    if (at < 0 || segs.slice(0, at).some((seg) => NESTED_TEST_SEGS.has(seg))) continue;
+    return `${segs.slice(0, at + 1).join('/')}/`;
   }
   return null;
 }
