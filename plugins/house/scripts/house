@@ -3813,10 +3813,10 @@ async function cmdUpgrade(rest) {
   // The installed version comes from Claude Code's own record, not the loaded plugin copy. A
   // project or local install is recorded per repo (projectPath), so it must match this repo.
   const realOrNull = (p) => { try { return realpathSync(p); } catch { return null; } };
-  const installedRecord = () => {
+  const installedRecord = (sc = scope) => {
     let recs = [];
     try { recs = JSON.parse(readFileSync(installedFile, 'utf8')).plugins[HOUSE_PLUGIN_KEY].filter((e) => isPlainObject(e) && typeof e.version === 'string' && e.version); } catch { /* none */ }
-    return recs.find((e) => e.scope === scope && (scope === 'user' || (typeof e.projectPath === 'string' && realOrNull(e.projectPath) !== null && realOrNull(e.projectPath) === realOrNull(repoRoot)))) || null;
+    return recs.find((e) => e.scope === sc && (sc === 'user' || (typeof e.projectPath === 'string' && realOrNull(e.projectPath) !== null && realOrNull(e.projectPath) === realOrNull(repoRoot)))) || null;
   };
   const knownRefNow = () => {
     try {
@@ -3826,6 +3826,12 @@ async function cmdUpgrade(rest) {
     } catch { return undefined; }
   };
   const rec = installedRecord();
+  if (!rec) {
+    const elsewhere = ['user', 'project', 'local'].find((sc) => sc !== scope && installedRecord(sc));
+    if (elsewhere) {
+      fail(2, `${HOUSE_PLUGIN_KEY} is installed at ${elsewhere} scope, but the ${HOUSE_MARKETPLACE_REPO} marketplace entry is in ${m ? m.file : 'no settings file'} (${scope} scope); the two scopes disagree, so there is nothing to upgrade. Install the plugin at ${scope} scope, or move the marketplace entry to ${elsewhere} scope settings, then rerun; nothing changed`);
+    }
+  }
   if (!rec) fail(2, `${HOUSE_PLUGIN_KEY} is not installed at ${scope} scope${scope === 'user' ? '' : ` for ${repoRoot}`} (see ${installedFile}); install it first (see the README), nothing changed`);
   const installed = rec.version;
 

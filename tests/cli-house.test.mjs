@@ -5024,7 +5024,6 @@ test('#364 upgrade: no installed record for the entry\'s scope and repo is "not 
   const other = buildTargetRepo();
   const settingsFile = join(repo, '.claude', 'settings.json');
   for (const records of [
-    [{ scope: 'user', version: '9.9.8' }],
     [{ scope: 'project', projectPath: other, version: '9.9.8' }],
     [{ scope: 'project', version: '9.9.8' }],
     [{ scope: 'project', projectPath: join(repo, 'nowhere'), version: '9.9.8' }],
@@ -5035,6 +5034,25 @@ test('#364 upgrade: no installed record for the entry\'s scope and repo is "not 
     assert.match(r.err, /not installed at project scope/);
     assert.deepEqual(f.calls(), []);
   }
+});
+
+test('#386 upgrade: installed at one scope with the entry at another names both and exits 2', () => {
+  const repo = buildTargetRepo();
+  const settingsFile = join(repo, '.claude', 'settings.json');
+  // Installed at user scope, entry in the repo's project settings.
+  const a = upgradeFixture({ settings: pinnedEntry('v9.9.7'), settingsFile, records: [{ scope: 'user', version: '9.9.8' }] });
+  const ra = a.run(['--repo', repo, '--apply']);
+  assert.equal(ra.code, 2, ra.err);
+  assert.match(ra.err, /installed at user scope, but the .* marketplace entry is in .*settings\.json \(project scope\); the two scopes disagree/);
+  assert.doesNotMatch(ra.err, /is not installed/);
+  assert.deepEqual(a.calls(), []);
+  // The reverse: installed for this repo at project scope, entry in user settings.
+  const repo2 = buildTargetRepo();
+  const b = upgradeFixture({ settings: pinnedEntry('v9.9.7'), records: [{ scope: 'project', projectPath: repo2, version: '9.9.8' }] });
+  const rb = b.run(['--repo', repo2, '--apply']);
+  assert.equal(rb.code, 2, rb.err);
+  assert.match(rb.err, /installed at project scope, but the .* marketplace entry is in .*settings\.json \(user scope\); the two scopes disagree/);
+  assert.deepEqual(b.calls(), []);
 });
 
 test('#364 upgrade: a known_marketplaces ref that is not the target exits 1 with the manual fallback', () => {
