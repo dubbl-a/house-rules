@@ -13,6 +13,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- The orchestration text's model-tier section no longer says a hard build "may go to Opus"; it says to choose a build's tier by what a miss costs (Opus when a miss is expensive to detect or redo, Sonnet when the brief names files and a checkable success condition, Sonnet at high effort before Opus, plan first if the design cannot be stated), because one adopter's Sonnet-pinned builder ran mostly on Opus through explicit `model` overrides (#324). Revisit with #322's rework rates.
 - The em-dash scan now detects websites and knowledge bases by default and scans their Markdown with the README: an mkdocs `docs_dir`, docusaurus `docs/` and `blog/`, a `.vitepress` parent, astro `src/content/`, hugo `content/`, and any `site`, `website`, `wiki`, `handbook` or `kb` directory, at any depth, with one info line per detected root. This widens the default, so an adopter with em dashes in detected site or knowledge-base content gets new findings and can fix them, exclude them with a reason, or turn detection off with `mode: "off"`, `detect: false`, or `"paths": []` under `modules.docs.config.emDash`. Dot directories, `node_modules`, `vendor` and `third_party` are never claimed.
 - The claude-code rule's peer-session section says to launch headless workers with `--name` and a worker prefix, run message-free ones in bare mode, and tell peers once what the workers are named and that they hold no lock (#283).
 
