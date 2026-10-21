@@ -51,7 +51,7 @@ Read directly from Anthropic's Sonnet 5.5 launch post (https://www.anthropic.com
 | Benchmark | Opus 5.5 | Sonnet 5.5 | Notes |
 |---|---|---|---|
 | HLE, with tools | 67.7% | 64.5% | effort not stated in the post |
-| Terminal-Bench 4.0 | 66.4% (xhigh) | 70.6% | |
+| Terminal-Bench 4.0 | 66.4% (xhigh) | 70.6% (max, effort per second-hand relays) | |
 | FrontierCode 1.1 Main | 54.4% | 46.2% (max) | Sonnet scored lower at max than at xhigh; the post's footnote says max ran extra review edits that the benchmark penalizes |
 | CursorBench 4.0 | 57.8% | 55.5% | |
 
