@@ -26,7 +26,7 @@
 // harness reads, and only a JSON object is treated as hook output, so the
 // text is carried under hookSpecificOutput.additionalContext (the field the
 // docs require for Claude Code; a top-level additionalContext is ignored).
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync, unlinkSync, renameSync, linkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,12 +36,24 @@ const WEEK_MS = 7 * 86400000;
 const DEFAULT_THRESHOLD_USD = 10;
 const LOCK_STALE_MS = 3600000;
 
+// Same-directory temp file and rename, so a reader never sees a half-written state.
 function writeState(file, state) {
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(state) + '\n');
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state) + '\n');
+  renameSync(tmp, file);
 }
 
-// True for the one caller that creates the lock; a lock older than an hour is cleared first.
+// Test seam: sleeps for the milliseconds named by an env var (capped at 10 s) so a test can
+// hold one hook between two steps while another runs.
+function pause(name) {
+  const ms = Math.min(Number.parseInt(process.env[name], 10), 10000);
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// True for the one caller that creates the lock. A lock older than an hour is moved aside
+// under a unique name first, so only the caller whose rename succeeds clears it. If that
+// rename caught a lock another hook had just created, it is linked back and this caller loses.
 function takeLock(lock) {
   mkdirSync(dirname(lock), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -52,11 +64,27 @@ function takeLock(lock) {
       if (err.code !== 'EEXIST') return false;
       try {
         if (Date.now() - statSync(lock).mtimeMs < LOCK_STALE_MS) return false;
-        unlinkSync(lock);
+        pause('HOUSE_COST_CHECK_STALE_DELAY_MS');
+        const aside = `${lock}.stale.${process.pid}.${Date.now()}`;
+        renameSync(lock, aside);
+        const fresh = Date.now() - statSync(aside).mtimeMs < LOCK_STALE_MS;
+        if (fresh) {
+          try { linkSync(aside, lock); } catch { /* a newer lock already stands */ }
+        }
+        unlinkSync(aside);
+        if (fresh) return false;
       } catch { return false; }
     }
   }
   return false;
+}
+
+// True when the state file holds no usable checkedAt or the last scan is a week old.
+function scanDue(file) {
+  let state = null;
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch { /* none or malformed: treat as no state */ }
+  const checkedAt = state && typeof state === 'object' ? Date.parse(state.checkedAt) : NaN;
+  return !Number.isFinite(checkedAt) || Date.now() - checkedAt >= WEEK_MS;
 }
 
 // Returns the notice to show, or undefined; spawns the weekly scan when due.
@@ -96,8 +124,17 @@ function costCheck(here) {
   }
   // No claim is written at spawn: a scan that dies leaves no new checkedAt, and the
   // lock (stale after an hour) is what paces the retry.
-  const checkedAt = state ? Date.parse(state.checkedAt) : NaN;
-  if ((!Number.isFinite(checkedAt) || Date.now() - checkedAt >= WEEK_MS) && takeLock(join(dirname(file), 'cost-check.lock'))) {
+  const lock = join(dirname(file), 'cost-check.lock');
+  if (scanDue(file)) {
+    // Test seam: widens the gap between the due check and the lock so a test can land a scan in it.
+    pause('HOUSE_COST_CHECK_LOCK_DELAY_MS');
+    if (!takeLock(lock)) return notice;
+    // A scan that finished after the check above has written its result and freed the
+    // lock, so the lock is ours but nothing is due: re-read before spawning a second scan.
+    if (!scanDue(file)) {
+      try { unlinkSync(lock); } catch { /* already gone */ }
+      return notice;
+    }
     const args = [script, '--since', '7d', '--state', file];
     if (process.env.HOUSE_COST_CHECK_PROJECTS_DIR) args.push('--dir', process.env.HOUSE_COST_CHECK_PROJECTS_DIR);
     // Test seam: lets a test count how many parallel hooks spawned a scan.

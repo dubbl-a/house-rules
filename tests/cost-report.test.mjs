@@ -319,6 +319,25 @@ test('hook: parallel startups spawn exactly one scan, and the scan releases the 
   assert.ok(done, 'scan wrote its result and removed the lock');
 });
 
+test('hook: a scan that finishes between the due check and the lock acquire is not repeated', async () => {
+  const cfg = tmp();
+  const log = join(cfg, 'spawns.log');
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOUSE_COST_CHECK_PROJECTS_DIR: join(cfg, 'projects'), HOUSE_COST_CHECK_SPAWN_LOG: log, HOUSE_COST_CHECK_LOCK_DELAY_MS: '2000' };
+  delete env.HOUSE_COST_CHECK;
+  const closed = new Promise((resolve) => {
+    const c = spawn(process.execPath, [HOOK], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+    c.on('close', resolve);
+    c.stdin.end(JSON.stringify({ source: 'startup' }));
+  });
+  // The hook has read no state and sleeps before taking the lock; a scan finishing now
+  // leaves a fresh result and no lock, exactly as the real scan does.
+  await new Promise((r) => setTimeout(r, 700));
+  seed(cfg, { avoidableUsd: 2 });
+  await closed;
+  assert.ok(!existsSync(log), 'no second scan after a fresh result landed');
+  assert.ok(!existsSync(join(cfg, 'house', 'cost-check.lock')), 'the lock the hook took is released');
+});
+
 test('hook: a fresh lock blocks a spawn and a lock older than an hour does not', () => {
   const cfg = tmp();
   const lock = join(cfg, 'house', 'cost-check.lock');
@@ -331,6 +350,47 @@ test('hook: a fresh lock blocks a spawn and a lock older than an hour does not',
   utimesSync(lock, old, old);
   hook(cfg, { env: { HOUSE_COST_CHECK_SPAWN_LOG: log } });
   assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
+});
+
+test('hook: two hooks that both judge a lock stale do not each take it', async () => {
+  // A copy of the hook beside a stub scan that outlives the test body, so the scan never
+  // finishes and removes the lock mid-test.
+  const plugin = tmp();
+  mkdirSync(join(plugin, 'hooks'));
+  mkdirSync(join(plugin, 'scripts'));
+  writeFileSync(join(plugin, 'hooks', 'session-start.mjs'), readFileSync(HOOK));
+  writeFileSync(join(plugin, 'scripts', 'cost-report.mjs'), 'setTimeout(() => {}, 4000);\n');
+  const cfg = tmp();
+  const lock = join(cfg, 'house', 'cost-check.lock');
+  mkdirSync(join(cfg, 'house'), { recursive: true });
+  writeFileSync(lock, '1');
+  const old = new Date(Date.now() - 2 * 3600000);
+  utimesSync(lock, old, old);
+  const log = join(cfg, 'spawns.log');
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOUSE_COST_CHECK_SPAWN_LOG: log };
+  delete env.HOUSE_COST_CHECK;
+  const run = (extra) => new Promise((resolve) => {
+    const c = spawn(process.execPath, [join(plugin, 'hooks', 'session-start.mjs')], { env: { ...env, ...extra }, stdio: ['pipe', 'ignore', 'ignore'] });
+    c.on('close', resolve);
+    c.stdin.end(JSON.stringify({ source: 'startup' }));
+  });
+  // The first hook judges the lock stale and sleeps; the second takes it meanwhile; the
+  // first then wakes holding a stale judgement about a lock that is now fresh.
+  const first = run({ HOUSE_COST_CHECK_STALE_DELAY_MS: '2000' });
+  await new Promise((r) => setTimeout(r, 600));
+  await run({});
+  await first;
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
+  assert.ok(existsSync(lock), "the second hook's fresh lock is still in place");
+  assert.deepEqual(readdirSync(join(cfg, 'house')), ['cost-check.lock']);
+});
+
+test('hook: the shown-at write leaves no temp file and a whole state file', () => {
+  const cfg = tmp();
+  seed(cfg);
+  assert.match(hook(cfg).out.systemMessage, /\$35 of \$120/);
+  assert.deepEqual(readdirSync(join(cfg, 'house')).filter((f) => f.endsWith('.tmp')), []);
+  assert.ok(JSON.parse(readFileSync(stateFile(cfg), 'utf8')).shownAt);
 });
 
 test('hook: an unshown over-threshold result is shown before a rescan replaces it', async () => {
