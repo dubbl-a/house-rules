@@ -280,7 +280,10 @@ directory added with `/add-dir` or a Read allow rule
 verify slots on two of five angles, because the native selection sorts every claim globally by
 importance and source quality and takes the top N. The fork keeps that sort as the order within
 each angle (a claim's angle is the search angle that found its source) and deals the slots
-round-robin across angles. The cap also scales with the question: `minPerAngle` slots per angle
+round-robin across angles. Since 2026-10-21 (#355) a capped run also verifies central claims
+first: the slots fill tier by tier (all central, then supporting, then tangential) and are dealt
+round-robin across angles inside each tier, so a tangential claim never takes a slot ahead of a
+central one from another angle. The cap also scales with the question: `minPerAngle` slots per angle
 that produced claims, clamped to `maxVerifyCeiling`, so the depth log states the ceiling-based
 worst case; an explicit `budget.maxVerifyClaims` lifts the ceiling to match, so a request above
 it is honored rather than clamped. A run that still drops claims returns a `verifyNote` naming how

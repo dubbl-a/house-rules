@@ -1149,6 +1149,48 @@ test('deep-research check: pickRoundRobin with cap K is a prefix of the selectio
   assert.equal(new Set(full).size, 40);
 });
 
+const TIER_RANK = { central: 0, supporting: 1, tangential: 2 };
+const tierClaims = [
+  { id: 'a1', angle: 'A', importance: 'tangential' }, { id: 'a2', angle: 'A', importance: 'central' },
+  { id: 'a3', angle: 'A', importance: 'central' }, { id: 'a4', angle: 'A', importance: 'supporting' },
+  { id: 'b1', angle: 'B', importance: 'central' }, { id: 'b2', angle: 'B', importance: 'tangential' },
+  { id: 'c1', angle: 'C', importance: 'supporting' }, { id: 'c2', angle: 'C', importance: 'supporting' },
+  { id: 'c3', angle: 'C', importance: 'central' }, { id: 'd1', angle: 'D', importance: 'supporting' },
+].sort((x, y) => TIER_RANK[x.importance] - TIER_RANK[y.importance]);
+
+test('deep-research check: pickRoundRobin with rankOf gives a central claim from one angle the slot ahead of a tangential claim from another', async () => {
+  const { pickRoundRobin } = await import(pathToFileURL(DR_CHECK).href);
+  const claims = [
+    { id: 'b1', angle: 'B', importance: 'tangential' },
+    { id: 'a1', angle: 'A', importance: 'central' }, { id: 'a2', angle: 'A', importance: 'central' },
+  ];
+  const pick = (cap) => pickRoundRobin(claims, (c) => c.angle, cap, (c) => TIER_RANK[c.importance]).map((c) => c.id);
+  assert.deepEqual(pick(1), ['a1']);
+  assert.deepEqual(pick(2), ['a1', 'a2'], 'both central claims beat the tangential one from the other angle');
+  assert.deepEqual(pick(3), ['a1', 'a2', 'b1']);
+});
+
+test('deep-research check: pickRoundRobin with rankOf deals each tier round-robin across angles, in the order given', async () => {
+  const { pickRoundRobin } = await import(pathToFileURL(DR_CHECK).href);
+  const pick = (cap) => pickRoundRobin(tierClaims, (c) => c.angle, cap, (c) => TIER_RANK[c.importance]).map((c) => c.id);
+  // central: A has a2 a3, B has b1, C has c3; supporting: A a4, C c1 c2, D d1; tangential: A a1, B b2.
+  assert.deepEqual(pick(3), ['a2', 'b1', 'c3'], 'three central claims, one per angle');
+  assert.deepEqual(pick(100), ['a2', 'b1', 'c3', 'a3', 'a4', 'c1', 'd1', 'c2', 'a1', 'b2'], 'each tier balanced across angles, none twice');
+  assert.deepEqual(pick(0), []);
+});
+
+test('deep-research check: pickRoundRobin with rankOf keeps the prefix property across caps, so an extended run keeps its verify calls', async () => {
+  const { pickRoundRobin } = await import(pathToFileURL(DR_CHECK).href);
+  const pick = (cap) => pickRoundRobin(tierClaims, (c) => c.angle, cap, (c) => TIER_RANK[c.importance]).map((c) => c.id);
+  for (let k = 0; k <= tierClaims.length; k++) {
+    for (const n of [1, 2, 5]) {
+      assert.deepEqual(pick(k + n).slice(0, pick(k).length), pick(k), `cap ${k} is a prefix of cap ${k + n}`);
+    }
+  }
+  assert.equal(new Set(pick(100)).size, tierClaims.length);
+  assert.ok(pick(4).every((id) => tierClaims.find((c) => c.id === id).importance === 'central'), 'the four central claims fill the first four slots at every cap up to 4');
+});
+
 test('deep-research check: verifyCap lets the preset win for few angles, the per-angle floor win for many, and the ceiling clamp both', async () => {
   const { verifyCap } = await import(pathToFileURL(DR_CHECK).href);
   const standard = { maxVerifyClaims: 15, minPerAngle: 3, maxVerifyCeiling: 25 };
@@ -1209,7 +1251,7 @@ test('deep-research check: the rebuilt depth presets carry the per-angle floor a
   assert.equal((fork.match(/VERIFY_NOTE \? \{ verifyNote: VERIFY_NOTE \}/g) || []).length, 3, 'every result after verify carries the note');
 });
 
-test('deep-research check: --rebuild selects verify claims round-robin across angles, not the global top-N', async () => {
+test('deep-research check: --rebuild selects verify claims tier by tier, round-robin across angles inside a tier, not the global top-N', async () => {
   const dir = mktemp('house-dr-');
   const body = fakeNativeBody();
   const bin = fakeBinary(dir, body);
@@ -1219,8 +1261,9 @@ test('deep-research check: --rebuild selects verify claims round-robin across an
   const fork = readFileSync(out, 'utf8');
   assert.ok(!fork.includes('.slice(0, MAX_VERIFY_CLAIMS)'), 'global top-N slice still present');
   assert.match(fork, /function pickRoundRobin\(/);
-  // Run the rebuilt selection block on synthetic sources: angle A holds
-  // every central claim, so a global top-N would give it all three slots.
+  // Run the rebuilt selection block on synthetic sources: angle A holds most
+  // central claims, so a global top-N would give it every slot; the old
+  // angle-only deal gave angle B's tangential claim a slot ahead of central ones.
   const start = fork.indexOf('function pickRoundRobin(');
   const end = fork.indexOf('\n', fork.indexOf('log(VERIFY_NOTE)'));
   const block = fork.slice(start, end);
@@ -1228,7 +1271,7 @@ test('deep-research check: --rebuild selects verify claims round-robin across an
     { angle: 'A', claims: [{ id: 'a1', importance: 'central', sourceQuality: 'primary' }, { id: 'a2', importance: 'central', sourceQuality: 'primary' }] },
     { angle: 'A', claims: [{ id: 'a3', importance: 'central', sourceQuality: 'secondary' }] },
     { angle: 'B', claims: [{ id: 'b1', importance: 'tangential', sourceQuality: 'blog' }, { id: 'b2', importance: 'supporting', sourceQuality: 'blog' }] },
-    { angle: 'C', claims: [{ id: 'c1', importance: 'supporting', sourceQuality: 'forum' }] },
+    { angle: 'C', claims: [{ id: 'c1', importance: 'supporting', sourceQuality: 'forum' }, { id: 'c2', importance: 'central', sourceQuality: 'forum' }] },
   ];
   const select = (budget) => {
     const logs = [];
@@ -1240,14 +1283,24 @@ test('deep-research check: --rebuild selects verify claims round-robin across an
       return { rankedClaims, VERIFY_NOTE }`)(allSources, budget, budget.maxVerifyClaims, 3, { deep: { maxVerifyCeiling: 40 } }, (m) => logs.push(m));
     return { ids: r.rankedClaims.map((c) => c.id), note: r.VERIFY_NOTE, logs };
   };
-  // minPerAngle 1 x 3 angles is below maxVerifyClaims 4, so the cap is 4.
+  // minPerAngle 1 x 3 angles is below maxVerifyClaims 4, so the cap is 4: the
+  // central tier (a1 a2 a3 c2) is dealt across angles A and C, and B's
+  // supporting and tangential claims wait.
   const four = select({ maxVerifyClaims: 4, minPerAngle: 1, maxVerifyCeiling: 10 });
-  assert.deepEqual(four.ids, ['a1', 'b2', 'c1', 'a2']);
-  assert.match(four.note, /^Verified 4 of 6 claims \(3 angles\)\./);
+  assert.deepEqual(four.ids, ['a1', 'c2', 'a2', 'a3']);
+  assert.match(four.note, /^Verified 4 of 7 claims \(3 angles\)\./);
   assert.ok(four.logs.includes(four.note), 'the dropped-claims note is logged');
-  // minPerAngle 2 x 3 angles lifts the cap to 6: every claim, no note.
-  const all = select({ maxVerifyClaims: 4, minPerAngle: 2, maxVerifyCeiling: 10 });
-  assert.equal(all.ids.length, 6);
+  // The supporting tier follows, round-robin across B and C, then the tangential.
+  assert.deepEqual(select({ maxVerifyClaims: 6, minPerAngle: 0, maxVerifyCeiling: 10 }).ids, ['a1', 'c2', 'a2', 'a3', 'b2', 'c1']);
+  // The selection at a smaller cap is a prefix of the selection at a larger one.
+  const full = select({ maxVerifyClaims: 7, minPerAngle: 0, maxVerifyCeiling: 10 }).ids;
+  assert.deepEqual(full, ['a1', 'c2', 'a2', 'a3', 'b2', 'c1', 'b1']);
+  for (let n = 0; n <= 7; n++) {
+    assert.deepEqual(select({ maxVerifyClaims: n, minPerAngle: 0, maxVerifyCeiling: 10 }).ids, full.slice(0, n), `cap ${n}`);
+  }
+  // minPerAngle 3 x 3 angles lifts the cap to 9: every claim, no note.
+  const all = select({ maxVerifyClaims: 4, minPerAngle: 3, maxVerifyCeiling: 10 });
+  assert.equal(all.ids.length, 7);
   assert.equal(all.note, '');
 });
 
