@@ -297,6 +297,17 @@ and a deterministic selection, a larger cap keeps every verify call already made
 rest. The script cannot read its own run id, so the note says "this run's id" and the session
 supplies the id the tool returned.
 
+Verification thoroughness is now set before the run, 2026-10-21 (#355). A light run verified 8 of
+42 claims and the extension was proposed only after the maintainer read a thin report, so the
+session proposes the verify setting with the depth before launch, each option with its expected
+agent count, and launches only on the answer: all claims, which is `budget.maxVerifyClaims: 500`
+and lifts the ceiling, or a stated cap. "All" is 500 and not a count because a resume with a cap
+equal to the previous total (42) re-extracted 45 claims and left 3 unchecked. After the run the
+session checks that `unverified` is empty and `stats.claimsExtracted` equals
+`stats.claimsVerified` on a full run, or `stats.claims` equals `stats.verified` on an early
+return. The `verifyNote` and `resumeFromRunId` extension stay as the fallback for a run that
+still dropped claims; the mechanics above are unchanged.
+
 The scope agent ran the searches itself, 2026-10-07 (#230): a `standard` run sat in Scope for 20
 minutes and was stopped by hand (run `wf_7669cf26-64a`). The scope agent, on Opus and inheriting
 the session's `max` effort, loaded WebSearch through ToolSearch and ran 15 searches in three

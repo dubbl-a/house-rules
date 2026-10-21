@@ -60,9 +60,9 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   `Workflow({scriptPath: <that copy>, args: {question, depth}})`, stating the depth (light,
   standard, deep; `args.efforts` overrides the per-stage effort); Workflow runs only a script
   the session can already read. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
-  --install` (`scripts/house/`, else the plugin's claude-code module files). On a warranted
-  `verifyNote`, offer to extend the run (`resumeFromRunId`, same args, the note's `budget.maxVerifyClaims`;
-  it costs the extra agents); never start it unasked.
+  --install` (`scripts/house/`, else the plugin's claude-code module files). Before launch, ask the user the verify
+  setting with the depth, each option with its agent count: all claims (`budget.maxVerifyClaims:
+  500`) or a cap. After, `unverified` is empty and `stats.claimsExtracted` = `claimsVerified`.
 - Subagents report back and never spawn subagents. Roster agents cannot; any other, forks and
   built-in general-purpose included, can by default, so its brief forbids it under DO NOT.
 
