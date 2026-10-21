@@ -146,8 +146,24 @@ test('every sync leg re-checks the latest release right before it pushes and bef
 
 test('a stale leg skips with a notice, not a failure, and the wait step needs the pushed PR', () => {
   const j = job('sync');
-  assert.match(j, /::notice::[^\n]*no longer the latest release[^\n]*\n\s+exit 0/);
+  assert.match(j, /::notice::[^\n]*no longer the latest release[^\n]*not syncing"\n\s+exit 0/);
   assert.match(j, /steps\.pr\.outputs\.url != ''/);
+});
+
+test('a stale merge-time leg closes its pull request, warning rather than failing if it cannot', () => {
+  const j = job('sync');
+  const at = j.indexOf('closing ${URL}, not merging');
+  assert.ok(at > j.indexOf('Wait for checks, then merge'), 'inside the merge step');
+  const tail = j.slice(at, j.indexOf('gh pr merge'));
+  assert.match(tail, /gh pr close "\$URL" --repo "\$REPO" --comment "Superseded: \$\{LATEST\} was released/);
+  assert.match(tail, /::warning::[^\n]*\$\{URL\}[^\n]*\n\s+fi\n\s+exit 0/);
+});
+
+test('the close-hold comment claims a finished run, not a sync every leg completed', () => {
+  const j = job('close-hold');
+  assert.match(j, /The manual sync run for v\$\{VERSION\} finished: /);
+  assert.match(j, /Legs skip when a newer release exists; see the run summary/);
+  assert.doesNotMatch(j, /Synced the adopters/);
 });
 
 test('the re-check reads the version from env only, never from an expression in run', () => {

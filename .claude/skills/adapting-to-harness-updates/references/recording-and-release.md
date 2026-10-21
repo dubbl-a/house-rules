@@ -83,7 +83,7 @@ on the push's run.
 
 Syncs are serialized per adopter across runs, and every leg, push or manual, re-checks that its
 version is still the latest release right before it pushes and before it merges. A leg that finds a
-newer release skips with a notice, leaves any pull request open, and does not fail, so an older sync
+newer release skips with a notice, closes its own pull request if it had one open, and does not fail, so an older sync
 can never roll an adopter back past a newer one.
 
 ## How an update reaches the maintainer

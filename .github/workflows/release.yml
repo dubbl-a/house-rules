@@ -398,10 +398,14 @@ jobs:
           fi
           # The wait can run long enough for a newer release to land; a newer
           # sync would then merge first, and this one must not overwrite it. The
-          # pull request stays open, superseded by the newer release's sync.
+          # pull request is closed, since an open one is a rollback waiting for a
+          # click on merge; the newer release's sync covers it.
           LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
           if [ "v${VERSION}" != "$LATEST" ]; then
-            echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); leaving ${URL} open, not merging"
+            echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); closing ${URL}, not merging"
+            if ! gh pr close "$URL" --repo "$REPO" --comment "Superseded: ${LATEST} was released before this merged; that release's sync covers it."; then
+              echo "::warning::${REPO}: could not close ${URL}; close it by hand, it must not merge"
+            fi
             exit 0
           fi
           # The head checked green is the only head that may merge.
@@ -424,5 +428,5 @@ jobs:
         run: |
           TITLE="Adopter sync held for v${VERSION}"
           for N in $(gh issue list --repo "$REPO" --state open --search "\"${TITLE}\" in:title" --json number,title | jq -r --arg t "$TITLE" '.[] | select(.title == $t) | .number'); do
-            gh issue close "$N" --repo "$REPO" --comment "Synced the adopters to v${VERSION} by a manual run: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}" || echo "could not close #${N}"
+            gh issue close "$N" --repo "$REPO" --comment "The manual sync run for v${VERSION} finished: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}. Legs skip when a newer release exists; see the run summary." || echo "could not close #${N}"
           done
