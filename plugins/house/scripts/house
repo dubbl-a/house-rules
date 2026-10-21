@@ -882,10 +882,13 @@ function isGitHookDest(relPath) {
 // 0755 would widen a permission nobody asked it to touch. `mode | ((mode &
 // 0o444) >> 2)` turns 0644 into 0755 and 0600 into 0700, and leaves a file
 // already executable by everyone who can read it alone.
+function executableMode(absPath) {
+  const mode = statSync(absPath).mode & 0o7777;
+  return { mode, want: mode | ((mode & 0o444) >> 2) };
+}
 function ensureExecutable(absPath) {
   try {
-    const mode = statSync(absPath).mode & 0o7777;
-    const want = mode | ((mode & 0o444) >> 2);
+    const { mode, want } = executableMode(absPath);
     if (want === mode) return false;
     chmodSync(absPath, want);
     return true;
@@ -1773,6 +1776,24 @@ function orphanIsHandEdited(repoRoot, rel, priorLock) {
 
 const STATUS_LABEL = { create: 'create', clean: 'update', missing: 'restore', 'clean-forced': 'force-overwrite', refuse: 'REFUSE' };
 
+// #358: `clean` means the file passed the hand-edit check, not that --apply
+// changes it, so it labelled every managed file `update` even on a tree that
+// was already current. A plan entry is unchanged when --apply would leave the
+// file as it is: it is `clean`, the bytes on disk are the bytes the apply
+// writes, and the executable bit the apply restores is already there.
+function planEntryUnchanged(repoRoot, p) {
+  if (p.status !== 'clean') return false;
+  const abs = path.join(repoRoot, p.target.path);
+  try {
+    if (readFileSync(abs, 'utf8') !== p.target.content) return false;
+    if (isGitHookDest(p.target.path) || p.target.exec) {
+      const { mode, want } = executableMode(abs);
+      if (want !== mode) return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
 // The one wording for the #58 migration, in both tenses, so the dry run
 // promises exactly what the apply reports. The destination is what decides
 // which of the two it was (see planOldPreCommitMigration): the repo is told
@@ -1790,6 +1811,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
     console.log(JSON.stringify({
       plan: plan.map((p) => ({
         status: p.status, path: p.target.path, module: p.target.module, kind: p.target.kind,
+        ...(planEntryUnchanged(repoRoot, p) ? { unchanged: true } : {}),
         // A reserved-marker refusal is not a hand edit; say which lines.
         ...(p.reason === 'reserved' ? { reason: p.reason, markerLines: p.markerLines } : {}),
       })),
@@ -1816,7 +1838,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
       console.log(`${'REFUSE'.padEnd(15)} ${p.target.path}  (${p.detail})`);
       continue;
     }
-    const label = STATUS_LABEL[p.status] || p.status;
+    const label = planEntryUnchanged(repoRoot, p) ? 'unchanged' : (STATUS_LABEL[p.status] || p.status);
     console.log(`${label.padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
     if (p.status === 'refuse' && p.reason === 'reserved') {
       console.log(`  ${reservedMarkerMessage(p.markerLines, p.repairable)}`);
