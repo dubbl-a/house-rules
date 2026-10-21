@@ -4474,3 +4474,19 @@ test('#366 changes: offline prints where to read the notes and exits 0', () => {
   assert.match(bad.out, /^release notes not available \(unexpected response from the releases API\); see /);
   assert.doesNotMatch(bad.out, /[\x1b]|RED/);
 });
+
+test('#366 changes: a body heading goes one level down, capped at h6, fenced code untouched', () => {
+  const { cliPath } = buildFixturePlugin();
+  const body = '### Added\n\n- x\n\n```md\n### not a heading\n```\n\n###### deep\n\n#nospace\n## Fixed';
+  const file = releasesFixture([rel('v9.9.9', { body })]);
+  const r = runCli(cliPath, ['changes', '9.9.8', '9.9.9'], { HOUSE_RELEASES_FIXTURE: file });
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, '## house-rules v9.9.8 to v9.9.9\n\n### v9.9.9\n\n#### Added\n\n- x\n\n```md\n### not a heading\n```\n\n###### deep\n\n#nospace\n### Fixed\n');
+});
+
+test('#366 changes: no published release in the range says so and exits 0', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['changes', '9.9.11', '9.9.20'], { HOUSE_RELEASES_FIXTURE: changesList() });
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, '## house-rules v9.9.11 to v9.9.20\n\nno published releases between v9.9.11 and v9.9.20\n');
+});

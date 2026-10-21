@@ -3676,8 +3676,18 @@ async function cmdChanges(args) {
     .sort((a, b) => compareSemver(a.version, b.version));
   // Notes are text for a PR body: drop control characters (terminal escapes) but keep line breaks and tabs.
   const clean = (t) => t.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').trim();
+  // A body's own headings go one level down (capped at h6) so they nest under its release heading; fenced code is left alone.
+  const demote = (t) => {
+    let fence = null;
+    return t.split('\n').map((line) => {
+      const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; return line; }
+      return !fence && /^#{1,6} /.test(line) ? line.replace(/^(#{1,5}) /, '$1# ') : line;
+    }).join('\n');
+  };
   const parts = [`## house-rules v${from} to v${to}`];
-  for (const r of inRange) parts.push(`### v${r.version}${clean(r.body) ? `\n\n${clean(r.body)}` : ''}`);
+  if (!inRange.length) parts.push(`no published releases between v${from} and v${to}`);
+  for (const r of inRange) parts.push(`### v${r.version}${clean(r.body) ? `\n\n${demote(clean(r.body))}` : ''}`);
   console.log(parts.join('\n\n'));
 }
 
