@@ -208,7 +208,8 @@ function isArrayOfNonEmptyStrings(x) { return Array.isArray(x) && x.every(isNonE
 function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 function git(cwd, args) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8' });
+  // Node's 1 MiB default overflows on a large ls-files listing, and the callers swallow the error.
+  return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
 }
 function gitLsFilesZ(repoRoot, extraArgs = []) {
   let out;
