@@ -3,7 +3,7 @@
 The copy of record of the prompt the claude.ai routine "house-rules harness triage" runs when
 `.github/workflows/harness-watch.yml` fires it. The live routine runs Opus 5.5 in the default cloud
 environment, with this repository as its only source, the tools Bash, Read, Write, Edit, Glob,
-Grep, WebFetch, and Agent, and a Gmail connector limited to its send tool. The live prompt names
+Grep, WebFetch, WebSearch, and Agent, and a Gmail connector limited to its send tool. The live prompt names
 the maintainer's real address where this copy says `<maintainer address>`. Change the live
 routine and this file together.
 

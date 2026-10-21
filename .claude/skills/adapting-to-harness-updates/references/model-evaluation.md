@@ -12,7 +12,6 @@ fixed; the method below applies it and is not a place to reopen it.
 - Benchmarks: order, fallbacks, labeling
 - Decision rule
 - Cloud routine split
-- Dated findings
 
 ## Policy
 
@@ -24,8 +23,9 @@ fixed; the method below applies it and is not a place to reopen it.
   arXiv 2506.12713), falling back to labeled equivalents.
 - Deep-research claim verification is decided before launch. Locally the session asks the user the
   verify setting (all claims or a cap) together with the depth. "All" means
-  `budget.maxVerifyClaims: 500`, and after the run `stats.claimsExtracted` must equal
-  `claimsVerified`.
+  `budget.maxVerifyClaims: 500`. After the run, the `unverified` list must be empty and every
+  extracted claim verified: `stats.claimsExtracted` equals `stats.claimsVerified` on a full run,
+  and `stats.claims` equals `stats.verified` on a run that returned early.
 
 ## Steps 1 to 6
 
@@ -46,7 +46,10 @@ fixed; the method below applies it and is not a place to reopen it.
 
    The session re-reads every quote a decision rests on itself, in the fetched page, before it
    counts.
-3. **Collect benchmarks** by the order and labeling rules below.
+3. **Collect benchmarks** by the order and labeling rules below, from fetched pages only. Start
+   from the fixed sources listed there and search only to find the new model's launch post, system
+   card, or leaderboard entry. A figure not found in a fetched page is recorded as not found, never
+   estimated.
 4. **Gather local evidence** (local sessions only, because it reads `~/.claude` transcripts).
    <!-- docs-drift-ignore: script lands in a parallel PR -->
    `research/model-tier/scripts/builder_tier.py` reports rework rate by builder model, effort, and
@@ -78,6 +81,15 @@ Order: HLE and HLCE first. Where they lack the model, use a labeled equivalent:
   OJBench, Codeforces-rated evals). Re-check their coverage every run. When none has it, use
   FrontierCode, Terminal-Bench, and SWE-bench Pro, labeled as agentic-coding stand-ins.
 
+Fixed sources, fetched every run:
+
+- Anthropic's news index, https://www.anthropic.com/news, for the model's launch post and its
+  system card link.
+- Artificial Analysis, https://artificialanalysis.ai/evaluations/humanitys-last-exam and the
+  model's page under https://artificialanalysis.ai/models.
+- HLCE, https://arxiv.org/abs/2506.12713 and its code and data under
+  https://github.com/Humanity-s-Last-Code-Exam.
+
 Labeling rules:
 
 - Mark each figure primary (the vendor's own) or secondary (independent).
@@ -102,10 +114,3 @@ research measured an older model, it opens (or comments on) an issue titled
 `Re-measure: <research note>`, so a local session runs step 4 and the A/B. The routine's wording is
 in [routine-prompt.md](routine-prompt.md).
 
-## Dated findings
-
-- 2026-10-21: no contest-sourced coding benchmark (HLCE, LiveCodeBench Pro, OJBench,
-  Codeforces-rated evals) had Claude 5.x scores. FrontierCode, Terminal-Bench, and SWE-bench Pro
-  stood in. Re-check coverage on the next run.
-- 2026-10-21: this method was first run by hand on that date, and its note is to be recorded under
-  `research/model-tier/`.
