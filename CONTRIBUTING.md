@@ -25,8 +25,8 @@ before merging.
 `npm run test:githooks` side by side through `scripts/verify-suites.mjs` (each suite's output is
 printed whole when all three finish, and a failure names its suite), then chains
 `npm run check:traceability`, `npm run check:house`, `npm run test:smoke`, and
-`npm run check:plugin`. The hook suites run their cases in parallel parts; set
-`HOUSE_TEST_PART` to one part number, or `all`, to run them in one process. The last needs the
+`npm run check:plugin`. The hook suites run their cases in parallel parts; the header of
+`tests/hooks/run.sh` says how to run one part, or all in one process. The last needs the
 `claude` CLI on `PATH`, a prerequisite for the local gate; a missing CLI fails the run rather
 than skipping it. Run `npm run verify` locally before every push; `.github/workflows/ci.yml` runs
 the payload copy of the checker and `.github/workflows/pr-checks.yml` runs the vendored one, so
