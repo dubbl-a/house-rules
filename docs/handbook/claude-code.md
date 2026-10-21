@@ -307,8 +307,8 @@ agent count, and launches only on the answer: all claims, which is `budget.maxVe
 and lifts the ceiling, or a stated cap. "All" is 500 and not a count because a resume with a cap
 equal to the previous total (42) re-extracted 45 claims and left 3 unchecked. After the run the
 session checks that `unverified` is empty and `stats.claimsExtracted` equals
-`stats.claimsVerified` on a full run, or `stats.claims` equals `stats.verified` on an early
-return. The `verifyNote` and `resumeFromRunId` extension stay as the fallback for a run that
+`stats.claimsVerified` on a full run, or, on an early return with `stats.claims` above 0, `stats.claims` equals
+`stats.verified` (zero claims has nothing to verify). The `verifyNote` and `resumeFromRunId` extension stay as the fallback for a run that
 still dropped claims; the presets and the verify cap are unchanged.
 
 The scope agent ran the searches itself, 2026-10-07 (#230): a `standard` run sat in Scope for 20
