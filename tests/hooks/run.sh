@@ -240,6 +240,27 @@ run_hook() {
   HOOK_CODE=$?
 }
 
+# cpu_mark <var> -> sets <var> to the CPU milliseconds (user + system) this
+# script's finished children have used so far. The timing cases below bound the
+# difference of two marks, not wall time: `npm run verify` runs this suite beside
+# two others, and on a loaded machine a case that needs 300 ms of CPU waits long
+# enough for a wall-clock bound of 3000 ms to fail with nothing wrong. The
+# quadratic blow-up those bounds guard against is CPU the guard's own bash burns,
+# so it moves a CPU bound as much as a wall one. `times` runs in this shell, not
+# a subshell, or it reports no children; a file carries its output, and the
+# parse is bash alone so the mark costs the next interval no child process.
+_times_file="$TMP_ROOT/times"
+cpu_mark() {
+  local _tu _ts _x _m _cpu=0 LC_ALL=C # `times` prints a comma decimal in some locales
+  times >"$_times_file"
+  { read -r _x; read -r _tu _ts; } <"$_times_file"
+  for _x in "$_tu" "$_ts"; do # each "<m>m<s>.<mmm>s"
+    _m=${_x%%m*}; _x=${_x#*m}; _x=${_x%s}
+    _cpu=$((_cpu + (10#$_m * 60 + 10#${_x%.*}) * 1000 + 10#${_x#*.}))
+  done
+  printf -v "$1" '%s' "$_cpu"
+}
+
 # expect_allow <label> <payload-json>
 expect_allow() {
   local label="$1" payload="$2"
@@ -2039,17 +2060,18 @@ HOOK_ENV=()
 expect_allow "the same relative path with no project directory set is an ordinary path" \
   "$(mk_mcp_payload mcp__fs__write_file '{"path": ".githooks/pre-push"}' "$pg/docs")"
 # Many path-like strings: git calls must not scale with them, or the 5 s
-# timeout ends the check with no decision. The deny sorts last.
+# timeout ends the check with no decision. The deny sorts last. The bound is
+# CPU time against that scaling; the 5 s wall timeout is not asserted here.
 mkdir -p "$pg/many"
 _many=$(for ((i = 0; i < 200; i++)); do mkdir -p "$pg/many/d$i"; printf '%s\n' "$pg/many/d$i/.gitkeep"; done | jq -R . | jq -s --arg last "$pg/zz/../.git/config" '{paths: (. + [$last])}')
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_many" "$pg")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)" == deny && "$_ms" -lt 2500 ]]; then
-  pass "201 .git-bearing MCP strings into one repo deny in ${_ms} ms"
+  pass "201 .git-bearing MCP strings into one repo deny in ${_ms} ms CPU"
 else
-  fail "201 .git-bearing MCP strings into one repo deny under 2500 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+  fail "201 .git-bearing MCP strings into one repo deny under 2500 ms" "took ${_ms} ms CPU, out=[$HOOK_OUT]"
 fi
 # Past the scan's time budget (kept under the 5 s timeout in hooks.json,
 # which would end the check with no decision) the hook stops and refuses.
@@ -2059,14 +2081,14 @@ fi
 # shrink it, and the overrun is certain anywhere.
 _huge=$(for ((i = 0; i < 200; i++)); do for ((j = 0; j < 20; j++)); do printf '%s\n' "$pg/many/d$i/f$j.gitkeep"; done; done | jq -R . | jq -s '{paths: .}')
 HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_huge" "$pg")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"too large to check"* && "$_ms" -lt 4000 ]]; then
-  pass "4000 MCP strings outrun the scan budget and deny in ${_ms} ms"
+  pass "4000 MCP strings outrun the scan budget and deny in ${_ms} ms CPU"
 else
-  fail "4000 MCP strings outrun the scan budget and deny under 4000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+  fail "4000 MCP strings outrun the scan budget and deny under 4000 ms" "took ${_ms} ms CPU, out=[$HOOK_OUT]"
 fi
 # Past the budget, only a string still unchecked with a .git or .githooks
 # path component refuses the call whatever repo it is in. A string whose only
@@ -2100,16 +2122,18 @@ expect_deny "300 src/hooks strings past the budget, then a .git path sorting las
   "$(mk_mcp_payload mcp__fs__write_file "$_last" "$n")" "too large to check"
 HOOK_ENV=()
 # At the default budget, the look past it over 8000 weak-marker strings with
-# distinct parents still reaches a .git path sorting last, inside the timeout.
+# distinct parents still reaches a .git path sorting last. The bound is CPU
+# time against the quadratic-expansion regression; the 5 s wall timeout is not
+# asserted here.
 _wide=$(for ((i = 0; i < 8000; i++)); do printf '%s\n' "pkg$i/x/x/x/x/hooks.ts"; done | jq -R . | jq -s '{paths: (. + ["zzz/.git/config"])}')
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_wide" "$n")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)" == deny && "$_ms" -lt 4000 ]]; then
-  pass "8000 weak-marker strings at the default budget, then a .git path sorting last, deny in ${_ms} ms"
+  pass "8000 weak-marker strings at the default budget, then a .git path sorting last, deny in ${_ms} ms CPU"
 else
-  fail "8000 weak-marker strings at the default budget, then a .git path sorting last, deny under 4000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+  fail "8000 weak-marker strings at the default budget, then a .git path sorting last, deny under 4000 ms" "took ${_ms} ms CPU, out=[$HOOK_OUT]"
 fi
 # A file: URI is percent-decoded after its scheme is dropped.
 expect_deny "MCP write with a file:// URI spelling .githooks as %2Egithooks" \
@@ -2127,29 +2151,29 @@ expect_deny "MCP write with a bare file: URI spelling .git/config as %2egit%2Fco
 ap="$TMP_ROOT/a-pad"; new_repo "$ap"; mkdir -p "$ap/docs"; ln -s docs "$ap/sl"
 _pad=$(for ((i = 0; i < 3000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s --arg m "$pg/.githooks/pre-push" '{paths: (. + [$m])}')
 HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_pad" "$n")"
 HOOK_ENV=()
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$HOOK_OUT" == *'"deny"'* && "$_ms" -lt 4000 ]]; then
-  pass "3000 padding strings do not hide a .githooks string, from a cwd that never adopted house (${_ms} ms)"
+  pass "3000 padding strings do not hide a .githooks string, from a cwd that never adopted house (${_ms} ms CPU)"
 else
-  fail "3000 padding strings do not hide a .githooks string, from a cwd that never adopted house" "took ${_ms} ms, out=[$HOOK_OUT]"
+  fail "3000 padding strings do not hide a .githooks string, from a cwd that never adopted house" "took ${_ms} ms CPU, out=[$HOOK_OUT]"
 fi
 # With no marker left unchecked, an input past the budget is decided by
 # adoption as before: here, nothing adopted, so it passes.
 _pad=$(for ((i = 0; i < 8000; i++)); do printf '%s\n' "$ap/sl/f$i.txt"; done | jq -R . | jq -s '{paths: .}')
 HOOK_ENV=(HOUSE_SCAN_BUDGET_MS=1)
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_mcp_payload mcp__fs__write_file "$_pad" "$n")"
 HOOK_ENV=()
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ -z "$HOOK_OUT" && "$_ms" -lt 4000 ]]; then
-  pass "8000 unmarked strings past the budget, nothing adopted, pass (${_ms} ms)"
+  pass "8000 unmarked strings past the budget, nothing adopted, pass (${_ms} ms CPU)"
 else
-  fail "8000 unmarked strings past the budget, nothing adopted, pass" "took ${_ms} ms, out=[$HOOK_OUT]"
+  fail "8000 unmarked strings past the budget, nothing adopted, pass" "took ${_ms} ms CPU, out=[$HOOK_OUT]"
 fi
 # Large payloads. Linux caps one argv string at 128 KB (MAX_ARG_STRLEN) where
 # macOS does not, so a payload-sized value handed to a process as an argument
@@ -2160,14 +2184,14 @@ _big=$(printf '%0300000d' 0 | tr 0 x)
 # names nothing the OS can resolve, and checking it costs time quadratic in
 # its length, which used to outrun the 5 s timeout and pass the call.
 _long=$(printf '%05000d' 0 | tr 0 a)
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_real_file_payload Edit "$pg/.githooks/$_long" "$pg")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"4096 bytes"* && "$_ms" -lt 1000 ]]; then
-  pass "an Edit path of 5000 bytes in an adopted repo denies as too long in ${_ms} ms"
+  pass "an Edit path of 5000 bytes in an adopted repo denies as too long in ${_ms} ms CPU"
 else
-  fail "an Edit path of 5000 bytes in an adopted repo denies as too long under 1000 ms" "took ${_ms} ms, out=[$HOOK_OUT]"
+  fail "an Edit path of 5000 bytes in an adopted repo denies as too long under 1000 ms" "took ${_ms} ms CPU, out=[$HOOK_OUT]"
 fi
 expect_allow "an Edit path of 5000 bytes in a repo that never adopted house" \
   "$(mk_real_file_payload Edit "$n/$_long" "$n")"
@@ -2259,7 +2283,9 @@ expect_allow "Edit on a .githooks file in a repo that never adopted house" \
 # (200 lines) and 127 s (the deny behind 200 lines), so 20 s and 30 s still
 # fail on a regression while tolerating a loaded CI runner. What remains is a
 # linear per-clause cost (the clause scans; the here-string reads that were
-# most of it went in #314, below). Each case asserts its decision too.
+# most of it went in #314, below). Each case asserts its decision too. The
+# limits are CPU milliseconds (cpu_mark), not wall time: a loaded machine
+# stretches wall time and leaves CPU alone, and a quadratic regression is CPU.
 sc="$TMP_ROOT/split"; new_repo "$sc"; adopt "$sc"
 git -C "$sc" checkout -q -b feat/sc
 _sg="gi""t"; _sph="hooks""Path"
@@ -2272,25 +2298,25 @@ _heredoc_cmd() {
 }
 for _case in 100:20000 200:30000; do
   _lines="${_case%%:*}"; _limit="${_case#*:}"
-  _start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+  cpu_mark _start
   run_hook "$(mk_payload "$(_heredoc_cmd "$_lines" '')" "$sc")"
-  _end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+  cpu_mark _end
   _ms=$((_end - _start))
   if [[ "$HOOK_CODE" -eq 0 && -z "$HOOK_OUT" && "$_ms" -lt "$_limit" ]]; then
-    pass "a $_lines-line JS heredoc on a feature branch is allowed in ${_ms} ms"
+    pass "a $_lines-line JS heredoc on a feature branch is allowed in ${_ms} ms CPU"
   else
-    fail "a $_lines-line JS heredoc on a feature branch is allowed under $_limit ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+    fail "a $_lines-line JS heredoc on a feature branch is allowed under $_limit ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
   fi
 done
 # The clause behind the heredoc is still read: the split skips nothing.
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 run_hook "$(mk_payload "$(_heredoc_cmd 200 "; $_sg config core.$_sph /dev/null")" "$sc")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 30000 ]]; then
-  pass "a hooks-path write behind a 200-line heredoc is denied in ${_ms} ms"
+  pass "a hooks-path write behind a 200-line heredoc is denied in ${_ms} ms CPU"
 else
-  fail "a hooks-path write behind a 200-line heredoc is denied under 30000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fail "a hooks-path write behind a 200-line heredoc is denied under 30000 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
 fi
 # Bytes that are not UTF-8 ahead of a denied clause. jq hands the hook U+FFFD
 # for them, so this payload is decided as written; the split itself is pinned
@@ -2434,29 +2460,31 @@ else
   fail "clause_tokens matches read -r -a" "$_tok_bad runs differ (src=${#_tok_src} bytes)"
 fi
 # The issue's payload size, end to end: the scan of a 200-line heredoc ahead
-# of a hooks-path write must still reach that write, well inside the timeout.
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+# of a hooks-path write must still reach that write. The bound is CPU time
+# against the quadratic-expansion regression; the 5 s wall timeout is not
+# asserted here.
+cpu_mark _start
 run_hook "$(mk_payload "$(_heredoc_cmd 200 "; $_sg config core.$_sph /dev/null")" "$sc")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 3000 ]]; then
-  pass "a hooks-path write behind a 200-line heredoc is denied in ${_ms} ms, under 3000"
+  pass "a hooks-path write behind a 200-line heredoc is denied in ${_ms} ms CPU, under 3000"
 else
-  fail "a hooks-path write behind a 200-line heredoc is denied under 3000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fail "a hooks-path write behind a 200-line heredoc is denied under 3000 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
 fi
 # One long line, the other shape: a first cut of clause_tokens trimmed every
 # clause at its first newline with `${s%%$'\n'*}`, quadratic in the clause's
 # length under a UTF-8 locale on bash 3.2, and a 66 KB one-line command (an
 # inline base64 blob) took 5 s where the here-string took 0.6.
 _blob=$(head -c 72000 /dev/zero | tr '\0' 'Q' | sed 's/\(.\{70\}\)/\1 /g')
-_start=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _start
 LC_ALL=C.UTF-8 run_hook "$(mk_payload "echo $_blob > /dev/null; $_sg config core.$_sph /dev/null" "$sc")"
-_end=$(perl -MTime::HiRes=time -e 'printf "%d", time()*1000')
+cpu_mark _end
 _ms=$((_end - _start))
 if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 3000 ]]; then
-  pass "a hooks-path write behind a 72 KB one-line clause is denied in ${_ms} ms, under 3000"
+  pass "a hooks-path write behind a 72 KB one-line clause is denied in ${_ms} ms CPU, under 3000"
 else
-  fail "a hooks-path write behind a 72 KB one-line clause is denied under 3000 ms" "took ${_ms} ms, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fail "a hooks-path write behind a 72 KB one-line clause is denied under 3000 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
 fi
 
 # ── the harness side of failing closed: the guard's entry in hooks.json ───
