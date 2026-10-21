@@ -2730,6 +2730,35 @@ function checkManifest(ctx) {
     }
   }
 
+  // #361: the database rule's paths default to the repo root's db/ and
+  // migrations/, and the zero-match warning above only speaks when NONE of its
+  // paths hit, so a repo whose root db/ matches while app/db/ or
+  // sub/migrations/ does not loads the rule on one and silently skips the
+  // rest. Warn once per top-most tracked `db` or `migrations` directory with a
+  // tracked file the resolved paths miss, naming the dbGlobs entry that would
+  // cover it. Directories under a dot segment or a vendored one are not the
+  // repo's own schema and are skipped, as the site-root scan skips them.
+  const dbEntry = isPlainObject(d.modules) && isPlainObject(d.modules.database) ? d.modules.database : null;
+  if (dbEntry && dbEntry.enabled === true && Object.prototype.hasOwnProperty.call(MODULE_FACTS, 'database')) {
+    const dbFacts = MODULE_FACTS.database;
+    const dbCfg = isPlainObject(dbEntry.config) ? dbEntry.config : {};
+    const dbRes = [...new Set(dbFacts.rules.flatMap((r) => expandFactPaths(r.paths, dbFacts.slots, dbCfg)))].map(globToRegExp);
+    const dbDirs = new Map();
+    for (const f of ctx.allTracked) {
+      const segs = f.split('/').slice(0, -1);
+      if (segs.some((seg) => seg.startsWith('.') || SITE_SKIP_SEGS.has(seg))) continue;
+      const at = segs.findIndex((seg) => seg === 'db' || seg === 'migrations');
+      if (at < 0) continue;
+      const dir = segs.slice(0, at + 1).join('/');
+      if (!dbRes.some((re) => re.test(f))) dbDirs.set(dir, true);
+      else if (!dbDirs.has(dir)) dbDirs.set(dir, false);
+    }
+    for (const [dir, uncovered] of dbDirs) {
+      if (!uncovered) continue;
+      warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`database\` is enabled, but \`${dir}/\` holds tracked files its rule paths do not match, so the database rule never loads on them: add \`${dir}/**\` to modules.database.config.dbGlobs (keep the default entries you still want), then re-render`));
+    }
+  }
+
   // #178: a vendored script under scripts/house/ that nothing references is
   // unwired, and a tracked twin of the same basename elsewhere is usually why:
   // the adopter's own copy keeps running while the house copy sits idle. Said

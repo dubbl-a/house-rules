@@ -853,3 +853,53 @@ test('#247 manifest: a declined-step deviation missing module, step, why, or a r
     assert.match(out, re, JSON.stringify(over));
   }
 });
+
+// #361: the database rule's paths cover the repo root's db/ and migrations/
+// by default, so a nested schema directory loads no rule and nothing said so.
+const dbHouse = (config) => houseJson({ modules: { database: { enabled: true, config } } });
+const dbWarnings = (res) => (res.json.warnings || []).filter((w) => /database/.test(w.message) && /dbGlobs/.test(w.message));
+
+test('#361 manifest: a nested db/ the database paths miss warns, naming the dbGlobs entry', () => {
+  const dir = sandbox({ 'house.json': dbHouse({}), 'app/db/x.sql': 'select 1;\n' });
+  const res = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
+  const w = dbWarnings(res);
+  assert.equal(w.length, 1, res.out);
+  assert.match(w[0].message, /`app\/db\/`/);
+  assert.match(w[0].message, /`app\/db\/\*\*`/);
+  assert.match(w[0].message, /modules\.database\.config\.dbGlobs/);
+});
+
+test('#361 manifest: a nested db/ covered by dbGlobs is silent', () => {
+  const dir = sandbox({
+    'house.json': dbHouse({ dbGlobs: ['db/**', 'app/db/**'] }),
+    'app/db/x.sql': 'select 1;\n',
+  });
+  assert.equal(dbWarnings(run(dir, ['--only=manifest', '--json'], NO_PLUGIN)).length, 0);
+});
+
+test('#361 manifest: a repo with only a root db/ and migrations/ is silent', () => {
+  const dir = sandbox({ 'house.json': dbHouse({}), 'db/x.sql': 'select 1;\n', 'migrations/1.sql': 'select 1;\n' });
+  assert.equal(dbWarnings(run(dir, ['--only=manifest', '--json'], NO_PLUGIN)).length, 0);
+});
+
+test('#361 manifest: the database module off is silent about a nested db/', () => {
+  const dir = sandbox({
+    'house.json': houseJson({ modules: { database: { enabled: false, config: {} } } }),
+    'app/db/x.sql': 'select 1;\n',
+  });
+  assert.equal(dbWarnings(run(dir, ['--only=manifest', '--json'], NO_PLUGIN)).length, 0);
+});
+
+test('#361 manifest: a root db/ match plus a nested migrations/ warns for the nested one only', () => {
+  const dir = sandbox({
+    'house.json': dbHouse({}),
+    'db/x.sql': 'select 1;\n',
+    'sub/migrations/1.sql': 'select 1;\n',
+    'sub/migrations/nested/db/2.sql': 'select 2;\n',
+    'node_modules/pkg/db/y.sql': 'select 3;\n',
+  });
+  const w = dbWarnings(run(dir, ['--only=manifest', '--json'], NO_PLUGIN));
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.match(w[0].message, /`sub\/migrations\/`/);
+  assert.match(w[0].message, /`sub\/migrations\/\*\*`/);
+});
