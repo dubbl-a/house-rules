@@ -3770,7 +3770,7 @@ async function cmdUpgrade(rest) {
   if (!args) { console.error(UPGRADE_USAGE); process.exit(2); }
   if (args.help) { console.log(UPGRADE_USAGE); return; }
   const fail = (code, msg) => { console.error(`house upgrade: ${msg}`); process.exit(code); };
-  const q = (a) => (/^[A-Za-z0-9_.\/:=@+-]+$/.test(a) ? a : `'${a}'`);
+  const q = (a) => (/^[A-Za-z0-9_.\/:=@+-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
   // Commands printed for a project or local scope start from the repo, as they run.
   let scope = 'user';
   let repoRoot = null;
@@ -3880,9 +3880,11 @@ async function cmdUpgrade(rest) {
   // running this command again at the old tag; anything else is restored by hand.
   const rollbackLines = () => {
     if (!backup && !done.length) return ['nothing was written, so there is nothing to undo'];
+    // Roll back to the version installed when this run started, not to the ref settings named:
+    // after an earlier failed run the ref already names the target while the old version is
+    // still the one installed.
     if (origRef && SEMVER_TAG.test(origRef)) {
-      const oldRef = `v${origRef.replace(/^v/, '')}`;
-      return ['rollback:', `  node ${q(__filename)} upgrade ${oldRef} --apply --allow-downgrade${scope !== 'user' ? ` --repo ${q(repoRoot)}` : ''}`];
+      return ['rollback:', `  node ${q(__filename)} upgrade ${oldTag} --apply --allow-downgrade${scope !== 'user' ? ` --repo ${q(repoRoot)}` : ''}`];
     }
     const now = installedRecord();
     let settingsRef = 'unreadable';

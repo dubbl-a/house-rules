@@ -4894,7 +4894,8 @@ test('#364 upgrade: a failing update step stops, names the backup and the remain
 });
 
 test('#364 upgrade: the printed pinned rollback line works: it takes settings, marketplace and install back to the old tag', () => {
-  // The entry pins v9.9.7 while v9.9.8 is installed, so the old tag is the entry's, not the installed version.
+  // The entry pins v9.9.7 while v9.9.8 is installed: the rollback returns to what was running,
+  // the installed version, not to the ref the entry named.
   const f = upgradeFixture({ settings: pinnedEntry('v9.9.7'), knownRef: 'v9.9.7' });
   const failed = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
   assert.equal(failed.code, 1);
@@ -4904,16 +4905,28 @@ test('#364 upgrade: the printed pinned rollback line works: it takes settings, m
   const lines = failed.err.split('\n');
   const cmd = lines[lines.indexOf('rollback:') + 1].trim().split(' ');
   assert.equal(cmd[0], 'node');
-  assert.deepEqual(cmd.slice(2), ['upgrade', 'v9.9.7', '--apply', '--allow-downgrade']);
+  assert.deepEqual(cmd.slice(2), ['upgrade', 'v9.9.8', '--apply', '--allow-downgrade']);
   assert.match(cmd[1], /\/scripts\/house$/);
   // Run it with the same stub config and no failure injected.
   const back = f.run(cmd.slice(3));
   assert.equal(back.code, 0, back.err + back.out);
   assert.doesNotMatch(back.out, /already at/);
   assert.equal(f.bakFiles().length, 2, 'the rerun keeps the first backup even inside the same second');
-  assert.equal(f.settingsRef(), 'v9.9.7');
-  assert.equal(f.knownRefNow(), 'v9.9.7');
-  assert.deepEqual(f.installedVersions(), ['9.9.7']);
+  assert.equal(f.settingsRef(), 'v9.9.8');
+  assert.equal(f.knownRefNow(), 'v9.9.8');
+  assert.deepEqual(f.installedVersions(), ['9.9.8']);
+});
+
+test('#364 upgrade: a retry that fails again still rolls back to the installed version, not forward', () => {
+  // The first failed run leaves settings and the marketplace on the target while the old version
+  // stays installed, so the retry reads a settings ref that already names the target.
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  assert.equal(f.run(['--apply'], { STUB_FAIL_UPDATE: '1' }).code, 1);
+  assert.equal(f.settingsRef(), 'v9.9.10');
+  const retry = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
+  assert.equal(retry.code, 1);
+  const lines = retry.err.split('\n');
+  assert.match(lines[lines.indexOf('rollback:') + 1], /^  node \S+\/scripts\/house upgrade v9\.9\.8 --apply --allow-downgrade$/);
 });
 
 test('#364 upgrade: a project-scope rollback line names the repo, and by-hand commands start with a cd', () => {
