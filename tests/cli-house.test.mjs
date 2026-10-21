@@ -14,7 +14,7 @@
 // paths, one "detect" with a single "$slot" path) plus a tiny fake
 // payload/check.mjs that just exits 0.
 
-import { test, after } from 'node:test';
+import { test as nodeTest, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync, readdirSync,
@@ -31,6 +31,28 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REAL_CLI_SRC = join(HERE, '..', 'plugins', 'house', 'scripts', 'house');
 const SCHEMA_PATH = join(HERE, '..', 'plugins', 'house', 'schema', 'house.schema.json');
 const SCHEMA = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
+
+// Every test here spawns the CLI synchronously, so node:test cannot overlap them
+// inside one process and the file was the longest of the suite. The tests are
+// dealt round-robin across SHARDS processes instead: this file runs shard 0, and
+// cli-house.shard<n>.test.mjs imports it as `?shard=<n>` for the rest. Each test
+// builds its own throwaway repos, so none depends on another. A missing shard
+// file would drop its tests silently, so shard 0 refuses to run without them.
+const SHARDS = 4;
+const SHARD = Number(new URL(import.meta.url).searchParams.get('shard') ?? 0);
+if (SHARD === 0) {
+  for (let n = 1; n < SHARDS; n++) {
+    if (!existsSync(join(dirname(fileURLToPath(import.meta.url)), `cli-house.shard${n}.test.mjs`))) {
+      throw new Error(`tests/cli-house.shard${n}.test.mjs is missing: its share of the CLI tests would not run`);
+    }
+  }
+}
+// Run alone, this file is only its share and looks complete; say so every time.
+if (SHARD === 0) {
+  console.log(`# cli-house: this file is shard 0 of ${SHARDS}; run node --test tests/cli-house*.test.mjs for all`);
+}
+let registered = 0;
+const test = (...args) => (registered++ % SHARDS === SHARD ? nodeTest(...args) : undefined);
 
 const CLEANUP_DIRS = [];
 after(() => {

@@ -42,6 +42,8 @@
 # the fixture must follow.
 #
 # Run:  bash tests/hooks/run.sh   (also wired as `npm run test:hooks`)
+# The cases run as PARTS processes side by side, output printed in part order;
+# HOUSE_TEST_PART=<n> runs one part and HOUSE_TEST_PART=all runs them in order.
 #
 # Exits non-zero if any case fails.
 
@@ -102,6 +104,67 @@ unset HOUSE_SCAN_BUDGET_MS
 # Prepended to PATH for the hook only (empty means: run it as the suite runs).
 HOOK_PATH_PREFIX=''
 
+# Literals more than one part builds its payloads from.
+_cm="com""mit"
+_ph="hooks""Path"
+HOUSE_CLI="/Users/dev/.claude/plugins/cache/house-rules/house/0.9.0/scripts/house"
+
+# The cases below run in parts, each in its own process with its own TMP_ROOT,
+# because one serial run is minutes of hook launches. A part owns the fixtures
+# it builds: a section later in the file reads a fixture an earlier one built
+# only inside the same part. HOUSE_TEST_PART=<n> runs part n alone, "all" runs
+# every part in order in this process, and unset spawns the parts side by side.
+PARTS=4
+part_on() { [[ "${HOUSE_TEST_PART:-all}" == all || "$HOUSE_TEST_PART" == "$1" ]]; }
+
+# A part number outside 1..PARTS would run no cases and still exit 0.
+if [[ -n "${HOUSE_TEST_PART:-}" && "$HOUSE_TEST_PART" != all ]] \
+  && ! [[ "$HOUSE_TEST_PART" =~ ^[1-9][0-9]*$ && "$HOUSE_TEST_PART" -le "$PARTS" ]]; then
+  echo "FATAL: HOUSE_TEST_PART=$HOUSE_TEST_PART is not a part: use 1 to $PARTS, or all." >&2
+  exit 2
+fi
+
+if [[ -z "${HOUSE_TEST_PART:-}" ]]; then
+  # A gate naming a part past PARTS would never run, and nothing else would say so.
+  _top=$(grep -o 'part_on [0-9][0-9]*' "$SCRIPT_PATH" | awk '{ if ($2 > m) m = $2 } END { print m + 0 }')
+  if [[ "$_top" -ne "$PARTS" ]]; then
+    echo "FATAL: the highest part_on gate is $_top but PARTS is $PARTS; a part with no cases or an unreached gate is a bug here." >&2
+    exit 1
+  fi
+  _parts_dir=$(mktemp -d)
+  _pids=()
+  trap 'kill "${_pids[@]}" 2>/dev/null; rm -rf "$_parts_dir"' EXIT
+  for ((_p = 1; _p <= PARTS; _p++)); do
+    HOUSE_TEST_PART=$_p bash "$SCRIPT_PATH" >"$_parts_dir/$_p.out" 2>&1 &
+    _pids+=($!)
+  done
+  _bad=0
+  _total=0; _passed=0; _failed=0; _skipped=0
+  for ((_p = 1; _p <= PARTS; _p++)); do
+    wait "${_pids[$((_p - 1))]}" || _bad=1
+    grep -v '^@@PART ' "$_parts_dir/$_p.out"
+    _sum=$(grep '^@@PART ' "$_parts_dir/$_p.out")
+    if [[ -z "$_sum" ]]; then
+      echo "FATAL: part $_p ended without a summary line" >&2
+      _bad=1
+      _failed=$((_failed + 1))
+      continue
+    fi
+    set -- $_sum
+    _total=$((_total + $2)); _passed=$((_passed + $3)); _failed=$((_failed + $4)); _skipped=$((_skipped + $5))
+  done
+  echo
+  echo "passed: $_passed / $_total"
+  if [[ "$_skipped" -gt 0 ]]; then
+    echo "skipped: $_skipped group(s), for want of a git version on this box"
+  fi
+  if [[ "$_failed" -gt 0 ]]; then
+    echo "$_failed case(s) failed."
+  fi
+  [[ "$_failed" -eq 0 && "$_bad" -eq 0 ]] || exit 1
+  exit 0
+fi
+
 TESTS_TOTAL=0
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -127,6 +190,17 @@ fail() {
 TMP_ROOT=$(mktemp -d)
 cleanup() { rm -rf "$TMP_ROOT"; }
 trap cleanup EXIT
+
+# A PATH holding the tools the hook needs and no jq, for the jq-missing cases
+# (two parts use it).
+STRIPPED="$TMP_ROOT/stripped-path/bin"
+mkdir -p "$STRIPPED"
+for c in bash git cat sed grep printf tr true false env sh cmp; do
+  p=$(command -v "$c" 2>/dev/null)
+  if [[ -n "$p" ]]; then
+    ln -sf "$p" "$STRIPPED/$c"
+  fi
+done
 
 # mk_payload <command> <cwd> -> real PreToolUse JSON on stdout
 mk_payload() {
@@ -304,6 +378,7 @@ lock_floor() {
 EOF
 }
 
+if part_on 1; then
 echo "=== house guard: PreToolUse hook regression tests ==="
 echo "hook: $HOOK"
 echo "floor fixture: vendored sources from $FLOOR_SRC"
@@ -371,7 +446,6 @@ expect_allow "house.json pr policy, commit on feat/x" \
 # --- #151: the house CLI's module commands, run the way the bootstrap skill
 #     runs them (an absolute plugin path under ~/.claude/plugins/), are not a
 #     git verb and not a floor mutation, so the guard lets them through ---
-HOUSE_CLI="/Users/dev/.claude/plugins/cache/house-rules/house/0.9.0/scripts/house"
 for _cmd in \
   "node \"$HOUSE_CLI\" disable github --why \"x\" --apply --repo \"$r\"" \
   "node \"$HOUSE_CLI\" enable github --apply --repo \"$r\"" \
@@ -678,14 +752,6 @@ expect_deny "carve-out: empty staged diff on master never satisfies a carve-out"
 
 # --- 19. jq missing: DENY JSON still emitted (hand-written, not built with jq) ---
 r="$TMP_ROOT/case19"; new_repo "$r"
-STRIPPED="$TMP_ROOT/stripped-path/bin"
-mkdir -p "$STRIPPED"
-for c in bash git cat sed grep printf tr true false env sh cmp; do
-  p=$(command -v "$c" 2>/dev/null)
-  if [[ -n "$p" ]]; then
-    ln -sf "$p" "$STRIPPED/$c"
-  fi
-done
 payload="$(mk_payload "git commit -m x" "$r")"
 HOOK_OUT=$(printf '%s' "$payload" | PATH="$STRIPPED" bash "$HOOK")
 HOOK_CODE=$?
@@ -780,6 +846,8 @@ expect_allow "Write on house.json is allowed" \
 expect_allow "Edit on house.json is allowed" \
   "$(mk_file_payload Edit "house.json" "$p")"
 
+fi
+if part_on 2; then
 # ── the github module off: C and the arming advice stand down (#159) ─────
 # ADR 0017. Turning the module off removes the floor, so the guard used to
 # switch to its unarmed rules and tell the user to arm what they had removed.
@@ -937,6 +1005,8 @@ for _j in '{"branchPolicy":"pr","carveOuts":["\u001e","off"]}' \
   git -C "$g7" reset -q staged.txt
 done
 
+fi
+if part_on 1; then
 # ── the deference matrix: only a PreToolUse entry that can SEE the call ───
 repo_d="$TMP_ROOT/defer"; new_repo "$repo_d"; adopt "$repo_d"
 mkdir -p "$repo_d/.claude"
@@ -1024,12 +1094,12 @@ expect_deny "git -c key=value (space-free value) commit still denies on master" 
 expect_allow "git -c key=value status is untouched" \
   "$(mk_payload 'git -c user.name=x status' "$r")"
 
+fi
+if part_on 3; then
 # ── the disable list: every literal, each with an innocent neighbour ──────
 # Run from a FEATURE branch, so only the disable list can produce a deny.
 d="$TMP_ROOT/disable"; new_repo "$d"; adopt "$d"
 git -C "$d" checkout -q -b feat/d
-_cm="com""mit"
-_ph="hooks""Path"
 
 expect_deny "--no-verify on a commit" \
   "$(mk_payload "git $_cm --no-verify -m x" "$d")" "disables or moves the git-hook floor"
@@ -1424,6 +1494,11 @@ expect_allow "--no-verify in a repo that never adopted house is not our business
 expect_allow "git checkout -b in a repo that never adopted house is not our business" \
   "$(mk_payload "git checkout -b feat/x" "$n")"
 
+fi
+if part_on 4; then
+# The not-adopted checkout the Edit and MCP sections name as a cwd, built here
+# because the section that built it first (the disable list) is another part.
+n="$TMP_ROOT/unadopted"; [[ -d "$n/.git" ]] || new_repo "$n"
 # ── H2 (round-2 N2): a replace ref rewrites HEAD without moving a branch ──
 # `git replace <head> <other>` makes `git show HEAD:house.json` return another
 # commit's manifest, so the policy read must pass --no-replace-objects and the
@@ -1522,6 +1597,9 @@ expect_allow "git --git-dir= on a read-only verb is not our business" \
   "$(mk_payload "git --git-dir=$e/.git status --porcelain" "$e")"
 
 # ── H10: git's per-user config can arm or disarm every repo on the box ────
+# The adopted checkout these cases write from, shaped like the disable list's.
+d="$TMP_ROOT/h10"; new_repo "$d"; adopt "$d"
+git -C "$d" checkout -q -b feat/d
 expect_deny "Write on ~/.gitconfig from inside an adopted checkout" \
   "$(mk_file_payload Write "$HOME/.gitconfig" "$d")" "per-user config"
 expect_deny "Edit on ~/.gitconfig from inside an adopted checkout" \
@@ -2403,7 +2481,17 @@ else
   fail "the scan budget stays under the guard's timeout" "budget=[$_budget_ms] timeout_ms=[$_timeout_ms]"
 fi
 
+fi
+if part_on 2; then
 # ── latency: the hook runs on every Bash call, so it has a budget ─────────
+# Fixtures of the same shapes the case sections use (armed on a feature
+# branch, adopted but unarmed, not adopted), built here so this part stands alone.
+a="$TMP_ROOT/lat-armed"; new_repo "$a"; adopt "$a"; lock_floor "$a"
+arm_floor "$a" feat/a
+git -C "$a" checkout -q feat/a
+u="$TMP_ROOT/lat-unarmed"; new_repo "$u"; adopt "$u"
+git -C "$u" checkout -q -b feat/u
+n="$TMP_ROOT/lat-unadopted"; new_repo "$n"
 echo
 echo "=== latency (informational; 20 runs each, real payloads carrying hook_event_name) ==="
 now_ms() { perl -MTime::HiRes=time -e 'printf "%d", time()*1000' 2>/dev/null || echo 0; }
@@ -2443,6 +2531,13 @@ if command -v shellcheck >/dev/null 2>&1; then
   fi
 else
   echo "  shellcheck not installed, skipping"
+fi
+fi
+
+if [[ "$HOUSE_TEST_PART" != all ]]; then
+  echo "@@PART $TESTS_TOTAL $TESTS_PASSED $TESTS_FAILED $TESTS_SKIPPED"
+  [[ "$TESTS_FAILED" -eq 0 ]] || exit 1
+  exit 0
 fi
 
 echo
