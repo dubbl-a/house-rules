@@ -31,7 +31,7 @@ By size band (Sonnet 5.5 includes its 3 high-effort builds, all under 30):
 | Band | Builder | Builds | Refuted | REWORK rate | Median $/build |
 |---|---|---|---|---|---|
 | under 30 | Opus 5.5 | 16 | 8 | 62% | 0.83 |
-| under 30 | Sonnet 5.5 | 163 | 39 | 62% | 0.13 |
+| under 30 | Sonnet 5.5 | 163 | 39 | 62% | 0.14 |
 | 30 to 80 | Opus 5.5 | 24 | 17 | 41% | 1.96 |
 | 30 to 80 | Sonnet 5.5 | 42 | 18 | 78% | 0.83 |
 | over 80 | Opus 5.5 | 23 | 12 | 50% | 7.40 |
@@ -50,7 +50,7 @@ Read directly from Anthropic's Sonnet 5.5 launch post (https://www.anthropic.com
 
 | Benchmark | Opus 5.5 | Sonnet 5.5 | Notes |
 |---|---|---|---|
-| HLE, with tools | 67.7% | 64.5% | max effort |
+| HLE, with tools | 67.7% | 64.5% | effort not stated in the post |
 | Terminal-Bench 4.0 | 66.4% (xhigh) | 70.6% | |
 | FrontierCode 1.1 Main | 54.4% | 46.2% (max) | Sonnet scored lower at max than at xhigh; the post's footnote says max ran extra review edits that the benchmark penalizes |
 | CursorBench 4.0 | 57.8% | 55.5% | |
@@ -62,7 +62,7 @@ A light deep-research run on the house fork, with all 45 extracted claims verifi
 - Terminal-Bench 4.0, Opus 5.5 by effort: 38.5% low, 57.6% medium, 64.2% high, 66.4% xhigh, 64.8% max.
 - No contest-sourced code benchmark (LiveCodeBench Pro, OJBench, Codeforces-rated, ICPC or IOI sets) had verified Claude 5.x scores, so there is no HLCE stand-in of the same design.
 
-What this says for the rule: Sonnet 5.5 is within about 2 to 8 points of Opus 5.5 on Anthropic's coding benchmarks and ahead on Terminal-Bench, which fits Sonnet for clear-scope builds. Both models peak below max effort on at least one coding benchmark, at many times the cost, which fits capping builds at high.
+What this says for the rule: Sonnet 5.5 is within about 2 to 8 points of Opus 5.5 on Anthropic's coding benchmarks and ahead on Terminal-Bench at max effort (second-hand figures put Sonnet behind at xhigh, 61.5%), which fits Sonnet for clear-scope builds. Both models peak below max effort on at least one coding benchmark, at many times the cost, which fits capping builds at high.
 
 ## Conclusion
 
@@ -71,7 +71,7 @@ The rule uses Anthropic's split because nothing local gives a reason to depart f
 ## Caveats
 
 - The pairing is a heuristic; 80 refuter verdicts had no earlier builder in the session.
-- Not controlled: nobody assigned model to task at random. the earlier note observed that Opus got the harder builds, and response count is only a proxy for difficulty.
+- Not controlled: nobody assigned model to task at random. The earlier note observed that Opus got the harder builds, and response count is only a proxy for difficulty.
 - Small cells: Sonnet 5.5 over 80 responses has 5 builds, none refuted; Sonnet 5.5 at high effort has 3.
 - A REWORK is a refuter's judgment, so the rate measures what the review catches, not defects shipped.
 - One machine, one maintainer's briefs. Opus and Sonnet may be briefed differently.

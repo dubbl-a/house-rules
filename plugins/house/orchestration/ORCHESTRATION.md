@@ -50,11 +50,11 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Fable never runs on a subagent unless the user asks for it.
 - Judgment runs on Opus even on an Opus session: the refuter, the debugger, and any adjudication
   or synthesis whose verdict decides, because the verdict is the product and Opus is moderately
-  priced. Code and prose go to Sonnet, locations and receipt checks to Haiku. Per Anthropic, builds
-  go to Sonnet at pinned medium when scope is clear, `effort: "high"` on the call where verification
-  matters (a bug fix) or the work is longer, and Opus (explicit `model`) for complex agentic coding:
-  a big refactor, cross-module invariants, a multi-hour build, a failed Sonnet attempt. A brief with
-  no design gets a plan first. The debugger stays on Opus; no root cause found, offer the user Fable.
+  priced. Code and prose go to Sonnet, locations and receipt checks to Haiku. Per Anthropic, builds run on
+  Sonnet at pinned medium when scope is clear, `effort: "high"` on the call where verification matters or
+  edge cases are likely (a bug fix) or work is harder or longer, and Opus (explicit `model`) for complex
+  agentic coding (big refactor, multi-hour build); the house adds Opus for cross-module invariants or a
+  Sonnet attempt that failed on reasoning. No design: plan first. Debugger on Opus; no root cause, offer Fable.
 - On `/deep-research`, never `Workflow({name: "deep-research"})`, which pins no model. Copy
   `<home>/.claude/workflows/deep-research-tiered.js` into the session scratchpad and run
   `Workflow({scriptPath: <that copy>, args: {question, depth}})`, stating the depth (light,
