@@ -53,7 +53,11 @@ every fact in it still holds. This skill finds all four and fixes them, and find
    UNIQUE, or OPPORTUNITY (a finding can be COMPLEMENT and OPPORTUNITY at once; list it under both;
    definitions in [references/dispositions.md](references/dispositions.md)). Grep the
    rule files, `plugins/house/orchestration/ORCHESTRATION.md`, the agents, the hooks, the skills,
-   and the evals for any text that claims the old behavior.
+   and the evals for any text that claims the old behavior. Also list `gh issue list --state open`
+   and the commits since the previous addendum's commit over `plugins/house/hooks`,
+   `plugins/house/modules`, and `plugins/house/skills`. A hit that an open issue proposes building
+   or rests on, or that a newer mechanism overlaps, gets a disposition like any rule; comment on
+   that issue, never close it.
    Beside each release's triage, review `RISKY_AGENT_SETTINGS` in `plugins/house/payload/check.mjs`
    against the release notes: a new, renamed, or removed setting that redirects the API endpoint,
    approves servers wholesale, or bypasses permissions belongs on that list. Report the proposed
@@ -131,6 +135,10 @@ skeptics per duplicate-or-conflict claim, and two synthesis agents.
   and ratchets, so changing them is a package decision under the ADRs, not a reword.
 - **The branch guard reads command text.** Write PR bodies and commit messages that mention git
   verbs near branch names with the Write tool, then pass them with `--body-file` or `-F`.
+- **An addendum is checked against main as it stood.** A mechanism or plan added afterwards is never
+  compared with it: 2.1.304's resume warning was marked no impact, then G1 (PR #320) shipped
+  overlapping it. Before building a hook, rule, or skill, read the addenda since the last full
+  re-survey for native overlap.
 - **Subagents do not commit.** The session commits and pushes whatever an agent prepared.
 
 ## When an edit here takes effect

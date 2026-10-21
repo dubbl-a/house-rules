@@ -623,6 +623,15 @@ is not resubmitted and a loop would lose its run. Only the terminal client (entr
 `CLAUDE_CODE_ENTRYPOINT`, since `--continue` can follow an interactive transcript. It prices from a dated table of
 cache-write list prices and says nothing for a model the table lacks.
 
+Two gaps the existing tools leave are covered by `plugins/house/scripts/cost-report.mjs`: list-price
+cost by model split between the main thread and subagents, and the cause of each main-thread
+cache rebuild (a write over 50k tokens that is not a file's first request, attributed in order to a
+model switch, an idle gap over an hour, an idle gap over five minutes, or none). Everything else
+is left to `/session-report` and `npx -y @rixtay/mcp-usage`. The scan takes seconds on a week of
+transcripts, so `session-start.mjs` runs it detached once a week on startup and shows one line
+next startup when avoidable rebuilds reach $10 (`HOUSE_COST_CHECK_USD`; `HOUSE_COST_CHECK=off`
+disables). Output tokens can be undercounted and the dollars are list price, not a plan bill.
+
 ## Treat git state as shared across sessions
 
 repo-b's CLAUDE.md states the rule almost verbatim: "Git state is SHARED across sessions here."
