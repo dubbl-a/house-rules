@@ -22,8 +22,10 @@
 # budget (SCAN_BUDGET_MS, 2000, also wall clock) is what the longest inputs run
 # up to, so they finish near 2 s on a quiet machine; the bound sits at 4 s so a
 # slow runner has the whole budget plus a second of ordinary work before this
-# fails, while a stall of the sort it exists for (a sleep, a lock) must be
-# under a second to hide, and no such stall is in the guard.
+# fails. A stall of the sort it exists for (a sleep, a lock) can hide only
+# while the case it lands in still decides inside the bound, so whatever this
+# passes still decides inside the hook timeout. A hook that never returns is
+# killed a little past the timeout and fails on time, rather than hanging.
 #
 # Run:  bash tests/hooks/wall-clock.sh   (also `npm run test:hooks:wall`)
 # Exits non-zero if any case fails.
@@ -109,7 +111,14 @@ mk_mcp_payload() {
 timed() {
   local label="$1" want="$2" payload="$3" start end ms out code decision
   start=$(now_ms)
-  out=$(printf '%s' "$payload" | bash "$HOOK")
+  # A hook that blocks forever is killed past the timeout with its whole process
+  # group: killing bash alone leaves a child (a sleep) holding the pipe open.
+  out=$(printf '%s' "$payload" 2>/dev/null | perl -e '
+    my $t = shift; my $p = fork; die "fork: $!" unless defined $p;
+    if (!$p) { setpgrp(0, 0); exec @ARGV or die "exec: $!" }
+    $SIG{ALRM} = sub { kill "KILL", -$p; waitpid $p, 0; exit 142 };
+    alarm $t; waitpid $p, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
+  ' $((_timeout_s + 2)) bash "$HOOK")
   code=$?
   end=$(now_ms)
   ms=$((end - start))
