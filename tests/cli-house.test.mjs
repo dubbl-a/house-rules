@@ -4598,7 +4598,7 @@ test('#375 doctor: a binary with no recognisable native body leaves a current fo
 // now names. Its argv log is the proof of what ran, and in what order.
 const UPGRADE_REPO = 'dubbl-a/house-rules';
 const STUB_CLAUDE = `#!${process.execPath}
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 const argv = process.argv.slice(2);
 appendFileSync(process.env.STUB_LOG, JSON.stringify(argv) + '\\n');
@@ -4629,7 +4629,10 @@ if (argv[0] === 'plugin' && argv[1] === 'marketplace' && argv[2] === 'add') {
 if (argv[0] === 'plugin' && argv[1] === 'update') {
   if (process.env.STUB_FAIL_UPDATE) { console.error('stub: update failed'); process.exit(1); }
   const i = readJson(installed, {});
-  i.plugins['house-rules@house-rules'][0].version = readJson(known, {})['house-rules'].source.ref.replace(/^v/, '');
+  const scope = argv[argv.indexOf('-s') + 1];
+  const rp = (p) => { try { return realpathSync(p); } catch { return p; } };
+  const rec = i.plugins['house-rules@house-rules'].find((e) => e.scope === scope && (scope === 'user' || rp(e.projectPath) === rp(process.cwd())));
+  rec.version = readJson(known, {})['house-rules'].source.ref.replace(/^v/, '');
   writeFileSync(installed, JSON.stringify(i, null, 2));
   console.log('updated');
   process.exit(0);
@@ -4639,7 +4642,8 @@ process.exit(3);
 
 const upgradeReleases = () => releasesFixture([rel('v9.9.10'), rel('v9.9.9'), rel('v9.9.8'), rel('v9.9.7'), rel('v9.9.11', { prerelease: true })]);
 
-function upgradeFixture({ settings, settingsFile, installed = '9.9.8', stub = true } = {}) {
+// `records` replaces the single user-scope installed record; `knownRef` seeds known_marketplaces.json.
+function upgradeFixture({ settings, settingsFile, installed = '9.9.8', stub = true, records, knownRef } = {}) {
   const { cliPath } = buildFixturePlugin();
   const cfg = mkdtempSync(join(tmpdir(), 'house-upgrade-cfg-'));
   const bin = mkdtempSync(join(tmpdir(), 'house-upgrade-bin-'));
@@ -4648,7 +4652,8 @@ function upgradeFixture({ settings, settingsFile, installed = '9.9.8', stub = tr
   writeFileSync(log, '');
   if (stub) { writeFileSync(join(bin, 'claude'), STUB_CLAUDE); chmodSync(join(bin, 'claude'), 0o755); }
   mkdirSync(join(cfg, 'plugins'), { recursive: true });
-  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', version: installed }] } }, null, 2));
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': records || [{ scope: 'user', version: installed }] } }, null, 2));
+  if (knownRef) writeFileSync(join(cfg, 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'house-rules': { source: { source: 'github', repo: UPGRADE_REPO, ref: knownRef } } }));
   const file = settingsFile || join(cfg, 'settings.json');
   mkdirSync(dirname(file), { recursive: true });
   if (settings !== undefined) writeFileSync(file, typeof settings === 'string' ? settings : `${JSON.stringify(settings, null, 2)}\n`);
@@ -4658,8 +4663,11 @@ function upgradeFixture({ settings, settingsFile, installed = '9.9.8', stub = tr
   });
   const calls = () => readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const installedVersion = () => JSON.parse(readFileSync(join(cfg, 'plugins', 'installed_plugins.json'), 'utf8')).plugins['house-rules@house-rules'][0].version;
+  const installedVersions = () => JSON.parse(readFileSync(join(cfg, 'plugins', 'installed_plugins.json'), 'utf8')).plugins['house-rules@house-rules'].map((e) => e.version);
+  const knownRefNow = () => JSON.parse(readFileSync(join(cfg, 'plugins', 'known_marketplaces.json'), 'utf8'))['house-rules'].source.ref;
+  const settingsRef = () => Object.values(JSON.parse(readFileSync(file, 'utf8')).extraKnownMarketplaces)[0].source.ref;
   const cwds = () => readFileSync(`${log}.cwd`, 'utf8').split('\n').filter(Boolean);
-  return { cfg, file, run, calls, cwds, installedVersion, bakFiles: () => readdirSync(dirname(file)).filter((n) => n.includes('.house-upgrade-') && n.endsWith('.bak')) };
+  return { cfg, file, run, calls, cwds, installedVersion, installedVersions, knownRefNow, settingsRef, bakFiles: () => readdirSync(dirname(file)).filter((n) => n.includes('.house-upgrade-') && n.endsWith('.bak')) };
 }
 const pinnedEntry = (ref, extra = {}) => ({ theme: 'dark', extraKnownMarketplaces: { 'house-rules': { source: { source: 'github', repo: UPGRADE_REPO, ref, ...extra.source }, autoUpdate: true } }, trailing: [1, 2] });
 const ADD_V10 = ['plugin', 'marketplace', 'add', `${UPGRADE_REPO}#v9.9.10`, '--scope', 'user'];
@@ -4743,9 +4751,10 @@ test('#364 upgrade: with no settings entry it adds the marketplace at the tag an
 test('#364 upgrade: an entry in a project settings file runs at project scope', () => {
   const repo = buildTargetRepo();
   const file = join(repo, '.claude', 'settings.json');
-  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: file });
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: file, records: [{ scope: 'project', projectPath: repo, version: '9.9.8' }] });
   const r = f.run(['--apply', '--repo', repo]);
   assert.equal(r.code, 0, r.err + r.out);
+  assert.ok(r.out.includes(`cd ${repo} && claude plugin marketplace add`), r.out);
   assert.deepEqual(f.calls(), [
     ['plugin', 'marketplace', 'add', `${UPGRADE_REPO}#v9.9.10`, '--scope', 'project'],
     ['plugin', 'update', 'house-rules@house-rules', '-s', 'project'],
@@ -4756,7 +4765,7 @@ test('#364 upgrade: an entry in a project settings file runs at project scope', 
   assert.deepEqual(f.cwds(), [realpathSync(repo), realpathSync(repo)]);
   // settings.local.json is the local scope.
   const repo2 = buildTargetRepo();
-  const f2 = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: join(repo2, '.claude', 'settings.local.json') });
+  const f2 = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: join(repo2, '.claude', 'settings.local.json'), records: [{ scope: 'local', projectPath: repo2, version: '9.9.8' }] });
   const r2 = f2.run(['--apply', '--repo', repo2]);
   assert.equal(r2.code, 0, r2.err + r2.out);
   assert.equal(f2.calls()[0].at(-1), 'local');
@@ -4817,7 +4826,7 @@ test('#364 upgrade: a target below the installed version is refused unless --all
 });
 
 test('#364 upgrade: already at the target prints so and runs nothing', () => {
-  const f = upgradeFixture({ settings: pinnedEntry('v9.9.10'), installed: '9.9.10' });
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.10'), installed: '9.9.10', knownRef: 'v9.9.10' });
   const before = readFileSync(f.file, 'utf8');
   const r = f.run(['--apply']);
   assert.equal(r.code, 0, r.err);
@@ -4825,6 +4834,22 @@ test('#364 upgrade: already at the target prints so and runs nothing', () => {
   assert.deepEqual(f.calls(), []);
   assert.equal(readFileSync(f.file, 'utf8'), before);
   assert.deepEqual(f.bakFiles(), []);
+});
+
+test('#364 upgrade: installed alone at the target is not "already": the settings ref and the marketplace record must agree too', () => {
+  // Installed and settings at the target, marketplace record still on the old ref (a half-finished upgrade).
+  const a = upgradeFixture({ settings: pinnedEntry('v9.9.10'), installed: '9.9.10', knownRef: 'v9.9.8' });
+  const ra = a.run(['--apply']);
+  assert.equal(ra.code, 0, ra.err + ra.out);
+  assert.doesNotMatch(ra.out, /already at/);
+  assert.deepEqual(a.calls(), [ADD_V10, UPDATE_USER]);
+  // Installed and marketplace record at the target, settings ref on the old one.
+  const b = upgradeFixture({ settings: pinnedEntry('v9.9.8'), installed: '9.9.10', knownRef: 'v9.9.10' });
+  const rb = b.run(['--apply']);
+  assert.equal(rb.code, 0, rb.err + rb.out);
+  assert.doesNotMatch(rb.out, /already at/);
+  assert.equal(b.settingsRef(), 'v9.9.10');
+  assert.deepEqual(b.calls(), [ADD_V10, UPDATE_USER]);
 });
 
 test('#364 upgrade: an unreachable release list exits 1 and changes nothing', () => {
@@ -4850,7 +4875,7 @@ test('#364 upgrade: no claude on PATH exits 1 before any edit', () => {
   assert.equal(f.run([]).code, 0);
 });
 
-test('#364 upgrade: a failing update step stops, names the backup, the remaining command and the rollback', () => {
+test('#364 upgrade: a failing update step stops, names the backup and the remaining command, and prints one rollback line', () => {
   const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
   const r = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
   assert.equal(r.code, 1);
@@ -4859,34 +4884,61 @@ test('#364 upgrade: a failing update step stops, names the backup, the remaining
   assert.match(r.err, /step 3 failed: claude plugin update house-rules@house-rules -s user/);
   assert.ok(r.err.includes(bak), r.err);
   assert.match(r.err, /remaining:\n\s+claude plugin update house-rules@house-rules -s user/);
-  assert.match(r.err, /rollback:/);
-  assert.ok(r.err.includes(`cp ${bak} ${real}`), r.err);
-  assert.match(r.err, /claude plugin marketplace add 'dubbl-a\/house-rules#v9\.9\.8' --scope user/);
+  const lines = r.err.split('\n');
+  const at = lines.indexOf('rollback:');
+  assert.ok(at >= 0, r.err);
+  assert.match(lines[at + 1], /^  node \S+\/scripts\/house upgrade v9\.9\.8 --apply --allow-downgrade$/);
+  assert.equal(lines.length, at + 2 + (lines.at(-1) === '' ? 1 : 0), 'the rollback is that one line');
+  assert.doesNotMatch(r.err, /\bcp \S+\.bak|\brm \S/);
   assert.deepEqual(f.calls(), [ADD_V10, UPDATE_USER]);
 });
 
-test('#364 upgrade: rollback restores the entry\'s own original ref, not the installed version', () => {
-  // The entry pins v9.9.7 while v9.9.8 is installed: the add that undoes the edit must name v9.9.7.
-  const f = upgradeFixture({ settings: pinnedEntry('v9.9.7') });
-  const r = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
-  assert.equal(r.code, 1);
-  assert.match(r.err, /claude plugin marketplace add 'dubbl-a\/house-rules#v9\.9\.7' --scope user\n?$/);
-  assert.doesNotMatch(r.err, /#v9\.9\.8/);
+test('#364 upgrade: the printed pinned rollback line works: it takes settings, marketplace and install back to the old tag', () => {
+  // The entry pins v9.9.7 while v9.9.8 is installed, so the old tag is the entry's, not the installed version.
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.7'), knownRef: 'v9.9.7' });
+  const failed = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
+  assert.equal(failed.code, 1);
+  assert.equal(f.settingsRef(), 'v9.9.10');
+  assert.equal(f.knownRefNow(), 'v9.9.10');
+  assert.deepEqual(f.installedVersions(), ['9.9.8']);
+  const lines = failed.err.split('\n');
+  const cmd = lines[lines.indexOf('rollback:') + 1].trim().split(' ');
+  assert.equal(cmd[0], 'node');
+  assert.deepEqual(cmd.slice(2), ['upgrade', 'v9.9.7', '--apply', '--allow-downgrade']);
+  assert.match(cmd[1], /\/scripts\/house$/);
+  // Run it with the same stub config and no failure injected.
+  const back = f.run(cmd.slice(3));
+  assert.equal(back.code, 0, back.err + back.out);
+  assert.doesNotMatch(back.out, /already at/);
+  assert.equal(f.bakFiles().length, 2, 'the rerun keeps the first backup even inside the same second');
+  assert.equal(f.settingsRef(), 'v9.9.7');
+  assert.equal(f.knownRefNow(), 'v9.9.7');
+  assert.deepEqual(f.installedVersions(), ['9.9.7']);
 });
 
-test('#364 upgrade: rollback of an unpinned entry restores the file and re-adds with no ref', () => {
+test('#364 upgrade: a project-scope rollback line names the repo, and by-hand commands start with a cd', () => {
+  const repo = buildTargetRepo();
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: join(repo, '.claude', 'settings.json'), records: [{ scope: 'project', projectPath: repo, version: '9.9.8' }] });
+  const r = f.run(['--apply', '--repo', repo], { STUB_FAIL_UPDATE: '1' });
+  assert.equal(r.code, 1);
+  assert.ok(r.err.includes(`  cd ${repo} && claude plugin update house-rules@house-rules -s project`), r.err);
+  assert.match(r.err, new RegExp(`upgrade v9\\.9\\.8 --apply --allow-downgrade --repo ${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?$`));
+});
+
+test('#364 upgrade: an unpinned entry that fails prints the state, the backup and a pointer to the README, no generated commands', () => {
   const f = upgradeFixture({ settings: { extraKnownMarketplaces: { 'house-rules': { source: { source: 'github', repo: UPGRADE_REPO } } } } });
   const before = readFileSync(f.file, 'utf8');
   const r = f.run(['--apply', '--pin'], { STUB_FAIL_UPDATE: '1' });
   assert.equal(r.code, 1);
   const bak = join(dirname(realpathSync(f.file)), f.bakFiles()[0]);
   assert.equal(readFileSync(bak, 'utf8'), before);
-  const lines = r.err.split('\n').map((l) => l.trim());
-  const at = lines.indexOf('rollback:');
-  assert.deepEqual(lines.slice(at + 1, at + 3), [`cp ${bak} ${realpathSync(f.file)}`, `claude plugin marketplace add ${UPGRADE_REPO} --scope user`]);
+  assert.match(r.err, /state now:\n  settings ref: v9\.9\.10; known_marketplaces\.json ref: v9\.9\.10; installed: 9\.9\.8\n/);
+  assert.ok(r.err.includes(`  backup: ${bak}\n`), r.err);
+  assert.match(r.err, /restore the backup and re-add the marketplace by hand; see README 'To move a pin'/);
+  assert.doesNotMatch(r.err, /rollback:|\bcp \S|\brm \S|marketplace add 'dubbl-a\/house-rules'?( |$)/);
 });
 
-test('#364 upgrade: a branch ref is not a pin, so it needs --pin and rolls back to that ref', () => {
+test('#364 upgrade: a branch ref is not a pin, so it needs --pin and its rollback is by hand', () => {
   const f = upgradeFixture({ settings: pinnedEntry('main') });
   const refused = f.run(['--apply']);
   assert.equal(refused.code, 2);
@@ -4894,10 +4946,11 @@ test('#364 upgrade: a branch ref is not a pin, so it needs --pin and rolls back 
   assert.deepEqual(f.calls(), []);
   const r = f.run(['--apply', '--pin'], { STUB_FAIL_UPDATE: '1' });
   assert.equal(r.code, 1);
-  assert.match(r.err, /claude plugin marketplace add 'dubbl-a\/house-rules#main' --scope user/);
+  assert.match(r.err, /state now:/);
+  assert.match(r.err, /see README 'To move a pin'/);
 });
 
-test('#364 upgrade: with no entry, user settings are backed up before the add and rollback restores them', () => {
+test('#364 upgrade: with no entry, user settings are backed up before the add and the failure prints state and backup', () => {
   const f = upgradeFixture({ settings: { theme: 'dark' } });
   const before = readFileSync(f.file, 'utf8');
   const r = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
@@ -4905,13 +4958,15 @@ test('#364 upgrade: with no entry, user settings are backed up before the add an
   const bak = join(dirname(realpathSync(f.file)), f.bakFiles()[0]);
   assert.equal(readFileSync(bak, 'utf8'), before);
   assert.notEqual(readFileSync(f.file, 'utf8'), before, 'the add wrote an entry');
-  assert.ok(r.err.includes(`cp ${bak} ${realpathSync(f.file)}`), r.err);
-  assert.doesNotMatch(r.err, /marketplace add 'dubbl-a\/house-rules#v9\.9\.8'/);
-  // With no settings file at all, the rollback is to remove the one the add created.
+  assert.ok(r.err.includes(`  backup: ${bak}\n`), r.err);
+  assert.match(r.err, /settings ref: v9\.9\.10; known_marketplaces\.json ref: v9\.9\.10; installed: 9\.9\.8/);
+  assert.match(r.err, /see README 'To move a pin'/);
+  assert.doesNotMatch(r.err, /\bcp \S|\brm \S/);
+  // With no settings file at all, there is no backup to name, and the state line says so.
   const none = upgradeFixture();
   const r2 = none.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
   assert.equal(r2.code, 1);
-  assert.ok(r2.err.includes(`rm ${none.file}`), r2.err);
+  assert.ok(r2.err.includes(`backup: none (${none.file} did not exist before)`), r2.err);
 });
 
 test('#364 upgrade: a symlinked settings file stays a link and its target takes the edit', () => {
@@ -4934,13 +4989,39 @@ test('#364 upgrade: a symlinked settings file stays a link and its target takes 
 
 test('#364 upgrade: the installed record for the entry\'s scope decides the old version', () => {
   const repo = buildTargetRepo();
-  const f = upgradeFixture({ settings: pinnedEntry('v9.9.7'), settingsFile: join(repo, '.claude', 'settings.json'), installed: '9.9.9' });
-  // A user-scope record at 9.9.9 sits beside the project-scope one at 9.9.7.
-  const p = join(f.cfg, 'plugins', 'installed_plugins.json');
-  writeFileSync(p, JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', version: '9.9.9' }, { scope: 'project', version: '9.9.7' }] } }));
+  const other = buildTargetRepo();
+  // A user record at 9.9.9 and a project record for another repo at 9.9.9 sit beside this repo's at 9.9.7.
+  const records = [
+    { scope: 'user', version: '9.9.9' },
+    { scope: 'project', projectPath: other, version: '9.9.9' },
+    { scope: 'project', projectPath: repo, version: '9.9.7' },
+  ];
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.7'), settingsFile: join(repo, '.claude', 'settings.json'), records });
   const r = f.run(['--repo', repo]);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /v9\.9\.7 -> v9\.9\.10 \(project scope\)/);
+  // Applying moves this repo's record only.
+  const done = f.run(['--repo', repo, '--apply']);
+  assert.equal(done.code, 0, done.err + done.out);
+  assert.deepEqual(f.installedVersions(), ['9.9.9', '9.9.9', '9.9.10']);
+});
+
+test('#364 upgrade: no installed record for the entry\'s scope and repo is "not installed", exit 2, nothing run', () => {
+  const repo = buildTargetRepo();
+  const other = buildTargetRepo();
+  const settingsFile = join(repo, '.claude', 'settings.json');
+  for (const records of [
+    [{ scope: 'user', version: '9.9.8' }],
+    [{ scope: 'project', projectPath: other, version: '9.9.8' }],
+    [{ scope: 'project', version: '9.9.8' }],
+    [{ scope: 'project', projectPath: join(repo, 'nowhere'), version: '9.9.8' }],
+  ]) {
+    const f = upgradeFixture({ settings: pinnedEntry('v9.9.7'), settingsFile, records });
+    const r = f.run(['--repo', repo, '--apply']);
+    assert.equal(r.code, 2, JSON.stringify(records));
+    assert.match(r.err, /not installed at project scope/);
+    assert.deepEqual(f.calls(), []);
+  }
 });
 
 test('#364 upgrade: a known_marketplaces ref that is not the target exits 1 with the manual fallback', () => {

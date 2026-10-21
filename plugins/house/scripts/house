@@ -3737,9 +3737,11 @@ function onPath(cmd) {
 function backupSettingsFile(file) {
   const real = realpathSync(file);
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const backup = `${real}.house-upgrade-${stamp}.bak`;
-  copyFileSync(real, backup, fsConstants.COPYFILE_EXCL);
-  return backup;
+  // Never overwrite an earlier backup: a rollback rerun inside the same second gets a suffix.
+  for (let n = 0; ; n++) {
+    const backup = `${real}.house-upgrade-${stamp}${n ? `-${n}` : ''}.bak`;
+    try { copyFileSync(real, backup, fsConstants.COPYFILE_EXCL); return backup; } catch (e) { if (e.code !== 'EEXIST' || n >= 99) throw e; }
+  }
 }
 
 // Set source.ref in place after copying the original bytes aside; returns the backup path.
@@ -3769,19 +3771,13 @@ async function cmdUpgrade(rest) {
   if (args.help) { console.log(UPGRADE_USAGE); return; }
   const fail = (code, msg) => { console.error(`house upgrade: ${msg}`); process.exit(code); };
   const q = (a) => (/^[A-Za-z0-9_.\/:=@+-]+$/.test(a) ? a : `'${a}'`);
-  const cmdText = (argv) => ['claude', ...argv].map(q).join(' ');
+  // Commands printed for a project or local scope start from the repo, as they run.
+  let scope = 'user';
+  let repoRoot = null;
+  const cmdText = (argv) => `${scope !== 'user' && repoRoot ? `cd ${q(repoRoot)} && ` : ''}${['claude', ...argv].map(q).join(' ')}`;
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
 
-  // The installed version comes from Claude Code's own record, not the loaded plugin copy.
-  let installedEntries = [];
   const installedFile = path.join(cfgDir, 'plugins', 'installed_plugins.json');
-  try {
-    const rec = JSON.parse(readFileSync(installedFile, 'utf8')).plugins[HOUSE_PLUGIN_KEY];
-    installedEntries = rec.filter((e) => isPlainObject(e) && typeof e.version === 'string' && e.version);
-  } catch { /* reported below */ }
-  if (!installedEntries.length) fail(2, `${HOUSE_PLUGIN_KEY} is not recorded in ${installedFile}; install it first (see the README), nothing changed`);
-
-  let repoRoot = null;
   if (args.repo) repoRoot = path.resolve(process.cwd(), args.repo);
   else {
     try { repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* outside a repo: user settings only */ }
@@ -3812,8 +3808,26 @@ async function cmdUpgrade(rest) {
     fail(2, `more than one extraKnownMarketplaces entry names ${HOUSE_MARKETPLACE_REPO}, so no edit is safe; remove all but one, then rerun:\n${matches.map((m) => `  ${m.file} (entry "${m.key}", ${m.scope} scope)`).join('\n')}`);
   }
   const m = matches[0] || null;
-  // The record for the entry's scope, else the first.
-  const installed = (installedEntries.find((e) => e.scope === (m ? m.scope : 'user')) || installedEntries[0]).version;
+  scope = m ? m.scope : 'user';
+
+  // The installed version comes from Claude Code's own record, not the loaded plugin copy. A
+  // project or local install is recorded per repo (projectPath), so it must match this repo.
+  const realOrNull = (p) => { try { return realpathSync(p); } catch { return null; } };
+  const installedRecord = () => {
+    let recs = [];
+    try { recs = JSON.parse(readFileSync(installedFile, 'utf8')).plugins[HOUSE_PLUGIN_KEY].filter((e) => isPlainObject(e) && typeof e.version === 'string' && e.version); } catch { /* none */ }
+    return recs.find((e) => e.scope === scope && (scope === 'user' || (typeof e.projectPath === 'string' && realOrNull(e.projectPath) !== null && realOrNull(e.projectPath) === realOrNull(repoRoot)))) || null;
+  };
+  const knownRefNow = () => {
+    try {
+      const known = JSON.parse(readFileSync(path.join(cfgDir, 'plugins', 'known_marketplaces.json'), 'utf8'));
+      const k = Object.values(known).find((e) => isPlainObject(e) && isPlainObject(e.source) && e.source.repo === HOUSE_MARKETPLACE_REPO);
+      return k ? k.source.ref : undefined;
+    } catch { return undefined; }
+  };
+  const rec = installedRecord();
+  if (!rec) fail(2, `${HOUSE_PLUGIN_KEY} is not installed at ${scope} scope${scope === 'user' ? '' : ` for ${repoRoot}`} (see ${installedFile}); install it first (see the README), nothing changed`);
+  const installed = rec.version;
 
   let list;
   try {
@@ -3833,9 +3847,9 @@ async function cmdUpgrade(rest) {
   if (SEMVER_TAG.test(installed) && compareSemver(target, installed) < 0 && !args.allowDowngrade) {
     fail(2, `${tag} is below the installed v${installed.replace(/^v/, '')}; pass --allow-downgrade to go back`);
   }
-  if (installed.replace(/^v/, '') === target && m && m.source.ref === tag) { console.log(`already at ${tag}`); return; }
+  // Already there only when the install, the settings ref and the marketplace record all say so.
+  if (installed.replace(/^v/, '') === target && (!m || m.source.ref === tag) && knownRefNow() === tag) { console.log(`already at ${tag}`); return; }
 
-  const scope = m ? m.scope : 'user';
   // Only a release tag is a pin: a branch ref (main) still tracks, so it is unpinned too.
   const origRef = m && typeof m.source.ref === 'string' && m.source.ref ? m.source.ref : null;
   const unpinned = Boolean(m) && !(origRef && SEMVER_TAG.test(origRef));
@@ -3861,16 +3875,29 @@ async function cmdUpgrade(rest) {
   // With no entry, the add writes one into user settings: keep that file's bytes (or note it did not exist).
   const userSettings = path.join(cfgDir, 'settings.json');
   const userSettingsExisted = existsSync(userSettings);
-  const rollbackLines = () => {
-    const undo = [];
-    if (backup) undo.push(`cp ${q(backup)} ${q(realpathSync(m ? m.file : userSettings))}`);
-    else if (!m && !userSettingsExisted && existsSync(userSettings)) undo.push(`rm ${q(userSettings)}`);
-    if (m && done.some((d) => d.includes('marketplace add'))) {
-      undo.push(cmdText(['plugin', 'marketplace', 'add', origRef ? `${HOUSE_MARKETPLACE_REPO}#${origRef}` : HOUSE_MARKETPLACE_REPO, '--scope', scope]));
-    }
-    return undo;
-  };
   const done = [];
+  // What to print when a step failed after something was written. A pinned entry rolls back by
+  // running this command again at the old tag; anything else is restored by hand.
+  const rollbackLines = () => {
+    if (!backup && !done.length) return ['nothing was written, so there is nothing to undo'];
+    if (origRef && SEMVER_TAG.test(origRef)) {
+      const oldRef = `v${origRef.replace(/^v/, '')}`;
+      return ['rollback:', `  node ${q(__filename)} upgrade ${oldRef} --apply --allow-downgrade${scope !== 'user' ? ` --repo ${q(repoRoot)}` : ''}`];
+    }
+    const now = installedRecord();
+    let settingsRef = 'unreadable';
+    try {
+      const obj = JSON.parse(readFileSync(m ? m.file : userSettings, 'utf8'));
+      const ent = Object.values(isPlainObject(obj.extraKnownMarketplaces) ? obj.extraKnownMarketplaces : {}).find((e) => isPlainObject(e) && isPlainObject(e.source) && e.source.repo === HOUSE_MARKETPLACE_REPO);
+      settingsRef = ent ? (ent.source.ref || 'none') : 'no entry';
+    } catch { /* keep unreadable */ }
+    return [
+      'state now:',
+      `  settings ref: ${settingsRef}; known_marketplaces.json ref: ${knownRefNow() ?? 'none'}; installed: ${now ? now.version : 'unknown'}`,
+      backup ? `  backup: ${backup}` : `  backup: none (${userSettings} did not exist before)`,
+      "restore the backup and re-add the marketplace by hand; see README 'To move a pin'",
+    ];
+  };
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
     let problem = null;
@@ -3892,8 +3919,7 @@ async function cmdUpgrade(rest) {
         done.forEach((d) => lines.push(`  ${d}`));
       }
       lines.push('remaining:', ...steps.slice(i).map((r) => `  ${r.edit ? `edit ${m.file} (set the ref to "${tag}")` : r.text}`));
-      const undo = rollbackLines();
-      lines.push(undo.length ? 'rollback:' : 'rollback: nothing to undo', ...undo.map((u) => `  ${u}`));
+      lines.push(...rollbackLines());
       console.error(lines.join('\n'));
       process.exit(1);
     }
@@ -3901,14 +3927,9 @@ async function cmdUpgrade(rest) {
   }
 
   // The commands can succeed while the install stays where it was: read the record back.
-  let knownRef = null;
-  try {
-    const known = JSON.parse(readFileSync(path.join(cfgDir, 'plugins', 'known_marketplaces.json'), 'utf8'));
-    const k = Object.values(known).find((e) => isPlainObject(e) && isPlainObject(e.source) && e.source.repo === HOUSE_MARKETPLACE_REPO);
-    if (k) knownRef = k.source.ref;
-  } catch { /* judged below */ }
+  const knownRef = knownRefNow();
   if (knownRef !== tag) {
-    fail(1, `the commands ran, but plugins/known_marketplaces.json shows ref ${knownRef === null || knownRef === undefined ? 'none' : knownRef}, not ${tag}, so Claude Code would ignore the marketplace. Run by hand, then restart:\n  ${cmdText(addArgv)}\n  ${cmdText(updateArgv)}${rollbackLines().length ? `\nTo undo:\n${rollbackLines().map((u) => `  ${u}`).join('\n')}` : ''}`);
+    fail(1, `the commands ran, but plugins/known_marketplaces.json shows ref ${knownRef ?? 'none'}, not ${tag}, so Claude Code would ignore the marketplace. Run by hand, then restart:\n  ${cmdText(addArgv)}\n  ${cmdText(updateArgv)}\n${rollbackLines().join('\n')}`);
   }
   console.log(`upgraded to ${tag}.`);
   console.log('Restart Claude Code, then run /house-rules:sync in each adopting repo.');
