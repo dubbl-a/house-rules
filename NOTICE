@@ -213,6 +213,15 @@ evaluated, and rejected without copying, is docs/handbook/upstreams.md.
    and the text is delivered by a session-start hook rather than by
    replacing the user's own CLAUDE.md.
 
+9. frankxai/claude-skills-library, the memory-prune skill.
+   https://github.com/frankxai/claude-skills-library
+   Licensed under the MIT License.
+
+   The principles behind plugins/house/skills/trim-memory/SKILL.md (never
+   auto-delete, read content before deciding, lean toward keeping feedback,
+   user, and reference entries) were taken from that skill.
+   No code or text from it is reproduced here.
+
 The remaining ledger rows contributed no text, structure, or schema and are
 recorded there rather than here: ai-rulez and Packmind for ideas and framing,
 ctxlint for one check whose idea was reimplemented in this package's own code

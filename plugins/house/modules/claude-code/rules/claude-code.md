@@ -18,6 +18,7 @@ Write one line per memory as the cue to open the file, not the fact itself, sinc
 Move any fact the index is the only copy of into its topic file before shortening the line; a trim that loses the fact is worse than the long line it replaced.
 The harness reminds Claude to shorten the index after a write that nears its load ceiling and returns an error on one that passes it; treat that as the floor and add what it cannot see.
 Keep the newer cue when a later memory supersedes an earlier one, and let the older topic file record the hand-off so the index never carries two answers.
+Run `house-rules:trim-memory` when the harness's shorten reminder or the checker warning appears.
 Treat the documented load ceiling as a cliff rather than a budget, because everything past it is dropped on the next load and no session says so.
 Anchor: `node .house/check.mjs --only=lengths` warns, and never fails, when the index nears either load ceiling or carries a line too long to be a cue, and stays silent where no memory index exists.
 Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-hold-it-under-its-cap`

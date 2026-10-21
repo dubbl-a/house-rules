@@ -1980,7 +1980,7 @@ function checkLengths(ctx) {
       over.push(`${longLines.length} line(s) over ${MEMORY_INDEX_MAX_LINE_CHARS} chars, first: ${sample}`);
     }
     if (over.length) {
-      warnings.push(mk('lengths', memIndex, null, 'memory-index', `${over.join('; ')}. The harness loads the first ${MEMORY_INDEX_CAP_LINES} lines or ${MEMORY_INDEX_CAP_BYTES} bytes, whichever comes first, and drops the rest silently. Move each entry's detail into its topic file first, then shorten the index line to the cue that says when to open it.`));
+      warnings.push(mk('lengths', memIndex, null, 'memory-index', `${over.join('; ')}. The harness loads the first ${MEMORY_INDEX_CAP_LINES} lines or ${MEMORY_INDEX_CAP_BYTES} bytes, whichever comes first, and drops the rest silently. Run /house-rules:trim-memory to move closed topics into an overflow index without rewording a line. Shorten a long line by hand only after its detail is in its topic file, keeping every name a future prompt would mention.`));
     }
   }
 

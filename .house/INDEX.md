@@ -23,6 +23,8 @@
   The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
 - Plan when the approach is uncertain, and clear the context after two failed corrections
   Plan first when the approach is uncertain or the change spans files, and skip it when you could describe the diff in one sentence, since planning has real overhead.
+- Keep a session to one task, and start fresh rather than resume a large idle one
+  Claude Code resends the whole conversation on every request, so a long session pays for its history on each turn, and the first message after an idle gap longer than the cache lifetime rewrites the whole context into the cache at the write price.
 - Treat git state as shared across sessions
   Assume another checkout can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
 - Keep the committed settings narrow and the local settings local
