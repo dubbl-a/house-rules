@@ -10,11 +10,16 @@
 // On startup it also runs a weekly cost check: a detached scan
 // (../scripts/cost-report.mjs) writes <config dir>/house/cost-check.json, and
 // a later startup shows one systemMessage line when rebuilds after idle gaps
-// or model switches cost at least HOUSE_COST_CHECK_USD (default 10), once per
-// result. HOUSE_COST_CHECK=off disables it. The scan takes seconds, so the
+// or model switches cost at least HOUSE_COST_CHECK_USD (default 10), or when
+// the price premiums (fast mode, US-only inference, legacy models) total at
+// least that, once per result; a premium line names the largest of the three.
+// HOUSE_COST_CHECK=off disables it. The scan takes seconds, so the
 // hook never waits for it. An exclusive lock file (cost-check.lock, stale after
 // an hour, removed by the scan when it finishes) lets only one of several
-// parallel sessions spawn it. A result not yet shown is shown before a rescan.
+// parallel sessions spawn it. The hook writes no claim at spawn, so a scan that
+// dies without a result is retried at the first startup after the lock goes
+// stale, while a finished result is due again a week after its checkedAt.
+// A result not yet shown is shown before a rescan.
 //
 // A context hook must never cost a session anything: if the file is missing
 // or unreadable, emit nothing and exit 0. Stdout is the only channel the
@@ -68,15 +73,31 @@ function costCheck(here) {
   const override = Number.parseFloat(process.env.HOUSE_COST_CHECK_USD);
   const threshold = Number.isFinite(override) && override >= 0 ? override : DEFAULT_THRESHOLD_USD;
   let notice;
-  if (state && !state.shownAt && Number.isFinite(state.avoidableUsd) && Number.isFinite(state.totalUsd) && state.avoidableUsd >= threshold) {
+  const valid = state && !state.shownAt && Number.isFinite(state.totalUsd);
+  const rebuildOver = valid && Number.isFinite(state.avoidableUsd) && state.avoidableUsd >= threshold;
+  const prem = valid && state.premiums && typeof state.premiums === 'object' ? state.premiums : {};
+  const premiumList = [['fast mode', prem.fastUsd], ['US-only inference', prem.usOnlyUsd], ['legacy models', prem.legacyModelUsd]]
+    .map(([name, v]) => [name, Number.isFinite(v) ? v : 0]);
+  // The factors overlap, so the notice uses the combined premium, not their sum.
+  const premiumTotal = Number.isFinite(prem.totalUsd) ? prem.totalUsd : 0;
+  const premiumOver = premiumTotal > 0 && premiumTotal >= threshold;
+  if (rebuildOver || premiumOver) {
     state = { ...state, shownAt: new Date().toISOString() };
     writeState(file, state);
-    notice = `house: in the last 7 days, cache rebuilds after idle gaps or model switches cost about $${state.avoidableUsd.toFixed(0)} of $${state.totalUsd.toFixed(0)} at list price (${state.avoidableCount} rebuilds). ` +
-      `Next: /session-report shows where; node "${script}" splits cost by model and cause. Silence with HOUSE_COST_CHECK=off.`;
+    const parts = ['house: in the last 7 days,'];
+    if (rebuildOver) parts.push(`cache rebuilds after idle gaps or model switches cost about $${state.avoidableUsd.toFixed(0)} of $${state.totalUsd.toFixed(0)} at list price (${state.avoidableCount} rebuilds).`);
+    if (premiumOver) {
+      const [name, v] = premiumList.reduce((a, b) => (b[1] > a[1] ? b : a));
+      parts.push(`${rebuildOver ? 'price premiums' : 'price premiums (fast mode, US-only inference, legacy models)'} added about $${premiumTotal.toFixed(0)}, mostly ${name} ($${v.toFixed(0)}).`);
+    }
+    parts.push(rebuildOver ? `Next: /session-report shows where; node "${script}" splits cost by model and cause. Silence with HOUSE_COST_CHECK=off.`
+      : `Next: node "${script}" shows the split. Silence with HOUSE_COST_CHECK=off.`);
+    notice = parts.join(' ');
   }
+  // No claim is written at spawn: a scan that dies leaves no new checkedAt, and the
+  // lock (stale after an hour) is what paces the retry.
   const checkedAt = state ? Date.parse(state.checkedAt) : NaN;
   if ((!Number.isFinite(checkedAt) || Date.now() - checkedAt >= WEEK_MS) && takeLock(join(dirname(file), 'cost-check.lock'))) {
-    writeState(file, { checkedAt: new Date().toISOString() });
     const args = [script, '--since', '7d', '--state', file];
     if (process.env.HOUSE_COST_CHECK_PROJECTS_DIR) args.push('--dir', process.env.HOUSE_COST_CHECK_PROJECTS_DIR);
     // Test seam: lets a test count how many parallel hooks spawned a scan.

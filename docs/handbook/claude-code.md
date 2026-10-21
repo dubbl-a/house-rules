@@ -696,11 +696,16 @@ cache-write list prices and says nothing for a model the table lacks.
 Two gaps the existing tools leave are covered by `plugins/house/scripts/cost-report.mjs`: list-price
 cost by model split between the main thread and subagents, and the cause of each main-thread
 cache rebuild (a write over 50k tokens that is not a file's first request, attributed in order to a
-model switch, an idle gap over an hour, an idle gap over five minutes, or none). Everything else
-is left to `/session-report` and `npx -y @rixtay/mcp-usage`. The scan takes seconds on a week of
-transcripts, so `session-start.mjs` runs it detached once a week on startup and shows one line
-next startup when avoidable rebuilds reach $10 (`HOUSE_COST_CHECK_USD`; `HOUSE_COST_CHECK=off`
-disables). Output tokens can be undercounted and the dollars are list price, not a plan bill.
+model switch, an idle gap over an hour, an idle gap over five minutes, or none). It also prices
+what fast mode, US-only inference and legacy models added (each alone, and all three together,
+since they overlap), splits main-thread requests by context size, and counts the idle rebuilds
+written to the five-minute cache, which `promptCacheTtl: "1h"` would likely have turned into hits
+at a higher write price. Everything else is left to `/session-report` and
+`npx -y @rixtay/mcp-usage`. The scan takes seconds on a week of transcripts, so `session-start.mjs`
+runs it detached once a week on startup and shows one line next startup when avoidable rebuilds
+or the combined premium reach $10 (`HOUSE_COST_CHECK_USD`; `HOUSE_COST_CHECK=off` disables). A
+scan that dies is retried once its lock is an hour old. Output tokens can be undercounted and the
+dollars are list price, not a plan bill.
 
 ## Treat git state as shared across sessions
 

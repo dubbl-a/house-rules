@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync, symlinkSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -356,4 +356,177 @@ test('hook: malformed or wrong-shaped state never fails and is treated as no sta
   }
   const cfg = tmp();
   assert.ok(hook(cfg, { stdin: 'not json' }).out.hookSpecificOutput.additionalContext);
+});
+
+// ---- price premiums, context bands, short-TTL rebuilds ----
+
+test('premiums: each factor is the extra cost over the same tokens without it', () => {
+  const fast = tmp();
+  put(fast, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, out: 1e6, speed: 'fast' })]);
+  assert.deepEqual(report(fast).premiums, { fastUsd: 24, usOnlyUsd: 0, legacyModelUsd: 0, totalUsd: 24 });
+  const us = tmp();
+  put(us, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, geo: 'us' })]);
+  const p = report(us).premiums;
+  near(p.usOnlyUsd, 0.4);
+  assert.equal(p.fastUsd, 0);
+  assert.equal(p.legacyModelUsd, 0);
+  const legacy = tmp();
+  put(legacy, 'p/s.jsonl', [
+    entry({ model: 'claude-opus-5', ts: ago(60), inTok: 1e6, out: 1e6 }),
+    entry({ model: 'claude-fable-5', ts: ago(50), read: 1e6 }),
+    entry({ model: 'claude-sonnet-5', ts: ago(40), read: 1e6, sidechain: true }),
+  ]);
+  const l = report(legacy).premiums;
+  near(l.legacyModelUsd, 6 + 0.75 + 0.1);
+  assert.equal(l.fastUsd, 0);
+  assert.equal(l.usOnlyUsd, 0);
+});
+
+test('premiums: factors are removed one at a time from a request carrying all three', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5', ts: ago(60), inTok: 1e6, speed: 'fast', geo: 'us' })]);
+  const p = report(d).premiums;
+  near(p.fastUsd, 11 - 5.5);
+  near(p.usOnlyUsd, 11 - 10);
+  near(p.legacyModelUsd, 11 - 8.8);
+});
+
+test('premiums: totalUsd is the cost minus the standard price, not the sum of the overlapping factors', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5', ts: ago(60), inTok: 1e6, speed: 'fast', geo: 'us' })]);
+  const p = report(d).premiums;
+  near(p.totalUsd, 11 - 4);
+  assert.ok(p.fastUsd + p.usOnlyUsd + p.legacyModelUsd > p.totalUsd);
+  const out = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' }).stdout;
+  assert.match(out, /all three together: \$7\.00/);
+});
+
+test('text output prints the premium block only when a premium is above zero', () => {
+  const plain = tmp();
+  put(plain, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6 })]);
+  assert.doesNotMatch(spawnSync(process.execPath, [CLI, '--dir', plain], { encoding: 'utf8' }).stdout, /Price premiums/);
+  const fast = tmp();
+  put(fast, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, speed: 'fast' })]);
+  const out = spawnSync(process.execPath, [CLI, '--dir', fast], { encoding: 'utf8' }).stdout;
+  assert.match(out, /Price premiums/);
+  assert.match(out, /fast mode: \$4\.00/);
+});
+
+test('context bands: 199,999 is under 200k, 200,000 and 500,000 move up; subagents are left out', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ model: 'claude-opus-5-5', ts: ago(90), inTok: 199999 }),
+    entry({ model: 'claude-opus-5-5', ts: ago(80), inTok: 100000, read: 100000 }),
+    entry({ model: 'claude-opus-5-5', ts: ago(70), inTok: 1, read: 200000, w5: 299999 }),
+    entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 500000, sidechain: true }),
+  ]);
+  put(d, 'p/t.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(50), inTok: 1, w1: 499999 })]);
+  const b = report(d).contextBands;
+  assert.equal(b['under 200k'].requests, 1);
+  assert.equal(b['200k-500k'].requests, 1);
+  assert.equal(b['500k and over'].requests, 2);
+  near(b['under 200k'].usd, 199999 * 4 / 1e6);
+});
+
+test('short TTL: idle 5m-1h rebuilds written mostly at 5m count; 1h-written and other causes do not', () => {
+  const d = tmp();
+  put(d, 'p/five.jsonl', [
+    entry({ ts: ago(20000), inTok: 1, w5: 60000 }),
+    entry({ ts: ago(19000), inTok: 1, w5: 60000 }), // 990 s, 5m write: counted
+    entry({ ts: ago(10000), inTok: 1, w5: 60000 }), // idle >1h: not counted
+  ]);
+  put(d, 'p/hour.jsonl', [
+    entry({ ts: ago(20000), inTok: 1, w1: 60000 }),
+    entry({ ts: ago(19000), inTok: 1, w1: 60000 }), // 990 s, 1h write: not counted
+  ]);
+  const t = report(d).shortTtl;
+  assert.equal(t.count, 1);
+  near(t.usd, 60000 * 6.25 / 1e6);
+  const out = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' }).stdout;
+  assert.match(out, /promptCacheTtl: "1h"/);
+  assert.match(out, /2\.1\.242/);
+  assert.match(out, /2x input vs 1\.25x/);
+  const none = tmp();
+  put(none, 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
+  assert.doesNotMatch(spawnSync(process.execPath, [CLI, '--dir', none], { encoding: 'utf8' }).stdout, /promptCacheTtl/);
+});
+
+test('--state carries the premiums, bands and short-TTL figures', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, speed: 'fast' })]);
+  const state = join(tmp(), 'cost-check.json');
+  assert.equal(spawnSync(process.execPath, [CLI, '--dir', d, '--state', state]).status, 0);
+  const s = JSON.parse(readFileSync(state, 'utf8'));
+  near(s.premiums.fastUsd, 4);
+  assert.ok(s.contextBands['500k and over']);
+  assert.equal(s.shortTtl.count, 0);
+});
+
+// ---- weekly notice: premiums, and retry after a crashed scan ----
+
+const premiums = (fastUsd, usOnlyUsd = 0, legacyModelUsd = 0) => ({ fastUsd, usOnlyUsd, legacyModelUsd, totalUsd: fastUsd + usOnlyUsd + legacyModelUsd });
+
+test('hook: premiums alone trigger the notice at the threshold and not below it', () => {
+  const below = tmp();
+  seed(below, { avoidableUsd: 2, premiums: premiums(4, 3, 2.99) });
+  assert.equal(hook(below).out.systemMessage, undefined);
+  const at = tmp();
+  seed(at, { avoidableUsd: 2, premiums: premiums(4, 3, 3) });
+  const msg = hook(at).out.systemMessage;
+  assert.ok(!msg.includes('\n'));
+  assert.match(msg, /added about \$10,/);
+  assert.match(msg, /fast mode/);
+  assert.match(msg, /HOUSE_COST_CHECK=off/);
+  assert.ok(JSON.parse(readFileSync(stateFile(at), 'utf8')).shownAt);
+  assert.equal(hook(at).out.systemMessage, undefined);
+});
+
+test('hook: premiums name the largest of the three and join the rebuild line when both are over', () => {
+  const cfg = tmp();
+  seed(cfg, { premiums: premiums(1, 2, 30) });
+  const msg = hook(cfg).out.systemMessage;
+  assert.ok(!msg.includes('\n'));
+  assert.match(msg, /\$35 of \$120 at list price \(5 rebuilds\)/);
+  assert.match(msg, /\$33/);
+  assert.match(msg, /legacy models/);
+  const us = tmp();
+  seed(us, { avoidableUsd: 2, premiums: premiums(1, 20, 2) });
+  assert.match(hook(us).out.systemMessage, /US-only inference/);
+});
+
+test('hook: the notice threshold and figure use the combined premium, not the overlapping sum', () => {
+  const state = { avoidableUsd: 0, premiums: { fastUsd: 5.5, usOnlyUsd: 1, legacyModelUsd: 2.2, totalUsd: 7 } };
+  const under = tmp();
+  seed(under, state);
+  assert.equal(hook(under, { env: { HOUSE_COST_CHECK_USD: '8' } }).out.systemMessage, undefined);
+  const at = tmp();
+  seed(at, state);
+  const msg = hook(at, { env: { HOUSE_COST_CHECK_USD: '7' } }).out.systemMessage;
+  assert.match(msg, /added about \$7, mostly fast mode \(\$6\)/);
+  const old = tmp();
+  seed(old, { avoidableUsd: 0, premiums: { fastUsd: 40, usOnlyUsd: 0, legacyModelUsd: 0 } });
+  assert.equal(hook(old).out.systemMessage, undefined);
+});
+
+test('hook: a scan that dies is respawned once its lock is over an hour old, and a finished result stays due a week out', () => {
+  const cfg = tmp();
+  const bad = put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
+  chmodSync(bad, 0); // the scan cannot read it and exits non-zero without writing a result
+  const log = join(cfg, 'spawns.log');
+  const env = { HOUSE_COST_CHECK_SPAWN_LOG: log };
+  const spawns = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').length : 0);
+  hook(cfg, { env });
+  assert.equal(spawns(), 1);
+  hook(cfg, { env });
+  assert.equal(spawns(), 1, 'fresh lock: no second spawn');
+  const lock = join(cfg, 'house', 'cost-check.lock');
+  const old = new Date(Date.now() - 2 * 3600000);
+  utimesSync(lock, old, old);
+  hook(cfg, { env });
+  assert.equal(spawns(), 2, 'stale lock: retried');
+
+  const done = tmp();
+  seed(done, { checkedAt: ago(6 * 86400), avoidableUsd: 2 });
+  hook(done, { env: { HOUSE_COST_CHECK_SPAWN_LOG: join(done, 'spawns.log') } });
+  assert.ok(!existsSync(join(done, 'spawns.log')), 'a result six days old is not yet due');
 });
