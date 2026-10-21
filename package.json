@@ -18,6 +18,6 @@
     "check:kit": "node scripts/check-orchestration-kit-upstream.mjs",
     "check:upstreams": "node scripts/check-upstreams.mjs",
     "check:harness": "node scripts/check-harness-release.mjs",
-    "verify": "npm ls --all && npm test && npm run test:hooks && npm run test:githooks && npm run check:traceability && npm run check:house && npm run test:smoke && npm run check:plugin"
+    "verify": "npm ls --all && node scripts/verify-suites.mjs && npm run check:traceability && npm run check:house && npm run test:smoke && npm run check:plugin"
   }
 }
