@@ -64,6 +64,7 @@ function run(box, { prompt = 'carry on with the refactor', env = {}, raw } = {})
   const childEnv = { ...process.env, TMPDIR: box.tmp };
   delete childEnv.HOUSE_IDLE_CACHE_HOLD;
   delete childEnv.HOUSE_IDLE_CACHE_HOLD_USD;
+  delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   Object.assign(childEnv, env);
   const payload = raw ?? JSON.stringify({
     session_id: 'abc123',
@@ -131,9 +132,17 @@ test('reads the lifetime from the last main response, not an older or sidechain 
   assert.equal(run(box).stdout, '');
 });
 
-test('stays silent when the last response wrote nothing to the cache', () => {
+test('stays silent when no response in the transcript wrote to the cache', () => {
   const box = sandbox([assistant({ ttl: 'none' })]);
   assert.equal(run(box).stdout, '');
+});
+
+test('takes the lifetime from the newest response that wrote to the cache', () => {
+  // The last response read everything from cache; an earlier one shows 5 min.
+  const box = sandbox([assistant({ uuid: 'w', ttl: '5m', minutesAgo: 12 }), assistant({ uuid: 'hit', ttl: 'none', minutesAgo: 10 })]);
+  const out = parsed(run(box));
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /10 min ago, cache lifetime 5 min/);
 });
 
 test('stays silent after a compaction that followed the last response', () => {
@@ -204,6 +213,32 @@ test('warns instead of holding in a non-interactive session', () => {
   const out = parsed(run(box));
   assert.equal(out.decision, undefined);
   assert.ok(out.systemMessage);
+});
+
+test('a scripted run continuing an interactive transcript only warns', () => {
+  // claude -p --continue: the transcript says cli, the current process says sdk-cli.
+  const box = sandbox([assistant({ entrypoint: 'cli' })]);
+  const out = parsed(run(box, { env: { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' } }));
+  assert.equal(out.decision, undefined);
+  assert.ok(out.systemMessage);
+  assert.equal(parsed(run(sandbox([assistant()]), { env: { CLAUDE_CODE_ENTRYPOINT: 'cli' } })).decision, 'block');
+});
+
+test('a durable task saved in the project counts as scheduled work; an empty list does not', () => {
+  const box = sandbox([assistant()]);
+  mkdirSync(join(box.dir, '.claude'));
+  writeFileSync(join(box.dir, '.claude', 'scheduled_tasks.json'), JSON.stringify([{ cron: '0 * * * *', prompt: 'check the deploy' }]));
+  assert.equal(parsed(run(box)).decision, undefined);
+  const empty = sandbox([assistant()]);
+  mkdirSync(join(empty.dir, '.claude'));
+  writeFileSync(join(empty.dir, '.claude', 'scheduled_tasks.json'), '[]');
+  assert.equal(parsed(run(empty)).decision, 'block');
+});
+
+test('a scheduler name inside another tool call is not scheduled work', () => {
+  const search = { type: 'assistant', uuid: 's', timestamp: ago(300), message: { model: 'claude-opus-5-5', content: [{ type: 'tool_use', name: 'ToolSearch', input: { query: 'select:CronCreate,ScheduleWakeup' } }] } };
+  const box = sandbox([search, assistant()]);
+  assert.equal(parsed(run(box)).decision, 'block');
 });
 
 test('never holds a slash command, so /clear always works', () => {

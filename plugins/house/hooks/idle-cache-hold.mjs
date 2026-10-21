@@ -17,12 +17,16 @@
 // records the assistant entry already held on. If that file cannot be
 // written, the hook never blocks.
 //
-// It never holds a turn nobody typed: a background task's report, a message
-// from another session, or a scheduled or /loop prompt (the session has
-// scheduled work if its transcript has a scheduled_task_fire entry or a
-// CronCreate or ScheduleWakeup call). Those, and non-interactive (sdk)
-// sessions, get the same text as a systemMessage instead. A prompt that
-// starts with "/" is never held, since /clear is the cheap way out.
+// It never holds a turn nobody typed. A background task's report or a
+// message from another session passes silently. A scheduled or /loop prompt
+// gets the text as a systemMessage instead of a hold: the session counts as
+// having scheduled work if its transcript has a scheduled_task_fire entry or
+// a CronCreate or ScheduleWakeup call, or the project has a non-empty
+// .claude/scheduled_tasks.json (durable tasks). A non-interactive run (an
+// sdk entrypoint, read from CLAUDE_CODE_ENTRYPOINT, since `claude -p
+// --continue` can follow an interactive transcript) also only gets the
+// warning. A prompt that starts with "/" is never held, since /clear is the
+// cheap way out.
 //
 // Defaults a user can override from settings env or the shell:
 // HOUSE_IDLE_CACHE_HOLD=off disables the hook, HOUSE_IDLE_CACHE_HOLD=warn
@@ -81,23 +85,41 @@ function readTail(path, bytes) {
   }
 }
 
-// The last main-conversation assistant entry with usage, and whether a
-// compaction came after it. Returns null when the tail holds none.
+const tokens = (n) => (Number.isFinite(n) && n >= 0 ? n : 0);
+
+// Cache lifetime in seconds from a response's cache writes, or null when it
+// wrote none (a full cache hit). A response writing both counts as 1 h,
+// which errs toward silence.
+function lifetime(usage) {
+  const cc = usage.cache_creation || {};
+  if (tokens(cc.ephemeral_1h_input_tokens) > 0) return 3600;
+  if (tokens(cc.ephemeral_5m_input_tokens) > 0) return 300;
+  return null;
+}
+
+// The last main-conversation assistant entry with usage, whether a
+// compaction came after it, and the cache lifetime from the newest response
+// that wrote to the cache (the last one may have read everything). Returns
+// null when the tail holds no response.
 function lastResponse(path) {
   for (const bytes of TAIL_BYTES) {
     const { lines, whole } = readTail(path, bytes);
     let compactedAfter = false;
+    let last = null;
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
       if (!line) continue;
-      if (line.includes('"compact_boundary"') || line.includes('"isCompactSummary":true')) compactedAfter = true;
+      if (!last && (line.includes('"compact_boundary"') || line.includes('"isCompactSummary":true'))) compactedAfter = true;
       if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
       const m = entry && entry.message;
       if (entry.type !== 'assistant' || entry.isSidechain === true || !m || !m.usage || m.model === '<synthetic>') continue;
-      return { entry, compactedAfter };
+      if (!last) last = entry;
+      const ttl = lifetime(m.usage);
+      if (ttl) return { entry: last, compactedAfter, ttl };
     }
+    if (last && whole) return { entry: last, compactedAfter, ttl: null };
     if (whole) return null;
   }
   return null;
@@ -107,7 +129,13 @@ function lastResponse(path) {
 // definitions (api-request-shape and prompt_snapshot entries), so a bare
 // "ScheduleWakeup" string matches sessions that never scheduled anything.
 const SCHEDULERS = new Set(['CronCreate', 'ScheduleWakeup']);
-function hasScheduledWork(path) {
+function hasScheduledWork(path, cwd) {
+  if (typeof cwd === 'string') {
+    try {
+      const saved = JSON.parse(readFileSync(join(cwd, '.claude', 'scheduled_tasks.json'), 'utf8'));
+      if (Array.isArray(saved) ? saved.length > 0 : saved && Object.keys(saved).length > 0) return true;
+    } catch {}
+  }
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     if (!line.includes('"scheduled_task_fire"') && !line.includes('"CronCreate"') && !line.includes('"ScheduleWakeup"')) continue;
     let entry;
@@ -124,22 +152,16 @@ function machinePrompt(prompt) {
   return p.startsWith('<task-notification') || p.startsWith('Another Claude session sent a message:') || p.startsWith('<agent-message');
 }
 
-function tokens(n) {
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-
 try {
   const mode = String(process.env.HOUSE_IDLE_CACHE_HOLD || '').toLowerCase();
   if (mode !== 'off') {
     const input = JSON.parse(readFileSync(0, 'utf8'));
-    const { prompt, transcript_path: path, session_id: sessionId } = input;
+    const { prompt, transcript_path: path, session_id: sessionId, cwd } = input;
     if (typeof prompt === 'string' && typeof path === 'string' && typeof sessionId === 'string' && !prompt.trimStart().startsWith('/') && !machinePrompt(prompt)) {
       const found = lastResponse(path);
       if (found && !found.compactedAfter) {
-        const { entry } = found;
+        const { entry, ttl } = found;
         const u = entry.message.usage;
-        const cc = u.cache_creation || {};
-        const ttl = tokens(cc.ephemeral_1h_input_tokens) > 0 ? 3600 : tokens(cc.ephemeral_5m_input_tokens) > 0 ? 300 : null;
         const gap = (Date.now() - Date.parse(entry.timestamp)) / 1000;
         const rates = price(entry.message.model);
         const context = tokens(u.input_tokens) + tokens(u.cache_creation_input_tokens) + tokens(u.cache_read_input_tokens) + tokens(u.output_tokens);
@@ -157,8 +179,8 @@ try {
                 `Sending this prompt rewrites about ${context.toLocaleString('en-US')} tokens of context into the cache, an estimated $${usd.toFixed(2)} at list price. ` +
                 'If you do not need this history, /clear and start fresh from a handoff note in the repo; a /compact now would pay the same rewrite first. ';
               const tune = 'To change this, set HOUSE_IDLE_CACHE_HOLD=off or =warn, or raise HOUSE_IDLE_CACHE_HOLD_USD (default 0.25), in your shell or the env block of your settings.';
-              const interactive = !String(entry.entrypoint || '').startsWith('sdk');
-              let hold = mode !== 'warn' && interactive && !hasScheduledWork(path);
+              const interactive = !String(process.env.CLAUDE_CODE_ENTRYPOINT || entry.entrypoint || '').startsWith('sdk');
+              let hold = mode !== 'warn' && interactive && !hasScheduledWork(path, cwd);
               if (hold) {
                 try {
                   mkdirSync(STATE_DIR, { recursive: true });
