@@ -191,18 +191,6 @@ jobs:
       )
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # The workflow-level group is per commit, so two runs sync concurrently. This
-    # group is per adopter and shared by every run, so one adopter is never
-    # synced by two runs at once and a newer sync cannot be overtaken by an older
-    # one; the five adopters still sync in parallel. GitHub keeps one pending job
-    # per group and cancels an older pending one when a newer arrives, which is
-    # acceptable: the newer sync is the one that should win, and a running sync
-    # is never cancelled. Each leg also re-checks the latest release before it
-    # pushes and before it merges, so a leg that waited behind a newer release
-    # skips rather than rolling the adopter back.
-    concurrency:
-      group: adopter-sync-${{ matrix.repo }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -306,8 +294,13 @@ jobs:
           HEAD="chore/house-sync-${VERSION}"
           # The adopter token may not read this repo's releases, so the lookup
           # uses the workflow token. A failed lookup fails the step: no push on
-          # a guess. A stale leg sets no url, so the wait step is skipped.
+          # a guess, and so does an empty tag. A stale leg sets no url, so the
+          # wait step is skipped.
           LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ -z "$LATEST" ]; then
+            echo "::error::${REPO}: the latest release lookup returned no tag; not pushing"
+            exit 1
+          fi
           if [ "v${VERSION}" != "$LATEST" ]; then
             echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); not syncing"
             exit 0
@@ -398,13 +391,21 @@ jobs:
           fi
           # The wait can run long enough for a newer release to land; a newer
           # sync would then merge first, and this one must not overwrite it. The
-          # pull request is closed, since an open one is a rollback waiting for a
-          # click on merge; the newer release's sync covers it.
+          # pull request is closed with its branch, since an open one is a
+          # rollback waiting for a click on merge; the newer release's sync
+          # covers it. A failed close fails the leg, so no such pull request is
+          # left open behind a green run. The residual window is the seconds
+          # between this check and the merge below.
           LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ -z "$LATEST" ]; then
+            echo "::error::${REPO}: the latest release lookup returned no tag; leaving ${URL} unmerged"
+            exit 1
+          fi
           if [ "v${VERSION}" != "$LATEST" ]; then
             echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); closing ${URL}, not merging"
-            if ! gh pr close "$URL" --repo "$REPO" --comment "Superseded: ${LATEST} was released before this merged; that release's sync covers it."; then
-              echo "::warning::${REPO}: could not close ${URL}; close it by hand, it must not merge"
+            if ! gh pr close "$URL" --repo "$REPO" --delete-branch --comment "Superseded: ${LATEST} was released before this merged; that release's sync covers it."; then
+              echo "::error::${REPO}: could not close ${URL}; close it by hand, it must not merge"
+              exit 1
             fi
             exit 0
           fi

@@ -129,9 +129,14 @@ test('a successful manual sync closes the held-sync issue', () => {
   assert.match(j, /issues: write/);
 });
 
-test('adopter syncs are serialized per adopter across runs, never cancelling a running one', () => {
+test('the sync job sets no concurrency: one pending slot per group would drop a newer leg', () => {
+  assert.doesNotMatch(job('sync'), /^    concurrency:/m);
+});
+
+test('an empty latest-release tag fails the leg at both re-checks', () => {
   const j = job('sync');
-  assert.match(j, /\n    concurrency:\n      group: adopter-sync-\$\{\{ matrix\.repo \}\}\n      cancel-in-progress: false\n/);
+  const empties = [...j.matchAll(/if \[ -z "\$LATEST" \]; then\n\s+echo "::error::[^\n]*\n\s+exit 1/g)];
+  assert.equal(empties.length, 2);
 });
 
 test('every sync leg re-checks the latest release right before it pushes and before it merges', () => {
@@ -150,13 +155,14 @@ test('a stale leg skips with a notice, not a failure, and the wait step needs th
   assert.match(j, /steps\.pr\.outputs\.url != ''/);
 });
 
-test('a stale merge-time leg closes its pull request, warning rather than failing if it cannot', () => {
+test('a stale merge-time leg closes its pull request and branch, and fails if it cannot', () => {
   const j = job('sync');
   const at = j.indexOf('closing ${URL}, not merging');
   assert.ok(at > j.indexOf('Wait for checks, then merge'), 'inside the merge step');
   const tail = j.slice(at, j.indexOf('gh pr merge'));
-  assert.match(tail, /gh pr close "\$URL" --repo "\$REPO" --comment "Superseded: \$\{LATEST\} was released/);
-  assert.match(tail, /::warning::[^\n]*\$\{URL\}[^\n]*\n\s+fi\n\s+exit 0/);
+  assert.match(tail, /gh pr close "\$URL" --repo "\$REPO" --delete-branch --comment "Superseded: \$\{LATEST\} was released/);
+  assert.match(tail, /::error::[^\n]*could not close \$\{URL\}[^\n]*\n\s+exit 1\n\s+fi\n\s+exit 0/);
+  assert.doesNotMatch(tail, /::warning::/);
 });
 
 test('the close-hold comment claims a finished run, not a sync every leg completed', () => {
