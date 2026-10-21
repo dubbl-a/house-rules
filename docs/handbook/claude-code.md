@@ -603,6 +603,15 @@ expired and the estimate reaches a threshold (default $0.25), and fails open on 
 The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
 magnitude.
 
+Two gaps the existing tools leave are covered by `plugins/house/scripts/cost-report.mjs`: list-price
+cost by model split between the main thread and subagents, and the cause of each main-thread
+cache rebuild (a write over 50k tokens that is not a file's first request, attributed in order to a
+model switch, an idle gap over an hour, an idle gap over five minutes, or none). Everything else
+is left to `/session-report` and `npx -y @rixtay/mcp-usage`. The scan takes seconds on a week of
+transcripts, so `session-start.mjs` runs it detached once a week on startup and shows one line
+next startup when avoidable rebuilds reach $10 (`HOUSE_COST_CHECK_USD`; `HOUSE_COST_CHECK=off`
+disables). Output tokens can be undercounted and the dollars are list price, not a plan bill.
+
 ## Treat git state as shared across sessions
 
 repo-b's CLAUDE.md states the rule almost verbatim: "Git state is SHARED across sessions here."
