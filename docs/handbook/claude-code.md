@@ -275,9 +275,15 @@ worst case; an explicit `budget.maxVerifyClaims` lifts the ceiling to match, so 
 it is honored rather than clamped. A run that still drops claims returns a `verifyNote` naming how
 many it verified and how to extend the same run: `resumeFromRunId`, the original args unchanged,
 plus a larger `budget.maxVerifyClaims`. The Workflow tool returns completed calls with unchanged
-prompt and options from cache, so a changed depth or budget field (votes, say) would rewrite every
-verify prompt; with the args held and a deterministic selection, a larger cap keeps every verify
-call already made and appends the rest. The script cannot read its own run id, so the note says "this run's id" and the session
+prompt and options from cache. For agents run inside `pipeline()` and `parallel()`, where the fork
+runs every search, fetch, and verify agent, that holds from Claude Code 2.1.305, whose changelog
+(fetched 2026-10-21, https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md)
+reads "Fixed Workflow resume re-running already-completed `pipeline()` and `parallel()` agents
+instead of serving them from the run's journal"; on an older CLI an extension re-runs those
+finished agents, so it costs nearly the whole run again and not the extra agents the note counts.
+A changed depth or budget field (votes, say) would rewrite every verify prompt; with the args held
+and a deterministic selection, a larger cap keeps every verify call already made and appends the
+rest. The script cannot read its own run id, so the note says "this run's id" and the session
 supplies the id the tool returned.
 
 The scope agent ran the searches itself, 2026-10-07 (#230): a `standard` run sat in Scope for 20

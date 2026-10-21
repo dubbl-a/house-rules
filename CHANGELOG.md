@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-10-21
+
+A patch release under ADR 0012: rule and orchestration prose only, with no heading renamed, no config slot changed, and no change to what the guard denies. Upgrading from 0.22.0: run `/house-rules:sync`.
+
+### Changed
+
+- The claude-code rule's model section and the `/deep-research` line of `ORCHESTRATION.md` say that extending a fork run with `resumeFromRunId` reuses the finished calls only from Claude Code 2.1.305, which fixed Workflow resume re-running completed `pipeline()` and `parallel()` agents; on an older CLI the extension re-runs the fork's search, fetch, and verify agents and costs nearly the whole run again, not the extra agents the `verifyNote` counts. Records Claude Code 2.1.305 and 2.1.306 in the harness survey.
+
 ## [0.22.0] - 2026-10-21
 
 A minor release under ADR 0012, because the branch guard can now deny more than before (#290), the breaking class under ADR 0011. It also adds two token-cost hooks (`resume-cost.mjs`, `idle-cache-hold.mjs`) and a weekly cost check, the `trim-memory` skill, a session-hygiene section in the claude-code rule, and a tier rule for builds. The `house.json` and `.house/` layouts don't change. Upgrading from 0.21.6: run `/house-rules:sync`, then restart Claude Code so the new hooks load.
