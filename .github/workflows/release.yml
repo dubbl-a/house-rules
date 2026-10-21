@@ -289,8 +289,22 @@ jobs:
         working-directory: adopter
         env:
           GH_TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
+          RELEASE_TOKEN: ${{ github.token }}
         run: |
           HEAD="chore/house-sync-${VERSION}"
+          # The adopter token may not read this repo's releases, so the lookup
+          # uses the workflow token. A failed lookup fails the step: no push on
+          # a guess, and so does an empty tag. A stale leg sets no url, so the
+          # wait step is skipped.
+          LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ -z "$LATEST" ]; then
+            echo "::error::${REPO}: the latest release lookup returned no tag; not pushing"
+            exit 1
+          fi
+          if [ "v${VERSION}" != "$LATEST" ]; then
+            echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); not syncing"
+            exit 0
+          fi
           git push --force origin "HEAD:refs/heads/${HEAD}"
           URL=$(gh pr list --repo "$REPO" --head "$HEAD" --state open --json url -q '.[0].url')
           if [ -z "$URL" ]; then
@@ -310,9 +324,10 @@ jobs:
       # confirmed by a second one on the same head, so a run that registers
       # late is seen.
       - name: Wait for checks, then merge
-        if: steps.commit.outputs.changed == 'true'
+        if: steps.commit.outputs.changed == 'true' && steps.pr.outputs.url != ''
         env:
           GH_TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
+          RELEASE_TOKEN: ${{ github.token }}
           URL: ${{ steps.pr.outputs.url }}
         run: |
           if [ -d adopter/.github/workflows ]; then HAS_WORKFLOWS=true; else HAS_WORKFLOWS=false; fi
@@ -374,6 +389,26 @@ jobs:
             echo "::error::${REPO}: checks ${RESULT}; leaving ${URL} open"
             exit 1
           fi
+          # The wait can run long enough for a newer release to land; a newer
+          # sync would then merge first, and this one must not overwrite it. The
+          # pull request is closed with its branch, since an open one is a
+          # rollback waiting for a click on merge; the newer release's sync
+          # covers it. A failed close fails the leg, so no such pull request is
+          # left open behind a green run. The residual window is the seconds
+          # between this check and the merge below.
+          LATEST=$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ -z "$LATEST" ]; then
+            echo "::error::${REPO}: the latest release lookup returned no tag; leaving ${URL} unmerged"
+            exit 1
+          fi
+          if [ "v${VERSION}" != "$LATEST" ]; then
+            echo "::notice::${REPO}: v${VERSION} is no longer the latest release (${LATEST}); closing ${URL}, not merging"
+            if ! gh pr close "$URL" --repo "$REPO" --delete-branch --comment "Superseded: ${LATEST} was released before this merged; that release's sync covers it."; then
+              echo "::error::${REPO}: could not close ${URL}; close it by hand, it must not merge"
+              exit 1
+            fi
+            exit 0
+          fi
           # The head checked green is the only head that may merge.
           gh pr merge "$URL" --repo "$REPO" --squash --delete-branch --match-head-commit "$GREEN_SHA"
   # A manual sync that finished closes the note its hold left. Best effort: a
@@ -394,5 +429,5 @@ jobs:
         run: |
           TITLE="Adopter sync held for v${VERSION}"
           for N in $(gh issue list --repo "$REPO" --state open --search "\"${TITLE}\" in:title" --json number,title | jq -r --arg t "$TITLE" '.[] | select(.title == $t) | .number'); do
-            gh issue close "$N" --repo "$REPO" --comment "Synced the adopters to v${VERSION} by a manual run: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}" || echo "could not close #${N}"
+            gh issue close "$N" --repo "$REPO" --comment "The manual sync run for v${VERSION} finished: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}. Legs skip when a newer release exists; see the run summary." || echo "could not close #${N}"
           done

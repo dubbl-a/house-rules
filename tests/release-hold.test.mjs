@@ -128,3 +128,52 @@ test('a successful manual sync closes the held-sync issue', () => {
   assert.match(j, /workflow_dispatch/);
   assert.match(j, /issues: write/);
 });
+
+test('the sync job sets no concurrency: one pending slot per group would drop a newer leg', () => {
+  assert.doesNotMatch(job('sync'), /^    concurrency:/m);
+});
+
+test('an empty latest-release tag fails the leg at both re-checks', () => {
+  const j = job('sync');
+  const empties = [...j.matchAll(/if \[ -z "\$LATEST" \]; then\n\s+echo "::error::[^\n]*\n\s+exit 1/g)];
+  assert.equal(empties.length, 2);
+});
+
+test('every sync leg re-checks the latest release right before it pushes and before it merges', () => {
+  const j = job('sync');
+  const checks = [...j.matchAll(/no longer the latest release/g)].map((m) => m.index);
+  assert.equal(checks.length, 2, 'one re-check before the push, one before the merge');
+  assert.ok(checks[0] < j.indexOf('git push --force'), 'first re-check precedes the push');
+  assert.ok(checks[0] > j.indexOf('Push and open the pull request'), 'first re-check is inside the push step');
+  assert.ok(checks[1] < j.indexOf('gh pr merge'), 'second re-check precedes the merge');
+  assert.ok(checks[1] > j.indexOf('Wait for checks, then merge'), 'second re-check is inside the merge step');
+});
+
+test('a stale leg skips with a notice, not a failure, and the wait step needs the pushed PR', () => {
+  const j = job('sync');
+  assert.match(j, /::notice::[^\n]*no longer the latest release[^\n]*not syncing"\n\s+exit 0/);
+  assert.match(j, /steps\.pr\.outputs\.url != ''/);
+});
+
+test('a stale merge-time leg closes its pull request and branch, and fails if it cannot', () => {
+  const j = job('sync');
+  const at = j.indexOf('closing ${URL}, not merging');
+  assert.ok(at > j.indexOf('Wait for checks, then merge'), 'inside the merge step');
+  const tail = j.slice(at, j.indexOf('gh pr merge'));
+  assert.match(tail, /gh pr close "\$URL" --repo "\$REPO" --delete-branch --comment "Superseded: \$\{LATEST\} was released/);
+  assert.match(tail, /::error::[^\n]*could not close \$\{URL\}[^\n]*\n\s+exit 1\n\s+fi\n\s+exit 0/);
+  assert.doesNotMatch(tail, /::warning::/);
+});
+
+test('the close-hold comment claims a finished run, not a sync every leg completed', () => {
+  const j = job('close-hold');
+  assert.match(j, /The manual sync run for v\$\{VERSION\} finished: /);
+  assert.match(j, /Legs skip when a newer release exists; see the run summary/);
+  assert.doesNotMatch(j, /Synced the adopters/);
+});
+
+test('the re-check reads the version from env only, never from an expression in run', () => {
+  const lines = job('sync').split('\n').filter((l) => /releases\/latest|no longer the latest/.test(l));
+  assert.ok(lines.length >= 4, 'both re-checks present');
+  for (const l of lines) assert.doesNotMatch(l, /\$\{\{/, l);
+});

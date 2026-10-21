@@ -81,6 +81,13 @@ That run does only the sync, and closes the held-sync issue for that version onc
 finishes. A manual run never tags or releases. To retry a failed release, use "Re-run failed jobs"
 on the push's run.
 
+Every leg, push or manual, re-checks that its version is still the latest release right before it
+pushes and before it merges. A leg that finds a newer release skips with a notice and does not fail;
+at merge time it closes its own pull request and branch first, and fails if that close fails, so no
+rollback pull request is left open behind a green run. An empty latest-release lookup fails the leg.
+Only the seconds between the merge-time check and the merge remain open, so an older sync cannot
+realistically roll an adopter back past a newer one.
+
 ## How an update reaches the maintainer
 
 Nothing in this path asks the maintainer to remember a command or a folder; the one human step
