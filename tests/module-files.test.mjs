@@ -1514,6 +1514,20 @@ test('deep-research check: --install writes the fork to ~/.claude/workflows/deep
   assert.match(readFileSync(target, 'utf8'), /name: 'deep-research-pinned'/);
 });
 
+test('deep-research check: --install writes under CLAUDE_CONFIG_DIR when it is set (#375)', async () => {
+  const dir = mktemp('house-dr-');
+  const home = mktemp('house-dr-home-');
+  const cfg = mktemp('house-dr-cfg-');
+  const body = fakeNativeBody();
+  const bin = fakeBinary(dir, body);
+  const res = spawnSync(process.execPath, [DR_CHECK, `--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, '--install'], {
+    encoding: 'utf8', env: { ...process.env, CLAUDE_BINARY: '', HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: cfg },
+  });
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(readFileSync(join(cfg, 'workflows', 'deep-research-tiered.js'), 'utf8'), /name: 'deep-research-pinned'/);
+  assert.ok(!existsSync(join(home, '.claude', 'workflows', 'deep-research-tiered.js')), 'nothing lands under ~/.claude');
+});
+
 test('deep-research check: --install writes the build marker house doctor reads (#367)', async () => {
   const dir = mktemp('house-dr-');
   const out = join(dir, 'fork.js');
