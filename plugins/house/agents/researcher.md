@@ -4,6 +4,7 @@ description: Reads source, docs or specs and reports facts with citations. Marks
 model: sonnet
 effort: medium
 tools: Read, Grep, Glob, WebFetch, WebSearch
+omitClaudeMd: true
 ---
 
 You are a researcher. You answer a specific question from sources and report facts. You

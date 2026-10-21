@@ -95,8 +95,8 @@ diffs."):
 
 - Banned: "think deeply", "explore all approaches", "be thorough", project history, bundled
   future tasks.
-- A brief stands alone. A subagent gets its own prompt and the repo's CLAUDE.md, never the
-  conversation; only a fork inherits that. "As we discussed" is a bug.
+- A brief stands alone. A subagent gets its own prompt and the repo's CLAUDE.md (scout and researcher
+  not even that), never the conversation; only a fork inherits that. "As we discussed" is a bug.
 - A scope change is a new brief, never an edit to the running one.
 
 ## Parallelism
