@@ -12,6 +12,8 @@
 # 0013); CI runs a modern git, so they are enforced somewhere.
 #
 # Run:  bash tests/githooks/run.sh   (also wired as `npm run test:githooks`)
+# The cases run as PARTS processes side by side, output printed in part order;
+# HOUSE_TEST_PART=<n> runs one part and HOUSE_TEST_PART=all runs them in order.
 #
 # Exits non-zero if any case fails.
 
@@ -25,6 +27,47 @@ SRC="$REPO_ROOT/plugins/house/modules/github/files/githooks"
 if [[ ! -d "$SRC" ]]; then
   echo "FATAL: vendored hooks not found at $SRC" >&2
   exit 1
+fi
+
+# The cases below run in parts, each in its own process with its own TMP_ROOT,
+# because one serial run is a minute of real git. A part owns the fixtures it
+# builds. HOUSE_TEST_PART=<n> runs part n alone, "all" runs every part in order
+# in this process, and unset spawns the parts side by side.
+PARTS=3
+part_on() { [[ "${HOUSE_TEST_PART:-all}" == all || "$HOUSE_TEST_PART" == "$1" ]]; }
+
+if [[ -z "${HOUSE_TEST_PART:-}" ]]; then
+  # A gate naming a part past PARTS would never run, and nothing else would say so.
+  _top=$(grep -o 'part_on [0-9][0-9]*' "$SCRIPT_PATH" | awk '{ if ($2 > m) m = $2 } END { print m + 0 }')
+  if [[ "$_top" -ne "$PARTS" ]]; then
+    echo "FATAL: the highest part_on gate is $_top but PARTS is $PARTS." >&2
+    exit 1
+  fi
+  _parts_dir=$(mktemp -d)
+  _pids=()
+  trap 'kill "${_pids[@]}" 2>/dev/null; rm -rf "$_parts_dir"' EXIT
+  for ((_p = 1; _p <= PARTS; _p++)); do
+    HOUSE_TEST_PART=$_p bash "$SCRIPT_PATH" >"$_parts_dir/$_p.out" 2>&1 &
+    _pids+=($!)
+  done
+  _bad=0
+  _total=0; _passed=0; _failed=0; _skipped=0
+  for ((_p = 1; _p <= PARTS; _p++)); do
+    wait "${_pids[$((_p - 1))]}" || _bad=1
+    grep -v '^@@PART ' "$_parts_dir/$_p.out"
+    _sum=$(grep '^@@PART ' "$_parts_dir/$_p.out")
+    if [[ -z "$_sum" ]]; then
+      echo "FATAL: part $_p ended without a summary line" >&2
+      _bad=1
+      continue
+    fi
+    set -- $_sum
+    _total=$((_total + $2)); _passed=$((_passed + $3)); _failed=$((_failed + $4)); _skipped=$((_skipped + $5))
+  done
+  echo
+  printf 'total %d, passed %d, failed %d, skipped %d\n' "$_total" "$_passed" "$_failed" "$_skipped"
+  [[ "$_failed" -eq 0 && "$_bad" -eq 0 ]] || exit 1
+  exit 0
 fi
 
 TESTS_TOTAL=0
@@ -231,6 +274,7 @@ expect_refused() {
   pass "$label"
 }
 
+if part_on 1; then
 echo "=== house git-hook floor: real-git tests ==="
 echo "hooks:  $SRC"
 echo "git:    $GIT_VERSION (reference-transaction supported: $([[ $RT_SUPPORTED -eq 1 ]] && echo yes || echo no))"
@@ -588,6 +632,8 @@ else
   fail "neither jq nor node: the floor refuses and names the fix" "exit $RUN_CODE: $RUN_OUT"
 fi
 
+fi
+if part_on 2; then
 # --- 8. reference-transaction ------------------------------------------------
 echo "-- reference-transaction --"
 
@@ -743,6 +789,8 @@ else
     "no remote has" "$r" update-ref refs/heads/master "$unpublished"
 fi
 
+fi
+if part_on 3; then
 # --- 9. the policy is read from HEAD, not from the working tree --------------
 echo "-- policy source --"
 
@@ -922,6 +970,13 @@ if grep -q 'send-pack' "$SRC/pre-push.d/10-house-branch"; then
 else
   fail "the pre-push guard's header names the send-pack seam" \
     "no mention of send-pack in $SRC/pre-push.d/10-house-branch"
+fi
+fi
+
+if [[ "$HOUSE_TEST_PART" != all ]]; then
+  echo "@@PART $TESTS_TOTAL $TESTS_PASSED $TESTS_FAILED $TESTS_SKIPPED"
+  [[ "$TESTS_FAILED" -eq 0 ]] || exit 1
+  exit 0
 fi
 
 echo
