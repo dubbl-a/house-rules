@@ -4274,3 +4274,46 @@ test('#248 hook add from a subdirectory --repo names the repo root, and works', 
   assert.equal(r.code, 0, r.out + r.err);
   assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '34-sub')));
 });
+
+// #358: `update` is what --apply changes, not what passed the hand-edit check.
+// A dry run on a current tree used to label every managed file `update`, so it
+// could not answer "is anything pending?".
+function buildCurrentTreeFixture() {
+  const fx = buildFloorFixture();
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { alpha: { enabled: true, config: {} }, github: { enabled: true, config: {} } } });
+  const applied = runCli(fx.cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(applied.code, 0, applied.out + applied.err);
+  return { ...fx, repo };
+}
+const labelCount = (out, label) => out.split('\n').filter((l) => l.startsWith(label.padEnd(15))).length;
+
+test('#358 render dry run: a tree that is already current shows no `update`, only `unchanged`', () => {
+  const { cliPath, repo } = buildCurrentTreeFixture();
+  const r = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(labelCount(r.out, 'update'), 0, r.out);
+  assert.match(r.out, /unchanged\s+\.claude\/rules\/house\/alpha\.md/);
+  assert.match(r.out, /unchanged\s+\.githooks\/pre-commit\b/);
+  assert.match(r.out, /unchanged\s+\.house\/check\.mjs/);
+  const json = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.ok(json.plan.length > 0 && json.plan.every((p) => p.unchanged === true), 'every entry is flagged unchanged in --json');
+});
+
+test('#358 render dry run: exactly the files --apply would change show `update`', () => {
+  const { cliPath, dir, repo } = buildCurrentTreeFixture();
+  // Plugin moved on: one source changed, the vendored copy is still what the lock recorded.
+  writeFileSync(join(dir, 'modules', 'alpha', 'rules', 'alpha.md'), `${ALPHA_BODY}\nA new rule line.\n`);
+  const r = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(labelCount(r.out, 'update'), 1, r.out);
+  assert.match(r.out, /update\s+\.claude\/rules\/house\/alpha\.md/);
+  assert.match(r.out, /unchanged\s+\.githooks\/pre-commit\b/);
+  // A hook that lost its executable bit is a change --apply makes, though its bytes match.
+  const hook = join(repo, '.githooks', 'pre-commit');
+  chmodSync(hook, 0o644);
+  const r2 = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(labelCount(r2.out, 'update'), 2, r2.out);
+  assert.match(r2.out, /update\s+\.githooks\/pre-commit\b/);
+  assert.equal(modeOf(hook), 0o644, 'the dry run must not chmod');
+});
