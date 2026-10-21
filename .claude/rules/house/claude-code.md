@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.21.6 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9559d728772161104e644c3312fd39b5a36b12636a5d9e60a701203b4bc40251 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=ecbbed9788ac985fd7edc31ba5d41151572ff6a144a9b1668d31a2f7b7e276d0 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -127,7 +127,7 @@ When stepping away from a session whose context has grown large, leave a handoff
 Compact at a natural break while the cache is warm, never right after an idle gap, since `/compact` is itself a request that reads everything it summarizes.
 Watch `/context` or the status line for size, and the prompt-cache line in `/usage` for misses.
 Correcting a failed approach is the section above's; the handoff's shape is the section below's.
-Anchor: the `plugins/house/hooks/resume-cost.mjs` SessionStart hook, matched on `resume|fork`, which warns when the harness reports an expired cache and an estimated rewrite at or above a dollar threshold. It only advises: set `HOUSE_RESUME_COST_WARN=off` or `HOUSE_RESUME_COST_WARN_USD` in the shell or the settings env to silence or retune it. It needs a Claude Code version that reports the cache fields on resume, and says nothing on an older one.
+Anchor: Claude Code 2.1.304's native warning, shown on Pro and Max plans when resuming an inactive conversation would use a noticeable share of the 5-hour limit, is the floor; the `plugins/house/hooks/resume-cost.mjs` SessionStart hook, matched on `resume|fork`, complements it by stating the cost in dollars and by warning on API-key and cloud-provider billing, where no 5-hour limit exists to warn about. It warns when the harness reports an expired cache and an estimated rewrite at or above a dollar threshold. It only advises: set `HOUSE_RESUME_COST_WARN=off` or `HOUSE_RESUME_COST_WARN_USD` in the shell or the settings env to silence or retune it. It needs a Claude Code version that reports the cache fields on resume, and says nothing on an older one. For a session left open and returned to, the `plugins/house/hooks/idle-cache-hold.mjs` UserPromptSubmit hook reads the idle gap and cache lifetime from the transcript and holds the first typed prompt once, past the same threshold; submitting it again sends it. `HOUSE_IDLE_CACHE_HOLD=off` or `=warn` and `HOUSE_IDLE_CACHE_HOLD_USD` retune it, and it holds only in the terminal client, never on a scheduled or background turn.
 Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fresh-rather-than-resume-a-large-idle-one`
 
 ## Treat git state as shared across sessions
