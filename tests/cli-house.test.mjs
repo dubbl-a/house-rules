@@ -4587,3 +4587,300 @@ test('#375 doctor: a binary with no recognisable native body leaves a current fo
   const { fork } = f.doctor({ env: { CLAUDE_BINARY: nativeBinary('nothing recognisable here') } });
   assert.equal(fork.state, 'current');
 });
+
+// #364: `house upgrade [<tag>]` moves a ref-pinned install to a release. Every
+// case runs against a throwaway CLAUDE_CONFIG_DIR and a stub `claude` on PATH,
+// never the real one. The stub emulates the Claude Code 2.1.306 behaviour the
+// command is built on: `marketplace add '<repo>#<ref>'` fails when the settings
+// entry's ref differs from <ref> (or has none), writes the ref into settings
+// (when there is no entry) and known_marketplaces.json otherwise; `plugin
+// update` moves installed_plugins.json to the version that known_marketplaces
+// now names. Its argv log is the proof of what ran, and in what order.
+const UPGRADE_REPO = 'dubbl-a/house-rules';
+const STUB_CLAUDE = `#!${process.execPath}
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+const argv = process.argv.slice(2);
+appendFileSync(process.env.STUB_LOG, JSON.stringify(argv) + '\\n');
+const cfg = process.env.CLAUDE_CONFIG_DIR;
+const settingsFile = process.env.STUB_SETTINGS_FILE || join(cfg, 'settings.json');
+const readJson = (p, d) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
+const known = join(cfg, 'plugins', 'known_marketplaces.json');
+const installed = join(cfg, 'plugins', 'installed_plugins.json');
+if (argv[0] === 'plugin' && argv[1] === 'marketplace' && argv[2] === 'add') {
+  const [repo, ref] = argv[3].split('#');
+  const s = readJson(settingsFile, {});
+  const entry = Object.values(s.extraKnownMarketplaces || {}).find((e) => e.source && e.source.repo === repo);
+  if (entry && entry.source.ref !== ref) {
+    console.error("its source doesn't match its extraKnownMarketplaces entry in user or managed settings");
+    process.exit(1);
+  }
+  if (!entry) {
+    s.extraKnownMarketplaces = { ...(s.extraKnownMarketplaces || {}), 'house-rules': { source: { source: 'github', repo, ref } } };
+    writeFileSync(settingsFile, JSON.stringify(s, null, 2) + '\\n');
+  }
+  const k = readJson(known, {});
+  k['house-rules'] = { source: { source: 'github', repo, ref: process.env.STUB_KNOWN_REF || ref }, installLocation: '/stub', lastUpdated: 'now' };
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(known, JSON.stringify(k, null, 2));
+  process.exit(0);
+}
+if (argv[0] === 'plugin' && argv[1] === 'update') {
+  if (process.env.STUB_FAIL_UPDATE) { console.error('stub: update failed'); process.exit(1); }
+  const i = readJson(installed, {});
+  i.plugins['house-rules@house-rules'][0].version = readJson(known, {})['house-rules'].source.ref.replace(/^v/, '');
+  writeFileSync(installed, JSON.stringify(i, null, 2));
+  console.log('updated');
+  process.exit(0);
+}
+process.exit(3);
+`;
+
+const upgradeReleases = () => releasesFixture([rel('v9.9.10'), rel('v9.9.9'), rel('v9.9.8'), rel('v9.9.7'), rel('v9.9.11', { prerelease: true })]);
+
+function upgradeFixture({ settings, settingsFile, installed = '9.9.8', stub = true } = {}) {
+  const { cliPath } = buildFixturePlugin();
+  const cfg = mkdtempSync(join(tmpdir(), 'house-upgrade-cfg-'));
+  const bin = mkdtempSync(join(tmpdir(), 'house-upgrade-bin-'));
+  CLEANUP_DIRS.push(cfg, bin);
+  const log = join(bin, 'argv.log');
+  writeFileSync(log, '');
+  if (stub) { writeFileSync(join(bin, 'claude'), STUB_CLAUDE); chmodSync(join(bin, 'claude'), 0o755); }
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  writeFileSync(join(cfg, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'house-rules@house-rules': [{ scope: 'user', version: installed }] } }, null, 2));
+  const file = settingsFile || join(cfg, 'settings.json');
+  mkdirSync(dirname(file), { recursive: true });
+  if (settings !== undefined) writeFileSync(file, typeof settings === 'string' ? settings : `${JSON.stringify(settings, null, 2)}\n`);
+  const run = (args, env = {}) => runCli(cliPath, ['upgrade', ...args], {
+    CLAUDE_CONFIG_DIR: cfg, HOUSE_RELEASES_FIXTURE: upgradeReleases(), STUB_LOG: log, STUB_SETTINGS_FILE: file,
+    PATH: stub ? `${bin}:${process.env.PATH}` : bin, ...env,
+  });
+  const calls = () => readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const installedVersion = () => JSON.parse(readFileSync(join(cfg, 'plugins', 'installed_plugins.json'), 'utf8')).plugins['house-rules@house-rules'][0].version;
+  return { cfg, file, run, calls, installedVersion, bakFiles: () => readdirSync(dirname(file)).filter((n) => n.includes('.house-upgrade-') && n.endsWith('.bak')) };
+}
+const pinnedEntry = (ref, extra = {}) => ({ theme: 'dark', extraKnownMarketplaces: { 'house-rules': { source: { source: 'github', repo: UPGRADE_REPO, ref, ...extra.source }, autoUpdate: true } }, trailing: [1, 2] });
+const ADD_V10 = ['plugin', 'marketplace', 'add', `${UPGRADE_REPO}#v9.9.10`, '--scope', 'user'];
+const UPDATE_USER = ['plugin', 'update', 'house-rules@house-rules', '-s', 'user'];
+
+test('#364 upgrade: a pinned install prints the plan and changes nothing without --apply', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  const before = readFileSync(f.file, 'utf8');
+  const r = f.run([]);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /v9\.9\.8 -> v9\.9\.10/);
+  assert.match(r.out, /set extraKnownMarketplaces\["house-rules"\]\.source\.ref to "v9\.9\.10"/);
+  assert.match(r.out, /claude plugin marketplace add 'dubbl-a\/house-rules#v9\.9\.10' --scope user/);
+  assert.match(r.out, /claude plugin update house-rules@house-rules -s user/);
+  assert.match(r.out, /--apply/);
+  assert.equal(readFileSync(f.file, 'utf8'), before);
+  assert.deepEqual(f.calls(), []);
+  assert.deepEqual(f.bakFiles(), []);
+});
+
+test('#364 upgrade --apply: a pinned entry is edited in place, backed up, then added and updated in order', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8', { source: { sha: 'abc123' } }) });
+  const before = readFileSync(f.file, 'utf8');
+  const r = f.run(['--apply']);
+  assert.equal(r.code, 0, r.err + r.out);
+  const after = JSON.parse(readFileSync(f.file, 'utf8'));
+  const e = after.extraKnownMarketplaces['house-rules'];
+  assert.equal(e.source.ref, 'v9.9.10');
+  assert.equal('sha' in e.source, false);
+  assert.match(r.out, /source\.sha/);
+  assert.equal(e.autoUpdate, true);
+  assert.equal(after.theme, 'dark');
+  assert.deepEqual(Object.keys(after), ['theme', 'extraKnownMarketplaces', 'trailing']);
+  assert.deepEqual(Object.keys(e.source), ['source', 'repo', 'ref']);
+  assert.equal(readFileSync(f.file, 'utf8').endsWith('\n'), true);
+  const baks = f.bakFiles();
+  assert.equal(baks.length, 1);
+  assert.equal(readFileSync(join(dirname(f.file), baks[0]), 'utf8'), before);
+  assert.ok(r.out.includes(join(dirname(f.file), baks[0])), 'prints the backup path');
+  assert.deepEqual(f.calls(), [ADD_V10, UPDATE_USER]);
+  assert.equal(f.installedVersion(), '9.9.10');
+  assert.match(r.out, /Restart Claude Code, then run \/house-rules:sync in each adopting repo\./);
+  assert.match(r.out, /house changes v9\.9\.8 v9\.9\.10/);
+});
+
+test('#364 upgrade: an unpinned entry is refused with --apply alone, and applied with --pin', () => {
+  const unpinned = { extraKnownMarketplaces: { 'house-rules': { source: { source: 'github', repo: UPGRADE_REPO }, autoUpdate: true } } };
+  const f = upgradeFixture({ settings: unpinned });
+  const before = readFileSync(f.file, 'utf8');
+  const plan = f.run([]);
+  assert.equal(plan.code, 0, plan.err);
+  assert.match(plan.out, /unpinned/);
+  assert.match(plan.out, /--apply --pin/);
+  const refused = f.run(['--apply']);
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /unpinned/);
+  assert.match(refused.err, /--pin/);
+  assert.equal(readFileSync(f.file, 'utf8'), before);
+  assert.deepEqual(f.calls(), []);
+  const done = f.run(['--apply', '--pin']);
+  assert.equal(done.code, 0, done.err + done.out);
+  const e = JSON.parse(readFileSync(f.file, 'utf8')).extraKnownMarketplaces['house-rules'];
+  assert.equal(e.source.ref, 'v9.9.10');
+  assert.equal(e.autoUpdate, true);
+  assert.deepEqual(f.calls(), [ADD_V10, UPDATE_USER]);
+});
+
+test('#364 upgrade: with no settings entry it adds the marketplace at the tag and updates, at user scope', () => {
+  const f = upgradeFixture();
+  const plan = f.run([]);
+  assert.equal(plan.code, 0, plan.err);
+  assert.doesNotMatch(plan.out, /set extraKnownMarketplaces/);
+  assert.deepEqual(f.calls(), []);
+  const r = f.run(['--apply']);
+  assert.equal(r.code, 0, r.err + r.out);
+  assert.deepEqual(f.calls(), [ADD_V10, UPDATE_USER]);
+  assert.deepEqual(f.bakFiles(), []);
+  assert.equal(f.installedVersion(), '9.9.10');
+});
+
+test('#364 upgrade: an entry in a project settings file runs at project scope', () => {
+  const repo = buildTargetRepo();
+  const file = join(repo, '.claude', 'settings.json');
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: file });
+  const r = f.run(['--apply', '--repo', repo]);
+  assert.equal(r.code, 0, r.err + r.out);
+  assert.deepEqual(f.calls(), [
+    ['plugin', 'marketplace', 'add', `${UPGRADE_REPO}#v9.9.10`, '--scope', 'project'],
+    ['plugin', 'update', 'house-rules@house-rules', '-s', 'project'],
+  ]);
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).extraKnownMarketplaces['house-rules'].source.ref, 'v9.9.10');
+  // settings.local.json is the local scope.
+  const repo2 = buildTargetRepo();
+  const f2 = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: join(repo2, '.claude', 'settings.local.json') });
+  const r2 = f2.run(['--apply', '--repo', repo2]);
+  assert.equal(r2.code, 0, r2.err + r2.out);
+  assert.equal(f2.calls()[0].at(-1), 'local');
+});
+
+test('#364 upgrade: two entries for the repo refuse and list them, with nothing run', () => {
+  const repo = buildTargetRepo();
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8'), settingsFile: join(repo, '.claude', 'settings.json') });
+  writeFileSync(join(f.cfg, 'settings.json'), JSON.stringify(pinnedEntry('v9.9.7')));
+  const across = f.run(['--apply', '--repo', repo]);
+  assert.equal(across.code, 2);
+  assert.match(across.err, /more than one/);
+  assert.ok(across.err.includes(join(f.cfg, 'settings.json')) && across.err.includes(join(repo, '.claude', 'settings.json')), across.err);
+  const within = upgradeFixture({ settings: { extraKnownMarketplaces: {
+    a: { source: { source: 'github', repo: UPGRADE_REPO, ref: 'v9.9.8' } },
+    b: { source: { source: 'github', repo: UPGRADE_REPO, ref: 'v9.9.7' } },
+  } } });
+  const r = within.run(['--apply']);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /more than one/);
+  assert.deepEqual(within.calls(), []);
+  assert.deepEqual(f.calls(), []);
+});
+
+test('#364 upgrade: a settings file that is not JSON exits 2 and is not written', () => {
+  const f = upgradeFixture({ settings: '{ "extraKnownMarketplaces": ' });
+  const r = f.run(['--apply']);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /not valid JSON/);
+  assert.equal(readFileSync(f.file, 'utf8'), '{ "extraKnownMarketplaces": ');
+  assert.deepEqual(f.calls(), []);
+  assert.deepEqual(f.bakFiles(), []);
+});
+
+test('#364 upgrade: a tag that is not a published release exits 2', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  for (const tag of ['v9.9.11', '9.9.6', 'nightly', '1.2']) {
+    const r = f.run([tag, '--apply']);
+    assert.equal(r.code, 2, tag);
+    assert.match(r.err, /house upgrade/, tag);
+  }
+  assert.deepEqual(f.calls(), []);
+  const bare = f.run(['9.9.9']);
+  assert.equal(bare.code, 0, bare.err);
+  assert.match(bare.out, /v9\.9\.8 -> v9\.9\.9/);
+});
+
+test('#364 upgrade: a target below the installed version is refused unless --allow-downgrade', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.9'), installed: '9.9.9' });
+  const refused = f.run(['v9.9.7', '--apply']);
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /--allow-downgrade/);
+  assert.deepEqual(f.calls(), []);
+  const ok = f.run(['v9.9.7', '--apply', '--allow-downgrade']);
+  assert.equal(ok.code, 0, ok.err + ok.out);
+  assert.deepEqual(f.calls()[0], ['plugin', 'marketplace', 'add', `${UPGRADE_REPO}#v9.9.7`, '--scope', 'user']);
+  assert.equal(f.installedVersion(), '9.9.7');
+});
+
+test('#364 upgrade: already at the target prints so and runs nothing', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.10'), installed: '9.9.10' });
+  const before = readFileSync(f.file, 'utf8');
+  const r = f.run(['--apply']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /already at v9\.9\.10/);
+  assert.deepEqual(f.calls(), []);
+  assert.equal(readFileSync(f.file, 'utf8'), before);
+  assert.deepEqual(f.bakFiles(), []);
+});
+
+test('#364 upgrade: an unreachable release list exits 1 and changes nothing', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  const before = readFileSync(f.file, 'utf8');
+  const r = f.run(['--apply'], { HOUSE_RELEASES_FIXTURE: '', HOUSE_RELEASES_URL: 'http://127.0.0.1:1/' });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /release list/);
+  assert.match(r.err, /nothing changed/);
+  assert.equal(readFileSync(f.file, 'utf8'), before);
+  assert.deepEqual(f.calls(), []);
+});
+
+test('#364 upgrade: no claude on PATH exits 1 before any edit', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8'), stub: false });
+  const before = readFileSync(f.file, 'utf8');
+  const r = f.run(['--apply']);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /claude not found on PATH; nothing changed/);
+  assert.equal(readFileSync(f.file, 'utf8'), before);
+  assert.deepEqual(f.bakFiles(), []);
+  // The plan alone needs no claude.
+  assert.equal(f.run([]).code, 0);
+});
+
+test('#364 upgrade: a failing update step stops, names the backup, the remaining command and the rollback', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  const r = f.run(['--apply'], { STUB_FAIL_UPDATE: '1' });
+  assert.equal(r.code, 1);
+  const bak = join(dirname(f.file), f.bakFiles()[0]);
+  assert.match(r.err, /step 3 failed: claude plugin update house-rules@house-rules -s user/);
+  assert.ok(r.err.includes(bak), r.err);
+  assert.match(r.err, /remaining:\n\s+claude plugin update house-rules@house-rules -s user/);
+  assert.match(r.err, /rollback:/);
+  assert.ok(r.err.includes(`cp ${bak} ${f.file}`), r.err);
+  assert.match(r.err, /claude plugin marketplace add 'dubbl-a\/house-rules#v9\.9\.8' --scope user/);
+  assert.deepEqual(f.calls(), [ADD_V10, UPDATE_USER]);
+});
+
+test('#364 upgrade: a known_marketplaces ref that is not the target exits 1 with the manual fallback', () => {
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  const r = f.run(['--apply'], { STUB_KNOWN_REF: 'v9.9.8' });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /known_marketplaces\.json/);
+  assert.match(r.err, /v9\.9\.10/);
+  assert.match(r.err, /claude plugin marketplace add 'dubbl-a\/house-rules#v9\.9\.10' --scope user/);
+});
+
+test('#364 upgrade: usage names the verb, and a stray flag or extra word is a usage error before any effect', () => {
+  const { cliPath } = buildFixturePlugin();
+  const bad = runCli(cliPath, ['nope']);
+  assert.equal(bad.code, 2);
+  assert.match(bad.err, /house upgrade \[<tag>\] \[--apply\] \[--pin\] \[--allow-downgrade\]/);
+  const f = upgradeFixture({ settings: pinnedEntry('v9.9.8') });
+  for (const args of [['--bogus'], ['v9.9.9', 'v9.9.10'], ['--repo']]) {
+    const r = f.run([...args, '--apply']);
+    assert.equal(r.code, 2, args.join(' '));
+    assert.match(r.err, /usage: house upgrade/, args.join(' '));
+  }
+  const help = f.run(['--help']);
+  assert.equal(help.code, 0);
+  assert.match(help.out, /usage: house upgrade/);
+  assert.deepEqual(f.calls(), []);
+});

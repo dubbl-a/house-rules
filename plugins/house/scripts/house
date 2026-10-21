@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// house CLI: init | render | enable | disable | uninstall | confirm | check | doctor
+// house CLI: init | render | enable | disable | uninstall | confirm | check | doctor | upgrade
 //
 // Single file, node builtins + `git` only (no npm dependencies). Runs as an
 // ES module: the real install location (plugins/house/scripts/house) sits
@@ -3691,6 +3691,201 @@ async function cmdChanges(args) {
   console.log(parts.join('\n\n'));
 }
 
+// #364: `house upgrade [<tag>]` moves a ref-pinned install of this plugin to a
+// release in one command. Claude Code 2.1.306 refuses `marketplace add` when the
+// ref in the tag differs from (or is missing in) the `extraKnownMarketplaces`
+// entry that declares the marketplace, and a bumped ref alone leaves
+// known_marketplaces.json on the old one, so the sequence is: set the entry's
+// ref, `marketplace add '<repo>#<tag>'`, `plugin update`. The settings edit is
+// in place (other keys and key order survive) behind a timestamped backup. It
+// prints the plan by default and acts only with --apply; an unpinned entry
+// (one that follows the default branch) also needs --pin, since upgrading ends
+// that tracking.
+const HOUSE_MARKETPLACE_REPO = 'dubbl-a/house-rules';
+const HOUSE_PLUGIN_KEY = 'house-rules@house-rules';
+const UPGRADE_USAGE = 'usage: house upgrade [<tag>] [--apply] [--pin] [--allow-downgrade] [--repo <path>]   (tag as X.Y.Z or vX.Y.Z; default the latest release)';
+
+// Strict: this verb writes, so an unknown flag or stray word is a usage error.
+function parseUpgradeArgs(argv) {
+  const out = { tag: null, apply: false, pin: false, allowDowngrade: false, repo: null, help: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--help' || a === '-h') out.help = true;
+    else if (a === '--apply') out.apply = true;
+    else if (a === '--pin') out.pin = true;
+    else if (a === '--allow-downgrade') out.allowDowngrade = true;
+    else if (a === '--repo') { const v = argv[++i]; if (v === undefined || v.startsWith('--')) return null; out.repo = v; }
+    else if (a.startsWith('--repo=')) { out.repo = a.slice('--repo='.length); if (!out.repo) return null; }
+    else if (out.tag === null && SEMVER_TAG.test(a)) out.tag = a;
+    else return null;
+  }
+  return out;
+}
+
+function onPath(cmd) {
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      const p = path.join(dir, cmd);
+      if (statSync(p).isFile()) { accessSync(p, fsConstants.X_OK); return true; }
+    } catch { /* not here */ }
+  }
+  return false;
+}
+
+// Set source.ref in place after copying the original bytes aside; returns the backup path.
+function editMarketplaceRef(m, tag) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const backup = `${m.file}.house-upgrade-${stamp}.bak`;
+  copyFileSync(m.file, backup, fsConstants.COPYFILE_EXCL);
+  m.source.ref = tag;
+  delete m.source.sha;
+  const tmp = `${m.file}.house-upgrade-${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, JSON.stringify(m.obj, null, 2) + (m.raw.endsWith('\n') ? '\n' : ''));
+    chmodSync(tmp, statSync(m.file).mode & 0o777);
+    renameSync(tmp, m.file);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch { /* never created */ }
+    throw e;
+  }
+  return backup;
+}
+
+async function cmdUpgrade(rest) {
+  const args = parseUpgradeArgs(rest);
+  if (!args) { console.error(UPGRADE_USAGE); process.exit(2); }
+  if (args.help) { console.log(UPGRADE_USAGE); return; }
+  const fail = (code, msg) => { console.error(`house upgrade: ${msg}`); process.exit(code); };
+  const q = (a) => (/^[A-Za-z0-9_.\/:=@+-]+$/.test(a) ? a : `'${a}'`);
+  const cmdText = (argv) => ['claude', ...argv].map(q).join(' ');
+  const cfgDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
+
+  // The installed version comes from Claude Code's own record, not the loaded plugin copy.
+  let installed = null;
+  const installedFile = path.join(cfgDir, 'plugins', 'installed_plugins.json');
+  try {
+    const v = JSON.parse(readFileSync(installedFile, 'utf8')).plugins[HOUSE_PLUGIN_KEY][0].version;
+    if (typeof v === 'string' && v) installed = v;
+  } catch { /* reported below */ }
+  if (!installed) fail(2, `${HOUSE_PLUGIN_KEY} is not recorded in ${installedFile}; install it first (see the README), nothing changed`);
+
+  let repoRoot = null;
+  if (args.repo) repoRoot = path.resolve(process.cwd(), args.repo);
+  else {
+    try { repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* outside a repo: user settings only */ }
+  }
+
+  // Find the marketplace entry by its repo, not its key, in the three settings files that can declare one.
+  const candidates = [['user', path.join(cfgDir, 'settings.json')]];
+  if (repoRoot) candidates.push(['project', path.join(repoRoot, '.claude', 'settings.json')], ['local', path.join(repoRoot, '.claude', 'settings.local.json')]);
+  const seen = new Set();
+  const matches = [];
+  for (const [scope, file] of candidates) {
+    let raw;
+    try { raw = readFileSync(file, 'utf8'); } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      fail(2, `cannot read ${file} (${e.code || e.message}); nothing changed`);
+    }
+    const real = realpathSync(file);
+    if (seen.has(real)) continue;
+    seen.add(real);
+    let obj;
+    try { obj = JSON.parse(raw); } catch { fail(2, `${file} is not valid JSON; fix it and rerun, nothing changed`); }
+    const declared = isPlainObject(obj) && isPlainObject(obj.extraKnownMarketplaces) ? obj.extraKnownMarketplaces : {};
+    for (const [key, ent] of Object.entries(declared)) {
+      if (isPlainObject(ent) && isPlainObject(ent.source) && ent.source.repo === HOUSE_MARKETPLACE_REPO) matches.push({ scope, file, raw, obj, key, source: ent.source });
+    }
+  }
+  if (matches.length > 1) {
+    fail(2, `more than one extraKnownMarketplaces entry names ${HOUSE_MARKETPLACE_REPO}, so no edit is safe; remove all but one, then rerun:\n${matches.map((m) => `  ${m.file} (entry "${m.key}", ${m.scope} scope)`).join('\n')}`);
+  }
+  const m = matches[0] || null;
+
+  let list;
+  try {
+    list = JSON.parse(await fetchReleaseList());
+    if (!Array.isArray(list)) throw new SyntaxError('not a release list');
+  } catch (e) {
+    fail(1, `cannot read the release list (${releaseFetchWhy(e)}); nothing changed`);
+  }
+  const versions = list
+    .filter((r) => isPlainObject(r) && !r.draft && !r.prerelease && typeof r.tag_name === 'string' && SEMVER_TAG.test(r.tag_name))
+    .map((r) => r.tag_name.replace(/^v/, ''))
+    .sort(compareSemver);
+  if (!versions.length) fail(1, 'cannot read the release list (unexpected response from the releases API); nothing changed');
+  const target = args.tag ? args.tag.replace(/^v/, '') : versions[versions.length - 1];
+  if (!versions.includes(target)) fail(2, `v${target} is not a published release; the latest is v${versions[versions.length - 1]}`);
+  const tag = `v${target}`;
+  if (SEMVER_TAG.test(installed) && compareSemver(target, installed) < 0 && !args.allowDowngrade) {
+    fail(2, `${tag} is below the installed v${installed.replace(/^v/, '')}; pass --allow-downgrade to go back`);
+  }
+  if (installed.replace(/^v/, '') === target && m && m.source.ref === tag) { console.log(`already at ${tag}`); return; }
+
+  const scope = m ? m.scope : 'user';
+  const unpinned = Boolean(m) && !(typeof m.source.ref === 'string' && m.source.ref);
+  const addArgv = ['plugin', 'marketplace', 'add', `${HOUSE_MARKETPLACE_REPO}#${tag}`, '--scope', scope];
+  const updateArgv = ['plugin', 'update', HOUSE_PLUGIN_KEY, '-s', scope];
+  const steps = [];
+  if (m) steps.push({ edit: true, text: `set extraKnownMarketplaces["${m.key}"].source.ref to "${tag}" in ${m.file} (backup first${'sha' in m.source ? '; drops source.sha, which would disagree with the new ref' : ''})` });
+  steps.push({ argv: addArgv, text: cmdText(addArgv) }, { argv: updateArgv, text: cmdText(updateArgv) });
+
+  const oldTag = `v${installed.replace(/^v/, '')}`;
+  console.log(`house upgrade: ${HOUSE_PLUGIN_KEY} ${oldTag} -> ${tag} (${scope} scope)`);
+  if (unpinned) console.log(`This install is unpinned: it follows the default branch. Upgrading pins it to ${tag} and stops that tracking.`);
+  console.log('plan:');
+  steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.text}`));
+  if (!args.apply) {
+    console.log(unpinned ? 'Plan only; nothing changed. Add --apply --pin to run it.' : 'Plan only; nothing changed. Add --apply to run it.');
+    return;
+  }
+  if (unpinned && !args.pin) fail(2, `the entry is unpinned; --apply also needs --pin to confirm it should stop following the default branch. Nothing changed.`);
+  if (!onPath('claude')) fail(1, 'claude not found on PATH; nothing changed');
+
+  let backup = null;
+  const done = [];
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    let problem = null;
+    if (s.edit) {
+      try { backup = editMarketplaceRef(m, tag); } catch (e) { problem = e.message; }
+      if (!problem) console.log(`backup: ${backup}`);
+    } else {
+      const r = spawnSync('claude', s.argv, { stdio: 'inherit' });
+      if (r.error) problem = r.error.message; else if (r.status !== 0) problem = `exit ${r.status}`;
+    }
+    if (problem) {
+      const lines = [`house upgrade: step ${i + 1} failed: ${s.edit ? 'settings edit' : s.text} (${problem})`];
+      if (done.length) {
+        lines.push('done:');
+        done.forEach((d) => lines.push(`  ${d}`));
+      }
+      lines.push('remaining:', ...steps.slice(i).map((r) => `  ${r.edit ? `edit ${m.file} (set the ref to "${tag}")` : r.text}`));
+      const undo = [];
+      if (backup) undo.push(`cp ${q(backup)} ${q(m.file)}`);
+      if (done.some((d) => d.includes('marketplace add'))) undo.push(cmdText(['plugin', 'marketplace', 'add', `${HOUSE_MARKETPLACE_REPO}#${oldTag}`, '--scope', scope]));
+      lines.push(undo.length ? 'rollback:' : 'rollback: nothing to undo', ...undo.map((u) => `  ${u}`));
+      console.error(lines.join('\n'));
+      process.exit(1);
+    }
+    done.push(s.edit ? `${i + 1}. edited ${m.file} (backup: ${backup})` : `${i + 1}. ${s.text}`);
+  }
+
+  // The commands can succeed while the install stays where it was: read the record back.
+  let knownRef = null;
+  try {
+    const known = JSON.parse(readFileSync(path.join(cfgDir, 'plugins', 'known_marketplaces.json'), 'utf8'));
+    const k = Object.values(known).find((e) => isPlainObject(e) && isPlainObject(e.source) && e.source.repo === HOUSE_MARKETPLACE_REPO);
+    if (k) knownRef = k.source.ref;
+  } catch { /* judged below */ }
+  if (knownRef !== tag) {
+    fail(1, `the commands ran, but plugins/known_marketplaces.json shows ref ${knownRef === null || knownRef === undefined ? 'none' : knownRef}, not ${tag}, so Claude Code would ignore the marketplace. Run by hand, then restart:\n  ${cmdText(addArgv)}\n  ${cmdText(updateArgv)}${backup ? `\nTo undo the settings edit: cp ${q(backup)} ${q(m.file)}` : ''}`);
+  }
+  console.log(`upgraded to ${tag}.`);
+  console.log('Restart Claude Code, then run /house-rules:sync in each adopting repo.');
+  console.log(`To read what changed: house changes ${oldTag} ${tag}`);
+}
+
 // #367: the installed /deep-research fork is machine state, rebuilt by
 // check-deep-research-upstream.mjs --install, and nothing else tells a machine
 // its fork went stale when a plugin release changed the script. --install writes
@@ -4076,9 +4271,11 @@ function main() {
   const rest = argv.slice(1);
 
   if (cmd === 'check') { cmdCheck(rest); return; }
+  // upgrade parses its own argv strictly: it writes, so a stray flag must not be ignored.
+  if (cmd === 'upgrade') return cmdUpgrade(rest);
 
   if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'doctor', 'changes', 'hook'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house changes <from> [<to>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house changes <from> [<to>]\n       house upgrade [<tag>] [--apply] [--pin] [--allow-downgrade] [--repo <path>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
     process.exit(2);
   }
 

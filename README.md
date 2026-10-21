@@ -82,13 +82,13 @@ Install the plugin once per machine, pinned to a release tag:
     claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.22.3 --scope user
 
 The plugin resolves from the marketplace's checkout, so the `#v0.22.3` tag is the pin. Without it
-you follow the default branch. To move a pin, read
-`git diff v0.22.3..vX.Y.Z -- plugins/house/hooks`, remove the marketplace (which uninstalls its
-plugins), then run the one command with the new tag. If `~/.claude/settings.json` declares the marketplace in
-`extraKnownMarketplaces` with a `ref`, update that `ref` and re-add the marketplace in the same step, never
-just one: a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the
-marketplace, so new sessions start with no house plugin. Whether auto-update respects a pin is undocumented,
-so leave it off (its third-party default).
+you follow the default branch. To move a pin, run `house upgrade [<tag>]` (default: the latest release)
+to print the plan, then add `--apply`. It sets the `ref` of the `extraKnownMarketplaces` entry (backed up
+first), re-adds the marketplace at the tag, and updates the plugin; an unpinned entry also needs `--pin`,
+and a lower tag `--allow-downgrade`. Restart, then run `house changes <from> <to>` to read what changed.
+By hand: remove the marketplace (which uninstalls its plugins), then run the one command with the new tag.
+If a settings file declares the marketplace with a `ref`, update that `ref` and re-add the marketplace in the same step, never just one: a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the marketplace, so new sessions start with no house plugin.
+Whether auto-update respects a pin is undocumented, so leave it off (its third-party default).
 
 In the target repo:
 
@@ -97,7 +97,7 @@ In the target repo:
 - `/house-rules:sync` re-renders after this package or `house.json` changes. `house doctor` adds an advisory line comparing the installed plugin with the latest published release (`latest release v0.21.7; installed v0.21.6 (1 behind)`), since a pin only matches the plugin loaded; offline it prints `not checked`, and its exit code never changes. It also reports the installed `/deep-research` fork (`~/.claude/workflows/deep-research-tiered.js`, or under `CLAUDE_CONFIG_DIR`) as `current`, `STALE` or `not installed`, with the `check-deep-research-upstream.mjs --install` command when it is not current.
 - `house enable <module...>` prints one plan (paths, files, load cost, checklist). `--apply` acts.
 - `house disable` is its reverse; `--why` records why a default-on module is off.
-- `house confirm` dates a done step. `house decline <module> <step-id> --why "..."` records a step decided against as a dated `declined-step` deviation, and `house doctor` lists it as declined instead of not confirmed. `house hook add <file>` installs your own `.d` hook. `house changes <from> [<to>]` prints the published release notes after `<from>` up to `<to>` (default: the installed plugin), oldest first, as Markdown for a PR body, which `/house-rules:sync` uses for the sync PR; offline it says where to read them and exits 0.
+- `house confirm` dates a done step. `house decline <module> <step-id> --why "..."` records a step decided against as a dated `declined-step` deviation, and `house doctor` lists it as declined instead of not confirmed. `house hook add <file>` installs your own `.d` hook. `house changes <from> [<to>]` prints the published release notes after `<from>` up to `<to>` (default: the installed plugin), oldest first, as Markdown for a PR body, which `/house-rules:sync` uses for the sync PR; offline it says where to read them and exits 0. `house upgrade [<tag>]` moves a pinned install to a release (see above).
 
 To wire the checker in by hand, run `node .house/check.mjs` in CI. Add it to `package.json` as
 `check:house`, and add `check:docs` with `--only=drift,todo`. `house.json` holds the modules, a
