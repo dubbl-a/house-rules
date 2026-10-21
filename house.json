@@ -148,6 +148,13 @@
             "why": "solo repo: github.md asks for code owners once there is a second maintainer, and until then there is nobody to route a review to"
           }
         ]
+      },
+      "confirmed": {
+        "push-protection": "2026-10-21",
+        "head-branch-deletion": "2026-10-21",
+        "branch-protection": "2026-10-21",
+        "multi-factor": "2026-10-21",
+        "community-profile": "2026-10-21"
       }
     },
     "llm-output": {
@@ -162,7 +169,12 @@
     },
     "security": {
       "enabled": true,
-      "config": {}
+      "config": {},
+      "confirmed": {
+        "code-scanning": "2026-10-21",
+        "branch-protection": "2026-10-21",
+        "credential-deny": "2026-10-21"
+      }
     },
     "testing": {
       "enabled": true,
@@ -200,6 +212,16 @@
       "to": 190,
       "why": "the README now carries the pinned install, how to move a pin, and what the hooks run (#133), none of which an adopter can get from the install prompt",
       "decided": "2026-10-03"
+    }
+  ],
+  "deviations": [
+    {
+      "kind": "declined-step",
+      "module": "security",
+      "step": "code-owners",
+      "what": "Declined at-adoption step `code-owners`: Once there is a second maintainer, add a code-owners entry naming a reviewer for workflow, release, and agent config files.",
+      "why": "Solo maintainer: dubbl-a is the only collaborator. Add a code-owners entry when a second maintainer joins.",
+      "decided": "2026-10-21"
     }
   ]
 }
