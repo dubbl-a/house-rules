@@ -3733,18 +3733,29 @@ function onPath(cmd) {
   return false;
 }
 
-// Set source.ref in place after copying the original bytes aside; returns the backup path.
-function editMarketplaceRef(m, tag) {
+// Copy a file's bytes aside, beside the real target when the path is a symlink; returns the backup path.
+function backupSettingsFile(file) {
+  const real = realpathSync(file);
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const backup = `${m.file}.house-upgrade-${stamp}.bak`;
-  copyFileSync(m.file, backup, fsConstants.COPYFILE_EXCL);
+  const backup = `${real}.house-upgrade-${stamp}.bak`;
+  copyFileSync(real, backup, fsConstants.COPYFILE_EXCL);
+  return backup;
+}
+
+// Set source.ref in place after copying the original bytes aside; returns the backup path.
+// Works on the real target so a symlinked settings file stays a link, and refuses (writing
+// nothing) when the file is no longer what was parsed.
+function editMarketplaceRef(m, tag) {
+  const real = realpathSync(m.file);
+  if (readFileSync(real, 'utf8') !== m.raw) throw new Error(`${m.file} changed since it was read; rerun`);
+  const backup = backupSettingsFile(m.file);
   m.source.ref = tag;
   delete m.source.sha;
-  const tmp = `${m.file}.house-upgrade-${process.pid}.tmp`;
+  const tmp = `${real}.house-upgrade-${process.pid}.tmp`;
   try {
     writeFileSync(tmp, JSON.stringify(m.obj, null, 2) + (m.raw.endsWith('\n') ? '\n' : ''));
-    chmodSync(tmp, statSync(m.file).mode & 0o777);
-    renameSync(tmp, m.file);
+    chmodSync(tmp, statSync(real).mode & 0o777);
+    renameSync(tmp, real);
   } catch (e) {
     try { unlinkSync(tmp); } catch { /* never created */ }
     throw e;
@@ -3762,13 +3773,13 @@ async function cmdUpgrade(rest) {
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), '.claude');
 
   // The installed version comes from Claude Code's own record, not the loaded plugin copy.
-  let installed = null;
+  let installedEntries = [];
   const installedFile = path.join(cfgDir, 'plugins', 'installed_plugins.json');
   try {
-    const v = JSON.parse(readFileSync(installedFile, 'utf8')).plugins[HOUSE_PLUGIN_KEY][0].version;
-    if (typeof v === 'string' && v) installed = v;
+    const rec = JSON.parse(readFileSync(installedFile, 'utf8')).plugins[HOUSE_PLUGIN_KEY];
+    installedEntries = rec.filter((e) => isPlainObject(e) && typeof e.version === 'string' && e.version);
   } catch { /* reported below */ }
-  if (!installed) fail(2, `${HOUSE_PLUGIN_KEY} is not recorded in ${installedFile}; install it first (see the README), nothing changed`);
+  if (!installedEntries.length) fail(2, `${HOUSE_PLUGIN_KEY} is not recorded in ${installedFile}; install it first (see the README), nothing changed`);
 
   let repoRoot = null;
   if (args.repo) repoRoot = path.resolve(process.cwd(), args.repo);
@@ -3801,6 +3812,8 @@ async function cmdUpgrade(rest) {
     fail(2, `more than one extraKnownMarketplaces entry names ${HOUSE_MARKETPLACE_REPO}, so no edit is safe; remove all but one, then rerun:\n${matches.map((m) => `  ${m.file} (entry "${m.key}", ${m.scope} scope)`).join('\n')}`);
   }
   const m = matches[0] || null;
+  // The record for the entry's scope, else the first.
+  const installed = (installedEntries.find((e) => e.scope === (m ? m.scope : 'user')) || installedEntries[0]).version;
 
   let list;
   try {
@@ -3823,7 +3836,9 @@ async function cmdUpgrade(rest) {
   if (installed.replace(/^v/, '') === target && m && m.source.ref === tag) { console.log(`already at ${tag}`); return; }
 
   const scope = m ? m.scope : 'user';
-  const unpinned = Boolean(m) && !(typeof m.source.ref === 'string' && m.source.ref);
+  // Only a release tag is a pin: a branch ref (main) still tracks, so it is unpinned too.
+  const origRef = m && typeof m.source.ref === 'string' && m.source.ref ? m.source.ref : null;
+  const unpinned = Boolean(m) && !(origRef && SEMVER_TAG.test(origRef));
   const addArgv = ['plugin', 'marketplace', 'add', `${HOUSE_MARKETPLACE_REPO}#${tag}`, '--scope', scope];
   const updateArgv = ['plugin', 'update', HOUSE_PLUGIN_KEY, '-s', scope];
   const steps = [];
@@ -3832,7 +3847,7 @@ async function cmdUpgrade(rest) {
 
   const oldTag = `v${installed.replace(/^v/, '')}`;
   console.log(`house upgrade: ${HOUSE_PLUGIN_KEY} ${oldTag} -> ${tag} (${scope} scope)`);
-  if (unpinned) console.log(`This install is unpinned: it follows the default branch. Upgrading pins it to ${tag} and stops that tracking.`);
+  if (unpinned) console.log(`This install is unpinned (${origRef ? `its ref "${origRef}" is not a release tag` : 'it follows the default branch'}). Upgrading pins it to ${tag} and stops that tracking.`);
   console.log('plan:');
   steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.text}`));
   if (!args.apply) {
@@ -3843,6 +3858,18 @@ async function cmdUpgrade(rest) {
   if (!onPath('claude')) fail(1, 'claude not found on PATH; nothing changed');
 
   let backup = null;
+  // With no entry, the add writes one into user settings: keep that file's bytes (or note it did not exist).
+  const userSettings = path.join(cfgDir, 'settings.json');
+  const userSettingsExisted = existsSync(userSettings);
+  const rollbackLines = () => {
+    const undo = [];
+    if (backup) undo.push(`cp ${q(backup)} ${q(realpathSync(m ? m.file : userSettings))}`);
+    else if (!m && !userSettingsExisted && existsSync(userSettings)) undo.push(`rm ${q(userSettings)}`);
+    if (m && done.some((d) => d.includes('marketplace add'))) {
+      undo.push(cmdText(['plugin', 'marketplace', 'add', origRef ? `${HOUSE_MARKETPLACE_REPO}#${origRef}` : HOUSE_MARKETPLACE_REPO, '--scope', scope]));
+    }
+    return undo;
+  };
   const done = [];
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
@@ -3851,7 +3878,11 @@ async function cmdUpgrade(rest) {
       try { backup = editMarketplaceRef(m, tag); } catch (e) { problem = e.message; }
       if (!problem) console.log(`backup: ${backup}`);
     } else {
-      const r = spawnSync('claude', s.argv, { stdio: 'inherit' });
+      if (!m && s.argv === addArgv && userSettingsExisted) {
+        try { backup = backupSettingsFile(userSettings); console.log(`backup: ${backup}`); } catch (e) { problem = e.message; }
+      }
+      // A project or local scope acts on the repo's settings, so run from the repo root.
+      const r = problem ? { status: 0 } : spawnSync('claude', s.argv, { stdio: 'inherit', ...(scope !== 'user' && repoRoot ? { cwd: repoRoot } : {}) });
       if (r.error) problem = r.error.message; else if (r.status !== 0) problem = `exit ${r.status}`;
     }
     if (problem) {
@@ -3861,9 +3892,7 @@ async function cmdUpgrade(rest) {
         done.forEach((d) => lines.push(`  ${d}`));
       }
       lines.push('remaining:', ...steps.slice(i).map((r) => `  ${r.edit ? `edit ${m.file} (set the ref to "${tag}")` : r.text}`));
-      const undo = [];
-      if (backup) undo.push(`cp ${q(backup)} ${q(m.file)}`);
-      if (done.some((d) => d.includes('marketplace add'))) undo.push(cmdText(['plugin', 'marketplace', 'add', `${HOUSE_MARKETPLACE_REPO}#${oldTag}`, '--scope', scope]));
+      const undo = rollbackLines();
       lines.push(undo.length ? 'rollback:' : 'rollback: nothing to undo', ...undo.map((u) => `  ${u}`));
       console.error(lines.join('\n'));
       process.exit(1);
@@ -3879,7 +3908,7 @@ async function cmdUpgrade(rest) {
     if (k) knownRef = k.source.ref;
   } catch { /* judged below */ }
   if (knownRef !== tag) {
-    fail(1, `the commands ran, but plugins/known_marketplaces.json shows ref ${knownRef === null || knownRef === undefined ? 'none' : knownRef}, not ${tag}, so Claude Code would ignore the marketplace. Run by hand, then restart:\n  ${cmdText(addArgv)}\n  ${cmdText(updateArgv)}${backup ? `\nTo undo the settings edit: cp ${q(backup)} ${q(m.file)}` : ''}`);
+    fail(1, `the commands ran, but plugins/known_marketplaces.json shows ref ${knownRef === null || knownRef === undefined ? 'none' : knownRef}, not ${tag}, so Claude Code would ignore the marketplace. Run by hand, then restart:\n  ${cmdText(addArgv)}\n  ${cmdText(updateArgv)}${rollbackLines().length ? `\nTo undo:\n${rollbackLines().map((u) => `  ${u}`).join('\n')}` : ''}`);
   }
   console.log(`upgraded to ${tag}.`);
   console.log('Restart Claude Code, then run /house-rules:sync in each adopting repo.');
