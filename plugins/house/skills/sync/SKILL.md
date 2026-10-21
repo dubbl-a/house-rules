@@ -18,7 +18,28 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house <init|render|check> [--repo <path>] [--
 
 ## Default path: plan, then apply
 
-Sync has exactly one default path. Run it in this order every time.
+Sync has exactly one default path. Run it in this order every time, starting at step 0.
+
+### 0. Check the loaded plugin before touching the repo
+
+Do this before any worktree, branch or render. Sync writes what the loaded plugin ships, so a stale plugin writes stale files.
+
+First, is this session running an old copy? Claude Code keeps one directory per installed version next to `${CLAUDE_PLUGIN_ROOT}`, and a session keeps running the copy it loaded at start even after a newer one is installed. Read the loaded version from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`, then list the newest cached version:
+
+```
+ls "$(dirname "${CLAUDE_PLUGIN_ROOT}")" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+```
+
+The `grep` drops any entry that is not a plain `X.Y.Z` directory name, and `sort -V` compares numerically, so `0.22.10` sorts above `0.22.9` (a plain `sort` would not). If the loaded version is older than that newest one, stop here: tell the user the plugin was updated but this session still runs the old copy, and to restart Claude Code and run `/house-rules:sync` again. Do not create a worktree or run render.
+
+Otherwise run the doctor (the same command as step 7) and read two of its lines now:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house doctor --repo <path>
+```
+
+- **`latest release ...`.** When it says `(N behind)`, the loaded plugin is older than the newest published release, so a sync would pin the repo to an old version. Say so, point to the README's install section ("To move a pin": move the `#vX.Y.Z` pin and, when `~/.claude/settings.json` declares one, the `extraKnownMarketplaces` `ref`), and continue only if the user wants to sync to the loaded version. `not checked` (offline) never blocks.
+- **`deep-research fork: ...`.** `current` needs nothing. `STALE (...)` or `not installed` does not block the sync: print the `--install` command doctor gave, once, in the sync report. `--install` builds the fork from the loaded plugin's script, so when the plugin is behind or the session is stale, tell the user to run it only after moving to the new plugin, not before.
 
 ### 1. Confirm the repo has adopted house
 
@@ -106,7 +127,7 @@ A `[untracked]` warning here means step 4b was skipped for that file; stage it a
 
 ### 7. Print doctor output
 
-After check runs, run the doctor and report its lines:
+After check runs, run the doctor again (step 0 ran it before any write) and report its lines:
 
 ```
 node ${CLAUDE_PLUGIN_ROOT}/scripts/house doctor --repo <path>
@@ -128,6 +149,7 @@ What each printed line means (labels as `doctor` prints them):
 - **`jq on PATH: yes | no`.** The hook still denies without it (hand-written deny JSON), but report the gap so it gets fixed.
 - **`pin vX matches plugin vY` | `pin vX differs from installed plugin vY`.** `house.json`'s `version` against the plugin's own `plugin.json`, the same comparison as step 5. `differs` means the pin bump has not landed yet or was skipped.
 - **`latest release vX; installed vY (N behind)` | `installed vY is the latest release` | `latest release vX; installed vY is ahead of it (unreleased)` | `latest release vX; installed Y is not a release version` | `latest release: not checked (<reason>)`.** The installed plugin against the latest published release of dubbl-a/house-rules (#305), which the pin line cannot see: a pinned install matches itself forever. Include this line in the sync report. `N behind` means the pin has not been moved to a newer release (the README's "To move a pin"); `ahead` is a local or unreleased plugin build; `not checked` is offline, rate-limited or an unexpected response, advisory only and never a failure.
+- **`deep-research fork: current | STALE (<why>); rebuild with: <command> | not installed ... | not checked (...)`.** Read in step 0; repeat it in the sync report with the `--install` command when it is not `current`. Advisory only: it never fails a sync.
 - **`npm wiring (.house/check.mjs referenced by): <scripts> | none found`.** Expect a `check:docs` (or equivalent lightweight) script invoking `.house/check.mjs --only=drift,todo` and a `check:house` script invoking the full `.house/check.mjs`. If either is missing, print the copy-pasteable snippet rather than editing `package.json` directly:
   ```
   "check:docs": "node .house/check.mjs --only=drift,todo"
