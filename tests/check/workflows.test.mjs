@@ -145,6 +145,24 @@ test('event-in-run: github.head_ref inside a block-scalar run warns at the body 
   assert.equal(ws[0].line, 20);
 });
 
+test('event-in-run: a } inside a string literal does not end the expression', () => {
+  const run = (expr) => withWorkflow(CLEAN_WORKFLOW.replace('run: echo "$TITLE $HEAD"', `run: echo "${expr}"`));
+  assert.deepEqual(kinds(warns(run("${{ format('{0}}', github.event.issue.title) }}"))), ['event-in-run']);
+  assert.deepEqual(kinds(warns(run("${{ format('it''s }} {0}', github.head_ref) }}"))), ['event-in-run']);
+  assert.deepEqual(warns(run("${{ format('github.event.x }}') }}")), []);
+  assert.deepEqual(warns(run('${{ steps.github.event.outputs.x }}')), []);
+});
+
+test('pr-credential: the tokenizer reads secrets as a chain start only', () => {
+  const env = (v) => withWorkflow(CLEAN_WORKFLOW + PR_STEP + `        env:\n          K: ${v}\n`);
+  assert.deepEqual(kinds(warns(env("${{ format('{0}', fromJSON(toJSON(secrets.API_KEY))) }}"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(env("${{ format('{0}}', secrets['API_KEY']) }}"))), ['pr-credential']);
+  assert.deepEqual(warns(env("${{ format('{0}}', 'secrets.API_KEY') }}")), []);
+  assert.deepEqual(warns(env("${{ fromJSON('{\"secrets\": 1}') }}")), []);
+  assert.deepEqual(warns(env("${{ matrix.secrets }}")), []);
+  assert.match(warns(env("${{ secrets['it''s'] }}"))[0].message, /secrets\.it's/);
+});
+
 test('event-in-run: event data in an agent prompt input warns', () => {
   const body = CLEAN_WORKFLOW.replace('prompt: Review the diff.', 'prompt: |\n            Review: ${{ github.event.issue.body }}');
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['event-in-run']);

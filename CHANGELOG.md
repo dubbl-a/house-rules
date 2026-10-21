@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- The workflows checks read `${{ }}` expressions with one small tokenizer instead of regexes (#232). `event-in-run` now finds the true end of an expression, so a `}` inside a string literal no longer hides event data after it, and `pr-credential` reads a secret as a `secrets` identifier at the start of a property chain. An expression split across lines is still not read.
+
 ### Added
 
 - `plugins/house/bin/house`, a wrapper that runs `scripts/house` with the same arguments and exit code, so `house <command>` is on PATH in a Claude Code session with the plugin enabled. A plugin distributed through claude.ai organization settings may not carry a top-level `bin/`; this one is distributed through its public GitHub marketplace.
