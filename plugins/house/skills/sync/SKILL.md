@@ -14,7 +14,7 @@ The CLI this skill drives:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/house <init|render|check> [--repo <path>] [--apply] [--force-managed <path>]
 ```
 
-`--repo` defaults to the current directory. Nothing below invents a subcommand outside `init`, `render`, `check`.
+`--repo` defaults to the current directory. Nothing below invents a subcommand outside `init`, `render`, `check`, plus the read-only `doctor` (steps 0 and 7) and `changes <from> [<to>]` (step 7b).
 
 ## Default path: plan, then apply
 
@@ -44,6 +44,17 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house doctor --repo <path>
 ### 1. Confirm the repo has adopted house
 
 Read `house.json` at the repo root. Missing `house.json` means this repo was never bootstrapped: stop and tell the user to run `/house-rules:bootstrap` first. Do not treat a missing manifest as "nothing to sync."
+
+Note three values now, before any render: `version` (call it vOLD; `render --apply` overwrites it with the loaded plugin's version, vNEW, so it cannot be read afterwards), `defaultBranch`, and `branchPolicy`.
+
+With `branchPolicy` `pr`, do not write in the main checkout: the default branch is protected, and the PR is step 7b. Create the worktree now and run every later step with `--repo <worktree>`:
+
+```
+git fetch origin
+git worktree add .claude/worktrees/house-sync-vNEW -b house-sync-vNEW origin/<defaultBranch>
+```
+
+Step 0 has already passed, so nothing was written before this point. With any other `branchPolicy`, work in the repo as it stands.
 
 ### 2. Plan (dry run)
 
@@ -157,6 +168,25 @@ What each printed line means (labels as `doctor` prints them):
   ```
 - **`rule-load positive control: ...`.** Whether an `InstructionsLoaded` hook is wired, and what its own log has actually witnessed; without one, a rule whose glob never matches looks exactly like a rule that does nothing. `repo (.claude/settings.json)`: the repo declares its own hook. `plugin hook; log <path>: last load <ts>, <n> of <m> vendored rules seen`: the plugin's own hook is wired and has logged at least one load, with a real count of how many vendored rule files it has actually seen load. When `<n>` is short of `<m>` the line continues `; not seen in this log: <names>`, naming each vendored rule the log carries no load for, because the count alone says something is wrong and never which file to open. Read that list as a lead and not a verdict: the log self-trims, so a rule can appear there after loading only long ago, and the honest next step is to open a file the rule's `paths:` claims and re-run doctor. A name that survives that is a rule whose scope is not reaching the files it was written for. The log is keyed by the main checkout's root, so a session in a linked worktree or a subdirectory writes to the same file; doctor also reads the older `<root key>-.claude-worktrees-*.jsonl` logs and prints a `pooled <n> log files` line saying how many it read. `plugin hook declared; no log yet for this checkout`: the plugin's hook is wired but has not logged anything here yet -- start a session in this repo and re-run doctor. `none wired`: nothing declares the hook at all.
 - **`git-ignored house destinations: none | <paths>`.** Anything but `none` is a destination the checker cannot see; fix the ignore rule as in step 4.
+
+### 7b. Commit, and for `branchPolicy: pr` open the PR
+
+Print the release notes between the old pin and the new one. Without a vOLD (no `version` in `house.json`) there is no range: say so and skip the body.
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house changes vOLD vNEW
+```
+
+It prints the notes of each published release after vOLD up to vNEW, oldest first, as Markdown under a `## house-rules vOLD to vNEW` heading. They are the release notes as published, not trimmed to the modules this repo enables. Offline it prints `release notes not available (...)` with the releases URL and exits 0: put that line in the body as it is. If step 4 printed a `module ... is not in house.json` warning, add that line to the body too, as step 4 says.
+
+For `branchPolicy: pr`, from the worktree (the split ORCHESTRATION.md draws: a subagent commits, the session pushes and opens the PR):
+
+1. A subagent stages by path as in step 4b and commits with the subject `house sync vOLD to vNEW` and the `house changes` output as the body (write the subject, a blank line and the output to a file, then `git commit -F <file>`).
+2. The session pushes the branch and opens the PR against `defaultBranch` with the same body.
+3. Wait with `gh pr checks <n> --watch`. On a red or stuck check, report it instead of merging.
+4. Merge only on the user's word. Then clean up: remove the worktree, delete the local branch, `git fetch --prune`.
+
+For `branchPolicy: direct`, commit on the current branch with the same subject and body, and push only when the user asks. No worktree and no PR.
 
 ### 8. Route what the repo cannot fix upstream, one issue per item
 

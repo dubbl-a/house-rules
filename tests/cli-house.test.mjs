@@ -4409,3 +4409,68 @@ test('#367 doctor: a plugin without the script says not checked rather than gues
   assert.equal(fork.state, 'not-checked');
   assert.match(r.out, /^deep-research fork: not checked \(.+\)$/m);
 });
+
+// #366: `house changes` prints the notes of each published release in a range, for a sync PR body.
+const changesList = () => releasesFixture([
+  rel('v9.9.11', { body: 'eleven' }),
+  rel('v9.9.10', { body: 'ten\n\n- a bullet' }),
+  rel('v9.9.9', { body: 'nine' }),
+  rel('v9.9.8', { body: 'eight', draft: true }),
+  rel('v9.9.7', { body: 'seven' }),
+  rel('v9.9.6', { body: 'six', prerelease: true }),
+  rel('v9.9.5', { body: 'five' }),
+]);
+
+test('#366 changes: prints the range oldest first, compared numerically, as Markdown', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['changes', '9.9.5', '9.9.11'], { HOUSE_RELEASES_FIXTURE: changesList() });
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, '## house-rules v9.9.5 to v9.9.11\n\n### v9.9.7\n\nseven\n\n### v9.9.9\n\nnine\n\n### v9.9.10\n\nten\n\n- a bullet\n\n### v9.9.11\n\neleven\n');
+});
+
+test('#366 changes: 9.9.9 to 9.9.10 is one release, not a string-order range', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['changes', 'v9.9.9', 'v9.9.10'], { HOUSE_RELEASES_FIXTURE: changesList() });
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(r.out.match(/^### .+$/gm), ['### v9.9.10']);
+  assert.match(r.out, /^## house-rules v9\.9\.9 to v9\.9\.10$/m);
+});
+
+test('#366 changes: to defaults to the loaded plugin version', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['changes', '9.9.6'], { HOUSE_RELEASES_FIXTURE: changesList() });
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^## house-rules v9\.9\.6 to v9\.9\.9$/m);
+  assert.deepEqual(r.out.match(/^### .+$/gm), ['### v9.9.7', '### v9.9.9']);
+});
+
+test('#366 changes: a bad version is a usage error with a non-zero exit', () => {
+  const { cliPath } = buildFixturePlugin();
+  const env = { HOUSE_RELEASES_FIXTURE: changesList() };
+  for (const args of [[], ['nightly'], ['1.2'], ['1.2.3', 'x'], ['1.2.3-rc.1', '1.2.4'], ['1.2.3', '1.2.4', '1.2.5']]) {
+    const r = runCli(cliPath, ['changes', ...args], env);
+    assert.notEqual(r.code, 0, args.join(' '));
+    assert.match(r.err, /usage: house changes <from> \[<to>\]/, args.join(' '));
+    assert.equal(r.out, '');
+  }
+});
+
+test('#366 changes: from at or past to prints one line and exits 0', () => {
+  const { cliPath } = buildFixturePlugin();
+  for (const [from, to] of [['9.9.9', '9.9.9'], ['9.9.10', '9.9.9']]) {
+    const r = runCli(cliPath, ['changes', from, to], { HOUSE_RELEASES_FIXTURE: changesList() });
+    assert.equal(r.code, 0);
+    assert.match(r.out, /^nothing between v9\.9\.\d+ and v9\.9\.\d+\n$/);
+  }
+});
+
+test('#366 changes: offline prints where to read the notes and exits 0', () => {
+  const { cliPath } = buildFixturePlugin();
+  const r = runCli(cliPath, ['changes', '9.9.1', '9.9.9'], { HOUSE_RELEASES_URL: 'http://127.0.0.1:1/' });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^release notes not available \(.+\); see https:\/\/github\.com\/dubbl-a\/house-rules\/releases\n$/);
+  const bad = runCli(cliPath, ['changes', '9.9.1', '9.9.9'], { HOUSE_RELEASES_FIXTURE: releasesFixture('x\x1b[31mRED') });
+  assert.equal(bad.code, 0);
+  assert.match(bad.out, /^release notes not available \(unexpected response from the releases API\); see /);
+  assert.doesNotMatch(bad.out, /[\x1b]|RED/);
+});
