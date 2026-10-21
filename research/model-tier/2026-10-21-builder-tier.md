@@ -42,9 +42,27 @@ By size band (Sonnet 5.5 includes its 3 high-effort builds, all under 30):
 - After a Sonnet 5.5 first REWORK, the next builder in the session was Sonnet 5.5 in 27 cases, Opus 5.5 in 3, and none in 8.
 - The old figures were wrong or confounded. The earlier note's 45% Opus rate differs from this script's 49% (the earlier table came from `research/token-cost/scripts/verdicts.py`). The "30 to 40 point break-even" was arithmetic, not a measurement. The "$3.08 against $3.59" figures compared a seven-day mean cost per agent, not per build, across builds of very different size.
 
-## External check, light deep-research run (secondary, low confidence)
+## External benchmarks
 
-A light run on the house fork looked for Anthropic per-effort benchmarks for Sonnet 5.5 against Opus 5.5 and found none. Second-hand relays of Artificial Analysis put Opus at about 1.5 to 2.8 times Sonnet's cost per task from low to high effort. The relays were not checked against the source, and the figure is not used in any rule.
+The maintainer's preferred benchmarks are Humanity's Last Exam (HLE) and Humanity's Last Code Exam (HLCE, arXiv 2506.12713). HLCE had no published Claude 5.x results on 2026-10-21. Neither measures implementing a brief in an existing repo, so no rule rests on these figures; they only check that the guidance is not contradicted.
+
+Read directly from Anthropic's Sonnet 5.5 launch post (https://www.anthropic.com/news/claude-sonnet-5-5), primary:
+
+| Benchmark | Opus 5.5 | Sonnet 5.5 | Notes |
+|---|---|---|---|
+| HLE, with tools | 67.7% | 64.5% | max effort |
+| Terminal-Bench 4.0 | 66.4% (xhigh) | 70.6% | |
+| FrontierCode 1.1 Main | 54.4% | 46.2% (max) | Sonnet scored lower at max than at xhigh; the post's footnote says max ran extra review edits that the benchmark penalizes |
+| CursorBench 4.0 | 57.8% | 55.5% | |
+
+A light deep-research run on the house fork, with all 45 extracted claims verified (43 confirmed, 2 refuted), added second-hand figures. They are relayed from Anthropic's system cards and launch charts by vendor blogs (Apidog, Vellum, OrcaRouter), and no verifier opened a system card:
+
+- HLE without tools: Opus 5.5 64.4%, Sonnet 5.5 56.9%, Haiku 5.5 45.9%. Artificial Analysis runs its own HLE (2,158 text-only questions) and reports Opus 5.5 at max 61.4% and Sonnet 5.5 only at low effort (36%), so its figures do not compare with Anthropic's.
+- FrontierCode 1.1 Main by effort: Sonnet 5.5 49.4% at high for $0.42 a task, 52.1% at xhigh, 46.2% at max for $20.78 a task; Opus 5.5 54.4% at xhigh.
+- Terminal-Bench 4.0, Opus 5.5 by effort: 38.5% low, 57.6% medium, 64.2% high, 66.4% xhigh, 64.8% max.
+- No contest-sourced code benchmark (LiveCodeBench Pro, OJBench, Codeforces-rated, ICPC or IOI sets) had verified Claude 5.x scores, so there is no HLCE stand-in of the same design.
+
+What this says for the rule: Sonnet 5.5 is within about 2 to 8 points of Opus 5.5 on Anthropic's coding benchmarks and ahead on Terminal-Bench, which fits Sonnet for clear-scope builds. Both models peak below max effort on at least one coding benchmark, at many times the cost, which fits capping builds at high.
 
 ## Conclusion
 
