@@ -18,6 +18,7 @@ Run any script with `PROJECT_GLOB` set to the project folder pattern:
 | `idle_versions.py` | Live-session idle rebuilds split by Claude Code version (before or from 2.1.299) and context (under or over 200k). `--gaps` prints one JSON line (start, end, ctx_k) per rebuild from 2.1.299 at 200k or more, instead of the table |
 | `idle_sleep.py` | Takes the `--gaps` output and a saved `pmset -g log` file, and reports whether the Mac was awake when idle compaction should have fired (54 min after the last response). Save the log with `pmset -g log > <file>`; it keeps only recent days, so older gaps read as unknown |
 | `compactions.py` | Record types mentioning compaction in the transcripts (positive control for `idle_versions.py`) and the `idleCompaction` setting in user settings plus any settings paths passed as arguments |
+| `bash_output.py` | Share of list-price cost from Bash tool output and from other tool results, split by result size (under 2k, 2k to 5k, 5k to 10k, over 10k estimated tokens), main vs subagent, with first words of the largest Bash commands. `--days N` sets the window. Prices copied from `plugins/house/scripts/cost-report.mjs` |
 
 Caveats:
 - Prices are hard-coded from https://platform.claude.com/docs/en/about-claude/pricing as of 2026-10-20. Every cost figure is a list-price estimate.
