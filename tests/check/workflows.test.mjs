@@ -165,6 +165,74 @@ test('pr-credential: the tokenizer reads secrets as a chain start only', () => {
   assert.deepEqual(kinds(warns(env("x${{ 'a ${{ secrets.API_KEY }}"))), ['pr-credential']);
 });
 
+// #232: the four edges of the expression reader. Each has a case that must
+// warn and a control that must stay quiet.
+const exprRun = (script) => withWorkflow(CLEAN_WORKFLOW.replace('run: echo "$TITLE $HEAD"', script));
+const exprEnv = (v) => withWorkflow(CLEAN_WORKFLOW + PR_STEP + `        env:\n          K: ${v}\n`);
+
+test('#232 event-in-run: an expression split across lines is read, and warns at the line where it opens', () => {
+  const ws = warns(exprRun('run: |\n          echo ${{\n            github.event.issue.title\n          }}'));
+  assert.deepEqual(kinds(ws), ['event-in-run']);
+  assert.equal(ws[0].line, 19);
+  assert.deepEqual(kinds(warns(exprRun('run: echo ${{ github.event.\n            issue.title }}'))), ['event-in-run']);
+  assert.deepEqual(warns(exprRun('run: |\n          echo ${{\n            github.sha\n          }}')), []);
+  assert.deepEqual(warns(exprRun('run: |\n          echo ${{ github.sha }}\n          echo github.event.issue.title }}')), []);
+});
+
+test('#232 pr-credential: an expression split across lines is read, and warns at the line where it opens', () => {
+  const ws = warns(exprEnv('${{\n            secrets.FOO }}'));
+  assert.deepEqual(kinds(ws), ['pr-credential']);
+  assert.equal(ws[0].line, 26);
+  assert.deepEqual(warns(exprEnv('${{\n            github.sha }}')), []);
+});
+
+test('#232 event-in-run: bracket access reaches the event the same as dot access', () => {
+  assert.deepEqual(kinds(warns(exprRun("run: echo ${{ github['event']['issue']['title'] }}"))), ['event-in-run']);
+  assert.deepEqual(kinds(warns(exprRun("run: echo ${{ github.event['issue'].title }}"))), ['event-in-run']);
+  assert.deepEqual(kinds(warns(exprRun("run: echo ${{ github[ 'head_ref' ] }}"))), ['event-in-run']);
+  // A computed index may name `event`, so it counts as reaching it.
+  assert.deepEqual(kinds(warns(exprRun('run: echo ${{ github[matrix.k] }}'))), ['event-in-run']);
+  assert.deepEqual(warns(exprRun("run: echo ${{ github['sha'] }}")), []);
+  assert.deepEqual(warns(exprRun("run: echo ${{ matrix['github'].event }}")), []);
+  assert.deepEqual(warns(exprRun("run: echo ${{ steps['github']['event'] }}")), []);
+});
+
+test('#232 pr-credential: bracket access to secrets is read, mixed with dot access too', () => {
+  assert.match(warns(exprEnv("${{ secrets['KEY'] }}"))[0].message, /secrets\.KEY/);
+  assert.match(warns(exprEnv("${{ secrets[ 'KEY' ].x }}"))[0].message, /secrets\.KEY/);
+  assert.deepEqual(warns(exprEnv("${{ vars['secrets'] }}")), []);
+  assert.deepEqual(warns(exprEnv("${{ github['sha'] }}")), []);
+});
+
+test('#232 event-in-run: context and property names match in any letter case, and the message keeps the written text', () => {
+  const ws = warns(exprRun('run: echo ${{ GitHub.Event.issue.title }}'));
+  assert.deepEqual(kinds(ws), ['event-in-run']);
+  assert.match(ws[0].message, /GitHub\.Event\.issue\.title/);
+  assert.deepEqual(kinds(warns(exprRun('run: echo ${{ GITHUB.HEAD_REF }}'))), ['event-in-run']);
+  assert.deepEqual(kinds(warns(exprRun("run: echo ${{ GITHUB['EVENT'].issue }}"))), ['event-in-run']);
+  assert.deepEqual(warns(exprRun('run: echo ${{ GitHub.Event_Name }}')), []);
+  assert.deepEqual(warns(exprRun('run: echo ${{ Steps.GitHub.Event.x }}')), []);
+});
+
+test('#232 pr-credential: secrets is matched in any letter case, and the message keeps the written name', () => {
+  assert.match(warns(exprEnv('${{ SECRETS.Foo }}'))[0].message, /secrets\.Foo/);
+  assert.deepEqual(kinds(warns(exprEnv('${{ toJSON(Secrets) }}'))), ['pr-credential']);
+  assert.deepEqual(warns(exprEnv('${{ SECRETS.GitHub_Token }}')), []);
+  assert.deepEqual(warns(exprEnv('${{ Steps.SECRETS.outputs.x }}')), []);
+});
+
+test("#232 YAML single quotes: '' unescapes before the expression is read", () => {
+  // The string literal is a string, so `secrets/**` is not a bare context.
+  assert.deepEqual(warns(exprEnv("'${{ hashFiles(''secrets/**'') }}'")), []);
+  assert.deepEqual(warns(exprEnv("'${{ hashFiles(''config/secrets.yml'', ''x'') }}'")), []);
+  assert.deepEqual(warns(exprRun("run: '${{ format(''{0}'', ''github.event.x'') }}'")), []);
+  // An escaped `}}` inside the literal no longer ends the expression early.
+  assert.deepEqual(kinds(warns(exprEnv("'${{ format(''}}'', secrets.FOO) }}'"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(exprRun("run: '${{ format(''}}'', github.event.issue.title) }}'"))), ['event-in-run']);
+  // A double-quoted scalar is not touched.
+  assert.deepEqual(kinds(warns(exprEnv('"${{ format(\'}}\', secrets.FOO) }}"'))), ['pr-credential']);
+});
+
 test('event-in-run: event data in an agent prompt input warns', () => {
   const body = CLEAN_WORKFLOW.replace('prompt: Review the diff.', 'prompt: |\n            Review: ${{ github.event.issue.body }}');
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['event-in-run']);
