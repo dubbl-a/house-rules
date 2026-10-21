@@ -65,7 +65,7 @@ forgotten. Create the label once:
 gh label create hold-sync --description "Publish the release, hold the adopter sync" --color FBCA04
 ```
 
-If the workflow cannot find the merged release PR to read its labels (the lookup is retried three
+If the workflow cannot find the merged release PR to read its labels (the lookup is tried three
 times, 10 seconds apart), it holds the sync too and says so in the issue: it never syncs on a
 guess.
 
