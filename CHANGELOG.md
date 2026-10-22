@@ -6,13 +6,24 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
-### Fixed
+## [0.22.6] - 2026-10-22
 
-- The workflows checks read `${{ }}` expressions with one small tokenizer instead of regexes (#232). `event-in-run` now finds the true end of an expression, so a `}` inside a string literal no longer hides event data after it, and `pr-credential` reads a secret as a `secrets` identifier at the start of a property chain. An expression split across lines is still not read.
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house` is on PATH in a session with the plugin enabled, the workflows checks read `${{ }}` expressions with a tokenizer, `house render` refuses to write through a symlinked managed destination, `house confirm` and `decline` stop refusing a vendored checker that already supports them, and the cost report warns that subagent usage logged before Claude Code 2.1.307 can be a placeholder. Upgrading from 0.22.5: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`.
 
 ### Added
 
 - `plugins/house/bin/house`, a wrapper that runs `scripts/house` with the same arguments and exit code, so `house <command>` is on PATH in a Claude Code session with the plugin enabled. A plugin distributed through claude.ai organization settings may not carry a top-level `bin/`; this one is distributed through its public GitHub marketplace.
+- `house render --from-source` re-renders every managed file from source in the package's own checkout, for when render refuses vendored files whose source changed after a merge (#167). It works only from that checkout's own CLI and sweeps no orphans.
+
+### Changed
+
+- The cost report's caveats add that subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses, so its subagent column can be wrong for a window that reaches back past the upgrade (Claude Code 2.1.307 fixed the placeholder; harness addendum of 2026-10-22).
+
+### Fixed
+
+- The workflows checks read `${{ }}` expressions with one small tokenizer instead of regexes (#232). `event-in-run` now finds the true end of an expression, so a `}` inside a string literal no longer hides event data after it, and `pr-credential` reads a secret as a `secrets` identifier at the start of a property chain. A scalar's lines are now joined into one text, so an expression split across lines is read whole; context and property names match in any letter case, `github['event']` reads like `github.event`, and a single-quoted YAML scalar is unescaped first (#232). A `#` inside a `run` block or a quoted scalar is read as content, not a comment, an unclosed `${{` no longer takes quadratic time, and a finding reports the expression as written (#408).
+- `house render` refuses a managed destination that is a symlink or resolves outside the repo, instead of writing through it (#406).
+- `house confirm` and `house decline` refuse only when the vendored checker lacks the support code for that command, rather than whenever it differs from the plugin's copy, so a held sync no longer blocks an adopter whose checker already reads `confirmed` and `declined-step`; `house doctor` likewise stops advising a sync first when the vendored checker already reads `confirmed` (#403).
 
 ## [0.22.5] - 2026-10-21
 

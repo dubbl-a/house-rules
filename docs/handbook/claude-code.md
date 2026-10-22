@@ -719,8 +719,11 @@ at a higher write price. Everything else is left to `/session-report` and
 `npx -y @rixtay/mcp-usage`. The scan takes seconds on a week of transcripts, so `session-start.mjs`
 runs it detached once a week on startup and shows one line next startup when avoidable rebuilds
 or the combined premium reach $10 (`HOUSE_COST_CHECK_USD`; `HOUSE_COST_CHECK=off` disables). A
-scan that dies is retried once its lock is an hour old. Output tokens can be undercounted and the
-dollars are list price, not a plan bill.
+scan that dies is retried once its lock is an hour old. Output tokens can be undercounted, and
+subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses
+(changelog, https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched
+2026-10-21: "Fixed subagent transcripts recording placeholder token usage and an empty stop reason
+for streamed responses"), so the report says both. The dollars are list price, not a plan bill.
 
 ## Treat git state as shared across sessions
 
