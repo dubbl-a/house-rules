@@ -1188,6 +1188,18 @@
       "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
     },
     {
+      "path": "plugins/house/templates/pre-commit.d/25-secret-content",
+      "kind": "template",
+      "module": "github",
+      "budgetLines": 40,
+      "owns": [],
+      "crossRefs": [
+        "SB-008",
+        "EXT-039"
+      ],
+      "notes": "Rendered by house render at adoption; keep it copy-pasteable and free of repo-specific names."
+    },
+    {
       "path": "plugins/house/templates/.worktreeinclude",
       "kind": "template",
       "module": "github",
@@ -1426,7 +1438,7 @@
       "path": "plugins/house/modules/github/files/scan-dist-secrets.mjs",
       "kind": "script",
       "module": "github",
-      "budgetLines": 160,
+      "budgetLines": 660,
       "owns": [
         "AG-038"
       ],

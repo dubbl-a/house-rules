@@ -4,7 +4,7 @@ paths:
   - ".githooks/**"
   - ".env.example"
 ---
-<!-- house-managed v0.22.6 module=github source=modules/github/rules/github.md body-sha256=c7fa6ac90e7c1372cdc9b57ecd770b51ed7ccf541bcd0a8a5ee028130879f0df DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.6 module=github source=modules/github/rules/github.md body-sha256=47572b5d837ecb5198c9f1f06126b25560e3731b4e7bfdc51b3301a7424919ad DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -49,8 +49,8 @@ Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-
 ## Turn on push protection, head-branch deletion, and grouped dependency updates
 
 Turn on secret scanning push protection and automatic head-branch deletion, and group dependency updates with security updates left on, so a credential is blocked before history and grouping cuts volume without muting what matters.
-Where the plan refuses push protection, scan content instead: a scanner in CI over full history plus a staged-content pre-commit hook, since the path-only backstop lets a pasted key reach history. Pin the scanner binary by checksum.
-Anchor: the rendered `.github/dependabot.yml` carries the grouping and a cooldown, and `node .house/check.mjs --only=workflows` warns on an update entry with no cooldown; the other two are repository settings, confirmed at adoption. The content-scanning fallback is a recipe in the handbook chapter an adopter opts into, not a scaffold, and nothing checks that it was added.
+Where the plan refuses push protection, scan content instead with the house scanner: `scripts/house/scan-dist-secrets.mjs --history` in CI over full history plus `--staged` in a pre-commit hook, since the path-only backstop lets a pasted key reach history. It catches eight named key formats (AWS, GitHub, Slack, Stripe, Google, Anthropic, OpenAI, a PEM header) in CI and in the hook, and the values in `.dev.vars` in the hook only, since CI has no such file. A key format outside that list gets through, which a broad scanner would catch, and it skips binary blobs and blobs over 2 MiB.
+Anchor: the rendered `.github/dependabot.yml` carries the grouping and a cooldown, and `node .house/check.mjs --only=workflows` warns on an update entry with no cooldown; the other two are repository settings, confirmed at adoption. The content-scanning fallback is the `25-secret-content` scaffold and a `secret-scan` job in the pr-checks template, both written only where absent, so an adopter's existing `pr-checks.yml` takes the job by hand, and nothing checks that it was added.
 Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-and-grouped-dependency-updates`
 
 ## Protect the default branch at the remote, and name an owner for what runs with privilege

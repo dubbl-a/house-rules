@@ -16,7 +16,7 @@
   "configSlots": ["actionsBudgetMinutes", "secretGlobs", {"name": "githubGlobs", "default": [".github/**", ".githooks/**", ".env.example"]}, {"name": "worktreeKillProcesses", "default": ["node", "npm"]}],
   "defaultPaths": ["$githubGlobs", "$secretGlobs"],
   "atAdoption": [
-    {"id": "push-protection", "step": "Turn on secret scanning push protection for this repository. If the plan refuses it (secret scanning unavailable), add the content-scanning fallback in the github handbook chapter: a checksum-pinned scanner in CI over full history and a staged-content pre-commit hook."},
+    {"id": "push-protection", "step": "Turn on secret scanning push protection for this repository. If the plan refuses it (secret scanning unavailable), use the house content scanner: the `secret-scan` job in pr-checks.yml (scripts/house/scan-dist-secrets.mjs --history over full history) and the .githooks/pre-commit.d/25-secret-content scaffold (--staged). An existing pr-checks.yml takes the job by hand."},
     {"id": "head-branch-deletion", "step": "Turn on automatic deletion of head branches after a merge."},
     {"id": "branch-protection", "step": "Protect the default branch at the remote, requiring a pull request and the passing required checks before it moves."},
     {"id": "multi-factor", "step": "Require multi-factor sign-in for every account with write access, enforced by the organization where there is one."},
