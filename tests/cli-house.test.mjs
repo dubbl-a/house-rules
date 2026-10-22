@@ -3120,7 +3120,7 @@ test('#161 render refuses to remove the floor while the remote default branch st
   for (const args of [['render', '--repo', clone], ['render', '--repo', clone, '--apply']]) {
     const r = runCli(cliPath, args);
     assert.equal(r.code, 1, r.out + r.err);
-    for (const rel of FLOOR_FILES) assert.match(r.out, new RegExp(`^REFUSE\\s+\\.githooks/${rel.replace(/\./g, '\\.')}\\s`, 'm'), `refuses ${rel}`);
+    for (const rel of FLOOR_FILES) assert.match(r.out, new RegExp(`^REFUSE\\s+\\.githooks/${rel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s`, 'm'), `refuses ${rel}`);
     assert.match(r.err, /origin\/main:house\.json/, 'names the remote policy it read');
     assert.match(r.err, /pull request/, 'says to land the change through a merged PR first');
     assert.match(r.err, /Nothing was written/);
