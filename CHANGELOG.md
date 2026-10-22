@@ -13,6 +13,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- Test-only, no change to what ships (Part of #363): a few groups of tests that only read one fixture now build it once and share it, and the single module-files test file is split into one file per module: `tests/module-files-engineering.test.mjs`, `tests/module-files-data-pipelines.test.mjs`, `tests/module-files-deployment.test.mjs`, `tests/module-files-github.test.mjs` and `tests/module-files-claude-code.test.mjs`, with their shared helpers in `tests/module-files-helpers.mjs`. The test count is unchanged and no assertion changed. `.house/secret-allow` waives the fake `sk-ant-` fixture at its new path too.
 - The test suite sheds 33 duplicate or redundant cases and 16 hook cases, with no change to what ships (Part of #363). Each removed or merged case names the test that still covers it, and the removal was checked against three planted defects. `npm test` runs 33 fewer tests than before and `tests/hooks/run.sh` runs 16 fewer cases (628 down to 612). `expect_deny` in `tests/hooks/run.sh` now takes several wanted substrings and names the missing one.
 - The four parts of `tests/hooks/run.sh` are rebalanced so the slowest finishes sooner, with every case still run once (part of #363). The clause split and token cases moved from part 4 to part 3, and the not-intact floor cases from part 4 to part 1; no case or assertion changed.
 
