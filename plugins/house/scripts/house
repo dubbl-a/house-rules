@@ -1676,6 +1676,34 @@ function notRegularReason(abs) {
   return st.isFile() ? null : 'not a regular file (a FIFO, socket, device, or directory), so it is not read; remove or replace it by hand';
 }
 
+// #406: null when render may write `rel` under `repoRoot`. A write follows a
+// symlink to its target and a symlinked directory to wherever it points, so a
+// destination that is itself a symlink (dangling too: the write would create
+// its target), or whose nearest existing parent resolves outside the repo,
+// would overwrite a file that is not the repo's. A symlink that stays inside
+// the repo is only refused at the destination itself. Reading through one for
+// classification is unchanged; this guards the writes. Phrased to follow
+// "is" in a sentence and to sit inside the parentheses of a REFUSE line.
+function writeEscapeReason(repoRoot, rel) {
+  const abs = path.join(repoRoot, rel);
+  let st = null;
+  try { st = lstatSync(abs); } catch { /* not there yet */ }
+  if (st && st.isSymbolicLink()) return 'a symlink, so render would write through it to its target; replace it with a regular file by hand';
+  let realRoot;
+  try { realRoot = realpathSync.native(repoRoot); } catch { return null; }
+  let parent = path.dirname(abs);
+  const tail = [path.basename(abs)];
+  for (;;) {
+    try { parent = realpathSync.native(parent); break; } catch { /* not there yet: step up */ }
+    const up = path.dirname(parent);
+    if (up === parent) return null;
+    tail.unshift(path.basename(parent));
+    parent = up;
+  }
+  const real = path.join(parent, ...tail);
+  return resolvedIsInside(realRoot, real) ? null : `reached through a path that resolves outside this repo, to ${real}, so render would write there; make the directory a real one inside the repo by hand`;
+}
+
 // Whether the file at `rel` has the body render would write there now, with
 // one of its owning modules turned on and every other module as house.json has
 // it: the render plan itself, not a second copy of it. The version a
@@ -1988,6 +2016,17 @@ function cmdRender(args) {
     built = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
   }
   const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets, modulePaths } = built;
+  // #406: refused before anything is written, forced or not, like any other
+  // destination render cannot safely write; the all-or-nothing exit below
+  // then keeps every other file untouched too.
+  for (const p of plan) {
+    const reason = p.status === 'refuse' ? null : writeEscapeReason(repoRoot, p.target.path);
+    if (reason) Object.assign(p, { status: 'refuse', reason: 'not-regular', detail: reason });
+  }
+  if (blockRemoval && blockRemoval.status !== 'refuse') {
+    const reason = writeEscapeReason(repoRoot, blockRemoval.path);
+    if (reason) Object.assign(blockRemoval, { status: 'refuse', reason: 'not-regular', detail: reason });
+  }
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.

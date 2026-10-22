@@ -5175,3 +5175,111 @@ test('#167 render --from-source=<value> is rejected before anything is written',
   assert.match(r.err, /--from-source takes no value/);
   assert.equal(existsSync(join(repo, '.house', 'lock.json')), false, 'nothing was rendered');
 });
+
+// #406: render never writes through a symlinked managed destination, or into a
+// directory that resolves outside the repo, with or without forcing. Each case
+// puts the file render would overwrite in a temp dir outside the repo and
+// asserts it is byte-identical afterwards.
+function symlinkedAlpha({ fromSource = false } = {}) {
+  let cliPath;
+  let repo;
+  let pluginDir;
+  if (fromSource) {
+    ({ repo, cliPath } = buildPackageCheckout());
+    pluginDir = join(repo, 'plugins', 'house');
+  } else {
+    ({ cliPath, dir: pluginDir } = buildFixturePlugin());
+    repo = buildTargetRepo();
+  }
+  runCli(cliPath, ['init', '--repo', repo, '--apply']);
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  const outside = mkdtempSync(join(tmpdir(), 'house-outside-'));
+  CLEANUP_DIRS.push(outside);
+  const ruleFile = join(repo, '.claude', 'rules', 'house', 'alpha.md');
+  return { cliPath, repo, pluginDir, outside, ruleFile };
+}
+
+function gainALine(pluginDir) {
+  const src = join(pluginDir, 'modules', 'alpha', 'rules', 'alpha.md');
+  writeFileSync(src, `${readFileSync(src, 'utf8')}\nA line the source gained.\n`);
+}
+
+test('#406 render --force-managed: a symlinked managed file is refused and the file it points at is untouched', () => {
+  const { cliPath, repo, outside, ruleFile } = symlinkedAlpha();
+  const target = join(outside, 'target.md');
+  writeFileSync(target, 'precious, not a rule\n');
+  rmSync(ruleFile);
+  symlinkSync(target, ruleFile);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply', '--force-managed', '.claude/rules/house/alpha.md']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(a symlink/m);
+  assert.equal(readFileSync(target, 'utf8'), 'precious, not a rule\n');
+  assert.ok(lstatSync(ruleFile).isSymbolicLink(), 'the link itself is left for the owner to deal with');
+});
+
+test('#406 render --from-source: a symlinked managed file is refused and the file it points at is untouched', () => {
+  const { cliPath, repo, outside, ruleFile } = symlinkedAlpha({ fromSource: true });
+  const target = join(outside, 'target.md');
+  writeFileSync(target, 'precious, not a rule\n');
+  rmSync(ruleFile);
+  symlinkSync(target, ruleFile);
+  const r = runCli(cliPath, ['render', '--from-source', '--apply', '--repo', repo]);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(a symlink/m);
+  assert.equal(readFileSync(target, 'utf8'), 'precious, not a rule\n');
+});
+
+test('#406 render --apply: a symlink to a clean copy of the body is not written through when the source moves on', () => {
+  const { cliPath, repo, pluginDir, outside, ruleFile } = symlinkedAlpha();
+  const target = join(outside, 'target.md');
+  const body = readFileSync(ruleFile, 'utf8');
+  writeFileSync(target, body);
+  rmSync(ruleFile);
+  symlinkSync(target, ruleFile);
+  gainALine(pluginDir);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(a symlink/m);
+  assert.equal(readFileSync(target, 'utf8'), body, 'the plain apply did not write through the link');
+});
+
+test('#406 render --apply: a dangling symlink at a managed file is refused, and creates nothing at its target', () => {
+  const { cliPath, repo, outside, ruleFile } = symlinkedAlpha();
+  const target = join(outside, 'not-yet.md');
+  rmSync(ruleFile);
+  symlinkSync(target, ruleFile);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(a symlink/m);
+  assert.equal(existsSync(target), false);
+});
+
+test('#406 render --apply: a managed directory symlinked outside the repo is refused and the files in it are untouched', () => {
+  const { cliPath, repo, pluginDir, outside } = symlinkedAlpha();
+  const dir = join(repo, '.claude', 'rules', 'house');
+  const moved = join(outside, 'house');
+  cpSync(dir, moved, { recursive: true });
+  rmSync(dir, { recursive: true });
+  symlinkSync(moved, dir);
+  const before = readFileSync(join(moved, 'alpha.md'), 'utf8');
+  gainALine(pluginDir);
+  for (const extra of [[], ['--force-managed', '.claude/rules/house/alpha.md']]) {
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply', ...extra]);
+    assert.equal(r.code, 1, r.out + r.err);
+    assert.match(r.out, /^REFUSE\s+\.claude\/rules\/house\/alpha\.md\s+\(reached through a path that resolves outside this repo/m);
+    assert.equal(readFileSync(join(moved, 'alpha.md'), 'utf8'), before, extra.join(' '));
+  }
+});
+
+test('#406 render --apply: a symlinked directory that stays inside the repo is still written', () => {
+  const { cliPath, repo, pluginDir, ruleFile } = symlinkedAlpha();
+  const dir = join(repo, '.claude', 'rules', 'house');
+  const moved = join(repo, 'vendored-rules');
+  cpSync(dir, moved, { recursive: true });
+  rmSync(dir, { recursive: true });
+  symlinkSync(moved, dir);
+  gainALine(pluginDir);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(readFileSync(ruleFile, 'utf8'), /A line the source gained\./);
+});
