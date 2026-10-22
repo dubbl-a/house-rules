@@ -3013,7 +3013,9 @@ function runCommands(lines) {
 // operator token. A string's contents never end the expression or read as a
 // name, so `}}` inside `format('{0}}', ...)` does not close it. Whitespace,
 // newlines included, is skipped, as the runner's lexer does, so an expression
-// may span lines of the text it is given; an unterminated one is dropped.
+// may span lines of the text it is given; an unterminated one is dropped. An
+// expression still open at the end of the text (outside a string) ends the
+// search, so a malformed scalar full of `${{` is read once, not once per opener.
 // Returns { raw, at, toks }, at being the offset of the `${{` and toks
 // { t: 'str'|'id'|'op', v }.
 function exprsIn(text) {
@@ -3022,6 +3024,7 @@ function exprsIn(text) {
     const toks = [];
     let i = at + 3;
     let end = -1;
+    let open = true;
     while (i < text.length) {
       const c = text[i];
       if (/\s/.test(c)) { i++; continue; }
@@ -3034,7 +3037,7 @@ function exprsIn(text) {
           v += "'";
           i++;
         }
-        if (i >= text.length) break;
+        if (i >= text.length) { open = false; break; }
         toks.push({ t: 'str', v });
         i++;
       } else if (/[\w-]/.test(c)) {
@@ -3047,8 +3050,14 @@ function exprsIn(text) {
       }
     }
     // No end: drop this `${{` and look for the next, so a stray one (in a
-    // quoted shell string, say) does not hide a real expression after it.
-    if (end === -1) { at += 3; continue; }
+    // quoted shell string, say) does not hide a real expression after it. Not
+    // when the scan ran off the end outside a string: every later `${{` would
+    // run off the same end, once each.
+    if (end === -1) {
+      if (open) break;
+      at += 3;
+      continue;
+    }
     out.push({ raw: text.slice(at, end), at, toks });
     at = end;
   }
@@ -3075,12 +3084,15 @@ function nextStep(toks, i) {
 // opens on. The scalar's lines are read as one text, so an expression split
 // across lines is whole. A single-quoted YAML scalar is unescaped first (`''`
 // is one `'`), so the expression language's own string literal inside it is
-// seen as a string. `stripComments` drops a trailing YAML comment from each
-// continuation line.
+// seen as a string, and the `raw` reported is the written text, `''` again.
+// `stripComments` drops a trailing YAML comment from each continuation line;
+// a block scalar is never stripped, as its `#` lines are script text and
+// Actions fills in their expressions all the same.
 function scalarExprs(e, stripComments) {
-  const parts = entryLines(e).map(({ line, text }, k) => ({ line, text: k > 0 && stripComments ? stripYamlComment(text) : text }));
+  const parts = entryLines(e).map(({ line, text }, k) => ({ line, text: k > 0 && stripComments && !e.block ? stripYamlComment(text) : text }));
   if (!parts.length) return [];
-  if (!e.block && e.raw.startsWith("'")) {
+  const single = !e.block && e.raw.startsWith("'");
+  if (single) {
     parts[0].text = parts[0].text.replace(/^'/, '');
     parts[parts.length - 1].text = parts[parts.length - 1].text.replace(/'$/, '');
     for (const p of parts) p.text = p.text.replace(/''/g, "'");
@@ -3090,7 +3102,7 @@ function scalarExprs(e, stripComments) {
   return exprsIn(text).map((x) => {
     let k = starts.length - 1;
     while (starts[k] > x.at) k--;
-    return { ...x, line: parts[k].line };
+    return { ...x, raw: single ? x.raw.replace(/'/g, "''") : x.raw, line: parts[k].line };
   });
 }
 function untrustedExprs(e) {
