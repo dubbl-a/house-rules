@@ -407,6 +407,14 @@ lock_floor() {
 EOF
 }
 
+# A fixture the armed-floor and the not-intact sections both build.
+mk_broken_floor() {
+  local dir="$1"
+  new_repo "$dir"; adopt "$dir"
+  arm_floor "$dir" feat/b
+  git -C "$dir" checkout -q feat/b
+}
+
 if part_on 1; then
 echo "=== house guard: PreToolUse hook regression tests ==="
 echo "hook: $HOOK"
@@ -1674,13 +1682,6 @@ arm_hookspath "$w/main"
 # The integrity check is the real guard: byte-identity with the plugin's own
 # copy, the execute bit, the set of files HEAD tracks, and a clean git status
 # on the hooks directory with ignored files included.
-mk_broken_floor() {
-  local dir="$1"
-  new_repo "$dir"; adopt "$dir"
-  arm_floor "$dir" feat/b
-  git -C "$dir" checkout -q feat/b
-}
-
 if [[ -z "$GIT_NEW_DIR" ]]; then
   skip "the whole armed-floor section" \
     "no git >= 2.28 on this box, so the hook reads every floor as unarmed"
@@ -1792,6 +1793,13 @@ else
   expect_deny "armed, worktree cwd: git -C <main> switch -c is refused" \
     "$(mk_payload "git -C $w/main switch -c feat/x" "$w/wt")" "worktree add"
 
+  HOOK_PATH_PREFIX=''
+fi
+fi
+if part_on 1; then
+if [[ -n "$GIT_NEW_DIR" ]]; then
+  HOOK_PATH_PREFIX="$GIT_NEW_DIR"
+
   b="$TMP_ROOT/broken-edit"; mk_broken_floor "$b"
   printf '\n# tampered\n' >>"$b/.githooks/pre-push"
   expect_deny "not intact: an edited floor file makes a push naming master refusable again, and the message names house render --apply" \
@@ -1868,6 +1876,8 @@ else
 
   HOOK_PATH_PREFIX=''
 fi
+fi
+if part_on 4; then
 
 expect_deny "unarmed: a force-push to master is refused by the push scan" \
   "$(mk_payload "git push --force origin master" "$d")" "protected branch"
@@ -2271,6 +2281,8 @@ expect_deny "ACCEPTED FALSE DENY: Edit on a .githooks file in a branchPolicy dir
 expect_allow "Edit on a .githooks file in a repo that never adopted house" \
   "$(mk_file_payload Edit "$n/.githooks/pre-push" "$n")"
 
+fi
+if part_on 3; then
 # ── the clause split: linear in the command's length, and byte-safe (#290) ─
 # split_clauses used to run eleven `${c//pat/repl}` substitutions, each
 # quadratic in the text's length on macOS's bash 3.2, and it runs about
