@@ -1,4 +1,8 @@
 name: ci
+# The suites run as parallel jobs so the critical path is the slowest job, not
+# the sum of every step (#363). `verify` is the job branch protection requires:
+# it waits for the others and passes only when every one of them passed, so a
+# new or renamed job must be added to its `needs:` list.
 on:
   pull_request:
     branches: [main]
@@ -9,19 +13,46 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  test:
+    name: test (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc }
+      # TEST_SHARD rides through package.json's test script, which keeps the
+      # one file list: node ignores --test-shard placed after the files, so
+      # `npm test -- --test-shard=...` would run every file in every shard,
+      # and NODE_OPTIONS would reach the `node --test` runs the tests spawn.
+      - run: npm test
+        env:
+          TEST_SHARD: ${{ matrix.shard }}/4
+  hooks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
-      - run: npm test
-      - run: npm run check:traceability
       - run: bash tests/hooks/run.sh
       # Wall time, so it runs alone: the cases above bound CPU time and pass
       # under load, which lets a sleep or a lock wait in the guard through.
+      # Its own job's runner is idle once the step above finishes.
       - run: npm run test:hooks:wall
+  suites:
+    name: githooks, checker, smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc }
+      - run: npm run check:traceability
       # The runner's git is modern, so this is where the reference-transaction
       # cases actually run; they print SKIP on a git older than 2.28.
       - run: npm run test:githooks
@@ -34,3 +65,15 @@ jobs:
           else
             echo "claude CLI unavailable in this runner; structure tests above are authoritative"
           fi
+  verify:
+    needs: [test, hooks, suites]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done
