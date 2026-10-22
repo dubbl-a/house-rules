@@ -97,7 +97,7 @@ Full text: `.claude/rules/house/security.md`, `.claude/rules/house/security-serv
 - Ship secure defaults, and bound what one caller can consume
 
 ### testing
-Applies to: `tests/**`, `.github/workflows/**`
+Applies to: `**/tests/**`, `**/*.test.*`, `tests/**`, `.github/workflows/**`
 Full text: `.claude/rules/house/testing.md`
 - Give the agent a check it can run before you walk away
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford

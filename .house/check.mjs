@@ -2256,7 +2256,7 @@ const MODULE_FACTS = {
   "llm-output": {"default":"detect","rules":[{"file":"llm-output.md","paths":["$llmGlobs"]}],"slots":{"llmGlobs":[]}},
   "retrieval": {"default":"off","rules":[{"file":"retrieval.md","paths":["$retrievalRoots","$retrievalGlobs"]}],"slots":{"retrievalGlobs":[],"retrievalRoots":["retrieval/**","rag/**","corpus/**","evals/**","eval/**"]}},
   "security": {"default":"off","rules":[{"file":"security.md","paths":["$securityAgentRoots","$securityGlobs"]},{"file":"security-server.md","paths":["$securityRoots","$securityGlobs"]}],"slots":{"securityGlobs":[],"securityRoots":["src/**","lib/**","scripts/**"],"securityAgentRoots":[".claude/settings.json",".claude/hooks/**",".mcp.json","package.json",".github/workflows/**"]}},
-  "testing": {"default":"on","rules":[{"file":"testing.md","paths":["$testRoots","$testGlobs","$gateGlobs"]}],"slots":{"testGlobs":[],"gateGlobs":[],"testRoots":["tests/**","test/**"]}},
+  "testing": {"default":"on","rules":[{"file":"testing.md","paths":["$testRoots","$testGlobs","$gateGlobs"]}],"slots":{"testGlobs":[],"gateGlobs":[],"testRoots":["**/tests/**","**/test/**","**/*.test.*","**/*.spec.*"]}},
 };
 // END MODULE_FACTS
 function readModuleRecordsFrom(modulesDir) {

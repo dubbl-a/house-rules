@@ -47,8 +47,8 @@ template bug had kept them out of the spec stage. That pass also repointed EXT-0
 `rule:testing.md` heading, so the demotion call itself stays engineering.md's and only the
 suite-level obligation is ported here.
 
-Rows EXT-119 to EXT-125 came in from the test-maintenance deep-research run of 2026-10-22
-(`research/test-maintenance/2026-10-22.md`), which verified 15 of 80 claims. Each Source cell cites the
+Rows EXT-119 to EXT-129 came in from the test-maintenance deep-research run of 2026-10-22
+(`research/test-maintenance/2026-10-22.md`), which verified 15 of 80 claims, and from its resumed full run (80 of 84 claims verified). Each Source cell cites the
 URL read, and a corroboration pass the same day fetched further sources that corrected several figures; the rule file and the chapter say each finding's confidence and caveat.
 
 ## ID prefixes
@@ -754,6 +754,10 @@ Source is `sources/external-guidance.md`; each row keeps that brief's numbering 
 | EXT-123 | test maintenance research 2026-10-22, arxiv.org/pdf/2107.13902; 2020.msrconf.org/details/msr-2020-papers/14/Investigating-Severity-Thresholds-for-Test-Smells | Fix the test smells that hide what broke (the eager test and assertion roulette) rather than the ones a detector counts, and treat a detector's output as unreliable triage input, neither a backlog nor a severity ranking | port | rule:testing.md#fix-the-test-smells-that-hide-what-broke-not-the-ones-a-detector-counts |
 | EXT-124 | test maintenance research 2026-10-22, testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html | Review the quarantine list on a cadence as a standing control, accept a retry that records a flake and routes it to the quarantine list and its owner, and confirm a claimed fix by rerunning before a test leaves quarantine | fold | rule:testing.md#quarantine-a-flaky-test-loudly-and-never-retry-it-into-silence |
 | EXT-125 | test maintenance research 2026-10-22, research.google/pubs/code-coverage-at-google/; arxiv.org/pdf/2103.08480 | Read coverage on the change under review, and treat a covered line as not a tested line, checking a path that matters with a planted fault or a mutation, as mutation testing on changed code in review does | fold | rule:testing.md#treat-coverage-as-a-search-light-never-as-a-target |
+| EXT-126 | test maintenance research 2026-10-22 full run, microsoft.com/en-us/research/?p=771931 (Tufano and others, ASE 2016) | Review a test for smells in the change that adds it, because smells usually arrive when a test is first written, persist for years, and developers rarely spot them | fold | rule:testing.md#fix-the-test-smells-that-hide-what-broke-not-the-ones-a-detector-counts |
+| EXT-127 | test maintenance research 2026-10-22 full run, mir.cs.illinois.edu/gyori/pubs/issta18.pdf; teamscale.com/hubfs/26978363/Publications/2020-test-suite-minimization-swqd.pdf | Do not shrink a suite by coverage, because reduction by coverage loses real fault detection even when the coverage loss looks small; for speed, move or remove a few long-running tests rather than many cheap ones | fold | rule:testing.md#delete-a-test-with-the-code-it-covered-and-prove-a-test-redundant-before-removing-it-as-a-duplicate |
+| EXT-128 | test maintenance research 2026-10-22 full run, abseil.io/resources/swe-book/html/ch12.html | Share test setup only where the shared values do not hide what a test depends on, because a little duplication that lets a test read whole beats a helper that hides its inputs | fold | rule:testing.md#mirror-the-module-layout-in-the-test-tree-and-keep-each-fixture-beside-its-test |
+| EXT-129 | test maintenance research 2026-10-22 full run, orbilu.uni.lu/bitstream/10993/55847/1/ICST2022.pdf; atlassian.com/blog/atlassian-engineering/taming-test-flakiness-how-we-built-a-scalable-tool-to-detect-and-manage-flaky-tests; the skipped-test sentence is operator guidance, not from the run | Fix the root cause of a flaky test first; a quarantine is a holding state with an owning team and an exit deadline, and a test skipped for a missing database, tool or build says so in the run output and names where it does run | fold | rule:testing.md#quarantine-a-flaky-test-loudly-and-never-retry-it-into-silence |
 
 ---
 

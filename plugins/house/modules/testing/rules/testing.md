@@ -60,9 +60,10 @@ Receipts: `docs/handbook/testing.md#read-the-snapshot-diff-before-accepting-it-b
 
 ## Quarantine a flaky test loudly, and never retry it into silence
 
-Move a flaky test into a named quarantine list that the run reports, with an owner and the condition for taking it back out, because a deletion converts an intermittent defect into nothing and a retry nobody sees converts it into silence.
+Fix the root cause of a flaky test first; when that cannot happen now, move it into a named quarantine list that the run reports, with an owning team, an exit deadline, and the condition for taking it back out, because a quarantine is a holding state and not a resting place, a deletion converts an intermittent defect into nothing, and a retry nobody sees converts it into silence.
 A retry is acceptable when a pass after a failure is recorded as a flake and routed to the quarantine list and its owner; what is ruled out is a retry that leaves no trace.
 Confirm a claimed fix before taking a test out of quarantine, by rerunning it enough times to show the flake is gone, since a fix that was claimed has often not removed the flakiness.
+A test skipped when a database, a tool, or a build is missing says so in the run output and names where it does run; one that also skips in CI never runs anywhere.
 Pin a check that depends on a live upstream to a recorded fixture inside the gate and run the live version on its own cadence, because a red that turns on someone else's uptime teaches the reader to ignore red; what a scheduled run does when it fails is github.md's.
 Review the quarantine list on a cadence as a standing control and not a backlog to burn down, because new flakiness arrives about as fast as old flakiness is fixed.
 Anchor: none (because quarantine membership and its removal condition are editorial calls no checker can look up; the list printed by the run is the control)
@@ -72,6 +73,7 @@ Receipts: `docs/handbook/testing.md#quarantine-a-flaky-test-loudly-and-never-ret
 
 Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind: nothing is left for them to guard.
 Before removing a test as a duplicate, name the test that still covers its behavior and show that covering test fail on the defect the removed one caught, with a planted fault or a mutation, because a test judged redundant sometimes held coverage nothing else did; treat a reduction tool's output as a filter and not a verdict.
+Do not shrink a suite by coverage, since reduction by coverage loses real fault detection even when the coverage loss looks small; when the goal is speed, move or remove a few long-running tests rather than many cheap ones.
 Never remove one of a positive and negative control pair without the other; the controls rule above says why the pair is the unit.
 Anchor: the review diff, where a deleted test sits beside the deleted code or beside the named covering test; nothing checks that a redundancy claim holds, so the planted-fault run shown in the change is the control.
 Receipts: `docs/handbook/testing.md#delete-a-test-with-the-code-it-covered-and-prove-a-test-redundant-before-removing-it-as-a-duplicate`
@@ -79,6 +81,7 @@ Receipts: `docs/handbook/testing.md#delete-a-test-with-the-code-it-covered-and-p
 ## Fix the test smells that hide what broke, not the ones a detector counts
 
 Fix a test that checks several behaviors at once and a test that asserts many things with no message saying which one failed, because those are the smells that cost a reader the answer to what broke, and do not read the rest as harmless.
+Review a test's smells in the change that adds it, since smells usually arrive when a test is first written, persist for years, and are rarely spotted by the developers who live with them.
 Treat a smell detector's output as unreliable triage input, neither a backlog nor a severity ranking, since its vocabulary of smells drifts from what developers find costly and clearing its count can spend effort on the wrong tests.
 Anchor: none (because which smell is worth fixing is an editorial call a detector's count cannot make; a red whose output names its cause is the control)
 Receipts: `docs/handbook/testing.md#fix-the-test-smells-that-hide-what-broke-not-the-ones-a-detector-counts`
@@ -95,6 +98,7 @@ Receipts: `docs/handbook/testing.md#treat-coverage-as-a-search-light-never-as-a-
 
 Name each test file after the module it mirrors and keep the tree flat enough to scan, because a reader who cannot find the test for a file assumes there is none and writes a second one.
 Keep each fixture beside the test that consumes it, and let a test build its own throwaway workspace instead of sharing one, so a case cannot inherit state from the case before it.
+Share setup only where the shared values do not hide what a test depends on, because a little duplication that lets a test read whole beats a helper that hides its inputs.
 Regenerate a sampled fixture from its source under a seed rather than curating it by hand, and commit a hand-authored fixture with a header saying how its cases were chosen and from what sources; the rule for making a measuring instrument reproducible lives in evals.md.
 Anchor: `tests/` mirroring the checker one file per family, with the shared sandbox helper beside them and every case building its own throwaway repo.
 Receipts: `docs/handbook/testing.md#mirror-the-module-layout-in-the-test-tree-and-keep-each-fixture-beside-its-test`

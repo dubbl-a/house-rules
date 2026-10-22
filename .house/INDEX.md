@@ -222,7 +222,7 @@
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
   Read the diff a snapshot gate prints and say what changed before accepting the new snapshot, because accepting it unread turns a drift gate into a rubber stamp.
 - Quarantine a flaky test loudly, and never retry it into silence
-  Move a flaky test into a named quarantine list that the run reports, with an owner and the condition for taking it back out, because a deletion converts an intermittent defect into nothing and a retry nobody sees converts it into silence.
+  Fix the root cause of a flaky test first; when that cannot happen now, move it into a named quarantine list that the run reports, with an owning team, an exit deadline, and the condition for taking it back out, because a quarantine is a holding state and not a resting place, a deletion converts an intermittent defect into nothing, and a retry nobody sees converts it into silence.
 - Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
   Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind: nothing is left for them to guard.
 - Fix the test smells that hide what broke, not the ones a detector counts
