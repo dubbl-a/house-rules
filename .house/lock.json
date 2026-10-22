@@ -112,13 +112,13 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "44aad53693f4391b94253b397fdcb4ffcb46fa41f0979b9cc6dfe575f7fa8588"
+      "bodySha256": "1d29b7d485b92f210db4037b4663689e84165dd00f8a3747758e980868820d87"
     },
     {
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "0c39d76c9d6f6e0ccc948954cc7e764fb7e8b0238d7a5aae05c63736ad6237bc"
+      "bodySha256": "55f2eccb753925d8d2f6b31055f48b0c1852814fb57d5eb0338b6154338fa776"
     },
     {
       "path": "AGENTS.md",

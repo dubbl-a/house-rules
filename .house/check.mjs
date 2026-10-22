@@ -2668,7 +2668,7 @@ function checkManifest(ctx) {
   // module to have at least one lock entry. Before the first render (no lock)
   // this is silent, since there is nothing to have vendored yet.
   // #245: a module whose paths are all its own defaults, none matching a
-  // tracked file yet (testing's tests/** in a new repo), is a warning until
+  // tracked file yet (testing's **/tests/** and **/*.test.* in a new repo), is a warning until
   // one does: render vendors it then, so a fresh repo starts from a clean
   // gate. Paths house.json wrote that match nothing stay a finding, since
   // that is a mistake rather than a repo not there yet, as render's own

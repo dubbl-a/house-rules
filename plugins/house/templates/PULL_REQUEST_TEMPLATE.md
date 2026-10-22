@@ -18,4 +18,4 @@
 
 ## Test check
 <!-- Only when the testing module is on. Confirm if it applies: -->
-- [ ] A removed test names the test that still covers it; a quarantined or skipped test names its owner and exit condition
+- [ ] A removed test names the test that still covers it; a quarantined test names its owner and exit condition; a skipped test names where it does run

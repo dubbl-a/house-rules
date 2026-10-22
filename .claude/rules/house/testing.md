@@ -5,7 +5,7 @@ paths:
   - "tests/**"
   - ".github/workflows/**"
 ---
-<!-- house-managed v0.22.6 module=testing source=modules/testing/rules/testing.md body-sha256=79878dc6b989894473720f52002038a0834c69c0bb899ddbac8fea518a5b216a DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.6 module=testing source=modules/testing/rules/testing.md body-sha256=f7e77e792335cfda2bac577c939b22bd5df020079d39065ee68278b817624476 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -73,13 +73,13 @@ A retry is acceptable when a pass after a failure is recorded as a flake and rou
 Confirm a claimed fix before taking a test out of quarantine, by rerunning it enough times to show the flake is gone, since a fix that was claimed has often not removed the flakiness.
 A test skipped when a database, a tool, or a build is missing says so in the run output and names where it does run; one that also skips in CI never runs anywhere.
 Pin a check that depends on a live upstream to a recorded fixture inside the gate and run the live version on its own cadence, because a red that turns on someone else's uptime teaches the reader to ignore red; what a scheduled run does when it fails is github.md's.
-Review the quarantine list on a cadence as a standing control and not a backlog to burn down, because new flakiness arrives about as fast as old flakiness is fixed.
+Review the quarantine list on a cadence as a standing control and not a backlog to burn down, because a quarantined test nobody reviews gets forgotten.
 Anchor: none (because quarantine membership and its removal condition are editorial calls no checker can look up; the list printed by the run is the control)
 Receipts: `docs/handbook/testing.md#quarantine-a-flaky-test-loudly-and-never-retry-it-into-silence`
 
 ## Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
 
-Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind: nothing is left for them to guard.
+Delete a test in the same change that removes the code it covered, because obsolete tests were most deletions in the projects studied and are the safe kind: nothing is left for them to guard.
 Before removing a test as a duplicate, name the test that still covers its behavior and show that covering test fail on the defect the removed one caught, with a planted fault or a mutation, because a test judged redundant sometimes held coverage nothing else did; treat a reduction tool's output as a filter and not a verdict.
 Do not shrink a suite by coverage, since reduction by coverage loses real fault detection even when the coverage loss looks small; when the goal is speed, move or remove a few long-running tests rather than many cheap ones.
 Never remove one of a positive and negative control pair without the other; the controls rule above says why the pair is the unit.
@@ -89,7 +89,7 @@ Receipts: `docs/handbook/testing.md#delete-a-test-with-the-code-it-covered-and-p
 ## Fix the test smells that hide what broke, not the ones a detector counts
 
 Fix a test that checks several behaviors at once and a test that asserts many things with no message saying which one failed, because those are the smells that cost a reader the answer to what broke, and do not read the rest as harmless.
-Review a test's smells in the change that adds it, since smells usually arrive when a test is first written, persist for years, and are rarely spotted by the developers who live with them.
+Review a test's smells in the change that adds it, since smells usually arrive when a test is first written, tend to stay for a long time, and are rarely spotted by the developers who live with them.
 Treat a smell detector's output as unreliable triage input, neither a backlog nor a severity ranking, since its vocabulary of smells drifts from what developers find costly and clearing its count can spend effort on the wrong tests.
 Anchor: none (because which smell is worth fixing is an editorial call a detector's count cannot make; a red whose output names its cause is the control)
 Receipts: `docs/handbook/testing.md#fix-the-test-smells-that-hide-what-broke-not-the-ones-a-detector-counts`

@@ -224,7 +224,7 @@
 - Quarantine a flaky test loudly, and never retry it into silence
   Fix the root cause of a flaky test first; when that cannot happen now, move it into a named quarantine list that the run reports, with an owning team, an exit deadline, and the condition for taking it back out, because a quarantine is a holding state and not a resting place, a deletion converts an intermittent defect into nothing, and a retry nobody sees converts it into silence.
 - Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
-  Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind: nothing is left for them to guard.
+  Delete a test in the same change that removes the code it covered, because obsolete tests were most deletions in the projects studied and are the safe kind: nothing is left for them to guard.
 - Fix the test smells that hide what broke, not the ones a detector counts
   Fix a test that checks several behaviors at once and a test that asserts many things with no message saying which one failed, because those are the smells that cost a reader the answer to what broke, and do not read the rest as harmless.
 - Treat coverage as a search-light, never as a target
