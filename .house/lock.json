@@ -112,13 +112,13 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "c1e53a6c15be391baa6d346906d468f9fd07a6d082dee55480dfe0fa8cf2566e"
+      "bodySha256": "1d29b7d485b92f210db4037b4663689e84165dd00f8a3747758e980868820d87"
     },
     {
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "0dd92c04e20b28fd55ff61e582813b164688aeab3c90bb05e4eb80a268b18692"
+      "bodySha256": "55f2eccb753925d8d2f6b31055f48b0c1852814fb57d5eb0338b6154338fa776"
     },
     {
       "path": "AGENTS.md",
@@ -126,7 +126,7 @@
       "source": "targets",
       "kind": "block",
       "sep": "",
-      "bodySha256": "99e34a5ab4fecd5bf3d0b4b75dcfb3a545831cdda902fb386cda438f4e654b54"
+      "bodySha256": "0c9ce9f76cb71e0cebf19ea970530431424c4d09cccc8066d5c2f95e3b2ab9ca"
     }
   ],
   "scaffolds": [
@@ -408,8 +408,11 @@
         "gateGlobs"
       ],
       "globs": [
+        "**/tests/**",
+        "**/test/**",
+        "**/*.test.*",
+        "**/*.spec.*",
         "tests/**",
-        "test/**",
         ".github/workflows/**"
       ]
     }

@@ -15,3 +15,7 @@
 <!-- Only when the changelog module is on. Confirm one: -->
 - [ ] CHANGELOG.md entry under [Unreleased] included (user-noticeable change)
 - [ ] Not user-noticeable (refactor / infra / CI / silent fix)
+
+## Test check
+<!-- Only when the testing module is on. Confirm if it applies: -->
+- [ ] A removed test names the test that still covers it; a quarantined test names its owner and exit condition; a skipped test names where it does run

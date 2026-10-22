@@ -11,8 +11,10 @@
     {
       "name": "testRoots",
       "default": [
-        "tests/**",
-        "test/**"
+        "**/tests/**",
+        "**/test/**",
+        "**/*.test.*",
+        "**/*.spec.*"
       ]
     }
   ],

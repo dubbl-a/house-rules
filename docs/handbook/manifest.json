@@ -632,7 +632,18 @@
         "EXT-081",
         "EXT-082",
         "EXT-083",
-        "EXT-084"
+        "EXT-084",
+        "EXT-119",
+        "EXT-120",
+        "EXT-121",
+        "EXT-122",
+        "EXT-123",
+        "EXT-124",
+        "EXT-125",
+        "EXT-126",
+        "EXT-127",
+        "EXT-128",
+        "EXT-129"
       ],
       "crossRefs": [
         "TW-028",
@@ -660,15 +671,18 @@
         "Scale the pyramid to the repo you have, and route what the PR gate cannot afford",
         "Test the guard itself, as its own CI step",
         "Feed a real payload through the real wiring, and never re-implement the logic under test",
+        "Test behavior through the public interface, so a test changes only when a requirement changes",
         "Ship every gate with a positive control and a negative control",
         "Read the snapshot diff before accepting it, because a snapshot is a drift gate",
         "Quarantine a flaky test loudly, and never retry it into silence",
+        "Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate",
+        "Fix the test smells that hide what broke, not the ones a detector counts",
         "Treat coverage as a search-light, never as a target",
         "Mirror the module layout in the test tree, and keep each fixture beside its test",
         "Explain a test-runner config quirk in the config, with the incident that produced it",
         "Keep a demoted check running, reported, and counted"
       ],
-      "notes": "11 headings and 18 owned rows against 160 lines is 14.5 lines per rule including blanks. The two eval-tier headings moved to evals.md (issue #119); the intro points there in one sentence. Tight: one why sentence plus one clause of detail per rule, no worked contrast. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/testing.md, and the file ends with ## Don't. Ships with plugins/house/modules/testing/module.json: name testing, default on, rules [\"rules/testing.md\"], no managed files, configSlots [\"testGlobs\", \"gateGlobs\", {name testRoots, default [\"tests/**\", \"test/**\"]}], defaultPaths [\"$testRoots\", \"$testGlobs\", \"$gateGlobs\"]. Cross-ref, never restate: the known-answer control stays engineering.md#prove-a-check-can-fail-before-trusting-that-it-passed; the demotion call and a checker's own tally stay engineering.md#demote-a-gate-that-has-been-wrong-before, and this file's heading covers only the suite-level obligation to keep the demoted check running and counted; the measuring-instrument rule the fixture-seeding sentence points at stays evals.md#make-a-measuring-instrument-reproducible; a cost constraint as an invariant stays engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy; the credential-free PR gate and its step list stay github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated, with account-wide minutes at github.md#budget-actions-minutes-as-account-wide-money and scheduled-run failure policy at github.md#open-an-issue-instead-of-failing-a-scheduled-run-and-comment-out-a-cron-with-its-reason; hook authoring, failing closed, and the escalation ladder stay claude-code.md#make-a-must-hold-rule-a-hook-fail-it-closed-and-test-it-with-real-payloads; the guard's own test script stays tests/hooks/run.sh (TW-040)."
+      "notes": "14 headings and 29 owned rows against 160 lines is 9.9 lines per rule including blanks. The two eval-tier headings moved to evals.md (issue #119); the intro points there in one sentence. Tight: one why sentence plus one clause of detail per rule, no worked contrast. Every heading must be imperative with no date, name, or measured number, carry an Anchor line (`none (because ...)` allowed, capped at three per file), link once to docs/handbook/testing.md, and the file ends with ## Don't. Ships with plugins/house/modules/testing/module.json: name testing, default on, rules [\"rules/testing.md\"], no managed files, configSlots [\"testGlobs\", \"gateGlobs\", {name testRoots, default [\"**/tests/**\", \"**/test/**\", \"**/*.test.*\", \"**/*.spec.*\"]}], defaultPaths [\"$testRoots\", \"$testGlobs\", \"$gateGlobs\"]. Cross-ref, never restate: the known-answer control stays engineering.md#prove-a-check-can-fail-before-trusting-that-it-passed; the demotion call and a checker's own tally stay engineering.md#demote-a-gate-that-has-been-wrong-before, and this file's heading covers only the suite-level obligation to keep the demoted check running and counted; the measuring-instrument rule the fixture-seeding sentence points at stays evals.md#make-a-measuring-instrument-reproducible; a cost constraint as an invariant stays engineering.md#assert-an-invariant-where-its-state-is-created-with-a-why-and-a-remedy; the credential-free PR gate and its step list stay github.md#gate-every-pr-on-checks-that-need-no-credential-and-name-what-is-not-gated, with account-wide minutes at github.md#budget-actions-minutes-as-account-wide-money and scheduled-run failure policy at github.md#open-an-issue-instead-of-failing-a-scheduled-run-and-comment-out-a-cron-with-its-reason; hook authoring, failing closed, and the escalation ladder stay claude-code.md#make-a-must-hold-rule-a-hook-fail-it-closed-and-test-it-with-real-payloads; the guard's own test script stays tests/hooks/run.sh (TW-040)."
     },
     {
       "path": "plugins/house/modules/evals/rules/evals.md",

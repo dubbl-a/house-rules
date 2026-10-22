@@ -318,7 +318,7 @@ test('#19: every module literal path sits behind a slot defaulting to the histor
   assert.match(vendored('github.md'), /^ {2}- "\.env\.example"$/m);
   assert.match(vendored('claude-code.md'), /^ {2}- "CLAUDE\.md"$/m);
   assert.match(vendored('database.md'), /^ {2}- "migrations\/\*\*"$/m);
-  assert.match(vendored('testing.md'), /^ {2}- "test\/\*\*"$/m);
+  assert.match(vendored('testing.md'), /^ {2}- "\*\*\/test\/\*\*"$/m);
 
   hj.modules.github.config.githubGlobs = ['.github/workflows/**'];
   hj.modules.testing.config.testRoots = [];

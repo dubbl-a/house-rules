@@ -21,7 +21,7 @@ test('MODULE_FACTS covers every shipped module, keyed by module.json name', () =
   assert.equal(facts.testing.rules.length, 1);
   assert.equal(facts.security.default, 'off');
   assert.equal(facts.security.rules.length, 2);
-  assert.ok(facts.testing.slots.testRoots.includes('tests/**'));
+  assert.ok(facts.testing.slots.testRoots.includes('**/tests/**'));
 });
 
 test('the generator keys a module by its module.json name and skips a rule entry with no file', () => {
