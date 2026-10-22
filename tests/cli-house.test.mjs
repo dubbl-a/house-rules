@@ -2426,6 +2426,69 @@ test('#135 confirm: refuses, writing nothing, while the vendored checker is not 
   assert.equal(runVendoredCheck(repo).status, 0, 'the synced checker accepts the record');
 });
 
+// #403: a held sync leaves the adopter's checker older than the plugin's, yet
+// still able to read what confirm and decline write. The test is whether the
+// vendored copy knows the key, not whether it equals the payload.
+function vendCheckerAs(repo, content) {
+  writeFileSync(join(repo, '.house', 'check.mjs'), content);
+  const lockPath = join(repo, '.house', 'lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.files.find((f) => f.path === '.house/check.mjs').bodySha256 = sha256Hex(content);
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  commitAll(repo, 'an adopter on a different checker');
+}
+const CONFIRM_ONLY_CHECK_MJS = OLD_CHECK_MJS.replace("k !== 'config'", "k !== 'config' && k !== 'confirmed'");
+const DECLINE_ONLY_CHECK_MJS = `${OLD_CHECK_MJS}const DEVIATION_KINDS = new Set(['other', 'declined-step']);\n`;
+
+test('#403 confirm and decline: a vendored checker that differs from the plugin\'s payload but knows the key is not refused; the real payload carries both support markers', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  // The real checker with one more line stands in for a held adopter: not the
+  // fixture payload's bytes, but it holds the real support code, so a refactor
+  // of that code in check.mjs fails here instead of refusing every adopter.
+  vendCheckerAs(repo, `${readFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), 'utf8')}\n// a later plugin release changed something else\n`);
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.match(doc.out, /record each with `house confirm gamma/);
+  assert.doesNotMatch(doc.out, /sync first/);
+  const c = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]);
+  assert.equal(c.code, 0, c.out + c.err);
+  const d = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'x', '--repo', repo]);
+  assert.equal(d.code, 0, d.out + d.err);
+  const mf = spawnSync(process.execPath, [join(repo, '.house', 'check.mjs'), '--only=manifest', '--repo', repo], { encoding: 'utf8' });
+  // The fixture's modules are not the real list, so only the findings these two records could raise are read.
+  assert.doesNotMatch(mf.stdout, /unknown key|not a valid kind|declined-step/, mf.stdout);
+});
+
+test('#403 confirm and decline: each is refused only for the key its own command writes', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  vendCheckerAs(repo, CONFIRM_ONLY_CHECK_MJS);
+  const noDecline = runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'x', '--repo', repo]);
+  assert.equal(noDecline.code, 2, noDecline.out + noDecline.err);
+  assert.match(noDecline.err, /\/house-rules:sync/);
+  assert.equal(gitStatusShort(repo), '', 'a refused decline wrote nothing');
+  assert.equal(runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]).code, 0);
+  assert.equal(runVendoredCheck(repo).status, 0);
+
+  const repo2 = enabledGammaRepo(cliPath);
+  vendCheckerAs(repo2, DECLINE_ONLY_CHECK_MJS);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo2]).out, /^at-adoption steps not confirmed for gamma: scan-on, owners \(sync first/m);
+  const noConfirm = runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo2]);
+  assert.equal(noConfirm.code, 2, noConfirm.out + noConfirm.err);
+  assert.equal(gitStatusShort(repo2), '', 'a refused confirm wrote nothing');
+  assert.equal(runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'x', '--repo', repo2]).code, 0);
+});
+
+test('#403 confirm and decline: a missing vendored checker is refused, not read as supporting the key', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  rmSync(join(repo, '.house', 'check.mjs'));
+  commitAll(repo, 'checker gone');
+  assert.equal(runCli(cliPath, ['confirm', 'gamma', 'scan-on', '--repo', repo]).code, 2);
+  assert.equal(runCli(cliPath, ['decline', 'gamma', 'owners', '--why', 'x', '--repo', repo]).code, 2);
+  assert.equal(gitStatusShort(repo), '');
+});
+
 test('#167 confirm: a hand-edited vendored checker is told render refuses it, and the way through is --force-managed', () => {
   const { cliPath } = buildEnableFixture();
   const repo = enabledGammaRepo(cliPath);

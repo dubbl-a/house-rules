@@ -2262,19 +2262,28 @@ function unconfirmedAtAdoption(houseData, modules) {
   return out;
 }
 
-// A checker vendored before #135 refuses the `confirmed` key as unknown, so a
-// record written under it fails the adopter's CI until the next sync. The test
-// is the bytes: the vendored .house/check.mjs against this plugin's payload,
-// which knows the key. A version pin can say current while the checker is
-// not (a hand-bumped pin, a half-finished sync), and the file itself cannot.
-// A copy newer than this plugin also reads as not current, so it fails toward
-// refusing.
-function vendoredCheckerIsCurrent(repoRoot) {
+// A checker vendored before #135 refuses the `confirmed` key as unknown, and
+// one before #247 refuses the `declined-step` deviation kind, so a record
+// written under either fails the adopter's CI until the next sync. The test is
+// the file, not a version pin, which can say current while the checker is not
+// (a hand-bumped pin, a half-finished sync). A vendored .house/check.mjs
+// supports a command when it is byte-identical to this plugin's payload, or
+// when its text holds that command's marker: the support code in
+// payload/check.mjs (a test pins that the payload holds both). The second
+// arm is for an adopter whose sync is held while the plugin moves on, whose
+// older checker still reads the key. A missing or unreadable file, or a
+// missing marker, fails toward refusing.
+const CHECKER_SUPPORT = {
+  confirm: /k !== 'confirmed'/,
+  decline: /DEVIATION_KINDS = new Set\(\[[^\]]*'declined-step'/,
+};
+function vendoredCheckerSupports(repoRoot, cmd) {
   try {
-    return readFileSync(path.join(repoRoot, '.house', 'check.mjs'), 'utf8') === readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8');
+    const vendored = readFileSync(path.join(repoRoot, '.house', 'check.mjs'), 'utf8');
+    return vendored === readFileSync(path.join(__dirname, '..', 'payload', 'check.mjs'), 'utf8') || CHECKER_SUPPORT[cmd].test(vendored);
   } catch { return false; }
 }
-const SYNC_FIRST = 'run /house-rules:sync (or `house render --apply`) so .house/check.mjs is this plugin\'s, since an older vendored checker reports `confirmed` as an unknown key and fails CI';
+const SYNC_FIRST = 'run /house-rules:sync (or `house render --apply`) so .house/check.mjs is this plugin\'s, since an older vendored checker reports the record as an unknown key or kind and fails CI';
 
 // Today in the local calendar, the date a person confirming a step would write.
 function todayIso() {
@@ -2283,10 +2292,10 @@ function todayIso() {
 }
 
 // A record an older vendored checker rejects fails the adopter's CI, so confirm
-// and decline write nothing until the checker is this plugin's. `rejects`
-// completes "an older vendored checker ...".
+// and decline write nothing until the checker supports the key they write.
+// `rejects` completes "an older vendored checker ...".
 function refuseIfCheckerStale(cmd, repoRoot, rejects) {
-  if (vendoredCheckerIsCurrent(repoRoot)) return;
+  if (vendoredCheckerSupports(repoRoot, cmd)) return;
   // A hand-edited vendored checker is refused by render, so `house render
   // --apply` alone would not sync it. Asked of the same classify render uses
   // (the lock's hash, or the plugin's own when the lock has no entry).
@@ -4151,9 +4160,9 @@ async function cmdDoctor(args) {
     }
     for (const t of targets) console.log(`target ${t.target}: ${t.line}`);
     console.log(`git-ignored house destinations: ${formatIgnoredDests(ignoredDests)}${ignoredDests.length ? ' (invisible to the checker; narrow the ignore rule to .claude/settings.local.json)' : ''}`);
-    const checkerCurrent = vendoredCheckerIsCurrent(repoRoot);
+    const checkerReadsConfirmed = vendoredCheckerSupports(repoRoot, 'confirm');
     for (const a of atAdoption) {
-      if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (${checkerCurrent ? `record each with \`house confirm ${a.module} <step-id>\`` : `sync first: ${SYNC_FIRST}; then record each with house confirm`})`);
+      if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.join(', ')} (${checkerReadsConfirmed ? `record each with \`house confirm ${a.module} <step-id>\`` : `sync first: ${SYNC_FIRST}; then record each with house confirm`})`);
       if (a.declined.length) console.log(`at-adoption steps declined for ${a.module}: ${a.declined.map((x) => `${x.id} (${x.decided}: ${x.why})`).join(', ')}`);
       if (a.undeclaredDeclined.length) console.log(`at-adoption declined steps ${a.module} no longer declares: ${a.undeclaredDeclined.join(', ')} (remove their declined-step deviations)`);
       if (a.undeclared.length) console.log(`at-adoption confirmations ${a.module} no longer declares: ${a.undeclared.join(', ')} (remove them from modules.${a.module}.confirmed)`);
