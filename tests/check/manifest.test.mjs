@@ -916,11 +916,11 @@ test('#420 manifest: a nested pkg/lib/ covered by a codeGlobs override is silent
   assert.equal(w.length, 0, JSON.stringify(w));
 });
 
-test('#420 manifest: a gitignored node_modules/x/lib/ is never a candidate', () => {
+test('#420 manifest: a gitignored build/lib/ is never a candidate', () => {
   const w = rootRun({
     'house.json': rootHouse({ engineering: { enabled: true, config: {} } }),
-    '.gitignore': 'node_modules/\n',
-    'node_modules/x/lib/y.js': 'x\n',
+    '.gitignore': 'build/\n',
+    'build/lib/y.js': 'x\n',
     'src/a.js': 'x\n',
   });
   assert.equal(w.length, 0, JSON.stringify(w));
@@ -949,14 +949,39 @@ test('#420 manifest: each enabled module with that root warns; a disabled module
   assert.equal(off.length, 0, JSON.stringify(off));
 });
 
-test('#420 manifest: a deviations entry (kind "other") naming the directory records it as out of scope', () => {
-  const dir = sandbox({
-    'house.json': houseJson({
-      modules: { engineering: { enabled: true, config: {} } },
-      deviations: [{ kind: 'other', what: 'pkg/lib is vendored third-party code', why: 'not ours to guide', decided: '2026-10-22' }],
-    }),
+const otherDev = (what) => ({ kind: 'other', what, why: 'not ours to guide', decided: '2026-10-22' });
+const devRun = (what, files, modules = { engineering: { enabled: true, config: {} } }) =>
+  rootWarnings(run(sandbox({ 'house.json': houseJson({ modules, deviations: [otherDev(what)] }), ...files }), ['--only=manifest', '--json'], NO_PLUGIN));
+
+test('#420 manifest: a deviations entry (kind "other") naming the module and the directory records it as out of scope', () => {
+  const w = devRun('engineering: pkg/lib is vendored third-party code', { 'pkg/lib/b.js': 'x\n' });
+  assert.equal(w.length, 0, JSON.stringify(w));
+});
+
+test('#420 manifest: a deviation naming rauzon-takeover/app/src silences that directory only, not app/src', () => {
+  const w = devRun('engineering: rauzon-takeover/app/src is a separate product', { 'app/src/b.js': 'x\n', 'rauzon-takeover/app/src/c.js': 'x\n' });
+  assert.deepEqual(w.map((x) => /`([^`]+)\/` holds/.exec(x.message)[1]), ['app/src']);
+});
+
+test('#420 manifest: a deviation naming pkg/lib2 does not silence pkg/lib, and one naming pkg/lib/ does', () => {
+  assert.equal(devRun('engineering: pkg/lib2 is vendored', { 'pkg/lib/b.js': 'x\n' }).length, 1);
+  assert.equal(devRun('engineering: pkg/lib/ is vendored', { 'pkg/lib/b.js': 'x\n' }).length, 0);
+});
+
+test('#420 manifest: a deviation that does not name the module silences nothing, and the warning says to name both', () => {
+  const w = devRun('pkg/lib is vendored third-party code', { 'pkg/lib/b.js': 'x\n' });
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.match(w[0].message, /names both the module and the directory/);
+  assert.equal(devRun('security: pkg/lib is vendored', { 'pkg/lib/b.js': 'x\n' }).length, 1);
+});
+
+test('#420 manifest: a repo that replaces a Roots slot is shown its effective rule paths, not "default paths"', () => {
+  const w = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: { codeRoots: ['app/**'] } } }),
+    'app/a.js': 'x\n',
     'pkg/lib/b.js': 'x\n',
   });
-  const res = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
-  assert.equal(rootWarnings(res).length, 0, res.out);
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.match(w[0].message, /its rule paths \(`app\/\*\*`\) match from the repo root/);
+  assert.doesNotMatch(w[0].message, /default paths/);
 });

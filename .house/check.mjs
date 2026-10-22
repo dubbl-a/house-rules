@@ -2780,7 +2780,8 @@ function checkManifest(ctx) {
   // build output never count; dot, vendored and test-like directories are
   // skipped as in the database warning above, which already speaks for the
   // database module's own roots. A deviations entry (kind "other") whose `what`
-  // names the directory records that it is deliberately out of scope.
+  // names both the module and the directory, each as a whole token, records
+  // that it is deliberately out of scope.
   if (isPlainObject(d.modules)) {
     const rootSegments = (facts) => {
       const names = new Set();
@@ -2810,11 +2811,18 @@ function checkManifest(ctx) {
         dirs.set(dir, dirs.get(dir) === true || globs.some((re) => re.test(f)));
       }
       const slot = facts.rules.flatMap((r) => r.paths).map((p) => p.slice(1)).find((s) => /Globs$/.test(s) && s !== 'gateGlobs');
-      const rootGlobs = [...roots].map((seg) => `\`${seg}/**\``).join(', ');
+      const rootsReplaced = Object.keys(facts.slots).some((s) => /Roots$/.test(s) && Object.prototype.hasOwnProperty.call(cfg, s));
+      const paths = [...new Set(facts.rules.flatMap((r) => expandFactPaths(r.paths, facts.slots, cfg)))].map((g) => `\`${g}\``).join(', ');
+      const lead = rootsReplaced
+        ? `its rule paths (${paths}) match from the repo root`
+        : `its default paths (${[...roots].map((seg) => `\`${seg}/**\``).join(', ')}) are anchored at the repo root`;
+      // A whole-token mention: a longer path or name that merely contains the
+      // text (`pkg/lib2`, `other/pkg/lib`) must not stand in for it.
+      const mentions = (text, token) => new RegExp(`(?:^|[^A-Za-z0-9_./-])${escapeRegExp(token)}/?(?:$|[^A-Za-z0-9_./-])`).test(text);
       for (const [dir, covered] of dirs) {
-        if (covered || deviations.some((x) => isPlainObject(x) && x.kind === 'other' && typeof x.what === 'string' && x.what.includes(dir))) continue;
+        if (covered || deviations.some((x) => isPlainObject(x) && x.kind === 'other' && typeof x.what === 'string' && mentions(x.what, name) && mentions(x.what, dir))) continue;
         const add = `\`${dir.replace(/[\[\]*?{}\\]/g, '\\$&')}/**\``;
-        warnings.push(mk('manifest', 'house.json', null, 'uncovered-root', `module \`${name}\` is enabled, but its default paths (${rootGlobs}) are anchored at the repo root, and \`${dir}/\` holds tracked files none of its rule paths match, so its rule never loads on them: add ${add} to ${slot ? `modules.${name}.config.${slot}` : 'the module\'s path slot in house.json'} (it adds to the defaults), then re-render. If \`${dir}\` is deliberately out of scope, record a deviations entry (kind "other") whose \`what\` names it and whose \`why\` says so.`));
+        warnings.push(mk('manifest', 'house.json', null, 'uncovered-root', `module \`${name}\` is enabled, but ${lead}, and \`${dir}/\` holds tracked files none of its rule paths match, so its rule never loads on them: add ${add} to ${slot ? `modules.${name}.config.${slot}` : 'the module\'s path slot in house.json'} (it adds to the defaults), then re-render. If \`${dir}\` is deliberately out of scope for \`${name}\`, record a deviations entry (kind "other") whose \`what\` names both the module and the directory (for example "${name}: ${dir} ...") and whose \`why\` says so.`));
       }
     }
   }
