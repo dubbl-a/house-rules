@@ -127,10 +127,12 @@ body is not read in any state, and an alias that calls another alias is read one
 The CLI removed the floor from inside `house render --apply` (after the github module is disabled)
 or `house disable github --apply`, which the text guard does not see; run end to end, it let a
 push of an unmerged commit land on the protected branch (#161). That route is now refused: render,
-`house disable` and `house uninstall` keep every floor file while the remote-tracking default
-branch's `house.json` (`origin/HEAD`, else `origin/main` or `origin/master`) still has the github
-module on, so the change turning it off lands through a merged pull request first. A script that
-deletes the floor files itself remains residue, as does a forged remote-tracking ref (above).
+`house enable`, `house disable` and `house uninstall` keep every floor file unless the
+remote-tracking default branch's `house.json` (`origin/HEAD`, else `origin/main` or `origin/master`)
+sets `modules.github.enabled` to `false`, so the change turning it off lands through a merged pull
+request first. Only the remote named `origin` is read, so a clone whose only remote has another
+name is not held. A script that deletes the floor files itself remains residue, as does a forged
+remote-tracking ref (above).
 
 ### Confirmation
 

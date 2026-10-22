@@ -8,7 +8,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Fixed
 
-- `house render --apply`, `house disable github` and `house uninstall` refuse to remove the git-hook floor while the remote's default branch (`origin/HEAD`, else `origin/main` or `origin/master`) still has the github module on in its `house.json` (#161). Turning the module off in the working tree used to delete the floor at once, so a push to the protected branch met no hook. Land the change through a merged pull request, fetch, then render. `house doctor` with the module off now names a `core.hooksPath` that points at a missing directory.
+- `house render --apply`, `house enable`, `house disable github` and `house uninstall` refuse to remove the git-hook floor unless the remote's default branch (`origin/HEAD`, else `origin/main` or `origin/master`) sets `modules.github.enabled` to `false` in its `house.json` (#161). Turning the module off in the working tree used to delete the floor at once, so a push to the protected branch met no hook. Land the change through a merged pull request, fetch, then render. `house doctor` with the module off now names a `core.hooksPath` that points at a missing directory.
 - The workflows checks read `${{ }}` expressions with one small tokenizer instead of regexes (#232). `event-in-run` now finds the true end of an expression, so a `}` inside a string literal no longer hides event data after it, and `pr-credential` reads a secret as a `secrets` identifier at the start of a property chain. An expression split across lines is still not read.
 
 ### Added

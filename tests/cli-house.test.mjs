@@ -3124,9 +3124,50 @@ test('#161 render refuses to remove the floor while the remote default branch st
     assert.match(r.err, /origin\/main:house\.json/, 'names the remote policy it read');
     assert.match(r.err, /pull request/, 'says to land the change through a merged PR first');
     assert.match(r.err, /Nothing was written/);
+    assert.match(r.err, /git remote set-head origin -a/, 'names the way to refresh a stale origin/HEAD');
     assert.deepEqual(floorPresent(clone), FLOOR_FILES, 'all seven floor files stay');
     assert.equal(gitStatusShort(clone), before, 'nothing else written either');
   }
+
+  // --json carries the held files too, in the shape of the other refusals.
+  const j = runCli(cliPath, ['render', '--repo', clone, '--json']);
+  assert.equal(j.code, 1, j.out + j.err);
+  const held = JSON.parse(j.out).floorHeld;
+  assert.deepEqual(held.map((h) => h.path).sort(), FLOOR_FILES.map((rel) => `.githooks/${rel}`).sort());
+  for (const h of held) assert.match(h.reason, /origin\/main:house\.json/);
+  assert.deepEqual(floorPresent(clone), FLOOR_FILES);
+});
+
+test('#161 enable --apply refuses before writing house.json while the remote holds the floor', () => {
+  const { cliPath } = buildFloorFixture();
+  const { clone } = adoptedFloorRemote(cliPath);
+  githubOffInWorkingTree(clone);
+  const houseBefore = readFileSync(join(clone, 'house.json'), 'utf8');
+  const r = runCli(cliPath, ['enable', 'alpha', '--repo', clone, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.githooks\/pre-push\s/m);
+  assert.match(r.err, /origin\/main:house\.json/);
+  assert.equal(readFileSync(join(clone, 'house.json'), 'utf8'), houseBefore, 'house.json is byte-unchanged');
+  assert.deepEqual(floorPresent(clone), FLOOR_FILES);
+});
+
+test('#161 a remote house.json with no github entry still holds the floor: only a literal false releases it', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: {} });
+  const base = mkdtempSync(join(tmpdir(), 'house-remote-161-'));
+  CLEANUP_DIRS.push(base);
+  execFileSync('git', ['clone', '-q', '--bare', repo, join(base, 'remote.git')]);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', join(base, 'remote.git')]);
+  execFileSync('git', ['-C', repo, 'fetch', '-q', 'origin']);
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { github: { enabled: true, config: {} } } });
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  githubOffInWorkingTree(repo);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /origin\/main:house\.json/);
+  assert.deepEqual(floorPresent(repo), FLOOR_FILES);
 });
 
 test('#161 disable github --apply refuses, writing neither house.json nor removing the floor, while the remote has the module on', () => {
@@ -3222,6 +3263,18 @@ test('#161 doctor with github off reports a core.hooksPath naming a directory th
   const doc = runCli(cliPath, ['doctor', '--repo', repo]).out;
   assert.match(doc, /^git-hook floor: off \(the github module is off/m);
   assert.match(doc, /^ {2}core\.hooksPath is \S+\/\.githooks \(.+\), a directory that does not exist, so git runs no hooks in this clone; unset it yourself: `git config --unset core\.hooksPath`/m);
+
+  // git expands a leading ~/ to HOME, so a directory there exists to git too.
+  const home = mkdtempSync(join(tmpdir(), 'house-home-161-'));
+  CLEANUP_DIRS.push(home);
+  mkdirSync(join(home, 'hooks-161'));
+  const hooksKey = ['core', 'hooksPath'].join('.');
+  execFileSync('git', ['-C', repo, 'config', hooksKey, '~/hooks-161']);
+  const tilde = runCli(cliPath, ['doctor', '--repo', repo], { HOME: home }).out;
+  assert.doesNotMatch(tilde, /does not exist/, '~/hooks-161 is a directory under HOME');
+  execFileSync('git', ['-C', repo, 'config', hooksKey, '~/gone-161']);
+  const gone = runCli(cliPath, ['doctor', '--repo', repo], { HOME: home }).out;
+  assert.match(gone, /^ {2}core\.hooksPath is ~\/gone-161 \(.+\), a directory that does not exist/m);
 });
 
 // What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh,

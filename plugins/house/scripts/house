@@ -1773,8 +1773,9 @@ function remoteDefaultRef(repoRoot) {
 
 // The remote policy that holds the floor in place, as `<ref>:house.json`, or
 // null when there is none to protect: no remote-tracking default branch, no
-// house.json on it, or one with the github module off. One that cannot be
-// read holds it, as the floor's own reader refuses an unreadable manifest.
+// house.json on it, or one whose modules.github.enabled is the literal false,
+// the only value the floor's own reader takes as off. One that cannot be read
+// holds it, as that reader refuses an unreadable manifest.
 function remoteFloorHold(repoRoot) {
   const ref = remoteDefaultRef(repoRoot);
   if (!ref) return null;
@@ -1784,7 +1785,7 @@ function remoteFloorHold(repoRoot) {
   let data;
   try { data = JSON.parse(blob.stdout); } catch { return { source, unreadable: true }; }
   if (!isPlainObject(data) || !isPlainObject(data.modules)) return { source, unreadable: true };
-  return moduleEnabled(data, 'github') ? { source, unreadable: false } : null;
+  return isPlainObject(data.modules.github) && data.modules.github.enabled === false ? null : { source, unreadable: false };
 }
 
 // The floor files among `removals` that the remote's policy holds in place.
@@ -1797,14 +1798,14 @@ function heldFloorRemovals(repoRoot, modules, removals) {
 }
 
 function floorHoldReason(hold) {
-  return hold.unreadable ? `${hold.source} cannot be read` : `${hold.source} still has the github module on`;
+  return hold.unreadable ? `${hold.source} cannot be read` : `${hold.source} does not turn the github module off`;
 }
 
 function floorHoldMessage(cmd, hold, tail) {
   const what = hold.unreadable
     ? `${hold.source}, the policy the remote's default branch runs, cannot be read, so it may still have the github module on`
-    : `${hold.source}, the policy the remote's default branch runs, still has the github module on`;
-  return `house ${cmd}: ${what}, so the git-hook floor files marked REFUSE above stay: with them gone git runs no hooks in this clone, and a push to a protected branch meets none. Nothing was written. To turn the module off, commit house.json with modules.github.enabled false (and its disabled-module deviation) on a branch, the floor files kept, and merge it through a pull request; then fetch, so ${hold.source.split(':')[0]} has it, and run \`house render --apply\`, which removes the floor.${tail ? ` ${tail}` : ''}`;
+    : `${hold.source}, the policy the remote's default branch runs, does not turn the github module off`;
+  return `house ${cmd}: ${what}, so the git-hook floor files marked REFUSE above stay: with them gone git runs no hooks in this clone, and a push to a protected branch meets none. Nothing was written. To turn the module off, commit house.json with modules.github.enabled false (and its disabled-module deviation) on a branch, the floor files kept, and merge it through a pull request; then fetch, so ${hold.source.split(':')[0]} has it, and run \`house render --apply\`, which removes the floor. If the remote's default branch has moved since this clone last read it, \`git remote set-head origin -a\` refreshes origin/HEAD.${tail ? ` ${tail}` : ''}`;
 }
 
 function forgedHeaderNote(repoRoot, rel) {
@@ -1914,7 +1915,7 @@ function migrationLine(m, applied) {
     : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
-function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans, unmanaged, differing, json, apply }) {
+function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, floorHeld, orphans, unmanaged, differing, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({
@@ -1929,6 +1930,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
       scaffolds: geminiScaffold ? [GEMINI_MD] : [],
       editedOrphans: arr(editedOrphans),
       unsafeOrphans: arr(unsafeOrphans),
+      floorHeld: arr(floorHeld),
       removals: arr(orphans),
       unmanaged: arr(unmanaged),
       differing: arr(differing),
@@ -1966,6 +1968,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
     console.log(`${'REFUSE'.padEnd(15)} ${u.path}  (${u.reason})`);
     if (!u.notRegular) console.log(`  ${UNSAFE_REMOVAL_EXIT}`);
   }
+  for (const u of arr(floorHeld)) console.log(`${'REFUSE'.padEnd(15)} ${u.path}  (git-hook floor; ${u.reason})`);
   // #152: the dry run names every file the apply's sweep removes.
   if (!apply) for (const rel of arr(orphans)) console.log(`${'remove'.padEnd(15)} ${rel}  (no longer in the plan)`);
   for (const rel of arr(unmanaged)) console.log(`${'left'.padEnd(15)} ${rel}  (not managed, left in place)`);
@@ -2111,8 +2114,8 @@ function cmdRender(args) {
   const sweepRemovals = sweepable.filter((rel) => !unsafeOrphans.some((u) => u.path === rel) && !editedOrphans.includes(rel));
   // #161: refused like a hand-edited orphan, with no --force-managed way past.
   const floorHold = heldFloorRemovals(repoRoot, modules, sweepRemovals);
-  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, orphans: sweepRemovals.filter((rel) => !floorHold.held.includes(rel)), unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
-  if (!args.json) for (const rel of floorHold.held) console.log(`${'REFUSE'.padEnd(15)} ${rel}  (git-hook floor; ${floorHoldReason(floorHold.hold)})`);
+  const floorHeld = floorHold.held.map((rel) => ({ path: rel, reason: floorHoldReason(floorHold.hold) }));
+  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, floorHeld, orphans: sweepRemovals.filter((rel) => !floorHold.held.includes(rel)), unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
 
   const sideBlockers = renderSideFileBlockers(repoRoot);
   if (!args.json) for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
@@ -2783,10 +2786,14 @@ function cmdEnable(args) {
   const refused = after.plan.some((p) => p.status === 'refuse') || (after.blockRemoval && after.blockRemoval.status === 'refuse');
   const sideBlockers = renderSideFileBlockers(repoRoot);
   for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
-  if (refused || sideBlockers.length) {
-    console.error('\nhouse enable: render would refuse a managed file above (REFUSE), so nothing was written. Run `house render` to read why, resolve it, then re-run enable.');
-    process.exit(1);
-  }
+  // #161: the render below sweeps what the proposed house.json drops, so a
+  // floor the remote holds is refused here, before house.json is written.
+  const sweep = orphanedManagedPaths(repoRoot, new Set(after.plan.map((p) => p.target.path)), modules, proposed);
+  const floorHold = heldFloorRemovals(repoRoot, modules, [...sweep.orphans].filter((rel) => existsSync(path.join(repoRoot, rel)) && !unsafeRemovalReason(repoRoot, rel)).sort());
+  for (const rel of floorHold.held) console.log(`${'REFUSE'.padEnd(15)} ${rel}  (git-hook floor; ${floorHoldReason(floorHold.hold)})`);
+  if (floorHold.held.length) console.error(`\n${floorHoldMessage('enable', floorHold.hold, 'Then re-run enable.')}`);
+  if (refused || sideBlockers.length) console.error('\nhouse enable: render would refuse a managed file above (REFUSE), so nothing was written. Run `house render` to read why, resolve it, then re-run enable.');
+  if (refused || sideBlockers.length || floorHold.held.length) process.exit(1);
   if (!args.apply) {
     console.log('\nNothing written. Re-run with --apply to write house.json, render once, and run the vendored checker.');
     process.exit(0);
@@ -3670,7 +3677,10 @@ function gitHookFloorLines(probe, houseData, repoRoot) {
     const off = ['git-hook floor: off (the github module is off in house.json, and it is what ships the floor)'];
     if (probe && probe.hooksPath && repoRoot) {
       let dir = false;
-      try { dir = statSync(path.resolve(repoRoot, probe.hooksPath)).isDirectory(); } catch { /* gone */ }
+      // git expands a leading ~/ to HOME; a ~user/ form is not resolved here, so it is not called missing.
+      const v = probe.hooksPath;
+      const abs = v === '~' || v.startsWith('~/') ? path.join(homedir(), v.slice(1)) : v.startsWith('~') ? null : path.resolve(repoRoot, v);
+      try { dir = abs === null || statSync(abs).isDirectory(); } catch { /* gone */ }
       if (!dir) off.push(`  core.hooksPath is ${probe.hooksPath}${probe.hooksPathScope ? ` (${probe.hooksPathScope})` : ''}, a directory that does not exist, so git runs no hooks in this clone; unset it yourself: \`git config --unset core.hooksPath\``);
     }
     return off;
