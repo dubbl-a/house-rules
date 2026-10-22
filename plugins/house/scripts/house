@@ -1293,6 +1293,11 @@ const SCAFFOLDS = [
   // install step. The lock keys scaffolds by TEMPLATE, so this row's key is the
   // template path string `pre-commit.d/20-secrets`.
   { tmpl: 'pre-commit.d/20-secrets', dest: '.githooks/pre-commit.d/20-secrets', module: 'github' },
+  // #402: the content half of that backstop, for a plan with no push
+  // protection. A separate file because adopters already own 20-secrets and a
+  // scaffold is written only where absent, so a new file is the only way it
+  // reaches them on their next render.
+  { tmpl: 'pre-commit.d/25-secret-content', dest: '.githooks/pre-commit.d/25-secret-content', module: 'github' },
   // #101: the include file a worktree copies from. The template ships
   // deliberately empty, so the row only puts the explanation where the adopter edits.
   { tmpl: '.worktreeinclude', dest: '.worktreeinclude', module: 'claude-code' },

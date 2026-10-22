@@ -47,6 +47,19 @@ jobs:
       # committed; a drift gate beats trusting the generator ran.
       - run: npm run check:snapshots --if-present
       - run: npm test --if-present
+  # Content scan over full history: the fallback where the plan has no push
+  # protection (a private repo on a personal account). Keep it on a plan that
+  # has push protection too; it reads the same blobs with named key rules.
+  # A known false positive is waived in .house/secret-allow with its reason.
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0 } # --history refuses a shallow clone
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22 }
+      - run: node scripts/house/scan-dist-secrets.mjs --history
 
 # Need a scheduled workflow too (a sync job, a nightly report)? Offset the
 # cron off the top of the hour (e.g. "17 * * * *") to dodge the stampede,
