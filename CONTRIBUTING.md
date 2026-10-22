@@ -128,6 +128,12 @@ assets cannot be changed, and `gh release verify vX.Y.Z` checks the release atte
 `v0.18.0` has a gitsign-signed tag; `v0.16.0` and `v0.17.0` are annotated and unsigned, and
 `v0.15.2` and older are lightweight.
 
+## Auditing a repo's tests
+
+Run `/house-rules:test-audit` in the repo to audit; `plugins/house/skills/test-audit/SKILL.md` has
+the steps and `plugins/house/skills/test-audit/test-audit.js` is the Workflow it runs. Its control
+flow is tested by `tests/skill-test-audit.test.mjs`.
+
 ## Licensing your contribution
 
 This repository is licensed by path; see `NOTICE` for the exact scopes: MIT for the checker
