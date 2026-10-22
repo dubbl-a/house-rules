@@ -78,9 +78,12 @@ test('SIGINT to verify takes its running suites down with it', async () => {
     child.kill('SIGINT');
     assert.equal((await exited).code, 130);
     // The stub leads its own process group (detached), so -pid reaches the group.
+    // Only ESRCH means gone: while the killed stub waits to be reaped, macOS
+    // answers EPERM (#425), so every other answer waits and asks again.
     let gone = false;
     for (let i = 0; i < 150 && !gone; i++) {
-      try { process.kill(-stubPid, 0); await sleep(100); } catch (e) { gone = e.code === 'ESRCH'; }
+      try { process.kill(-stubPid, 0); } catch (e) { gone = e.code === 'ESRCH'; }
+      if (!gone) await sleep(100);
     }
     assert.ok(gone, 'the stub suite process group is gone');
   } finally {

@@ -19,6 +19,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Fixed
 
+- The SIGINT test in `tests/verify-suites.test.mjs` no longer flakes under load. On macOS, signal 0 to the killed stub's process group answers EPERM, not ESRCH, until the orphaned stub is reaped, and the test's wait loop only slept after a successful probe, so it spent all 150 polls in a few milliseconds and failed. It now waits between every probe until the group reports ESRCH. With 30 extra busy processes on a 10-core machine it failed 9 of 40 runs before and 0 of 25 after (#425).
 - `expect_deny_without` in `tests/hooks/run.sh` now fails a case when the hook exits non-zero, as `expect_deny` and `expect_allow` already did (#421). The harness reads a JSON decision only on exit 0, so a hook that printed a deny and then exited 1 would let the action through while the guard's floor-refusal cases still passed. Checked with a planted fault: a `deny()` that clears its EXIT trap and exits 1 passed all nine floor-refusal cases before this change and fails all nine after it.
 
 ## [0.22.6] - 2026-10-22
