@@ -50,9 +50,10 @@ can lag until the next sync.
 5. When it returns, summarize for the user: how many findings were confirmed, refuted, and
    dropped (and why), the unread ranges if any, test counts and durations before and after, the
    CI critical path, every round's verdict from `rounds`, and the final verdict.
-6. On a final `ACCEPT`, push the branch and open a PR from the worktree, using the repo's PR
-   template. On `REWORK` after the last round, report `remainingMustFix` and stop: the maintainer
-   decides. Never merge. If a PR body would pass GitHub's size limit, write a summary and attach
+6. Only when the returned `verdict === 'ACCEPT'`, push the branch and open a PR from the
+   worktree, using the repo's PR template. A `null` verdict means a review returned nothing, so
+   the work is not reviewed: report that and stop. On `REWORK` after the last round, report
+   `remainingMustFix` and stop: the maintainer decides. Never merge. If a PR body would pass GitHub's size limit, write a summary and attach
    the detail (the confirmed list with its planted-defect evidence) as a comment or file.
 
 ## The rework loop
@@ -75,6 +76,9 @@ user.
   suites in parallel yourself while it works.
 - A builder that stops early returns a placeholder report. Check the worktree (`git log`,
   `git status`, the diff), not the report, before pushing.
+- The builder branches from the commit the refuters proved claims against, and stops and reports
+  if branch `tests-audit-<date>` or its worktree already exists. Rerunning on the same date needs
+  a new `date` or the old worktree and branch removed first.
 - A PR body over GitHub's size limit is rejected: write a summary and attach the detail.
 - The script pushes nothing and merges nothing. Pushing and the PR are this skill's step 6.
 

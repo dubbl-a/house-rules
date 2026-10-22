@@ -274,7 +274,9 @@ const VERDICTS = {
   required: ['verdicts'],
 }
 const byFile = {}
-for (const it of merged.items) (byFile[it.file] ||= []).push(it)
+// Proof is mandatory for a removal or a merge, whatever the merge agent set.
+const items = merged.items.map(it => ({ ...it, needsProof: it.needsProof || it.kind === 'remove-duplicate' || it.kind === 'merge' }))
+for (const it of items) (byFile[it.file] ||= []).push(it)
 const proveFiles = Object.entries(byFile).filter(([, items]) => items.some(it => it.needsProof))
 const nRefuters = Math.min(4, proveFiles.length)
 const toProve = Array.from({ length: nRefuters }, () => [])
@@ -294,10 +296,10 @@ Default to refuted when you cannot show the covering test failing. ${COMMON_DONT
   ),
 )
 const verdicts = Object.fromEntries(refuted.filter(Boolean).flatMap(r => r.verdicts).map(v => [v.id, v]))
-const confirmed = merged.items
+const confirmed = items
   .filter(it => !it.needsProof || ['confirmed', 'corrected'].includes(verdicts[it.id]?.verdict))
   .map(it => ({ ...it, proof: verdicts[it.id] || null }))
-const rejected = merged.items.filter(it => it.needsProof && !['confirmed', 'corrected'].includes(verdicts[it.id]?.verdict))
+const rejected = items.filter(it => it.needsProof && !['confirmed', 'corrected'].includes(verdicts[it.id]?.verdict))
   .map(it => ({ id: it.id, test: it.test, why: verdicts[it.id]?.evidence || 'no verdict returned' }))
 log(`${confirmed.length} confirmed, ${rejected.length} refuted or unproven`)
 
@@ -322,7 +324,7 @@ const BUILD = {
 const built = await agent(
   `Apply the confirmed test-audit list below to ${ROOT}.
 
-1. Create your worktree: \`git -C ${ROOT} worktree add -b ${BRANCH} ${WORKTREE} origin/${survey.defaultBranch}\`. Work only there.
+1. Create your worktree from the commit the claims were proved against, not from a fresh fetch. First check that neither branch ${BRANCH} (\`git -C ${ROOT} rev-parse --verify --quiet refs/heads/${BRANCH}\`) nor the path ${WORKTREE} exists; if either does, stop, create nothing, and report it in "checks" with an empty "sha" and every id in "skipped". Otherwise run \`git -C ${ROOT} worktree add -b ${BRANCH} ${WORKTREE} ${survey.headSha}\`. Work only there.
 2. Before changing anything, run each suite (${survey.suites.map(s => `${s.name}: \`${s.command}\``).join('; ')}) and record test count and duration, with \`sysctl -n vm.loadavg\`.
 3. Apply each item's fix. A removal names its covering test in the commit body. A share-fixture item shares only a read-only build. Do not change what any kept test asserts, except to fix an eager test or assertion roulette by splitting it or adding messages. A silent skip becomes a visible skip naming where the test does run.
 4. Rerun every suite, record counts and durations the same way, and run the repo's own gate (its verify script if one exists, else \`node .house/check.mjs\`).
@@ -334,7 +336,10 @@ ${JSON.stringify(confirmed, null, 1)}
 Skip an item you find wrong while applying it, and say why. ${COMMON_DONT}`,
   { label: 'build', phase: 'Build', schema: BUILD, model: 'sonnet', effort: 'high', agentType: 'house-rules:builder' },
 )
-if (!built) return { ...result, build: null }
+if (!built || !built.sha) {
+  log(`build produced no commit${built ? `: ${built.checks}` : ''}; nothing to review`)
+  return { ...result, build: built || null, verdict: null }
+}
 
 // ── Review ────────────────────────────────────────────────────────────
 phase('Review')
@@ -404,7 +409,7 @@ Skip a must-fix you find wrong and say why. ${COMMON_DONT}`,
   const before = tip
   tip = fix.sha
   current = await agent(
-    `Review commit ${tip} on branch ${BRANCH} in ${WORKTREE}, scoped to what it changed since ${before}: \`git -C ${WORKTREE} diff ${before}..${tip}\`. It answers the must-fixes below. Confirm the commit exists and the tree is clean (the builder's report can be a placeholder; check the worktree, not the report), that each must-fix is closed, that the fix weakened no kept test's assertions or a control pair, and that it touched nothing else. Rerun every suite; where a must-fix named a failure, reproduce that failure on ${before} (scratch copy: \`mkdir -p ${SCRATCH}/rework-${reworks} && git -C ${WORKTREE} archive ${before} | tar -x -C ${SCRATCH}/rework-${reworks}\`) and show it gone on ${tip}.
+    `Review commit ${tip} on branch ${BRANCH} in ${WORKTREE}, scoped to what it changed since ${before}: \`git -C ${WORKTREE} diff ${before}..${tip}\`. It answers the must-fixes below. Confirm the commit exists and the tree is clean (the builder's report can be a placeholder; check the worktree, not the report), that each must-fix is closed, that the fix weakened no kept test's assertions or a control pair, and that it touched nothing else. Run \`git -C ${WORKTREE} merge-base --is-ancestor ${before} ${tip}\`: a non-zero exit means history was rewritten, which is a must-fix. Rerun every suite; where a must-fix named a failure, reproduce that failure on ${before} (scratch copy: \`mkdir -p ${SCRATCH}/rework-${reworks} && git -C ${WORKTREE} archive ${before} | tar -x -C ${SCRATCH}/rework-${reworks}\`) and show it gone on ${tip}.
 
 Run \`git -C ${WORKTREE} status --short\` first and last, and do not edit, stage or commit anything. Return ACCEPT or REWORK; each must-fix names a concrete failure and the simplest fix.
 
@@ -425,6 +430,9 @@ ${COMMON_DONT}`,
 // Open must-fixes: the last round's, whenever it did not end in ACCEPT.
 const last = rounds[rounds.length - 1]
 const remainingMustFix = last.verdict === 'ACCEPT' ? [] : last.mustFix
+// The verdict is the last review's, and null when a review died: null is "not reviewed", never ACCEPT.
+const verdict = last.verdict
+if (verdict === null) log('a review returned nothing: the result is not reviewed, so it is not push-eligible')
 if (remainingMustFix.length) log(`stopped after ${reworks} rework round(s) with ${remainingMustFix.length} must-fix(es) open; the maintainer decides`)
 
-return { ...result, build: built, review, rounds, tip, branch: BRANCH, worktree: WORKTREE, remainingMustFix }
+return { ...result, build: built, review, rounds, tip, branch: BRANCH, worktree: WORKTREE, verdict, remainingMustFix }

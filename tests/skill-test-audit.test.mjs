@@ -38,7 +38,7 @@ const review = (verdict, mustFix = []) => ({ verdict, mustFix, attacks: ['plante
 
 // Runs the script against stubs. `reviews` is the verdict sequence handed to the
 // review and re-review calls in order; `auditReads` is what the first audit reports.
-async function run(args, { reviews = [review('ACCEPT')], firstRead = [{ path: 'tests/a.test.mjs', from: 1, to: 100 }] } = {}) {
+async function run(args, { reviews = [review('ACCEPT')], firstRead = [{ path: 'tests/a.test.mjs', from: 1, to: 100 }], items = ITEMS, refuters = null } = {}) {
   const calls = []
   const logs = []
   const phases = []
@@ -49,13 +49,14 @@ async function run(args, { reviews = [review('ACCEPT')], firstRead = [{ path: 't
     if (label === 'survey') return SURVEY
     if (label === 'audit 1') return { findings: [FINDING], read: firstRead }
     if (label.startsWith('audit 1 re-read')) return { findings: [], read: [{ path: 'tests/a.test.mjs', from: 101, to: 300 }] }
-    if (label === 'merge') return { items: ITEMS, dropped: [] }
+    if (label === 'merge') return { items, dropped: [] }
     if (label.startsWith('refute')) {
+      if (refuters === 'dead') return null
       return { verdicts: [{ id: 'R1', verdict: 'confirmed', evidence: 'failed' }, { id: 'R2', verdict: 'refuted', evidence: 'still passes' }] }
     }
     if (label === 'build') return { branch: 'tests-audit-2026-10-22', sha: 'sha0', applied: ['R1', 'S1'], skipped: [], before: '10 tests', after: '9 tests', checks: 'ok' }
     if (label.startsWith('rework')) return { sha: `sha${++reworkN}`, fixed: ['f'], notFixed: [], checks: 'ok' }
-    if (label === 'review' || label.startsWith('re-review')) return reviews.shift() ?? review('ACCEPT')
+    if (label === 'review' || label.startsWith('re-review')) return reviews.length ? reviews.shift() : review('ACCEPT')
     throw new Error(`unexpected agent label ${label}`)
   }
   const pipeline = async (items, fn) => Promise.all(items.map((it, i) => fn(it, it, i)))
@@ -151,6 +152,45 @@ test('two rework rounds that still end in REWORK stop and return the open must-f
   assert.deepEqual(result.rounds.map(r => r.verdict), ['REWORK', 'REWORK', 'REWORK'])
   assert.deepEqual(result.remainingMustFix, ['m3'])
   assert.ok(logs.some(l => /stopped after 2 rework round/.test(l)))
+})
+
+test('a removal the merge agent left unflagged still needs proof, and a dead refuter rejects it', async () => {
+  const unflagged = { id: 'R9', ...FINDING, test: 'unproven dup', needsProof: false }
+  const { calls, result } = await run(ARGS, { items: [unflagged, ITEMS[2]], refuters: 'dead' })
+  assert.deepEqual(result.rejected.map(r => r.id), ['R9'])
+  assert.ok(!result.confirmed.some(c => c.id === 'R9'))
+  const [build] = byLabel(calls, /^build$/)
+  assert.ok(build.prompt.includes('"id": "S1"'))
+  assert.ok(!build.prompt.includes('"id": "R9"'), 'an unproven removal must not reach the builder')
+})
+
+test('a review that returned nothing gives a null verdict, never ACCEPT', async () => {
+  const { result, logs } = await run(ARGS, { reviews: [null] })
+  assert.equal(result.verdict, null)
+  assert.notEqual(result.verdict, 'ACCEPT')
+  assert.ok(logs.some(l => /returned nothing/.test(l)))
+})
+
+test('a re-review that returned nothing gives a null verdict and keeps the open must-fixes', async () => {
+  const { result } = await run(ARGS, { reviews: [review('REWORK', ['m1']), null] })
+  assert.equal(result.verdict, null)
+  assert.deepEqual(result.remainingMustFix, ['m1'])
+})
+
+test('the verdict is the last review\'s: ACCEPT, or REWORK after the last round', async () => {
+  assert.equal((await run(ARGS)).result.verdict, 'ACCEPT')
+  assert.equal((await run(ARGS, { reviews: [review('REWORK', ['a']), review('ACCEPT')] })).result.verdict, 'ACCEPT')
+  assert.equal((await run(ARGS, { reviews: [review('REWORK', ['a']), review('REWORK', ['b']), review('REWORK', ['c'])] })).result.verdict, 'REWORK')
+})
+
+test('the builder branches from the surveyed head, stops on an existing branch, and re-review checks history', async () => {
+  const { calls } = await run(ARGS, { reviews: [review('REWORK', ['m1']), review('ACCEPT')] })
+  const [build] = byLabel(calls, /^build$/)
+  assert.ok(build.prompt.includes('worktree add -b tests-audit-2026-10-22 /work/repo/.claude/worktrees/tests-audit-2026-10-22 abc123'))
+  assert.ok(!build.prompt.includes('origin/main'), 'the build does not branch from a fresh fetch')
+  assert.ok(/stop, create nothing/.test(build.prompt))
+  const [rereview] = byLabel(calls, /^re-review/)
+  assert.ok(rereview.prompt.includes('merge-base --is-ancestor sha0 sha1'))
 })
 
 test('missing or malformed args throw a message naming the arg', async () => {
