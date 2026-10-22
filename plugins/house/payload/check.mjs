@@ -2768,6 +2768,57 @@ function checkManifest(ctx) {
     }
   }
 
+  // #420: the default load paths of engineering, security, evals and retrieval
+  // are anchored at the repo root (`src/**`, `lib/**`, `evals/**`, ...), because
+  // Claude Code matches `paths:` from the repo root and has no exclude field, so
+  // an any-depth `**/lib/**` default would also load the rule on reads inside
+  // gitignored `node_modules`. The cost is that a nested package (`pkg/lib/`)
+  // loads nothing and nothing said so. Warn once per enabled module and
+  // top-most tracked directory below the root that is named like one of that
+  // module's default roots and that none of the module's rule paths match a
+  // file under. Candidates come from tracked files only, so `node_modules` and
+  // build output never count; dot, vendored and test-like directories are
+  // skipped as in the database warning above, which already speaks for the
+  // database module's own roots. A deviations entry (kind "other") whose `what`
+  // names the directory records that it is deliberately out of scope.
+  if (isPlainObject(d.modules)) {
+    const rootSegments = (facts) => {
+      const names = new Set();
+      for (const [slot, vals] of Object.entries(facts.slots)) {
+        if (!/Roots$/.test(slot)) continue;
+        for (const v of vals) {
+          const segs = v.split('/');
+          if (segs.length > 1 && /^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(segs[0])) names.add(segs[0]);
+        }
+      }
+      return names;
+    };
+    for (const [name, entry] of Object.entries(d.modules)) {
+      if (!isPlainObject(entry) || entry.enabled !== true || !Object.prototype.hasOwnProperty.call(MODULE_FACTS, name)) continue;
+      const facts = MODULE_FACTS[name];
+      const roots = rootSegments(facts);
+      if (!roots.size) continue;
+      const cfg = isPlainObject(entry.config) ? entry.config : {};
+      const globs = [...new Set(facts.rules.flatMap((r) => expandFactPaths(r.paths, facts.slots, cfg)))].map(globToRegExp);
+      const dirs = new Map(); // directory -> some file under it is matched
+      for (const f of ctx.allTracked) {
+        const segs = f.split('/').slice(0, -1);
+        if (segs.some((seg) => seg.startsWith('.') || SITE_SKIP_SEGS.has(seg))) continue;
+        const at = segs.findIndex((seg, i) => i > 0 && roots.has(seg));
+        if (at < 0 || segs.slice(0, at).some((seg) => DB_TEST_SEGS.has(seg))) continue;
+        const dir = segs.slice(0, at + 1).join('/');
+        dirs.set(dir, dirs.get(dir) === true || globs.some((re) => re.test(f)));
+      }
+      const slot = facts.rules.flatMap((r) => r.paths).map((p) => p.slice(1)).find((s) => /Globs$/.test(s) && s !== 'gateGlobs');
+      const rootGlobs = [...roots].map((seg) => `\`${seg}/**\``).join(', ');
+      for (const [dir, covered] of dirs) {
+        if (covered || deviations.some((x) => isPlainObject(x) && x.kind === 'other' && typeof x.what === 'string' && x.what.includes(dir))) continue;
+        const add = `\`${dir.replace(/[\[\]*?{}\\]/g, '\\$&')}/**\``;
+        warnings.push(mk('manifest', 'house.json', null, 'uncovered-root', `module \`${name}\` is enabled, but its default paths (${rootGlobs}) are anchored at the repo root, and \`${dir}/\` holds tracked files none of its rule paths match, so its rule never loads on them: add ${add} to ${slot ? `modules.${name}.config.${slot}` : 'the module\'s path slot in house.json'} (it adds to the defaults), then re-render. If \`${dir}\` is deliberately out of scope, record a deviations entry (kind "other") whose \`what\` names it and whose \`why\` says so.`));
+      }
+    }
+  }
+
   // #178: a vendored script under scripts/house/ that nothing references is
   // unwired, and a tracked twin of the same basename elsewhere is usually why:
   // the adopter's own copy keeps running while the house copy sits idle. Said
