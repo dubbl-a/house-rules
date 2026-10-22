@@ -68,7 +68,10 @@ test('roster and text carry no em dash (prose rule)', () => {
 
 test('session-start hook emits the orchestration text under hookSpecificOutput.additionalContext and exits 0', () => {
   // HOUSE_COST_CHECK=off keeps this test from touching the real config dir.
-  const res = spawnSync(process.execPath, [HOOK], { encoding: 'utf8', env: { ...process.env, HOUSE_COST_CHECK: 'off' }, input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup' }) });
+  // NODE_EXTRA_CA_CERTS is dropped: Node warns on stderr when it cannot read the file, which is not the hook's output.
+  const env = { ...process.env, HOUSE_COST_CHECK: 'off' };
+  delete env.NODE_EXTRA_CA_CERTS;
+  const res = spawnSync(process.execPath, [HOOK], { encoding: 'utf8', env, input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup' }) });
   assert.equal(res.status, 0, res.stderr);
   assert.equal(res.stderr, '');
   const out = JSON.parse(res.stdout);
@@ -87,7 +90,10 @@ test('session-start hook with the text missing emits nothing and still exits 0 (
   const hooks = join(dir, 'hooks');
   execFileSync('mkdir', ['-p', hooks]);
   writeFileSync(join(hooks, 'session-start.mjs'), readFileSync(HOOK, 'utf8'));
-  const res = spawnSync(process.execPath, [join(hooks, 'session-start.mjs')], { encoding: 'utf8', input: '{}' });
+  // NODE_EXTRA_CA_CERTS is dropped: Node warns on stderr when it cannot read the file, which is not the hook's output.
+  const env = { ...process.env };
+  delete env.NODE_EXTRA_CA_CERTS;
+  const res = spawnSync(process.execPath, [join(hooks, 'session-start.mjs')], { encoding: 'utf8', env, input: '{}' });
   assert.equal(res.status, 0);
   assert.equal(res.stdout, '');
   assert.equal(res.stderr, '');
