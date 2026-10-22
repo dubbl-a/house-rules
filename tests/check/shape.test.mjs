@@ -70,17 +70,6 @@ test('shape: an em dash in a rule file is a finding under mode `all`', () => {
   assert.match(out, /em dash/);
 });
 
-test('shape: with no emDash config, an em dash in CHANGELOG.md or docs/ is not a finding', () => {
-  const dir = sandbox({
-    'src/placeholder.ts': 'export const x = 1;\n',
-    'CHANGELOG.md': DASHED_PUBLIC['CHANGELOG.md'],
-    'docs/x.md': '# X\n\nA docs em dash \u2014 here.\n',
-  });
-  const { code, out, json } = run(dir, ['--only=shape', '--json']);
-  assert.equal(code, 0, out);
-  assert.deepEqual(emPaths(json), []);
-});
-
 test('shape: with no emDash config, an em dash in README.md is one finding; emDash.paths opts docs in', () => {
   const files = {
     'src/placeholder.ts': 'export const x = 1;\n',
@@ -104,15 +93,6 @@ test('shape: the default emDash scan covers README only, not CHANGELOG, docs or 
   const { code, out, json } = run(dir, ['--only=shape', '--json']);
   assert.equal(code, 1, out);
   assert.deepEqual(emPaths(json), ['README.md']);
-});
-
-test('shape: the default emDash scan leaves an em dash in a rule file alone', () => {
-  const dir = sandbox({
-    'src/placeholder.ts': 'export const x = 1;\n',
-    '.claude/rules/house/git.md': DASHED_RULE,
-  });
-  const { code, out } = run(dir, ['--only=shape']);
-  assert.equal(code, 0, out);
 });
 
 test('shape: mode `all` adds the rule files to the public set and reports each file once', () => {
@@ -400,11 +380,6 @@ test('shape: emDash detection finds a nested subproject site', () => {
   const dir = sandbox({ ...SRC, 'secondarrow/astro.config.mjs': 'export default {};\n', 'secondarrow/src/content/p.md': DASH });
   const { json } = run(dir, ['--only=shape', '--json']);
   assert.deepEqual(emPaths(json), ['secondarrow/src/content/p.md']);
-});
-
-test('shape: plain docs/ with no generator stays out of the default scan', () => {
-  const { code, out } = run(sandbox({ ...SRC, 'docs/handover.md': DASH }), ['--only=shape']);
-  assert.equal(code, 0, out);
 });
 
 test('shape: detect false turns site detection off', () => {

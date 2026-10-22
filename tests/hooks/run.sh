@@ -276,9 +276,11 @@ expect_allow() {
   fi
 }
 
-# expect_deny <label> <payload-json> [reason-substring]
+# expect_deny <label> <payload-json> [reason-substring ...]
+# Every substring must be in the deny reason; the failure names the first one missing.
 expect_deny() {
-  local label="$1" payload="$2" want_substr="${3:-}"
+  local label="$1" payload="$2" want_substr
+  shift 2
   run_hook "$payload"
   if [[ "$HOOK_CODE" -ne 0 ]]; then
     fail "$label" "expected exit 0, got $HOOK_CODE (out=[$HOOK_OUT])"
@@ -291,10 +293,12 @@ expect_deny() {
     fail "$label" "expected DENY, got decision=[$decision] out=[$HOOK_OUT]"
     return
   fi
-  if [[ -n "$want_substr" && "$reason" != *"$want_substr"* ]]; then
-    fail "$label" "deny reason missing expected substring [$want_substr]: $reason"
-    return
-  fi
+  for want_substr in "$@"; do
+    if [[ -n "$want_substr" && "$reason" != *"$want_substr"* ]]; then
+      fail "$label" "deny reason missing expected substring [$want_substr]: $reason"
+      return
+    fi
+  done
   pass "$label"
 }
 
@@ -477,12 +481,8 @@ done
 # --- 7/8. UNARMED: push naming master DENY (and names the arming command),
 #          push origin feat/x from feat/x ALLOW ---
 r="$TMP_ROOT/case07"; new_repo "$r"; adopt "$r"
-expect_deny "unarmed: push origin master from master" \
-  "$(mk_payload "git push origin master" "$r")" "feature branch"
-expect_deny "unarmed: the deny names the arming command" \
-  "$(mk_payload "git push origin master" "$r")" "floor is not armed in this checkout"
-expect_deny "unarmed: the arming command names this checkout's .githooks" \
-  "$(mk_payload "git push origin master" "$r")" \
+expect_deny "unarmed: push origin master from master; the deny names the feature branch, the arming command, and this checkout's .githooks" \
+  "$(mk_payload "git push origin master" "$r")" "feature branch" "floor is not armed in this checkout" \
   "core.hooksPath \"$(git -C "$r" rev-parse --show-toplevel)/.githooks\""
 git -C "$r" checkout -q -b feat/x
 expect_allow "unarmed: push origin feat/x from feat/x" \
@@ -495,25 +495,34 @@ expect_allow "unarmed: push origin feat/x from feat/x" \
 #     change, a write or removal under .githooks/, and --no-verify are still
 #     refused. ---
 _unset_hp="git"" config --unset core.hooks""Path"; _noverify="--no-""verify"
-_disable_states() { # <repo> <label>
-  expect_allow "$2: push origin master is allowed, with no arming advice" \
-    "$(mk_payload "git push origin master" "$1")"
-  expect_allow "$2: a commit on master is allowed" \
-    "$(mk_payload "git commit -m x" "$1")"
-  expect_allow "$2: a merge on master is allowed" \
-    "$(mk_payload "git merge topic" "$1")"
-  expect_deny_without "$2: unsetting core.hooksPath is still refused, with no arming advice" \
-    "$(mk_payload "$_unset_hp" "$1")" "arm it"
-  expect_deny_without "$2: removing .githooks is still refused, with no arming advice" \
-    "$(mk_payload "rm -rf .githooks" "$1")" "arm it"
+# <repo> <label> <all|edit>: "all" runs every case, "edit" only the Edit case.
+# The six command cases (push, commit, merge, unset core.hooksPath, rm .githooks,
+# the no-verify flag) run once, in the second call below. That call is also what
+# covers the `"config":{}` shape `house disable` writes into house.json. The
+# Edit case runs in both states.
+_disable_states() {
+  if [[ "$3" == all ]]; then
+    expect_allow "$2: push origin master is allowed, with no arming advice" \
+      "$(mk_payload "git push origin master" "$1")"
+    expect_allow "$2: a commit on master is allowed" \
+      "$(mk_payload "git commit -m x" "$1")"
+    expect_allow "$2: a merge on master is allowed" \
+      "$(mk_payload "git merge topic" "$1")"
+    expect_deny_without "$2: unsetting core.hooksPath is still refused, with no arming advice" \
+      "$(mk_payload "$_unset_hp" "$1")" "arm it"
+    expect_deny_without "$2: removing .githooks is still refused, with no arming advice" \
+      "$(mk_payload "rm -rf .githooks" "$1")" "arm it"
+  fi
   expect_deny_without "$2: an Edit under .githooks is still refused, with no arming advice" \
     "$(mk_file_payload Edit "$1/.githooks/pre-commit.d/20-secrets" "$1")" "arm it"
-  expect_deny_without "$2: $_noverify is still refused, with no arming advice" \
-    "$(mk_payload "git commit $_noverify -m x" "$1")" "arm it"
+  if [[ "$3" == all ]]; then
+    expect_deny_without "$2: $_noverify is still refused, with no arming advice" \
+      "$(mk_payload "git commit $_noverify -m x" "$1")" "arm it"
+  fi
 }
 r="$TMP_ROOT/case151off"; new_repo "$r"
 adopt "$r" '{"branchPolicy":"pr","modules":{"github":{"enabled":false,"config":{}}}}'
-_disable_states "$r" "github module off at HEAD, no floor"
+_disable_states "$r" "github module off at HEAD, no floor" edit
 # The other state disable leaves: core.hooksPath still set (the user has not
 # unset it yet) and the floor files gone, the secrets scaffold left behind.
 r="$TMP_ROOT/case151set"; new_repo "$r"
@@ -522,7 +531,7 @@ mkdir -p "$r/.githooks/pre-commit.d"
 printf '#!/bin/sh\nexit 0\n' >"$r/.githooks/pre-commit.d/20-secrets"
 git -C "$r" add .githooks && git -C "$r" commit -q -m "scaffold left behind"
 arm_hookspath "$r"
-_disable_states "$r" "github module off at HEAD, core.hooksPath still set, floor files gone"
+_disable_states "$r" "github module off at HEAD, core.hooksPath still set, floor files gone" all
 
 # --- #152: house uninstall. Its command text, with a realistic plugin path, is
 #     not a git verb and not a floor mutation, so the guard allows it on a
@@ -1148,10 +1157,8 @@ expect_allow "git config --get core.hooksPath is readable" \
   "$(mk_payload "git config --get core.$_ph" "$d")"
 expect_allow "git config --get-all core.hooksPath is readable" \
   "$(mk_payload "git config --get-all core.$_ph" "$d")"
-expect_deny "git config --unset core.hooksPath" \
-  "$(mk_payload "git config --unset core.$_ph" "$d")" "disables or moves"
-expect_deny "the refusal of a hooks-path write names the read-only floor-status route (#266)" \
-  "$(mk_payload "git config --unset core.$_ph" "$d")" "node .house/check.mjs --floor-status"
+expect_deny "git config --unset core.hooksPath; the refusal names the read-only floor-status route (#266)" \
+  "$(mk_payload "git config --unset core.$_ph" "$d")" "disables or moves" "node .house/check.mjs --floor-status"
 expect_deny "git config --get core.hooksPath chained with --unset" \
   "$(mk_payload "git config --get core.$_ph && git config --unset core.$_ph" "$d")" "disables or moves"
 expect_deny "a -c assignment next to a readable --get" \
@@ -1783,10 +1790,8 @@ else
 
   b="$TMP_ROOT/broken-edit"; mk_broken_floor "$b"
   printf '\n# tampered\n' >>"$b/.githooks/pre-push"
-  expect_deny "not intact: an edited floor file makes a push naming master refusable again" \
-    "$(mk_payload "git push origin master" "$b")" "protected branch"
-  expect_deny "not intact: and the message names house render --apply" \
-    "$(mk_payload "git push origin master" "$b")" "house render --apply"
+  expect_deny "not intact: an edited floor file makes a push naming master refusable again, and the message names house render --apply" \
+    "$(mk_payload "git push origin master" "$b")" "protected branch" "house render --apply"
   expect_deny_without "not intact: the message does NOT tell you to write core.hooksPath" \
     "$(mk_payload "git push origin master" "$b")" "git config core.hooksPath"
 
@@ -1872,12 +1877,8 @@ if [[ -z "$GIT_OLD_DIR" ]]; then
 else
   HOOK_PATH_PREFIX="$GIT_OLD_DIR"
   git -C "$a" checkout -q master
-  expect_deny "old git: an armed, intact floor still reads as unarmed" \
-    "$(mk_payload "git push origin master" "$a")" "protected branch"
-  expect_deny "old git: and the deny says which git and why" \
-    "$(mk_payload "git push origin master" "$a")" "has no reference-transaction hook"
-  expect_deny "old git: the upgrade is the remedy, not a re-render" \
-    "$(mk_payload "git push origin master" "$a")" "upgrade git to 2.28 or newer"
+  expect_deny "old git: an armed, intact floor still reads as unarmed; the deny says which git and why, and the upgrade is the remedy, not a re-render" \
+    "$(mk_payload "git push origin master" "$a")" "protected branch" "has no reference-transaction hook" "upgrade git to 2.28 or newer"
   expect_deny_without "old git: and it does NOT tell you to write core.hooksPath" \
     "$(mk_payload "git push origin master" "$a")" "git config core.hooksPath"
   expect_deny "old git: a merge on master is refused, because nothing else sees it" \
@@ -1890,18 +1891,14 @@ fi
 git -C "$a" checkout -q feat/a
 
 # ── Edit/Write/MultiEdit/NotebookEdit: nothing under .githooks/ or the git dir
-expect_deny "Edit on a vendored .githooks file" \
-  "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "part of the git-hook floor"
 # #167: render restores the floor only while the github module is on (ADR 0017),
 # so the refusals do not promise a restore unconditionally.
-expect_deny "Edit on a vendored .githooks file: render's restore is conditional on the github module" \
-  "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "only while the github module is on"
-expect_deny "Write on .git/config: render's restore is conditional on the github module" \
-  "$(mk_file_payload Write "$a/.git/config" "$a")" "only while the github module is on"
+expect_deny "Edit on a vendored .githooks file; render's restore is conditional on the github module" \
+  "$(mk_file_payload Edit "$a/.githooks/pre-push" "$a")" "part of the git-hook floor" "only while the github module is on"
+expect_deny "Write on .git/config; render's restore is conditional on the github module" \
+  "$(mk_file_payload Write "$a/.git/config" "$a")" "git-hook floor" "only while the github module is on"
 expect_deny "MultiEdit on a vendored .githooks file" \
   "$(mk_file_payload MultiEdit "$a/.githooks/pre-commit.d/10-house-branch" "$a")" "part of the git-hook floor"
-expect_deny "Write on .git/config" \
-  "$(mk_file_payload Write "$a/.git/config" "$a")" "git-hook floor"
 # NotebookEdit names its target in notebook_path, not file_path, and gets
 # exactly the Edit/Write rules. A payload with no readable notebook_path is an
 # unreadable payload, refused in an adopted repo the way an Edit with no
@@ -1963,10 +1960,8 @@ for _tool in Edit Write; do
     "$(mk_real_file_payload "$_tool" "$pg/link/pre-push" "$pg")" "git-hook floor"
   expect_deny "$_tool through a directory symlink into the git directory with a plain name" \
     "$(mk_real_file_payload "$_tool" "$pg/gl/config" "$pg")" "git-hook floor"
-  expect_deny "$_tool on a plainly named file symlink to a floor file" \
-    "$(mk_real_file_payload "$_tool" "$pg/notes.txt" "$pg")" "git-hook floor"
-  expect_deny "$_tool through a symlink into the floor: render's restore is conditional on the github module" \
-    "$(mk_real_file_payload "$_tool" "$pg/notes.txt" "$pg")" "only while the github module is on"
+  expect_deny "$_tool on a plainly named file symlink to a floor file; render's restore is conditional on the github module" \
+    "$(mk_real_file_payload "$_tool" "$pg/notes.txt" "$pg")" "git-hook floor" "only while the github module is on"
 done
 expect_allow "Edit through a symlink that points somewhere harmless" \
   "$(mk_real_file_payload Edit "$pg/shortcut/guide.md" "$pg")"

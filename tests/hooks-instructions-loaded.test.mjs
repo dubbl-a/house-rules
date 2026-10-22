@@ -124,21 +124,22 @@ test('honors CLAUDE_CODE_PROJECT_DIR_NAME beside CLAUDE_CONFIG_DIR for the log k
 });
 
 test('CLAUDE_CODE_PROJECT_DIR_NAME alone, without CLAUDE_CONFIG_DIR beside it, is ignored (falls back to cwd)', () => {
-  // Sandboxing still sets CLAUDE_CONFIG_DIR here (so the real ~/.claude is
-  // never touched), but the point under test is that a bare
-  // CLAUDE_CODE_PROJECT_DIR_NAME does not itself win over cwd when set
-  // independently of this call's env override -- runHook always pins
-  // CLAUDE_CONFIG_DIR, so this instead confirms the fallback key (cwd) is
-  // what actually gets used end to end.
-  const configDir = sandboxConfigDir();
+  // runHook always pins CLAUDE_CONFIG_DIR, so this spawns the hook itself:
+  // CLAUDE_CONFIG_DIR is removed, HOME is a sandbox (so ~/.claude is never the
+  // real one), and CLAUDE_CODE_PROJECT_DIR_NAME is set on its own.
+  const home = sandboxConfigDir();
   const payload = JSON.stringify({ session_id: 's', cwd: '/another/repo', file_path: 'x', load_reason: 'session_start' });
-  const { code } = runHook(payload, { CLAUDE_CONFIG_DIR: configDir });
-  assert.equal(code, 0);
-  assert.ok(existsSync(logPathFor(configDir, '-another-repo')));
+  const childEnv = { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CODE_PROJECT_DIR_NAME: 'named-project' };
+  delete childEnv.CLAUDE_CONFIG_DIR;
+  const res = spawnSync(process.execPath, [HOOK_PATH], { input: payload, encoding: 'utf8', env: childEnv });
+  assert.equal(res.status, 0, res.stderr);
+  const cfgDir = join(home, '.claude');
+  assert.ok(existsSync(logPathFor(cfgDir, '-another-repo')), 'falls back to the cwd key');
+  assert.ok(!existsSync(logPathFor(cfgDir, 'named-project')), 'the name alone does not key the log');
 });
 
 test('malformed stdin exits 0 and writes nothing', () => {
-  for (const bad of ['not json', '', '{"cwd": 42}', 'null', '[]', '"just a string"', '{}']) {
+  for (const bad of ['not json', '', '{"cwd": 42}', 'null', '[]', '"just a string"', '{}', '{"session_id":"s","file_path":"x","load_reason":"session_start"}']) {
     const { code, out, err, configDir } = runHook(bad);
     assert.equal(code, 0, `bad=${JSON.stringify(bad)} err=${err}`);
     assert.equal(out, '', `bad=${JSON.stringify(bad)} must not write to stdout`);
@@ -270,14 +271,6 @@ test('trimIfOversized sweeps stale .tmp siblings for a dead pid or an old mtime,
   } finally {
     liveChild.kill();
   }
-});
-
-test('a repo whose cwd derives an empty key (missing cwd) writes nothing, rather than guessing a log path', () => {
-  const payload = JSON.stringify({ session_id: 's', file_path: 'x', load_reason: 'session_start' });
-  const { code, out, configDir } = runHook(payload);
-  assert.equal(code, 0);
-  assert.equal(out, '');
-  assert.ok(!existsSync(join(configDir, 'house')));
 });
 
 // ── concurrency (#37) ────────────────────────────────────────────────────

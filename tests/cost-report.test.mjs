@@ -256,6 +256,7 @@ test('hook: over threshold prints one line once, then marks it shown', () => {
   assert.match(first.systemMessage, /HOUSE_COST_CHECK=off/);
   assert.ok(first.hookSpecificOutput.additionalContext);
   assert.ok(JSON.parse(readFileSync(stateFile(cfg), 'utf8')).shownAt);
+  assert.deepEqual(readdirSync(join(cfg, 'house')).filter((f) => f.endsWith('.tmp')), [], 'the shown-at write leaves no temp file');
   assert.equal(hook(cfg).out.systemMessage, undefined);
 });
 
@@ -338,20 +339,6 @@ test('hook: a scan that finishes between the due check and the lock acquire is n
   assert.ok(!existsSync(join(cfg, 'house', 'cost-check.lock')), 'the lock the hook took is released');
 });
 
-test('hook: a fresh lock blocks a spawn and a lock older than an hour does not', () => {
-  const cfg = tmp();
-  const lock = join(cfg, 'house', 'cost-check.lock');
-  mkdirSync(join(cfg, 'house'), { recursive: true });
-  writeFileSync(lock, '1');
-  const log = join(cfg, 'spawns.log');
-  hook(cfg, { env: { HOUSE_COST_CHECK_SPAWN_LOG: log } });
-  assert.ok(!existsSync(log), 'fresh lock: no spawn');
-  const old = new Date(Date.now() - 2 * 3600000);
-  utimesSync(lock, old, old);
-  hook(cfg, { env: { HOUSE_COST_CHECK_SPAWN_LOG: log } });
-  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
-});
-
 test('hook: two hooks that both judge a lock stale do not each take it', async () => {
   // A copy of the hook beside a stub scan that outlives the test body, so the scan never
   // finishes and removes the lock mid-test.
@@ -383,14 +370,6 @@ test('hook: two hooks that both judge a lock stale do not each take it', async (
   assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
   assert.ok(existsSync(lock), "the second hook's fresh lock is still in place");
   assert.deepEqual(readdirSync(join(cfg, 'house')), ['cost-check.lock']);
-});
-
-test('hook: the shown-at write leaves no temp file and a whole state file', () => {
-  const cfg = tmp();
-  seed(cfg);
-  assert.match(hook(cfg).out.systemMessage, /\$35 of \$120/);
-  assert.deepEqual(readdirSync(join(cfg, 'house')).filter((f) => f.endsWith('.tmp')), []);
-  assert.ok(JSON.parse(readFileSync(stateFile(cfg), 'utf8')).shownAt);
 });
 
 test('hook: an unshown over-threshold result is shown before a rescan replaces it', async () => {
@@ -442,19 +421,13 @@ test('premiums: each factor is the extra cost over the same tokens without it', 
   assert.equal(l.usOnlyUsd, 0);
 });
 
-test('premiums: factors are removed one at a time from a request carrying all three', () => {
+test('premiums: totalUsd is the cost minus the standard price, not the sum of the overlapping factors', () => {
   const d = tmp();
   put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5', ts: ago(60), inTok: 1e6, speed: 'fast', geo: 'us' })]);
   const p = report(d).premiums;
   near(p.fastUsd, 11 - 5.5);
   near(p.usOnlyUsd, 11 - 10);
   near(p.legacyModelUsd, 11 - 8.8);
-});
-
-test('premiums: totalUsd is the cost minus the standard price, not the sum of the overlapping factors', () => {
-  const d = tmp();
-  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5', ts: ago(60), inTok: 1e6, speed: 'fast', geo: 'us' })]);
-  const p = report(d).premiums;
   near(p.totalUsd, 11 - 4);
   assert.ok(p.fastUsd + p.usOnlyUsd + p.legacyModelUsd > p.totalUsd);
   const out = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' }).stdout;

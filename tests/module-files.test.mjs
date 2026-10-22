@@ -321,16 +321,6 @@ test('assert-main-at-origin: assertMainAtOrigin passes on the default branch at 
   assert.match(res.stdout, /OK/);
 });
 
-test('assert-main-at-origin: assertMainAtOrigin refuses on a feature branch', () => {
-  const { work } = makeRepoWithOrigin('main');
-  execFileSync('git', ['-C', work, 'checkout', '-q', '-b', 'feature/x']);
-  const res = runNode(
-    `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('t'); });`,
-  );
-  assert.equal(res.status, 1);
-  assert.match(res.stderr, /must run from main at origin\/main/);
-});
-
 test('assert-main-at-origin: the wrong-branch refusal names the npm script, not a scripts/house path (#179)', () => {
   const { work } = makeRepoWithOrigin('main');
   execFileSync('git', ['-C', work, 'checkout', '-q', '-b', 'feature/x']);
@@ -338,6 +328,7 @@ test('assert-main-at-origin: the wrong-branch refusal names the npm script, not 
     `import(${JSON.stringify(ASSERT_MAIN_URL)}).then((m) => { process.chdir(${JSON.stringify(work)}); m.assertMainAtOrigin('deploy'); });`,
   );
   assert.equal(res.status, 1);
+  assert.match(res.stderr, /must run from main at origin\/main/);
   assert.match(res.stderr, /^ +npm run deploy \.\.\.$/m);
   assert.doesNotMatch(res.stderr, /scripts\/house\//);
 });
@@ -495,12 +486,6 @@ test('deploy-guards: assertCiGreen still passes on a green tip without asking fo
 // github/scan-dist-secrets.mjs
 // ===========================================================================
 
-test('scan-dist-secrets: --self-test passes (planted canary detected, no real secrets involved)', () => {
-  const res = spawnSync(process.execPath, [SCAN_SECRETS, '--self-test'], { encoding: 'utf8' });
-  assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stdout, /self-test OK/);
-});
-
 test('scan-dist-secrets: catches a planted real-looking token in a fixture dist/ (positive control)', () => {
   const dir = mktemp('house-scan-dist-');
   const distDir = join(dir, 'dist');
@@ -615,6 +600,7 @@ function scanGitMode(dir, ...args) {
 test('scan-dist-secrets: --self-test covers every rule, --staged, --history and the allowlist', () => {
   const res = spawnSync(process.execPath, [SCAN_SECRETS, '--self-test'], { encoding: 'utf8' });
   assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /self-test OK/);
   assert.match(res.stdout, /8 rules, --staged, --history, allowlist/);
 });
 
@@ -2047,16 +2033,6 @@ test('deep-research check: --install writes the build marker house doctor reads 
   const sha12 = (b) => createHash('sha256').update(b).digest('hex').slice(0, 12);
   assert.equal(m[1], sha12(readFileSync(DR_CHECK)), 'the id is the hash of this script');
   assert.equal(m[2], sha12(text.replace(m[0], '')), 'the hash covers the whole fork with the marker line removed');
-});
-
-test('deep-research check: --install=<path> writes to the given path', async () => {
-  const dir = mktemp('house-dr-');
-  const body = fakeNativeBody();
-  const bin = fakeBinary(dir, body);
-  const out = join(dir, 'a', 'b', 'fork.js');
-  const res = runDrCheck([`--binary=${bin}`, `--baseline=${await unescapedShaOf(body)}`, `--install=${out}`]);
-  assert.equal(res.status, 0, res.stdout + res.stderr);
-  assert.match(readFileSync(out, 'utf8'), /name: 'deep-research-pinned'/);
 });
 
 test('deep-research check: --install overwrites an existing file without --force', async () => {

@@ -108,17 +108,13 @@ test('manifest: disabling a default-OFF module needs no deviations entry', () =>
 // #258: module defaults are part of the checker (MODULE_FACTS), so the
 // disabled-module check never depends on a plugin, a modules tree or the lock.
 // A module the checker does not ship is a finding, enabled or not.
+// Its negative control is the default-OFF case above: a shipped module disabled
+// with no plugin reachable is clean.
 test('P8: a module the checker does not ship is a finding even with nothing else reachable (positive control)', () => {
   const dir = sandbox({ 'house.json': houseJson({ modules: { 'git-workflow': { enabled: false } } }) });
   const { code, json } = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
   assert.equal(code, 1, JSON.stringify(json));
   assert.ok((json.findings || []).some((w) => /ships no module `git-workflow`/.test(w.message)), 'an unknown module must fail the gate, not silently pass');
-});
-
-test('P8: a shipped default-off module disabled with no plugin reachable is clean (negative control)', () => {
-  const dir = sandbox({ 'house.json': houseJson({ modules: { security: { enabled: false } } }) });
-  const { code, json } = run(dir, ['--only=manifest', '--json'], NO_PLUGIN);
-  assert.equal(code, 0, JSON.stringify(json));
 });
 
 test('manifest: ratchet values must be positive integers', () => {
@@ -616,37 +612,6 @@ test('#245: once a default path matches, the unrendered module is a finding, loc
   assert.ok(!has([...after.json.findings, ...after.json.warnings], /`testing` is enabled but vendored zero rules/), after.out);
 });
 
-test('#245: paths the adopter configured that match nothing stay a finding, locally and in CI', () => {
-  const d = freshBootstrap();
-  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
-  rerender(d);
-  const r = ciAndLocal(d);
-  assert.equal(r.code, 1, r.out);
-  assert.ok(has(r.json.findings, /module `testing` is enabled but vendored zero rules \(its paths matched nothing in this repo: spec\/\*\*\)/), r.out);
-});
-
-test('#244: a default-on module disabled with no deviation is a finding in CI too', () => {
-  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
-  editHouse(d, (h) => { h.modules.testing.enabled = false; });
-  rerender(d);
-  const r = ciAndLocal(d);
-  assert.equal(r.code, 1, r.out);
-  assert.ok(has(r.json.findings, /module `testing` is default-on but disabled with no deviations entry/), r.out);
-});
-
-test('#244: a lock that carries no module record changes no verdict', () => {
-  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
-  const before = ciAndLocal(d);
-  const lockPath = join(d, '.house/lock.json');
-  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-  delete lock.modules;
-  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-  gitIn(d, 'commit', '-q', '--allow-empty', '-am', 'a lock written before 0.21.3');
-  const after = ciAndLocal(d);
-  assert.equal(after.code, before.code, after.out);
-  assert.deepEqual(after.json.findings.map((x) => x.message), before.json.findings.map((x) => x.message));
-});
-
 function editLock(d, fn) {
   const lockPath = join(d, '.house/lock.json');
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
@@ -676,15 +641,6 @@ test('#244: a module this checker does not ship is a finding that names the key 
     assert.ok(f, `${name}: ${r.out}`);
     assert.doesNotMatch(f.message, /no record of module/, 're-rendering is not the only advice');
   }
-});
-
-test('#245: a house.json config edited since the last render is a finding even when the module vendored rules', () => {
-  const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
-  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
-  gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
-  const r = ciAndLocal(d);
-  assert.equal(r.code, 1, r.out);
-  assert.ok(has(r.json.findings, /its current paths match files that its vendored rules do not cover.*house render --apply/), r.out);
 });
 
 test('#245: reordering a path-glob slot is not a config change', () => {
@@ -755,14 +711,14 @@ test('#258: an adopter glob in house.json is not downgraded by editing the recor
   const d = freshBootstrap();
   editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
   rerender(d);
-  sameAfterLockEdit(d, (l) => { l.modules.testing.globs = ['zzz/**']; }, /its paths matched nothing in this repo: spec\/\*\*/);
+  sameAfterLockEdit(d, (l) => { l.modules.testing.globs = ['zzz/**']; }, /module `testing` is enabled but vendored zero rules \(its paths matched nothing in this repo: spec\/\*\*\)/);
 });
 
 test('#258: deleting the whole modules record does not silence a stale-config finding on a vendoring module', () => {
   const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
   gitIn(d, 'commit', '-q', '-am', 'house.json edited, no re-render');
-  sameAfterLockEdit(d, (l) => { delete l.modules; }, /its current paths match files that its vendored rules do not cover/);
+  sameAfterLockEdit(d, (l) => { delete l.modules; }, /its current paths match files that its vendored rules do not cover.*house render --apply/);
 });
 
 const STALE = /module `(engineering|testing)` is enabled, but its current paths match files that its vendored rules do not cover/;
@@ -818,7 +774,7 @@ test('#258: setting a disabled module record default to match does not silence t
   const d = freshBootstrap({ 'README.md': '# X\n', 'tests/a.test.mjs': '// a\n' });
   editHouse(d, (h) => { h.modules.testing.enabled = false; });
   rerender(d);
-  sameAfterLockEdit(d, (l) => { l.modules.testing.default = 'off'; }, /module `testing` is default-on but disabled/);
+  sameAfterLockEdit(d, (l) => { l.modules.testing.default = 'off'; }, /module `testing` is default-on but disabled with no deviations entry/);
 });
 
 test('#258: a lock written by 0.21.3 (record present, same module facts) checks cleanly, locally and in CI', () => {

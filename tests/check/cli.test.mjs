@@ -62,14 +62,6 @@ test('cli: --json emits {findings, warnings, scannedDocs, coloadWorst}', () => {
   assert.ok('coloadWorst' in json);
 });
 
-test('cli: exit 0 clean, exit 1 with findings', () => {
-  const clean = sandbox({ 'README.md': '# Hello\n' });
-  assert.equal(run(clean, ['--only=drift']).code, 0);
-
-  const dirty = sandbox({ 'README.md': 'See `src/missing.ts`.\n', 'src/real.ts': 'export const x = 1;\n' });
-  assert.equal(run(dirty, ['--only=drift']).code, 1);
-});
-
 test('cli: a failing run ends with the three remediations, a clean run does not', () => {
   // Both directions: a report that names no remedy teaches nothing, and a
   // clean report that names remedies is noise on every green run.

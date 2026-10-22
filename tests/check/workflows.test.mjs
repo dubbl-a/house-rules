@@ -111,7 +111,7 @@ function templateRepo(lockfiles) {
   assert.ok(Object.keys(files).some((p) => p.startsWith('.github/workflows/')), 'at least one workflow template is copied');
   return sandbox(files);
 }
-for (const locks of [['package-lock.json'], [], ['npm-shrinkwrap.json'], ['package-lock.json', 'npm-shrinkwrap.json']]) {
+for (const locks of [['package-lock.json'], [], ['npm-shrinkwrap.json'], ['package-lock.json', 'npm-shrinkwrap.json'], ['site/package-lock.json'], ['package-lock.json', 'site/package-lock.json']]) {
   test(`templates: every workflow and dependabot template the package ships is clean with ${locks.length ? locks.join(' and ') : 'no lockfile'}`, () => {
     const ws = warns(templateRepo(locks)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));
     assert.deepEqual(ws.map((w) => `${w.kind} ${w.path}:${w.line}`), []);
@@ -119,12 +119,6 @@ for (const locks of [['package-lock.json'], [], ['npm-shrinkwrap.json'], ['packa
 }
 
 // 2
-test('no-permissions: a workflow with no top-level permissions key warns', () => {
-  const body = CLEAN_WORKFLOW.replace('permissions:\n  contents: read\n', '');
-  const ws = warns(withWorkflow(body));
-  assert.deepEqual(kinds(ws), ['no-permissions']);
-});
-
 test('no-permissions: job-level permissions alone do not count as the top-level key', () => {
   const body = CLEAN_WORKFLOW.replace('permissions:\n  contents: read\n', '').replace('    runs-on:', '    permissions:\n      contents: read\n    runs-on:');
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['no-permissions']);
@@ -634,13 +628,6 @@ test('unfrozen-install: a one-line quoted name and a one-line flow sequence stil
   assert.deepEqual(warns(withWorkflow(body)), []);
 });
 
-test('templates: clean with only a nested lockfile, and with a root and a nested one', () => {
-  for (const locks of [['site/package-lock.json'], ['package-lock.json', 'site/package-lock.json']]) {
-    const ws = warns(templateRepo(locks)).filter((w) => !['codeowners', 'security-policy'].includes(w.kind));
-    assert.deepEqual(ws.map((w) => `${w.kind} ${w.path}:${w.line}`), [], locks.join(', '));
-  }
-});
-
 test('unfrozen-install: a tracked npm-shrinkwrap.json the condition does not name warns', () => {
   assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == ''", { 'package-lock.json': null, 'npm-shrinkwrap.json': '{}\n' }))), ['unfrozen-install']);
   assert.deepEqual(kinds(warns(gatedInstall("hashFiles('package-lock.json') == ''", { 'npm-shrinkwrap.json': '{}\n' }))), ['unfrozen-install']);
@@ -710,6 +697,7 @@ for (const [check, body] of Object.entries(PROMOTED)) {
     const r = run(withWorkflow(body), ['--only=workflows', '--json']);
     assert.equal(r.code, 1, r.out);
     assert.ok(r.json.findings.some((f) => f.kind === check), r.out);
+    assert.deepEqual(kinds(warns(withWorkflow(body))), [check], 'the planted violation raises its own check and no other');
     const w = run(repo({ '.github/workflows/ci.yml': body, 'house.json': GH_WAIVER(check) }), ['--only=workflows', '--json']);
     assert.equal(w.code, 0, w.out);
     assert.ok(![...w.json.findings, ...w.json.warnings].some((f) => f.kind === check), w.out);

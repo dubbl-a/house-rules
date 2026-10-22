@@ -276,22 +276,6 @@ test('init --apply writes a schema-shaped house.json with probed modules', () =>
   assert.deepEqual(data.modules.beta.config, {});
 });
 
-test('init --apply writes {} config even for a module declaring a slot with a non-empty default', () => {
-  const { cliPath } = buildFixturePlugin();
-  const repo = buildTargetRepo();
-  const { code } = runCli(cliPath, ['init', '--repo', repo, '--apply']);
-  assert.equal(code, 0);
-  const data = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
-
-  // alpha declares no configSlots at all.
-  assert.deepEqual(data.modules.alpha.config, {});
-  // beta declares `depth` with default 3 and `slot` with default []; init
-  // writes neither. Render (buildRenderPlan) is what spreads slotDefaults(m.json)
-  // under this empty config, so a repo that never touches `depth` still
-  // behaves as if it were 3 until the module's own default changes.
-  assert.deepEqual(data.modules.beta.config, {});
-});
-
 // A configured docs root that matches zero tracked .md files is a hard
 // drift finding downstream (check.mjs's "zero-match root" check), not a
 // warning, so proposing one at init would hand a fresh adopter a failing
@@ -562,16 +546,26 @@ test('#305 doctor: prints how many releases the installed plugin is behind', () 
 
 test('#305 doctor: says so when the installed plugin is the latest release', () => {
   const { cliPath } = buildFixturePlugin();
-  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.9'), rel('v9.9.8')]) });
+  const repo = buildTargetRepo();
+  const file = releasesFixture([rel('v9.9.9'), rel('v9.9.8')]);
+  const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_FIXTURE: file });
   assert.equal(r.code, 0);
   assert.match(r.out, /^installed v9\.9\.9 is the latest release$/m);
+  const cur = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: file }).out).latestRelease;
+  assert.equal(cur.ahead, false, '--json: current is not ahead');
+  assert.equal(cur.behind, 0, '--json: current is 0 behind');
 });
 
 test('#305 doctor: an unreleased local version is ahead, not behind', () => {
   const { cliPath } = buildFixturePlugin();
-  const r = runCli(cliPath, ['doctor', '--repo', buildTargetRepo()], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.8'), rel('v9.9.7')]) });
+  const repo = buildTargetRepo();
+  const file = releasesFixture([rel('v9.9.8'), rel('v9.9.7')]);
+  const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_FIXTURE: file });
   assert.equal(r.code, 0);
   assert.match(r.out, /^latest release v9\.9\.8; installed v9\.9\.9 is ahead of it \(unreleased\)$/m);
+  const ahead = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: file }).out).latestRelease;
+  assert.equal(ahead.ahead, true, '--json: ahead is true');
+  assert.equal(ahead.behind, null, '--json: ahead is not behind');
 });
 
 test('#305 doctor: offline prints not checked and keeps the exit code', () => {
@@ -660,17 +654,6 @@ test('#305 doctor: a 401 with a token retries once without it', async () => {
     assert.match(r.out, /latest release v10\.0\.0/);
     assert.deepEqual(seen(), ['Bearer secret-token', '']);
   });
-});
-
-test('#305 doctor --json: ahead is distinct from current', () => {
-  const { cliPath } = buildFixturePlugin();
-  const repo = buildTargetRepo();
-  const ahead = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.8')]) }).out).latestRelease;
-  assert.equal(ahead.ahead, true);
-  assert.equal(ahead.behind, null);
-  const cur = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json'], { HOUSE_RELEASES_FIXTURE: releasesFixture([rel('v9.9.9')]) }).out).latestRelease;
-  assert.equal(cur.ahead, false);
-  assert.equal(cur.behind, 0);
 });
 
 // #32: "plugin" as the effective guard is a real choice, but doctor printed it
@@ -2234,6 +2217,7 @@ test('#135 enable: plan only prints the house.json diff, the files, the checklis
   assert.match(r.out, /gamma: \+\d+ lines on \d+ tracked path/);
   assert.match(r.out, /dropped.*lib\/\*\*/, 'a default path whose first segment does not resolve is dropped');
   assert.match(r.out, /--apply/);
+  for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(r.out, re, 'the enable plan makes no claim about when the branch guard sees the change');
   assert.equal(gitStatusShort(repo), '', 'plan only leaves the tree untouched');
 });
 
@@ -2830,7 +2814,9 @@ test('#151 disable github: the plan names the removed floor, the scaffold left i
   const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
   assert.equal(r.code, 0, r.out + r.err);
   for (const rel of FLOOR_FILES) assert.ok(!existsSync(join(repo, '.githooks', rel)), `${rel} removed`);
-  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold stays');
+  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold stays, and keeps its directory');
+  assert.ok(!existsSync(join(repo, '.githooks', 'pre-push.d')), 'emptied by render, removed');
+  assert.ok(!existsSync(join(repo, '.githooks', 'reference-transaction.d')), 'emptied by render, removed');
   assert.equal(gitConfigGet(repo, 'core.hooksPath'), hooksPathBefore, 'disable writes no git config');
   assert.deepEqual(lockPaths(repo).filter((p) => p.startsWith('.githooks/')), []);
 
@@ -2966,18 +2952,6 @@ test('#151 render refuses to delete a hand-edited managed file whose module was 
   assert.ok(!existsSync(gamma), '--force-managed names the file, and render removes it');
 });
 
-test('#151 disable github: a directory render emptied is removed; one still holding a file stays', () => {
-  const { cliPath } = buildFloorFixture();
-  const repo = buildFloorRepo();
-  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
-  commitAll(repo, 'adopt with the floor');
-  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.ok(!existsSync(join(repo, '.githooks', 'pre-push.d')), 'emptied by render, removed');
-  assert.ok(!existsSync(join(repo, '.githooks', 'reference-transaction.d')));
-  assert.ok(existsSync(join(repo, '.githooks', 'pre-commit.d', '20-secrets')), 'the scaffold keeps its directory');
-});
-
 // ── #151 review notes ────────────────────────────────────────────────────
 
 test('#151 disable: a file of the user\'s own in .claude/rules/house/ is not managed, so it is listed and left', () => {
@@ -3044,17 +3018,6 @@ test('#151 disable: --why followed by another flag, or by nothing, is an error n
     assert.match(r.err, /--why needs a reason/);
   }
   assert.equal(gitStatusShort(repo), '');
-});
-
-test('#151 enable keeps a deviations array that was already there, emptied or not', () => {
-  const { cliPath } = buildEnableFixture();
-  const repo = enabledGammaRepo(cliPath);
-  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
-  house.deviations = [];
-  writeHouseJson(repo, house);
-  assert.equal(runCli(cliPath, ['disable', 'alpha', '--repo', repo, '--apply', '--why', 'trial']).code, 0);
-  assert.equal(runCli(cliPath, ['enable', 'alpha', '--repo', repo, '--apply']).code, 0);
-  assert.deepEqual(JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).deviations, []);
 });
 
 test('#151 with github off, doctor says the floor is off because the module is, and the arming script stays silent', () => {
@@ -3280,8 +3243,8 @@ test('#161 doctor with github off reports a core.hooksPath naming a directory th
 // What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh,
 // ADR 0017): modules.github.enabled from HEAD:house.json, so with the module off
 // it quiets its commit, push and history refusals and its arming advice, and
-// keeps its disable list. tests/hooks/run.sh pins the guard side. The last
-// three are the sentence the plan printed before #159, true only then.
+// keeps its disable list. tests/hooks/run.sh pins the guard side. All six are
+// claims the plan printed before #159, true only then.
 const FALSE_GUARD_CLAIMS = [/takes effect for the branch guard when/, /until then the guard/, /guard sees it once it is merged/,
   /does not read module state/, /keeps enforcing it by its text rules/, /floor advice/];
 
@@ -3291,6 +3254,7 @@ test('#151 disable github: the plan states what the guard follows and who unsets
   assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
   commitAll(repo, 'adopt with the floor');
   const plan = runCli(cliPath, ['disable', 'github', '--repo', repo, '--why', 'fixture']);
+  assert.equal(plan.code, 0, plan.out + plan.err);
   for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(plan.out, re);
   assert.match(plan.out, /The PreToolUse branch guard reads the github module's switch from house\.json at HEAD, so the commit and push refusals on a protected branch stand down once this change is on HEAD, on whichever branch is checked out, as do its history refusals and its advice to arm the floor\./);
   assert.match(plan.out, /Its disable list \(a core\.hooksPath change, a write or removal under \.githooks\/, --no-verify\), the ref-writing plumbing scan, and the configured-alias checks stay\./);
@@ -3305,13 +3269,6 @@ test('#151 disable github: the plan states what the guard follows and who unsets
   assert.notEqual(gitConfigGet(repo, 'core.hooksPath'), '', 'still set');
   commitAll(repo, 'a commit with core.hooksPath naming a floor that is gone');
   assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' }), /floor that is gone/);
-});
-
-test('#151 enable: the plan makes no claim about when the branch guard sees the change', () => {
-  const { cliPath } = buildEnableFixture();
-  const r = runCli(cliPath, ['enable', 'gamma', '--repo', adoptedRepo(cliPath)]);
-  assert.equal(r.code, 0, r.out + r.err);
-  for (const re of FALSE_GUARD_CLAIMS) assert.doesNotMatch(r.out, re);
 });
 
 // The reviewer's sequence: on a case-insensitive filesystem `.GIT/description`
@@ -4321,27 +4278,6 @@ test('#167 render --expect-module with the hand-off: a missing value, a flag as 
   }
   const ok = runCli(cliPath, ['render', '--repo', repo, '--apply', '--expect-module=gamma'], env);
   assert.equal(ok.code, 0, ok.out + ok.err);
-});
-
-test('#167 disable --apply still works through its own hand-off to render', () => {
-  const { cliPath } = buildEnableFixture();
-  const repo = enabledGammaRepo(cliPath);
-  const r = runCli(cliPath, ['disable', 'gamma', '--repo', repo, '--apply']);
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.ok(!existsSync(join(repo, '.claude/rules/house/gamma.md')));
-});
-
-test('#167 disable github: the plan sentence about the guard says what ADR 0017 shipped', () => {
-  const { cliPath } = buildFloorFixture();
-  const repo = buildFloorRepo();
-  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
-  commitAll(repo, 'adopt with the floor');
-  const plan = runCli(cliPath, ['disable', 'github', '--repo', repo]);
-  assert.equal(plan.code, 0, plan.out + plan.err);
-  const line = plan.out.split('\n').find((l) => l.includes('branch guard:'));
-  assert.ok(line, 'the plan has a branch guard line');
-  assert.match(line, /commit and push refusals on a protected branch stand down once this change is on HEAD/);
-  assert.match(line, /disable list \(a core\.hooksPath change, a write or removal under \.githooks\/, --no-verify\), the ref-writing plumbing scan, and the configured-alias checks stay/);
 });
 
 // #247: a step decided against leaves the not-confirmed list through a dated
