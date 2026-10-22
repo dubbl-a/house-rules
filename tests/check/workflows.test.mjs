@@ -233,6 +233,51 @@ test("#232 YAML single quotes: '' unescapes before the expression is read", () =
   assert.deepEqual(kinds(warns(exprEnv('"${{ format(\'}}\', secrets.FOO) }}"'))), ['pr-credential']);
 });
 
+// #408: three leftovers from #232.
+test('#408 pr-credential: a # comment inside a run block still reads the secret, on any line', () => {
+  const first = warns(exprRun('run: |\n          # ${{ secrets.FOO }}\n          echo hi'));
+  assert.deepEqual(kinds(first), ['pr-credential']);
+  assert.equal(first[0].line, 19);
+  const later = warns(exprRun('run: |\n          echo hi\n          echo ok # ${{ secrets.FOO }}\n          # ${{ secrets.BAR }}'));
+  assert.deepEqual(kinds(later), ['pr-credential', 'pr-credential']);
+  assert.deepEqual(later.map((w) => w.line), [20, 21]);
+  // An event read in a comment is read too.
+  assert.deepEqual(kinds(warns(exprRun('run: |\n          echo hi\n          # ${{ github.event.issue.title }}'))), ['event-in-run']);
+});
+
+test('#408 pr-credential: a # comment on a YAML line outside a scalar is still ignored', () => {
+  assert.deepEqual(warns(exprRun('run: echo hi # ${{ secrets.FOO }}')), []);
+  assert.deepEqual(warns(withWorkflow(CLEAN_WORKFLOW + PR_STEP + '        # env: ${{ secrets.FOO }}\n')), []);
+  assert.deepEqual(warns(exprEnv('x # ${{ secrets.FOO }}')), []);
+});
+
+test('#408 pr-credential: # inside a quoted multi-line scalar is content, so the secret is read', () => {
+  assert.deepEqual(kinds(warns(exprRun('run: "echo hi\n          # ${{ secrets.FOO }}"'))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(exprRun("run: 'echo hi\n          # ${{ secrets.FOO }}'"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(exprEnv('"a\n            # ${{ secrets.FOO }}"'))), ['pr-credential']);
+});
+
+test('#408 exprsIn: unclosed ${{ openers do not make the scan quadratic', () => {
+  const body = Array.from({ length: 8000 }, () => 'echo ${{ x').join('\n          ');
+  const dir = exprRun(`run: |\n          ${body}`);
+  const t0 = Date.now();
+  const ws = warns(dir);
+  const ms = Date.now() - t0;
+  assert.deepEqual(ws, []);
+  assert.ok(ms < 2000, `took ${ms} ms`);
+});
+
+test('#408 single-quoted scalar: the reported expression is the written text', () => {
+  const written = "format(''{0}'', github.event.issue.title)";
+  const dir = exprRun(`run: 'echo \${{ ${written} }}'`);
+  const ws = warns(dir);
+  assert.deepEqual(kinds(ws), ['event-in-run']);
+  const file = readFileSync(join(dir, '.github/workflows/ci.yml'), 'utf8');
+  const quoted = ws[0].message.match(/`(\$\{\{[^`]*\}\})`/);
+  assert.ok(quoted, ws[0].message);
+  assert.ok(file.includes(quoted[1]), `not in the file: ${quoted[1]}`);
+});
+
 test('event-in-run: event data in an agent prompt input warns', () => {
   const body = CLEAN_WORKFLOW.replace('prompt: Review the diff.', 'prompt: |\n            Review: ${{ github.event.issue.body }}');
   assert.deepEqual(kinds(warns(withWorkflow(body))), ['event-in-run']);
