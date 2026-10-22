@@ -9,6 +9,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Fixed
 
 - `house render --apply`, `house enable`, `house disable github` and `house uninstall` refuse to remove the git-hook floor unless the remote's default branch (`origin/HEAD`, else `origin/main` or `origin/master`) sets `modules.github.enabled` to `false` in its `house.json` (#161). Turning the module off in the working tree used to delete the floor at once, so a push to the protected branch met no hook. Land the change through a merged pull request, fetch, then render. `house doctor` with the module off now names a `core.hooksPath` that points at a missing directory.
+- The branch-floor test case c23 (`fetch origin master:master`) no longer fails on git before 2.51.0, such as the Claude Code cloud container. Those versions commit the branch and its remote-tracking ref in separate transactions, so the hook refuses, failing safe (git commit `0e358de64`, fixed in 2.51.0). The test now asserts the refusal below 2.51 plus `fetch --atomic` as the working path, and the GitHub handbook documents the limit and workarounds. The floor itself is unchanged.
 - The workflows checks read `${{ }}` expressions with one small tokenizer instead of regexes (#232). `event-in-run` now finds the true end of an expression, so a `}` inside a string literal no longer hides event data after it, and `pr-credential` reads a secret as a `secrets` identifier at the start of a property chain. An expression split across lines is still not read.
 
 ### Added
