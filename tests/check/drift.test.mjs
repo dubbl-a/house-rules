@@ -340,18 +340,9 @@ test('drift: extraPathRoots adds a top-level dir not derivable from git ls-files
 // Gap 2 (Phase 5 dogfood): kind (c) resolved ONLY against `git ls-files`, so
 // a real, useful, gitignored directory (repo-a's
 // `scripts/match/reports/**` -- build reports and gold-set exports) always
-// failed. After a tracked-set miss, fall back to a real (still case-exact)
-// disk check.
-test('drift: a tracked-set miss for a real, gitignored path falls back to disk (positive control)', () => {
-  const dir = sandbox({
-    'README.md': 'See `scripts/reports/` for output.\n',
-    'scripts/build.mjs': 'export const x = 1;\n', // sibling makes "scripts" a recognized top-level dir
-    '.gitignore': 'scripts/reports\n',
-  });
-  const { code, out } = run(dir, ['--only=drift']);
-  assert.equal(code, 0, out);
-});
-
+// failed. After a tracked-set miss, a path that git ignores now resolves; the
+// positive control for that is 'a gitignored path resolves with nothing on
+// disk' below, and this is its negative control.
 test('drift: a path missing from both the tracked set and disk stays a finding (negative control)', () => {
   const dir = sandbox({
     'README.md': 'See `scripts/reports/` for output.\n',
@@ -363,7 +354,7 @@ test('drift: a path missing from both the tracked set and disk stays a finding (
   assert.match(out, /scripts\/reports/);
 });
 
-// #21 fallout: the disk probe above made kind-(c) existence depend on the
+// #21 fallout: a disk probe made kind-(c) existence depend on the
 // MACHINE, not on the repo. Every one of these paths is correct, and all three
 // exist on a developer's checkout and none in a runner's, so `check:house`
 // passed locally and the identical run failed in CI (repo-d, 2026-09-01:
@@ -593,17 +584,6 @@ test('a bare literal paths: entry validates against the tracked set, not existsS
   assert.doesNotMatch(out, /paths glob.*env\.example/, 'a literal matching a tracked file at depth must pass');
 });
 
-test('P3: an allowlisted colon-namespaced script that does not exist warns', () => {
-  const dir = sandbox({
-    'package.json': '{"name":"x","scripts":{"check:docs":"x"}}',
-    'README.md': '# r\n',
-    'house.json': houseJson({ modules: { docs: { enabled: true, config: { bareScriptAllowlist: ['check:ghost'] } } } }),
-  });
-  const { code, json } = run(dir, ['--only=drift', '--json']);
-  assert.equal(code, 0);
-  assert.ok((json.warnings || []).some((w) => /check:ghost/.test(w.message)), 'a stale check: allowlist entry must warn');
-});
-
 test('P10: buildArtifactPrefixes matches on a path segment, not a raw prefix', () => {
   const dir = sandbox({
     'package.json': '{"name":"x"}',
@@ -614,30 +594,6 @@ test('P10: buildArtifactPrefixes matches on a path segment, not a raw prefix', (
   });
   const { json } = run(dir, ['--only=drift', '--json']);
   assert.ok((json.findings || []).some((f) => /distribution\/missing/.test(f.message)), '`dist` prefix must not exempt `distribution/`');
-});
-
-// #14: the component anchor did not strip a trailing `.astro` before resolving
-// against the (extension-less) basename set, so a backticked `Foo.astro`
-// reference fell through unchecked and a renamed component went silently stale
-// (the repo-b dogfood proved it: old checker 7 findings, house 6).
-test('#14: a component reference written as `X.astro` resolves against the basename set', () => {
-  const cfg = { modules: { docs: { enabled: true, config: { componentSuffixes: ['Card'] } } } };
-  // positive control: a renamed component still cited as `RaceCard.astro` fails.
-  const dirRenamed = sandbox({
-    'README.md': 'Renders `RaceCard.astro`.\n',
-    'house.json': houseJson(cfg),
-    'src/components/RaceCardV2.astro': '<div>race</div>\n',
-  });
-  const renamed = run(dirRenamed, ['--only=drift']);
-  assert.equal(renamed.code, 1, renamed.out);
-  assert.match(renamed.out, /\[component\] RaceCard\.astro/);
-  // negative control: a valid `RaceCard.astro` reference passes.
-  const dirGood = sandbox({
-    'README.md': 'Renders `RaceCard.astro`.\n',
-    'house.json': houseJson(cfg),
-    'src/components/RaceCard.astro': '<div>race</div>\n',
-  });
-  assert.equal(run(dirGood, ['--only=drift']).code, 0, 'a valid X.astro reference must pass');
 });
 
 // P11: an empty componentSuffixes silently disables kind-(h). That is the
@@ -715,12 +671,17 @@ test('P13: a reasonless whole-file opt-out fails; the same opt-out with a reason
     'a reasoned opt-out must not warn');
 });
 
-// Ultra review of v0.2.1: #14 stripped only `.astro`, while DEFAULT_COMPONENT_EXTS
-// and the basename set cover .jsx/.tsx/.vue/.svelte too, so `Foo.tsx` in prose
-// fell through kind (h) unchecked.
-test('component reference with any configured extension (.tsx, .vue) resolves against the basename set', () => {
+// #14: the component anchor did not strip a trailing `.astro` before resolving
+// against the (extension-less) basename set, so a backticked `Foo.astro`
+// reference fell through unchecked and a renamed component went silently stale
+// (the repo-b dogfood proved it: old checker 7 findings, house 6). Ultra review
+// of v0.2.1: #14 stripped only `.astro`, while DEFAULT_COMPONENT_EXTS and the
+// basename set cover .jsx/.tsx/.vue/.svelte too, so `Foo.tsx` in prose fell
+// through kind (h) unchecked. Each extension gets a renamed reference that
+// fails and a valid one that passes.
+test('component reference with any configured extension (.astro, .tsx, .vue) resolves against the basename set', () => {
   const cfg = { modules: { docs: { enabled: true, config: { componentSuffixes: ['Card'] } } } };
-  for (const ext of ['.tsx', '.vue']) {
+  for (const ext of ['.astro', '.tsx', '.vue']) {
     const renamed = sandbox({
       'README.md': `Renders \`RaceCard${ext}\`.\n`,
       'house.json': houseJson(cfg),

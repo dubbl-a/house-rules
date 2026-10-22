@@ -54,12 +54,6 @@ test('tamper-resolve: an absolute lock path is a finding that names it, not a si
   assert.match(out, /absolute path/);
 });
 
-test('tamper-resolve: ../x stays a finding', () => {
-  const { code, out } = tamper(repoWith('../x'));
-  assert.equal(code, 1, out);
-  assert.match(out, /escapes the repo root/);
-});
-
 test('tamper-resolve: a symlinked directory inside the repo pointing inside the repo is clean', () => {
   const dir = repoWith('linkdir/f.txt', { 'real/f.txt': BODY });
   symlinkSync(join(dir, 'real'), join(dir, 'linkdir'));

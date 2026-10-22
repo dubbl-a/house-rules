@@ -42,6 +42,7 @@ test('floor-status: an armed sandbox reports armed, and exits 0', () => {
   const { code, json } = run(dir, ['--floor-status', '--json']);
   assert.equal(code, 0);
   assert.equal(json.floorStatus.armed, true, JSON.stringify(json));
+  assert.equal(json.floorStatus.basis, 'lock', 'the JSON names its basis, so armed is read as lock-relative');
   assert.equal(json.floorStatus.hooksPathResolves, true);
   assert.equal(json.floorStatus.filesMatchLock, true);
   assert.equal(json.floorStatus.hooksDirMatchesHead, true);
@@ -96,10 +97,6 @@ test('floor-status: the ordinary run never reads machine state (ADR 0008)', () =
 // machine", so these shapes must all answer instead of dying.
 const sh = (cmd, args, cwd) => spawnSync(cmd, args, { cwd, encoding: 'utf8' });
 const status = (dir, extra = []) => sh('node', [CHECK_SRC, '--floor-status', '--json', ...extra], dir);
-
-test('floor-status: the JSON names its basis, so armed is read as lock-relative', () => {
-  assert.equal(run(armedSandbox(), ['--floor-status', '--json']).json.floorStatus.basis, 'lock');
-});
 
 test('floor-status: a hook only group-executable is not runnable, so not armed (access X_OK)', () => {
   const dir = armedSandbox();

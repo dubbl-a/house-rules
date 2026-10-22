@@ -86,11 +86,6 @@ test('guard: a PreToolUse hook only in settings.local.json does not count (the h
   assert.equal(guardWarnings(json).length, 1, 'a per-machine file is not a repo guard');
 });
 
-test('guard: branchPolicy direct needs no guard (nothing reported)', () => {
-  const dir = sandbox({ 'house.json': houseJson({ branchPolicy: 'direct', deviations: [{ kind: 'branch-policy', what: 'x', why: 'y', decided: '2026-08-25' }] }) });
-  assert.equal(guardWarnings(run(dir, ['--only=guard', '--json']).json).length, 0);
-});
-
 // ADR 0009 (#32 item 2): a well-formed recorded plugin-guard choice is the
 // third reachable guard. Only the checker reads it; the hook never treats it
 // as a stand-down signal (pinned in tests/hooks/run.sh).

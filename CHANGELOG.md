@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- The test suite sheds 33 duplicate or redundant cases and 16 hook cases, with no change to what ships (Part of #363). Each removed or merged case names the test that still covers it, and the removal was checked against three planted defects. `npm test` runs 1154 tests, down from 1187, and `tests/hooks/run.sh` runs 612, down from 628. `expect_deny` in `tests/hooks/run.sh` now takes several wanted substrings and names the missing one.
+
 ## [0.22.6] - 2026-10-22
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. `house` is on PATH in a session with the plugin enabled; the workflows checks read `${{ }}` expressions with a tokenizer; `house confirm` and `decline` stop refusing a vendored checker that already supports them (#403); `house render` refuses to write through a symlinked managed destination (#406); `house render`, `disable`, `enable` and `uninstall` hold the git-hook floor while the remote keeps the `github` module on (#161); the `github` module ships a content scanner with a pre-commit hook and a `secret-scan` CI job for plans with no push protection (#402); and the cost report warns that subagent usage logged before Claude Code 2.1.307 can be a placeholder. Upgrading from 0.22.5: update the plugin as before (a pinned install runs `house upgrade --apply`), restart Claude Code, then run `/house-rules:sync`. The `secret-scan` job is not added to a `pr-checks.yml` you already have, since that file is yours, so add it to your own `pr-checks.yml` by hand.

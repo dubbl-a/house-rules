@@ -69,6 +69,7 @@ test('pins: every REUSE or BORROW row is pinned or listed as unpinned with a rea
 
 test('pins: the orchestration-kit entry equals the kit checker\'s PINNED, so the two cannot drift', async () => {
   const { PINNED } = await import(pathToFileURL(KIT_CHECK).href);
+  assert.match(PINNED.remote, /^https:\/\/github\.com\//);
   const kit = pinsFile().pins.filter((p) => p.remote === PINNED.remote);
   assert.equal(kit.length, 1, 'exactly one pin on the kit remote');
   assert.equal(kit[0].sha, PINNED.sha);

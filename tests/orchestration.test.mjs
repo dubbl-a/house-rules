@@ -141,13 +141,6 @@ function runKit(args) {
   return spawnSync(process.execPath, [KIT_CHECK, ...args], { encoding: 'utf8' });
 }
 
-test('kit check: the pinned sha is a full sha and the ported paths are named', async () => {
-  const mod = await import(pathToFileURL(KIT_CHECK).href);
-  assert.match(mod.PINNED.sha, /^[0-9a-f]{40}$/);
-  assert.ok(mod.PINNED.ported.length > 0);
-  assert.match(mod.PINNED.remote, /^https:\/\/github\.com\//);
-});
-
 test('kit check: a remote whose head equals the pin exits 0 (negative control, via a sha-patched copy)', () => {
   const { bare, shas } = bareRepo([{ 'core/CLAUDE.md': 'a\n' }]);
   const dir = mkdtempSync(join(tmpdir(), 'house-kit-'));

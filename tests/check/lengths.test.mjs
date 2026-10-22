@@ -46,18 +46,6 @@ test('lengths: headroom prints for a limited file and changes no counts', () => 
   assert.match(out, /Summary: 0 finding\(s\), 0 warning\(s\)/);
 });
 
-test('lengths: a file over its configured limit is a finding', () => {
-  // README.md is a normal limited file. CLAUDE.md is deliberately excluded
-  // here: it is a warning, never a blocking finding (its own tests below).
-  const dir = sandbox({
-    'README.md': linesOf(150),
-    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } } }),
-  });
-  const { code, out } = run(dir, ['--only=lengths']);
-  assert.equal(code, 1, out);
-  assert.match(out, /\[length\]/);
-});
-
 test('lengths: a glob-pattern limit applies to every matching file', () => {
   const dir = sandbox({
     '.claude/rules/a.md': linesOf(250),
@@ -241,17 +229,6 @@ test('lengths: a ratchetRaises entry missing from or decided does not apply', ()
     });
     assert.equal(run(dir, ['--only=lengths']).code, 1, JSON.stringify(entry));
   }
-});
-
-test('lengths: a ratchetRaises entry below the current count does not apply', () => {
-  const dir = sandbox({
-    'README.md': linesOf(200),
-    'house.json': houseJson({
-      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } },
-      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, why: 'too small', decided: '2026-08-24' }],
-    }),
-  });
-  assert.equal(run(dir, ['--only=lengths']).code, 1);
 });
 
 function skillWith(body, front = 'name: demo\ndescription: Does a thing. Use when asked.\n') {

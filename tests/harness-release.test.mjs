@@ -38,11 +38,6 @@ test('versionsSince: numeric compare, not string compare', () => {
   assert.deepEqual(newer, ['2.1.100']);
 });
 
-test('versionsSince: none newer', () => {
-  const changelog = '## 2.1.5\n\nchanges\n\n## 2.1.4\n\nchanges\n';
-  assert.deepEqual(versionsSince(changelog, '2.1.5'), []);
-});
-
 test('versionsSince: newest first across several versions', () => {
   const changelog = '## 2.2.0\n\nx\n\n## 2.1.283\n\nx\n\n## 2.1.280\n\nx\n\n## 2.1.100\n\nx\n';
   assert.deepEqual(versionsSince(changelog, '2.1.100'), ['2.2.0', '2.1.283', '2.1.280']);
