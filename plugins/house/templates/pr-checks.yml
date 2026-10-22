@@ -53,9 +53,10 @@ jobs:
   # A known false positive is waived in .house/secret-allow with its reason.
   # --rev=HEAD scans the history the checked-out commit carries, not every
   # branch the full-depth clone fetched: on a pull_request run HEAD is the merge
-  # commit (the PR's ancestry plus the default branch), on push and
-  # workflow_dispatch it is the pushed commit. Judged against every ref, another
-  # open PR's blob, waived only on its own branch, fails every other PR (#431).
+  # commit (the PR's ancestry plus the default branch), on workflow_dispatch the
+  # tip of the chosen ref. Judged against every ref, another open PR's blob,
+  # waived only on its own branch, fails every other PR (#431). A branch never
+  # opened as a PR is not scanned here; a scheduled all-refs scan would cover it.
   secret-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 5

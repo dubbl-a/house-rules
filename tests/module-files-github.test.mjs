@@ -318,6 +318,29 @@ test('scan-dist-secrets --history --rev: an unknown rev or an option-shaped one 
   assert.match(staged.stderr, /--rev/);
 });
 
+test('scan-dist-secrets --history --rev: a root file named HEAD does not make the rev ambiguous', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'HEAD'), 'not a ref\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'a file named HEAD');
+  const res = scanGitMode(dir, '--history', '--rev=HEAD');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /clean — history/);
+});
+
+test('scan-dist-secrets --history --rev: an exclusion (^HEAD) or a repeated --rev is refused, never read as a clean scan of nothing', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'a.txt'), SECRET_CANARIES['github-token'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'a secret');
+  const negated = scanGitMode(dir, '--history', '--rev=^HEAD');
+  assert.equal(negated.status, 2, negated.stdout);
+  assert.match(negated.stderr, /--rev/);
+  const twice = scanGitMode(dir, '--history', '--rev=HEAD', '--rev=HEAD');
+  assert.equal(twice.status, 2, twice.stdout);
+  assert.match(twice.stderr, /--rev.*once/);
+});
+
 test('scan-dist-secrets --history: a clean history passes (negative control)', () => {
   const dir = newScanRepo();
   writeFileSync(join(dir, 'a.txt'), SECRET_NEAR_MISSES.join('\n') + '\n');

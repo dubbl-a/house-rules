@@ -348,7 +348,10 @@ function historyEntries(root, rev) {
   }
   // --root: without it `log.showRoot=false` in a user's config drops the root commit's files.
   if (rev !== null) git(root, ['rev-parse', '--verify', `${rev}^{commit}`]);
-  const log = git(root, ['log', rev === null ? '--all' : rev, '--root', '-m', '-r', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--format=commit %H %ct']);
+  // The trailing `--` keeps a path named like the rev (a root file `HEAD`) from making it ambiguous.
+  const log = git(root, ['log', ...(rev === null ? ['--all'] : [rev]), '--root', '-m', '-r', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--format=commit %H %ct', '--']);
+  // A verified rev always reaches a commit; an empty log means nothing was scanned, never clean.
+  if (rev !== null && log.length === 0) throw new ScanError(`--rev=${rev} reached no commits, so nothing was scanned`);
   // A tag on a blob is reachable from no commit, so a --rev scan leaves it out.
   return rev === null ? [...parseRaw(log), ...taggedBlobEntries(root)] : parseRaw(log);
 }
@@ -617,10 +620,13 @@ async function runSelfTest() {
 
 async function runGitMode(mode, args) {
   try {
-    const revArg = args.find((a) => a.startsWith('--rev='));
-    const rev = revArg ? revArg.slice('--rev='.length) : null;
-    if (revArg && mode !== 'history') throw new ScanError('--rev goes with --history only');
-    if (revArg && (!rev || rev.startsWith('-'))) throw new ScanError('--rev needs a revision, not an option');
+    const revArgs = args.filter((a) => a.startsWith('--rev='));
+    if (revArgs.length > 1) throw new ScanError('--rev may be given once');
+    const rev = revArgs.length ? revArgs[0].slice('--rev='.length) : null;
+    if (revArgs.length && mode !== 'history') throw new ScanError('--rev goes with --history only');
+    if (revArgs.length && (!rev || rev.startsWith('-') || rev.startsWith('^'))) {
+      throw new ScanError('--rev needs one revision, not an option or an exclusion (^rev)');
+    }
     const repoArg = args.find((a) => a.startsWith('--repo='));
     const top = git(repoArg ? resolve(repoArg.slice('--repo='.length)) : process.cwd(), ['rev-parse', '--show-toplevel']).toString().trim();
     const varsArg = args.find((a) => a.startsWith('--vars-file='));
