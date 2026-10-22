@@ -306,6 +306,10 @@ expect_deny() {
 expect_deny_without() {
   local label="$1" payload="$2" unwanted="$3"
   run_hook "$payload"
+  if [[ "$HOOK_CODE" -ne 0 ]]; then
+    fail "$label" "expected exit 0, got $HOOK_CODE (out=[$HOOK_OUT])"
+    return
+  fi
   local decision reason
   decision=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
   reason=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
