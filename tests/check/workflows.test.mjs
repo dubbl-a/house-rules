@@ -251,6 +251,12 @@ test('#408 pr-credential: a # comment on a YAML line outside a scalar is still i
   assert.deepEqual(warns(exprEnv('x # ${{ secrets.FOO }}')), []);
 });
 
+test('#408 pr-credential: # inside a quoted multi-line scalar is content, so the secret is read', () => {
+  assert.deepEqual(kinds(warns(exprRun('run: "echo hi\n          # ${{ secrets.FOO }}"'))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(exprRun("run: 'echo hi\n          # ${{ secrets.FOO }}'"))), ['pr-credential']);
+  assert.deepEqual(kinds(warns(exprEnv('"a\n            # ${{ secrets.FOO }}"'))), ['pr-credential']);
+});
+
 test('#408 exprsIn: unclosed ${{ openers do not make the scan quadratic', () => {
   const body = Array.from({ length: 8000 }, () => 'echo ${{ x').join('\n          ');
   const dir = exprRun(`run: |\n          ${body}`);

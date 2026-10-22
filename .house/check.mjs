@@ -3085,11 +3085,12 @@ function nextStep(toks, i) {
 // across lines is whole. A single-quoted YAML scalar is unescaped first (`''`
 // is one `'`), so the expression language's own string literal inside it is
 // seen as a string, and the `raw` reported is the written text, `''` again.
-// `stripComments` drops a trailing YAML comment from each continuation line;
-// a block scalar is never stripped, as its `#` lines are script text and
-// Actions fills in their expressions all the same.
+// `stripComments` drops a trailing YAML comment from each continuation line of
+// a plain scalar. A block or quoted scalar is never stripped: its `#` is
+// content, script text Actions fills in the expressions of all the same.
 function scalarExprs(e, stripComments) {
-  const parts = entryLines(e).map(({ line, text }, k) => ({ line, text: k > 0 && stripComments && !e.block ? stripYamlComment(text) : text }));
+  const plain = !e.block && !/^['"]/.test(e.raw);
+  const parts = entryLines(e).map(({ line, text }, k) => ({ line, text: k > 0 && stripComments && plain ? stripYamlComment(text) : text }));
   if (!parts.length) return [];
   const single = !e.block && e.raw.startsWith("'");
   if (single) {
