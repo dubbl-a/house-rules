@@ -212,7 +212,7 @@ test('text output carries the totals, caveats and pointers; bad flags exit non-z
   put(d, 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
   const r = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' });
   assert.equal(r.status, 0);
-  for (const re of [/\$5\.00 at list price/, /claude-opus-5/, /Avoidable rebuilds/, /undercounted/, /2026-10-20/, /platform\.claude\.com/, /\/session-report/, /@rixtay\/mcp-usage/, /\/usage/]) assert.match(r.stdout, re);
+  for (const re of [/\$5\.00 at list price/, /claude-opus-5/, /Avoidable rebuilds/, /undercounted/, /before 2\.1\.307/, /2026-10-20/, /platform\.claude\.com/, /\/session-report/, /@rixtay\/mcp-usage/, /\/usage/]) assert.match(r.stdout, re);
   const bad = spawnSync(process.execPath, [CLI, '--bogus'], { encoding: 'utf8' });
   assert.notEqual(bad.status, 0);
   assert.equal(spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).status, 0);
