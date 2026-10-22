@@ -51,8 +51,9 @@ can lag until the next sync.
    dropped (and why), the unread ranges if any, test counts and durations before and after, the
    CI critical path, every round's verdict from `rounds`, and the final verdict.
 6. Only when the returned `verdict === 'ACCEPT'`, push the branch and open a PR from the
-   worktree, using the repo's PR template. A `null` verdict means a review returned nothing, so
-   the work is not reviewed: report that and stop. On `REWORK` after the last round, report
+   worktree, using the repo's PR template. A `null` verdict means the build or a review produced
+   nothing (the log says which; a build stops when its branch already exists), so no reviewed
+   work exists: report that and stop. On `REWORK` after the last round, report
    `remainingMustFix` and stop: the maintainer decides. Never merge. If a PR body would pass GitHub's size limit, write a summary and attach
    the detail (the confirmed list with its planted-defect evidence) as a comment or file.
 

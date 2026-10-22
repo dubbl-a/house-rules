@@ -38,7 +38,7 @@ const review = (verdict, mustFix = []) => ({ verdict, mustFix, attacks: ['plante
 
 // Runs the script against stubs. `reviews` is the verdict sequence handed to the
 // review and re-review calls in order; `auditReads` is what the first audit reports.
-async function run(args, { reviews = [review('ACCEPT')], firstRead = [{ path: 'tests/a.test.mjs', from: 1, to: 100 }], items = ITEMS, refuters = null } = {}) {
+async function run(args, { reviews = [review('ACCEPT')], firstRead = [{ path: 'tests/a.test.mjs', from: 1, to: 100 }], items = ITEMS, refuters = null, build = null, rework = null } = {}) {
   const calls = []
   const logs = []
   const phases = []
@@ -54,8 +54,8 @@ async function run(args, { reviews = [review('ACCEPT')], firstRead = [{ path: 't
       if (refuters === 'dead') return null
       return { verdicts: [{ id: 'R1', verdict: 'confirmed', evidence: 'failed' }, { id: 'R2', verdict: 'refuted', evidence: 'still passes' }] }
     }
-    if (label === 'build') return { branch: 'tests-audit-2026-10-22', sha: 'sha0', applied: ['R1', 'S1'], skipped: [], before: '10 tests', after: '9 tests', checks: 'ok' }
-    if (label.startsWith('rework')) return { sha: `sha${++reworkN}`, fixed: ['f'], notFixed: [], checks: 'ok' }
+    if (label === 'build') return build ?? { branch: 'tests-audit-2026-10-22', sha: 'sha0', applied: ['R1', 'S1'], skipped: [], before: '10 tests', after: '9 tests', checks: 'ok' }
+    if (label.startsWith('rework')) return rework ?? { sha: `sha${++reworkN}`, fixed: ['f'], notFixed: [], checks: 'ok' }
     if (label === 'review' || label.startsWith('re-review')) return reviews.length ? reviews.shift() : review('ACCEPT')
     throw new Error(`unexpected agent label ${label}`)
   }
@@ -109,6 +109,21 @@ test('an item the refuter refuted is absent from the build prompt', async () => 
   assert.ok(build.prompt.includes('"id": "S1"'))
   assert.ok(!build.prompt.includes('"id": "R2"'), 'refuted R2 must not reach the builder')
   assert.deepEqual(result.rejected.map(r => r.id), ['R2'])
+})
+
+test('a build that stopped without a commit (branch already there) is never reviewed and never ACCEPT', async () => {
+  const stopped = { branch: 'tests-audit-2026-10-22', sha: '', applied: [], skipped: ['R1', 'S1'], before: '', after: '', checks: 'branch tests-audit-2026-10-22 already exists; created nothing' }
+  const { calls, result, logs } = await run(ARGS, { build: stopped })
+  assert.equal(byLabel(calls, /^(review|rework|re-review)/).length, 0, 'nothing to review, so no reviewer runs')
+  assert.equal(result.verdict, null)
+  assert.ok(logs.some(l => /no commit/.test(l)), 'the stop is logged')
+})
+
+test('a rework that produced no commit stops the loop with the must-fixes open and no re-review', async () => {
+  const { calls, result } = await run(ARGS, { reviews: [review('REWORK', ['m1'])], rework: { sha: '', fixed: [], notFixed: ['m1'], checks: 'stopped' } })
+  assert.equal(byLabel(calls, /^re-review/).length, 0, 'an empty commit range is never reviewed')
+  assert.equal(result.verdict, null)
+  assert.deepEqual(result.remainingMustFix, ['m1'])
 })
 
 test('apply:false returns the confirmed list before any build call', async () => {

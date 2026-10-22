@@ -401,9 +401,9 @@ ${JSON.stringify(mustFix, null, 1)}
 Skip a must-fix you find wrong and say why. ${COMMON_DONT}`,
     { label: `rework ${reworks}`, phase: 'Rework', schema: REWORK, model: 'sonnet', effort: 'high', agentType: 'house-rules:builder' },
   )
-  if (!fix) {
-    rounds.push({ round: reworks, sha: tip, verdict: null, mustFix, note: 'rework builder returned nothing' })
-    log(`rework ${reworks}: builder returned nothing; stopping with ${mustFix.length} must-fix(es) open`)
+  if (!fix || !fix.sha) {
+    rounds.push({ round: reworks, sha: tip, verdict: null, mustFix, note: 'rework builder produced no commit' })
+    log(`rework ${reworks}: builder produced no commit; stopping with ${mustFix.length} must-fix(es) open`)
     break
   }
   const before = tip
