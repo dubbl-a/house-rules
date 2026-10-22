@@ -4,6 +4,12 @@ name: pr-checks
 # Deliberately NOT gated here (name what is excluded and why):
 #   - anything needing a credential CI should not hold
 #   - <add the repo's expensive local-only checks here>
+#
+# This repo's own copy, not the template: `npm test` and the hook tests run in
+# ci.yml, sharded across parallel jobs (#363), so this workflow does not run
+# them a second time. Here they added no coverage and, once ci.yml finished
+# under a minute, would have been the slowest check on every PR. The template
+# keeps both steps for adopters, which have no ci.yml beside it.
 on:
   pull_request:
   workflow_dispatch:
@@ -38,14 +44,10 @@ jobs:
       - if: hashFiles('package-lock.json') != '' || hashFiles('npm-shrinkwrap.json') != ''
         run: npm ls --all
       - run: node .house/check.mjs
-      # The branch-guard hook protects this repo; test it here too, not only
-      # on the machine that happened to write it.
-      - run: npm run test:hooks --if-present
       # If this repo commits a rendered artifact (a generated doc, a built
       # email, a snapshot), re-render it here and diff against what's
       # committed; a drift gate beats trusting the generator ran.
       - run: npm run check:snapshots --if-present
-      - run: npm test --if-present
   # Content scan over full history: the fallback where the plan has no push
   # protection (a private repo on a personal account). Keep it on a plan that
   # has push protection too; it reads the same blobs with named key rules.
