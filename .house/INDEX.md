@@ -215,12 +215,18 @@
   Test the hook, the gate, and the guard script that protect the workflow, because code that decides whether a change is allowed to land deserves a test more than the code it guards.
 - Feed a real payload through the real wiring, and never re-implement the logic under test
   Drive the test through the real entry point with a real payload, never through a helper that restates the rule, because two copies of one rule pass together whenever both are wrong.
+- Test behavior through the public interface, so a test changes only when a requirement changes
+  Assert on the state or result a call produces, never on the calls made to get there, because a test that breaks on a refactor that changed no behavior is a defect in the test, and that brittleness is a main maintenance cost of a suite.
 - Ship every gate with a positive control and a negative control
   Commit the case the gate must fail beside the case it must pass, and run both in the same job, because a suite of passing cases cannot tell a working check from one that always passes.
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
   Read the diff a snapshot gate prints and say what changed before accepting the new snapshot, because accepting it unread turns a drift gate into a rubber stamp.
 - Quarantine a flaky test loudly, and never retry it into silence
   Move a flaky test into a named quarantine list that the run reports, with an owner and the condition for taking it back out, because a retry wrapper converts an intermittent defect into silence and a deletion converts it into nothing.
+- Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
+  Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind: nothing is left for them to guard.
+- Fix the test smells that hide what broke, not the ones a detector counts
+  Fix a test that asserts many things with no message saying which one failed, a test that checks several behaviors at once, and a test with no assertion at all, because those are the smells that cost a reader the answer to what broke; developers rate most other detected smells low severity.
 - Treat coverage as a search-light, never as a target
   Use coverage to find code that nothing exercises, and never set it as a target, because a number set as a goal is met by tests written for the number rather than for the behavior.
 - Mirror the module layout in the test tree, and keep each fixture beside its test

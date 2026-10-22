@@ -112,7 +112,7 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "c1e53a6c15be391baa6d346906d468f9fd07a6d082dee55480dfe0fa8cf2566e"
+      "bodySha256": "e39e0aaf96838b97690952d9d45f511d38e2cc204c59f7d0b5559c89834d1d21"
     },
     {
       "path": ".house/check.mjs",
@@ -126,7 +126,7 @@
       "source": "targets",
       "kind": "block",
       "sep": "",
-      "bodySha256": "99e34a5ab4fecd5bf3d0b4b75dcfb3a545831cdda902fb386cda438f4e654b54"
+      "bodySha256": "878152530b76bf50707dcaeaea9225d278bc8ac1ba77640ff4d3c77f611d452e"
     }
   ],
   "scaffolds": [

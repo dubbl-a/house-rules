@@ -47,6 +47,10 @@ template bug had kept them out of the spec stage. That pass also repointed EXT-0
 `rule:testing.md` heading, so the demotion call itself stays engineering.md's and only the
 suite-level obligation is ported here.
 
+Rows EXT-119 to EXT-125 came in from the test-maintenance deep-research run of 2026-10-22
+(`research/test-maintenance/2026-10-22.md`), which verified 15 of 80 claims. Each Source cell cites the
+URL read; the rule file and the chapter say each finding's confidence and caveat.
+
 ## ID prefixes
 
 | Prefix | Source |
@@ -743,6 +747,13 @@ Source is `sources/external-guidance.md`; each row keeps that brief's numbering 
 | EXT-116 | security standards read 2026-10-03, OSPS-BR-01.03 | Never expose a secret to untrusted code in a privileged trigger, checkout or no checkout | fold | rule:github.md#give-a-workflow-read-only-permissions-and-pin-every-action-by-sha |
 | EXT-117 | security standards read 2026-10-03, OSPS-VM-01.01, VM-02.01, VM-03.01, SSDF RV.1.1, Scorecard Security-Policy | Name a private reporting route and a response time in the security policy | fold | rule:github.md#ship-the-community-files-the-platform-looks-for-and-keep-issue-intake-as-forms |
 | EXT-118 | security standards read 2026-10-03, the coverage map of OWASP, NIST, OpenSSF, SLSA, CIS, CWE, STRIDE, and Saltzer and Schroeder classes | Map every class in the published taxonomies to a covering rule or a stated reason it is left out, and check a new incident against the map first | handbook-only | chapter:security |
+| EXT-119 | test maintenance research 2026-10-22, abseil.io/resources/swe-book/html/ch12.html | Test behavior through the public interface and assert on the state or result produced, not the calls made to get there, so a test changes only when a requirement changes; a test that breaks on a refactor that changed no behavior is a defect in the test | port | rule:testing.md#test-behavior-through-the-public-interface-so-a-test-changes-only-when-a-requirement-changes |
+| EXT-120 | test maintenance research 2026-10-22, abseil.io/resources/swe-book/html/ch12.html; the mockist disagreement is verifier recall, martinfowler.com/articles/mocksArentStubs.html | Prefer a real collaborator over a test double when the real one is fast and deterministic, because over-use of mocking frameworks is the most common source of brittle interaction tests; the mockist school defends interaction tests as a design tool | fold | rule:testing.md#test-behavior-through-the-public-interface-so-a-test-changes-only-when-a-requirement-changes |
+| EXT-121 | test maintenance research 2026-10-22, 2025.msrconf.org/details/msr-2025-technical-papers/24/Understanding-Test-Deletion-in-Java-Applications | Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind | port | rule:testing.md#delete-a-test-with-the-code-it-covered-and-prove-a-test-redundant-before-removing-it-as-a-duplicate |
+| EXT-122 | test maintenance research 2026-10-22, 2025.msrconf.org/details/msr-2025-technical-papers/24/Understanding-Test-Deletion-in-Java-Applications | Before removing a test as redundant, name the test that still covers its behavior and show that test fail on the defect the removed one caught, because tests that look redundant often are not and reduction tools find only about half of them; never remove half of a control pair | fold | rule:testing.md#delete-a-test-with-the-code-it-covered-and-prove-a-test-redundant-before-removing-it-as-a-duplicate |
+| EXT-123 | test maintenance research 2026-10-22, arxiv.org/pdf/2107.13902; 2020.msrconf.org/details/msr-2020-papers/14/Investigating-Severity-Thresholds-for-Test-Smells | Fix the test smells that hide what broke (assertion roulette, eager test, unknown test) rather than the ones a detector counts, and treat a detector count as triage input, not a backlog | port | rule:testing.md#fix-the-test-smells-that-hide-what-broke-not-the-ones-a-detector-counts |
+| EXT-124 | test maintenance research 2026-10-22, testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html | Review the quarantine list on a cadence as a standing control, because new flakiness arrives about as fast as old flakiness is fixed | fold | rule:testing.md#quarantine-a-flaky-test-loudly-and-never-retry-it-into-silence |
+| EXT-125 | test maintenance research 2026-10-22, research.google/pubs/code-coverage-at-google/; arxiv.org/pdf/2103.08480 | Read coverage on the change under review, and treat a covered line as not a tested line, checking a path that matters with a planted fault or a mutation | fold | rule:testing.md#treat-coverage-as-a-search-light-never-as-a-target |
 
 ---
 
