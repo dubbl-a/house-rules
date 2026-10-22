@@ -38,6 +38,8 @@ const SCHEMA = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
 // cli-house.shard<n>.test.mjs imports it as `?shard=<n>` for the rest. Each test
 // builds its own throwaway repos, so none depends on another. A missing shard
 // file would drop its tests silently, so shard 0 refuses to run without them.
+// Except for the read-only groups under sharedFixtureGroup below, no test
+// shares a fixture with another.
 const SHARDS = 4;
 const SHARD = Number(new URL(import.meta.url).searchParams.get('shard') ?? 0);
 if (SHARD === 0) {
@@ -53,6 +55,20 @@ if (SHARD === 0) {
 }
 let registered = 0;
 const test = (...args) => (registered++ % SHARDS === SHARD ? nodeTest(...args) : undefined);
+
+// A few groups of tests only read one fixture, so they build it once. Dealt
+// round-robin, each test of a group would land in its own process and build
+// it anyway, so a group takes one slot and all its tests run in one shard.
+// The fixture is built on first use, in the shard that runs the group only.
+// A group shares only what none of its tests writes: each test's own input
+// (a log, a binary) stays its own.
+function sharedFixtureGroup(build) {
+  const slot = registered++ % SHARDS;
+  let built;
+  const fixture = () => (built ??= build());
+  const groupTest = (...args) => (slot === SHARD ? nodeTest(...args) : undefined);
+  return { test: groupTest, fixture };
+}
 
 const CLEANUP_DIRS = [];
 after(() => {
@@ -908,10 +924,16 @@ test('doctor: the rule-load line names the vendored rules the log has not seen',
   assert.equal(j.ruleLoadProbe.vendoredTotal, 2);
 });
 
-test('doctor: lastLoadAt is the max timestamp seen, not the last line in file order (#37 concurrent appends land in completion order)', () => {
+// Both lastLoadAt cases read one plugin and repo; each writes its own log
+// under its own CLAUDE_CONFIG_DIR, which is the input under test.
+const lastLoadAtGroup = sharedFixtureGroup(() => {
   const { dir, cliPath } = buildFixturePlugin();
   writePluginInstructionsLoadedHooks(dir);
-  const repo = buildTargetRepo();
+  return { cliPath, repo: buildTargetRepo() };
+});
+
+lastLoadAtGroup.test('doctor: lastLoadAt is the max timestamp seen, not the last line in file order (#37 concurrent appends land in completion order)', () => {
+  const { cliPath, repo } = lastLoadAtGroup.fixture();
 
   const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
   CLEANUP_DIRS.push(configDir);
@@ -928,10 +950,8 @@ test('doctor: lastLoadAt is the max timestamp seen, not the last line in file or
   assert.equal(j.ruleLoadProbe.lastLoadAt, '2026-09-08T10:05:00.000Z');
 });
 
-test('doctor: a malformed ts (not a real timestamp) is ignored for lastLoadAt rather than winning the max on a lexicographic fluke', () => {
-  const { dir, cliPath } = buildFixturePlugin();
-  writePluginInstructionsLoadedHooks(dir);
-  const repo = buildTargetRepo();
+lastLoadAtGroup.test('doctor: a malformed ts (not a real timestamp) is ignored for lastLoadAt rather than winning the max on a lexicographic fluke', () => {
+  const { cliPath, repo } = lastLoadAtGroup.fixture();
 
   const configDir = mkdtempSync(join(tmpdir(), 'house-config-'));
   CLEANUP_DIRS.push(configDir);
@@ -4806,24 +4826,29 @@ test('#375 doctor: a fork built from an older native body than the installed bin
   assert.match(r.out, /^deep-research fork: STALE \(built from an older Claude Code native body\); rebuild with: node .+ --install$/m);
 });
 
-test('#375 doctor: a fork built from the installed native body reads current (negative control)', () => {
+// These three read one fork built from native body A, and one repo; each
+// test's own input is the Claude Code binary doctor finds.
+const currentForkGroup = sharedFixtureGroup(() => {
   const f = forkFixture({ realScript: true });
   f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
-  const { fork } = f.doctor({ env: { CLAUDE_BINARY: nativeBinary(NATIVE_BODY_A) } });
+  return { f, repo: buildTargetRepo() };
+});
+
+currentForkGroup.test('#375 doctor: a fork built from the installed native body reads current (negative control)', () => {
+  const { f, repo } = currentForkGroup.fixture();
+  const { fork } = f.doctor({ repo, env: { CLAUDE_BINARY: nativeBinary(NATIVE_BODY_A) } });
   assert.equal(fork.state, 'current');
 });
 
-test('#375 doctor: with no Claude Code binary to find, an otherwise current fork stays current', () => {
-  const f = forkFixture({ realScript: true });
-  f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
-  const { fork } = f.doctor({ env: { CLAUDE_BINARY: '', PATH: '/usr/bin:/bin' } });
+currentForkGroup.test('#375 doctor: with no Claude Code binary to find, an otherwise current fork stays current', () => {
+  const { f, repo } = currentForkGroup.fixture();
+  const { fork } = f.doctor({ repo, env: { CLAUDE_BINARY: '', PATH: '/usr/bin:/bin' } });
   assert.equal(fork.state, 'current');
 });
 
-test('#375 doctor: a binary with no recognisable native body leaves a current fork current', () => {
-  const f = forkFixture({ realScript: true });
-  f.writeFork(f.markedFork(f.scriptId, nativeForkHead(NATIVE_BODY_A)));
-  const { fork } = f.doctor({ env: { CLAUDE_BINARY: nativeBinary('nothing recognisable here') } });
+currentForkGroup.test('#375 doctor: a binary with no recognisable native body leaves a current fork current', () => {
+  const { f, repo } = currentForkGroup.fixture();
+  const { fork } = f.doctor({ repo, env: { CLAUDE_BINARY: nativeBinary('nothing recognisable here') } });
   assert.equal(fork.state, 'current');
 });
 
