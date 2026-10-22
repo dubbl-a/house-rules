@@ -562,7 +562,10 @@ const SECRET_CANARIES = {
   'github-token': ['gh' + 'p_' + 'a'.repeat(36), 'gh' + 'o_' + 'a'.repeat(36), 'gh' + 'u_' + 'a'.repeat(36),
     'gh' + 's_' + 'a'.repeat(36), 'gh' + 'r_' + 'a'.repeat(36), 'github' + '_pat_' + 'b'.repeat(70)],
   'slack-token': ['xo' + 'xb-' + '123456789012-1234567890123-abcdefghijklmnopqrstuvwx',
-    'xo' + 'xp-' + '1234567890-1234567890-1234567890-0123456789abcdef0123456789abcdef'],
+    'xo' + 'xp-' + '1234567890-1234567890-1234567890-0123456789abcdef0123456789abcdef',
+    'xo' + 'xs-' + '123456789012-123456789012-123456789012-0123456789abcdef0123456789abcdef', // legacy
+    'xo' + 'xa-2-' + '123456789012-1234567890123-0123456789abcdef0123456789abcdef',
+    'xo' + 'xe.xo' + 'xp-1-' + 'A1'.repeat(30)],
   'stripe-live-key': ['sk' + '_live_' + 'a1'.repeat(12)],
   'google-api-key': ['AI' + 'za' + 'A'.repeat(35)],
   'private-key-header': ['-----BEGIN ' + 'RSA PRIVATE' + ' KEY-----', '-----BEGIN ' + 'OPENSSH PRIVATE' + ' KEY-----'],
@@ -577,6 +580,8 @@ const SECRET_NEAR_MISSES = [
   'gh' + 'x_' + 'a'.repeat(36),
   'xo' + 'xb-' + '123-456',
   'xo' + 'xb-' + 'header-nav-item-primary-link-active-state', // CSS-like class, no digit groups
+  'xo' + 'xb-' + '1234-placeholder',
+  'xo' + 'xb-' + '0000-0000-XXXXXXXXXX',
   'sk' + '_live_' + 'short',
   'sk' + '_test_' + 'a1'.repeat(12),
   'AI' + 'za' + 'A'.repeat(34),
@@ -878,6 +883,39 @@ test('scan-dist-secrets: the git modes skip plain-word and bare-number vars valu
   const pw = scanGitMode(dir, '--staged');
   assert.equal(pw.status, 1);
   assert.match(pw.stderr, /pw\.txt.*matches "DB_URL:password"/);
+});
+
+test('scan-dist-secrets: a key after URL-encoding or a literal \\n, \\r or \\t escape is still caught', () => {
+  const key = SECRET_CANARIES['github-token'][0];
+  for (const lead of ['token%3D', 'a%0A', 'line\\n', 'line\\r', 'line\\t']) {
+    const dir = newScanRepo();
+    writeFileSync(join(dir, 'blob.txt'), lead + key + '\n');
+    gitIn(dir, 'add', '-A');
+    const res = scanGitMode(dir, '--staged');
+    assert.equal(res.status, 1, `lead ${lead}: ${res.stderr}`);
+    assert.match(res.stderr, /"github-token"/);
+  }
+  const dir = newScanRepo(); // negative control: a plain letter before the prefix is still a longer word
+  writeFileSync(join(dir, 'blob.txt'), 'xyz' + key + ' and 3D' + key + '\n');
+  gitIn(dir, 'add', '-A');
+  assert.equal(scanGitMode(dir, '--staged').status, 0);
+});
+
+test('scan-dist-secrets: the git modes skip a URL with no password and a lowercase-words value, keep a URL password', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, '.dev.vars'), [
+    'API=http://localhost:8787', 'REGION=production-us', 'MODE=very_long_mode_name', 'DB=postgres://u:Qq7password_x9@dbhost.internal/app', '',
+  ].join('\n'));
+  writeFileSync(join(dir, 'README.md'), 'Run at http://localhost:8787 in production-us with very_long_mode_name\n');
+  gitIn(dir, 'add', 'README.md');
+  const ok = scanGitMode(dir, '--staged');
+  assert.equal(ok.status, 0, ok.stderr);
+
+  writeFileSync(join(dir, 'conn.txt'), 'Qq7password_x9\n');
+  gitIn(dir, 'add', 'conn.txt');
+  const pw = scanGitMode(dir, '--staged');
+  assert.equal(pw.status, 1);
+  assert.match(pw.stderr, /conn\.txt.*matches "DB:password"/);
 });
 
 test('scan-dist-secrets: an allowlist line with no reason is an error naming the line', () => {

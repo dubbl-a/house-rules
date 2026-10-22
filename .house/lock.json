@@ -46,7 +46,7 @@
       "path": "scripts/house/scan-dist-secrets.mjs",
       "module": "github",
       "source": "modules/github/files/scan-dist-secrets.mjs",
-      "bodySha256": "cc650137d993e71831b9daa7c90b654d17669926eccd4c7c3f6c252c8d530535"
+      "bodySha256": "5c1fc6576c17892164ae400b66e16b4432f9204e60b253838cfc5802fdd252d2"
     },
     {
       "path": "scripts/house/cleanup-worktree.sh",

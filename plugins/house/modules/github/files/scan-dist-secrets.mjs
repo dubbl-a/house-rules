@@ -29,8 +29,10 @@
 //   Binary blobs and blobs over MAX_BLOB_BYTES are skipped and counted. A git
 //   error or unreadable blob is an error, never a pass.
 //   What it misses against a broad scanner: any key format not in RULES, a
-//   secret with no recognisable prefix, anything encoded or split, and (known
-//   gap) a tag chain more than one level deep or a tag on a tree.
+//   secret with no recognisable prefix, base64 or otherwise encoded content
+//   (URL-encoded and \n-escaped keys are matched), a key split across lines,
+//   and (known gap) a tag on a tree; a tag chain is followed only as far as
+//   the installed git's %(*objecttype) peels it.
 //
 // Dist-mode markers:
 //   - every value in a vars file (--vars-file=<path>, default .dev.vars) that
@@ -96,18 +98,24 @@ const UNCONDITIONAL_PATTERNS = [
 ];
 
 // Named key formats for the git modes. Each anchors on a vendor prefix and a
-// length so ordinary prose and hashes do not trip it, and start on a lookbehind
-// rather than \b, which an underscore defeats (token_<key> must still match). Add a rule here and a
+// length so ordinary prose and hashes do not trip it. Each starts on START
+// rather than \b, which an underscore defeats: a token may follow a non-
+// alphanumeric (token_<key>), a %XX URL-encoded byte (token%3D<key>), or a
+// literal \n, \r or \t escape inside a quoted string. Add a rule here and a
 // canary to CANARIES below; --self-test fails for a rule with no canary.
+const START = String.raw`(?:(?<![A-Za-z0-9])|(?<=%[0-9A-Fa-f]{2})|(?<=\\[nrt]))`;
+const rule = (name, source) => ({ name, re: new RegExp(source.replaceAll('<S>', START)) });
 export const RULES = [
-  { name: 'aws-access-key-id', re: /(?<![A-Za-z0-9])(?:AKIA|ASIA)(?!IOSFODNN7EXAMPLE)[0-9A-Z]{16}(?![A-Za-z0-9])/ },
-  { name: 'github-token', re: /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{70,})/ },
-  { name: 'slack-token', re: /(?<![A-Za-z0-9])xox[abposr]-\d+(?:-\d+){0,2}-[A-Za-z0-9]{10,}/ },
-  { name: 'stripe-live-key', re: /(?<![A-Za-z0-9])[sr]k_live_[0-9A-Za-z]{24,}/ },
-  { name: 'google-api-key', re: /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/ },
-  { name: 'private-key-header', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/ },
-  { name: 'anthropic-key', re: /(?<![A-Za-z0-9])sk-ant-[a-z]{2,6}\d{2}-[A-Za-z0-9_-]{40,}/ },
-  { name: 'openai-key', re: /(?<![A-Za-z0-9])sk-proj-[A-Za-z0-9_-]{40,}/ },
+  rule('aws-access-key-id', String.raw`<S>(?:AKIA|ASIA)(?!IOSFODNN7EXAMPLE)[0-9A-Z]{16}(?![A-Za-z0-9])`),
+  rule('github-token', String.raw`<S>(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{70,})`),
+  // First numeric segment is 8+ digits (xoxb, xoxp, xoxs); xoxa-2- and
+  // xoxe-1- put a one-digit version first and a long token after it.
+  rule('slack-token', String.raw`<S>xox[abposre]-(?:\d{8,}(?:-\d+){0,2}|\d-\d{8,}(?:-\d+){0,2}|\d(?=-[A-Za-z0-9]{40,}))-[A-Za-z0-9]{10,}`),
+  rule('stripe-live-key', String.raw`<S>[sr]k_live_[0-9A-Za-z]{24,}`),
+  rule('google-api-key', String.raw`<S>AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])`),
+  rule('private-key-header', String.raw`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`),
+  rule('anthropic-key', String.raw`<S>sk-ant-[a-z]{2,6}\d{2}-[A-Za-z0-9_-]{40,}`),
+  rule('openai-key', String.raw`<S>sk-proj-[A-Za-z0-9_-]{40,}`),
 ];
 
 class ScanError extends Error {}
@@ -118,18 +126,26 @@ class ScanError extends Error {}
 //
 // gitModes narrows what counts as a secret, because a commit scan meets
 // ordinary config text that a built-output scan does not: a value that is one
-// plain word (ENVIRONMENT=development) or a bare number is skipped, and a URL
-// contributes its password but not its hostname. Every other value is a marker.
+// plain word (ENVIRONMENT=development), lowercase words joined by - or _
+// (production-us), or a bare number is skipped; a URL contributes its password
+// but not its hostname, and a URL with no password is no marker at all
+// (http://localhost:8787). Every other value is a marker.
 function markersFromVarsFile(varsPath, gitModes = false) {
   if (!existsSync(varsPath)) return [];
   const parsed = parseEnv(readFileSync(varsPath, 'utf8'));
   const markers = [];
   for (const [name, value] of Object.entries(parsed)) {
     if (!value || value.length < MIN_MARKER_LENGTH) continue;
-    if (gitModes && /^(?:[A-Za-z]+|\d+(?:\.\d+)?)$/.test(value)) continue;
-    markers.push({ name, value });
+    if (gitModes && /^(?:[A-Za-z]+|\d+(?:\.\d+)?|[a-z]+(?:[-_][a-z]+)+)$/.test(value)) continue;
+    let url = null;
     try {
-      const url = new URL(value);
+      url = new URL(value);
+    } catch {
+      // Not a URL: the raw-value marker below covers it.
+    }
+    const passwordless = url && !url.password && /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+    if (!(gitModes && passwordless)) markers.push({ name, value });
+    if (url) {
       // Same length floor as the raw value — a one- or two-character
       // password/hostname isn't a usable marker, it's a false-positive
       // generator (it'll match arbitrary built output by coincidence).
@@ -139,8 +155,6 @@ function markersFromVarsFile(varsPath, gitModes = false) {
       if (!gitModes && url.hostname && url.hostname.length >= MIN_MARKER_LENGTH) {
         markers.push({ name: `${name}:hostname`, value: url.hostname });
       }
-    } catch {
-      // Not a URL — the raw-value marker above already covers it.
     }
   }
   return markers;
@@ -307,9 +321,9 @@ function stagedEntries(root) {
   return parseRaw(git(root, ['diff', '--cached', '--raw', '-r', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--diff-filter=ACMRT']));
 }
 
-// A tag can point straight at a blob (lightweight, or annotated one level
-// deep), which no commit diff lists. Nested tag chains and a tag on a tree are
-// a known gap.
+// A tag can point straight at a blob (lightweight or annotated), which no
+// commit diff lists. How far a chain of tags is followed depends on how far the
+// installed git's %(*objecttype) peels; a tag on a tree is a known gap.
 function taggedBlobEntries(root) {
   const out = git(root, ['for-each-ref', '--format=%(objecttype) %(objectname) %(*objecttype) %(*objectname) %(refname)']).toString();
   const entries = [];
