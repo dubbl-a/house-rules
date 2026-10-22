@@ -594,7 +594,7 @@ test('#245/#244: a fresh bootstrap with no tests reaches a clean gate, locally a
   const d = freshBootstrap();
   const r = ciAndLocal(d);
   assert.equal(r.code, 0, r.out);
-  assert.ok(has(r.json.warnings, /module `testing` is enabled but vendored zero rules: none of its default paths \(tests\/\*\*, test\/\*\*\) matches a file here yet/), r.out);
+  assert.ok(has(r.json.warnings, /module `testing` is enabled but vendored zero rules: none of its default paths \(\*\*\/tests\/\*\*, \*\*\/test\/\*\*, \*\*\/\*\.test\.\*, \*\*\/\*\.spec\.\*\) matches a file here yet/), r.out);
   assert.ok(!has(r.json.warnings, /could not resolve module defaults/), 'CI resolves module defaults from the lock');
   const lock = JSON.parse(readFileSync(join(d, '.house/lock.json'), 'utf8'));
   assert.equal(lock.modules.testing.default, 'on', 'the lock carries the module default');
@@ -605,7 +605,7 @@ test('#245: once a default path matches, the unrendered module is a finding, loc
   addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
   const r = ciAndLocal(d);
   assert.equal(r.code, 1, r.out);
-  assert.ok(has(r.json.findings, /module `testing` is enabled but vendored zero rules, and its default path tests\/\*\* now matches a file here; re-render/), r.out);
+  assert.ok(has(r.json.findings, /module `testing` is enabled but vendored zero rules, and its default path \*\*\/tests\/\*\* now matches a file here; re-render/), r.out);
   rerender(d);
   const after = ciAndLocal(d);
   assert.equal(after.code, 0, 'negative control: the re-render vendors the rule and clears it');
@@ -698,13 +698,13 @@ function sameAfterLockEdit(d, edit, expectFinding) {
 test('#258: setting an unvendored module record rules to 0 does not silence its zero-rule finding', () => {
   const d = freshBootstrap();
   addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
-  sameAfterLockEdit(d, (l) => { l.modules.testing.rules = 0; }, /vendored zero rules, and its default path tests\/\*\* now matches/);
+  sameAfterLockEdit(d, (l) => { l.modules.testing.rules = 0; }, /vendored zero rules, and its default path \*\*\/tests\/\*\* now matches/);
 });
 
 test('#258: pointing an unvendored module record globs at zzz/** does not downgrade its finding to a warning', () => {
   const d = freshBootstrap();
   addFilesIn(d, { 'tests/a.test.mjs': '// a\n' }, 'first test, no re-render');
-  sameAfterLockEdit(d, (l) => { l.modules.testing.globs = ['zzz/**']; }, /vendored zero rules, and its default path tests\/\*\* now matches/);
+  sameAfterLockEdit(d, (l) => { l.modules.testing.globs = ['zzz/**']; }, /vendored zero rules, and its default path \*\*\/tests\/\*\* now matches/);
 });
 
 test('#258: an adopter glob in house.json is not downgraded by editing the record globs', () => {

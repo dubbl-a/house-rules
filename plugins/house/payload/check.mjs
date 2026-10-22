@@ -2256,7 +2256,7 @@ const MODULE_FACTS = {
   "llm-output": {"default":"detect","rules":[{"file":"llm-output.md","paths":["$llmGlobs"]}],"slots":{"llmGlobs":[]}},
   "retrieval": {"default":"off","rules":[{"file":"retrieval.md","paths":["$retrievalRoots","$retrievalGlobs"]}],"slots":{"retrievalGlobs":[],"retrievalRoots":["retrieval/**","rag/**","corpus/**","evals/**","eval/**"]}},
   "security": {"default":"off","rules":[{"file":"security.md","paths":["$securityAgentRoots","$securityGlobs"]},{"file":"security-server.md","paths":["$securityRoots","$securityGlobs"]}],"slots":{"securityGlobs":[],"securityRoots":["src/**","lib/**","scripts/**"],"securityAgentRoots":[".claude/settings.json",".claude/hooks/**",".mcp.json","package.json",".github/workflows/**"]}},
-  "testing": {"default":"on","rules":[{"file":"testing.md","paths":["$testRoots","$testGlobs","$gateGlobs"]}],"slots":{"testGlobs":[],"gateGlobs":[],"testRoots":["tests/**","test/**"]}},
+  "testing": {"default":"on","rules":[{"file":"testing.md","paths":["$testRoots","$testGlobs","$gateGlobs"]}],"slots":{"testGlobs":[],"gateGlobs":[],"testRoots":["**/tests/**","**/test/**","**/*.test.*","**/*.spec.*"]}},
 };
 // END MODULE_FACTS
 function readModuleRecordsFrom(modulesDir) {
@@ -2668,7 +2668,7 @@ function checkManifest(ctx) {
   // module to have at least one lock entry. Before the first render (no lock)
   // this is silent, since there is nothing to have vendored yet.
   // #245: a module whose paths are all its own defaults, none matching a
-  // tracked file yet (testing's tests/** in a new repo), is a warning until
+  // tracked file yet (testing's **/tests/** and **/*.test.* in a new repo), is a warning until
   // one does: render vendors it then, so a fresh repo starts from a clean
   // gate. Paths house.json wrote that match nothing stay a finding, since
   // that is a mistake rather than a repo not there yet, as render's own

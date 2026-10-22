@@ -1,9 +1,11 @@
 ---
 paths:
+  - "**/tests/**"
+  - "**/*.test.*"
   - "tests/**"
   - ".github/workflows/**"
 ---
-<!-- house-managed v0.22.6 module=testing source=modules/testing/rules/testing.md body-sha256=1258684fc34886310da62e4700ad5a87e170978e79760c38397fbb0f05e57fb9 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.6 module=testing source=modules/testing/rules/testing.md body-sha256=f7e77e792335cfda2bac577c939b22bd5df020079d39065ee68278b817624476 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -40,6 +42,13 @@ Never assert against a value the test computed the way the code computes it, and
 Anchor: `tests/hooks/run.sh`, which pipes a real event payload into this package's real hook script and asserts its stdout and exit code without restating any of its matching logic; it runs only in this package, so an adopter writes the equivalent for their own hook.
 Receipts: `docs/handbook/testing.md#feed-a-real-payload-through-the-real-wiring-and-never-re-implement-the-logic-under-test`
 
+## Test behavior through the public interface, so a test changes only when a requirement changes
+
+Assert on the state or result a call produces, never on the calls made to get there, because a test that breaks on a refactor that changed no behavior is a defect in the test, and that brittleness is a main maintenance cost of a suite.
+Prefer a real collaborator when it is fast and deterministic, because a test coupled to how the code works breaks when the code is reworked; a double is right for an awkward or non-deterministic collaborator such as a remote service, and some behavior has no observable state (whether a cache was hit), so an interaction assertion is the right check there. Feeding a hook a real payload, the rule above, is the same obligation for one kind of entry point.
+Anchor: `tests/cli-house.test.mjs`, whose header has every test drive the real CLI as a subprocess against a throwaway repo and assert on what it prints and exits with, never on its internals; whether a test reaches past the interface is an editorial call no checker can look up, so an adopter holds this by review.
+Receipts: `docs/handbook/testing.md#test-behavior-through-the-public-interface-so-a-test-changes-only-when-a-requirement-changes`
+
 ## Ship every gate with a positive control and a negative control
 
 Commit the case the gate must fail beside the case it must pass, and run both in the same job, because a suite of passing cases cannot tell a working check from one that always passes.
@@ -59,15 +68,37 @@ Receipts: `docs/handbook/testing.md#read-the-snapshot-diff-before-accepting-it-b
 
 ## Quarantine a flaky test loudly, and never retry it into silence
 
-Move a flaky test into a named quarantine list that the run reports, with an owner and the condition for taking it back out, because a retry wrapper converts an intermittent defect into silence and a deletion converts it into nothing.
+Fix the root cause of a flaky test first; when that cannot happen now, move it into a named quarantine list that the run reports, with an owning team, an exit deadline, and the condition for taking it back out, because a quarantine is a holding state and not a resting place, a deletion converts an intermittent defect into nothing, and a retry nobody sees converts it into silence.
+A retry is acceptable when a pass after a failure is recorded as a flake and routed to the quarantine list and its owner; what is ruled out is a retry that leaves no trace.
+Confirm a claimed fix before taking a test out of quarantine, by rerunning it enough times to show the flake is gone, since a fix that was claimed has often not removed the flakiness.
+A test skipped when a database, a tool, or a build is missing says so in the run output and names where it does run; one that also skips in CI never runs anywhere.
 Pin a check that depends on a live upstream to a recorded fixture inside the gate and run the live version on its own cadence, because a red that turns on someone else's uptime teaches the reader to ignore red; what a scheduled run does when it fails is github.md's.
+Review the quarantine list on a cadence as a standing control and not a backlog to burn down, because a quarantined test nobody reviews gets forgotten.
 Anchor: none (because quarantine membership and its removal condition are editorial calls no checker can look up; the list printed by the run is the control)
 Receipts: `docs/handbook/testing.md#quarantine-a-flaky-test-loudly-and-never-retry-it-into-silence`
 
+## Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
+
+Delete a test in the same change that removes the code it covered, because obsolete tests were most deletions in the projects studied and are the safe kind: nothing is left for them to guard.
+Before removing a test as a duplicate, name the test that still covers its behavior and show that covering test fail on the defect the removed one caught, with a planted fault or a mutation, because a test judged redundant sometimes held coverage nothing else did; treat a reduction tool's output as a filter and not a verdict.
+Do not shrink a suite by coverage, since reduction by coverage loses real fault detection even when the coverage loss looks small; when the goal is speed, move or remove a few long-running tests rather than many cheap ones.
+Never remove one of a positive and negative control pair without the other; the controls rule above says why the pair is the unit.
+Anchor: the review diff, where a deleted test sits beside the deleted code or beside the named covering test; nothing checks that a redundancy claim holds, so the planted-fault run shown in the change is the control.
+Receipts: `docs/handbook/testing.md#delete-a-test-with-the-code-it-covered-and-prove-a-test-redundant-before-removing-it-as-a-duplicate`
+
+## Fix the test smells that hide what broke, not the ones a detector counts
+
+Fix a test that checks several behaviors at once and a test that asserts many things with no message saying which one failed, because those are the smells that cost a reader the answer to what broke, and do not read the rest as harmless.
+Review a test's smells in the change that adds it, since smells usually arrive when a test is first written, tend to stay for a long time, and are rarely spotted by the developers who live with them.
+Treat a smell detector's output as unreliable triage input, neither a backlog nor a severity ranking, since its vocabulary of smells drifts from what developers find costly and clearing its count can spend effort on the wrong tests.
+Anchor: none (because which smell is worth fixing is an editorial call a detector's count cannot make; a red whose output names its cause is the control)
+Receipts: `docs/handbook/testing.md#fix-the-test-smells-that-hide-what-broke-not-the-ones-a-detector-counts`
+
 ## Treat coverage as a search-light, never as a target
 
-Use coverage to find code that nothing exercises, and never set it as a target, because a number set as a goal is met by tests written for the number rather than for the behavior.
+Use coverage to find code that nothing exercises, and never set it as a target, because a number set as a goal gets gamed by tests written for the number rather than for the behavior.
 Read the uncovered branches rather than the summary figure, and take a coverage threshold back out of the gate once it starts producing assertion-free tests.
+Read coverage on the change under review, what the diff adds that nothing runs, and remember a covered line is not a tested line, since code can be deleted with every test still passing; check a path that matters with a planted fault or a mutation, as mutation testing on the changed code in review does.
 Anchor: none (because coverage here is read as a report and not gated; the control is the uncovered-branch list plus the absence of any threshold in the gate config)
 Receipts: `docs/handbook/testing.md#treat-coverage-as-a-search-light-never-as-a-target`
 
@@ -75,6 +106,7 @@ Receipts: `docs/handbook/testing.md#treat-coverage-as-a-search-light-never-as-a-
 
 Name each test file after the module it mirrors and keep the tree flat enough to scan, because a reader who cannot find the test for a file assumes there is none and writes a second one.
 Keep each fixture beside the test that consumes it, and let a test build its own throwaway workspace instead of sharing one, so a case cannot inherit state from the case before it.
+Share setup only where the shared values do not hide what a test depends on, because a little duplication that lets a test read whole beats a helper that hides its inputs.
 Regenerate a sampled fixture from its source under a seed rather than curating it by hand, and commit a hand-authored fixture with a header saying how its cases were chosen and from what sources; the rule for making a measuring instrument reproducible lives in evals.md.
 Anchor: `tests/` mirroring the checker one file per family, with the shared sandbox helper beside them and every case building its own throwaway repo.
 Receipts: `docs/handbook/testing.md#mirror-the-module-layout-in-the-test-tree-and-keep-each-fixture-beside-its-test`
@@ -101,9 +133,12 @@ Receipts: `docs/handbook/testing.md#keep-a-demoted-check-running-reported-and-co
 - Don't leave the guard that protects the workflow as the one thing with no test.
 - Don't assert against a value the test computed the way the code computes it.
 - Don't reach past the entry point and call the result an integration test.
+- Don't pin a test to the calls an implementation makes when the result it produces can be asserted.
 - Don't call a suite of passing cases proof that a check can still fail.
 - Don't accept a snapshot whose diff you have not read.
-- Don't wrap a flaky test in a retry, and don't delete it quietly.
+- Don't retry a flaky test where nobody sees it, and don't delete it quietly.
+- Don't remove a test as redundant without naming the test that still covers it, or remove half of a control pair.
+- Don't treat a smell detector's count as a backlog or a severity ranking.
 - Don't set a coverage number as a target, and don't read the summary figure instead of the branches.
 - Don't share one fixture workspace across cases.
 - Don't leave a test-runner setting unexplained.

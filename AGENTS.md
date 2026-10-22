@@ -97,15 +97,18 @@ Full text: `.claude/rules/house/security.md`, `.claude/rules/house/security-serv
 - Ship secure defaults, and bound what one caller can consume
 
 ### testing
-Applies to: `tests/**`, `.github/workflows/**`
+Applies to: `**/tests/**`, `**/*.test.*`, `tests/**`, `.github/workflows/**`
 Full text: `.claude/rules/house/testing.md`
 - Give the agent a check it can run before you walk away
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford
 - Test the guard itself, as its own CI step
 - Feed a real payload through the real wiring, and never re-implement the logic under test
+- Test behavior through the public interface, so a test changes only when a requirement changes
 - Ship every gate with a positive control and a negative control
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
 - Quarantine a flaky test loudly, and never retry it into silence
+- Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
+- Fix the test smells that hide what broke, not the ones a detector counts
 - Treat coverage as a search-light, never as a target
 - Mirror the module layout in the test tree, and keep each fixture beside its test
 - Explain a test-runner config quirk in the config, with the incident that produced it
