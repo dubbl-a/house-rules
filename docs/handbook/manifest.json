@@ -1438,7 +1438,7 @@
       "path": "plugins/house/modules/github/files/scan-dist-secrets.mjs",
       "kind": "script",
       "module": "github",
-      "budgetLines": 160,
+      "budgetLines": 660,
       "owns": [
         "AG-038"
       ],

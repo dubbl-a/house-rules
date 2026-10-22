@@ -14,17 +14,23 @@
 //   --staged   scan the index content of staged added/modified files; meant
 //              for a pre-commit hook. Reads blobs, never the working tree.
 //   --history  scan every blob any commit on any ref added or changed, and
-//              name the commit and path of each hit. One `git log` pass plus
-//              one `git cat-file --batch` stream with each blob read once, so
-//              the cost is linear in history size. Refuses a shallow clone.
+//              name the commit (the earliest by commit date) and path of each
+//              hit. One `git log` pass plus one `git cat-file --batch` stream
+//              with each blob read once, so the cost is linear in history
+//              size. Also reads a blob a tag points at directly. Refuses a
+//              shallow clone.
 //   Both apply RULES (named key formats) plus the vars-file and --patterns
 //   markers, minus the allowlist: .house/secret-allow, one
-//   `<path-glob> <rule-name>` per line, `#` starts a comment, so each waiver
-//   carries its reason. Binary blobs and blobs over MAX_BLOB_BYTES are
-//   skipped and counted. A git error or unreadable blob is an error, never a
-//   pass.
+//   `<path-glob> <rule-name>  # reason` per line (the reason is required and
+//   each applied waiver is printed). --staged reads the allowlist from the
+//   index. In the git modes a vars-file value that is one plain word or a bare
+//   number is not a marker, and a URL contributes its password, not its
+//   hostname. CI has no .dev.vars, so those markers act in a local hook only.
+//   Binary blobs and blobs over MAX_BLOB_BYTES are skipped and counted. A git
+//   error or unreadable blob is an error, never a pass.
 //   What it misses against a broad scanner: any key format not in RULES, a
-//   secret with no recognisable prefix, and anything encoded or split.
+//   secret with no recognisable prefix, anything encoded or split, and (known
+//   gap) a tag chain more than one level deep or a tag on a tree.
 //
 // Dist-mode markers:
 //   - every value in a vars file (--vars-file=<path>, default .dev.vars) that
@@ -56,8 +62,9 @@
 //
 // A hit prints the offending file path (and the commit, in --history) and the
 // marker or rule NAME (the vars-file key, e.g. "DATABASE_URL:password", the
-// literal pattern, e.g. "postgres://", or the rule, e.g. "github-token") —
-// never the value that matched.
+// built-in literal, e.g. "postgres://", the rule, e.g. "github-token", or for
+// a caller pattern "pattern#<position>" or its object name) — never the value
+// that matched.
 
 import {
   readFileSync,
@@ -89,17 +96,18 @@ const UNCONDITIONAL_PATTERNS = [
 ];
 
 // Named key formats for the git modes. Each anchors on a vendor prefix and a
-// length so ordinary prose and hashes do not trip it. Add a rule here and a
+// length so ordinary prose and hashes do not trip it, and start on a lookbehind
+// rather than \b, which an underscore defeats (token_<key> must still match). Add a rule here and a
 // canary to CANARIES below; --self-test fails for a rule with no canary.
 export const RULES = [
-  { name: 'aws-access-key-id', re: /\b(?:AKIA|ASIA)(?!IOSFODNN7EXAMPLE)[0-9A-Z]{16}\b/ },
-  { name: 'github-token', re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{70,})/ },
-  { name: 'slack-token', re: /\bxox[abprs]-(?=[A-Za-z0-9-]{24,})[A-Za-z0-9]+(?:-[A-Za-z0-9]+){2,}/ },
-  { name: 'stripe-live-key', re: /\b[sr]k_live_[0-9A-Za-z]{24,}/ },
-  { name: 'google-api-key', re: /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/ },
+  { name: 'aws-access-key-id', re: /(?<![A-Za-z0-9])(?:AKIA|ASIA)(?!IOSFODNN7EXAMPLE)[0-9A-Z]{16}(?![A-Za-z0-9])/ },
+  { name: 'github-token', re: /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{70,})/ },
+  { name: 'slack-token', re: /(?<![A-Za-z0-9])xox[abposr]-\d+(?:-\d+){0,2}-[A-Za-z0-9]{10,}/ },
+  { name: 'stripe-live-key', re: /(?<![A-Za-z0-9])[sr]k_live_[0-9A-Za-z]{24,}/ },
+  { name: 'google-api-key', re: /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/ },
   { name: 'private-key-header', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/ },
-  { name: 'anthropic-key', re: /\bsk-ant-[a-z]{2,6}\d{2}-[A-Za-z0-9_-]{40,}/ },
-  { name: 'openai-key', re: /\bsk-proj-[A-Za-z0-9_-]{40,}/ },
+  { name: 'anthropic-key', re: /(?<![A-Za-z0-9])sk-ant-[a-z]{2,6}\d{2}-[A-Za-z0-9_-]{40,}/ },
+  { name: 'openai-key', re: /(?<![A-Za-z0-9])sk-proj-[A-Za-z0-9_-]{40,}/ },
 ];
 
 class ScanError extends Error {}
@@ -107,12 +115,18 @@ class ScanError extends Error {}
 // Build {name, value} markers from a .dev.vars-style file. Values under the
 // length floor are skipped — they're too short to be a real credential and
 // too likely to false-positive against ordinary page text.
-function markersFromVarsFile(varsPath) {
+//
+// gitModes narrows what counts as a secret, because a commit scan meets
+// ordinary config text that a built-output scan does not: a value that is one
+// plain word (ENVIRONMENT=development) or a bare number is skipped, and a URL
+// contributes its password but not its hostname. Every other value is a marker.
+function markersFromVarsFile(varsPath, gitModes = false) {
   if (!existsSync(varsPath)) return [];
   const parsed = parseEnv(readFileSync(varsPath, 'utf8'));
   const markers = [];
   for (const [name, value] of Object.entries(parsed)) {
     if (!value || value.length < MIN_MARKER_LENGTH) continue;
+    if (gitModes && /^(?:[A-Za-z]+|\d+(?:\.\d+)?)$/.test(value)) continue;
     markers.push({ name, value });
     try {
       const url = new URL(value);
@@ -122,7 +136,7 @@ function markersFromVarsFile(varsPath) {
       if (url.password && url.password.length >= MIN_MARKER_LENGTH) {
         markers.push({ name: `${name}:password`, value: url.password });
       }
-      if (url.hostname && url.hostname.length >= MIN_MARKER_LENGTH) {
+      if (!gitModes && url.hostname && url.hostname.length >= MIN_MARKER_LENGTH) {
         markers.push({ name: `${name}:hostname`, value: url.hostname });
       }
     } catch {
@@ -135,8 +149,13 @@ function markersFromVarsFile(varsPath) {
 // Extra markers from --patterns=<file> (array of strings and/or
 // {name,value} objects) and/or SCAN_DIST_SECRETS_PATTERNS (comma-separated
 // literal substrings). Both optional, both composable with the built-ins.
+//
+// A pattern is a secret by definition, so a hit never prints its value: it is
+// named pattern#<position> (file entries first, then the env list), or by the
+// object's own name when the caller gave one.
 function markersFromConfig(patternsFile, envValue) {
   const markers = [];
+  let position = 0;
   if (patternsFile) {
     if (!existsSync(patternsFile)) {
       throw new Error(`--patterns file not found: ${patternsFile}`);
@@ -144,18 +163,20 @@ function markersFromConfig(patternsFile, envValue) {
     const parsed = JSON.parse(readFileSync(patternsFile, 'utf8'));
     if (!Array.isArray(parsed)) throw new Error(`--patterns file must contain a JSON array: ${patternsFile}`);
     for (const entry of parsed) {
+      const at = position++;
       if (typeof entry === 'string') {
-        if (entry.length >= MIN_MARKER_LENGTH) markers.push({ name: entry, value: entry });
+        if (entry.length >= MIN_MARKER_LENGTH) markers.push({ name: `pattern#${at}`, value: entry });
       } else if (entry && typeof entry === 'object' && typeof entry.value === 'string') {
         if (entry.value.length >= MIN_MARKER_LENGTH) {
-          markers.push({ name: typeof entry.name === 'string' ? entry.name : entry.value, value: entry.value });
+          markers.push({ name: typeof entry.name === 'string' ? entry.name : `pattern#${at}`, value: entry.value });
         }
       }
     }
   }
   if (envValue) {
     for (const raw of envValue.split(',').map((s) => s.trim()).filter(Boolean)) {
-      if (raw.length >= MIN_MARKER_LENGTH) markers.push({ name: raw, value: raw });
+      const at = position++;
+      if (raw.length >= MIN_MARKER_LENGTH) markers.push({ name: `pattern#${at}`, value: raw });
     }
   }
   return markers;
@@ -207,23 +228,34 @@ function git(repo, args) {
   return r.stdout;
 }
 
-// `<path-glob> <rule-name>` per line; `#` starts a comment (whole line or
-// after whitespace). A malformed line is an error: a typo must not quietly
+// `<path-glob> <rule-name>  # reason` per line. The reason is required: a
+// waiver nobody explained is a future accident. A blank or whole-line comment
+// is skipped; any other malformed line is an error, so a typo cannot quietly
 // waive nothing, or everything.
-function loadAllowlist(root) {
-  const file = join(root, ALLOW_FILE);
-  if (!existsSync(file)) return [];
+function parseAllowlist(text) {
   const entries = [];
-  readFileSync(file, 'utf8').split('\n').forEach((raw, i) => {
-    const line = raw.replace(/(^|\s)#.*$/, '').trim();
-    if (!line) return;
-    const fields = line.split(/\s+/);
-    if (fields.length !== 2) {
-      throw new ScanError(`${ALLOW_FILE}:${i + 1}: expected "<path-glob> <rule-name>", got ${fields.length} field(s)`);
+  text.split('\n').forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) return;
+    const m = /^(\S+)\s+(\S+)\s+#\s*(\S.*)$/.exec(line);
+    if (!m) {
+      throw new ScanError(`${ALLOW_FILE}:${i + 1}: expected "<path-glob> <rule-name>  # reason", and the reason is required`);
     }
-    entries.push({ re: globToRegExp(fields[0]), rule: fields[1] });
+    entries.push({ glob: m[1], re: globToRegExp(m[1]), rule: m[2], reason: m[3].trim() });
   });
   return entries;
+}
+
+// --staged reads the allowlist from the index, so a waiver counts only once it
+// is staged (an unstaged edit is not what the commit will hold); --history
+// reads the checked-out file. A missing file is no waivers.
+function loadAllowlist(mode, root) {
+  if (mode === 'staged') {
+    const r = spawnSync('git', ['-C', root, 'show', `:${ALLOW_FILE}`], { maxBuffer: 1 << 26 });
+    return r.status === 0 ? parseAllowlist(String(r.stdout)) : [];
+  }
+  const file = join(root, ALLOW_FILE);
+  return existsSync(file) ? parseAllowlist(readFileSync(file, 'utf8')) : [];
 }
 
 // A glob with no slash matches the basename at any depth; `**` crosses
@@ -242,14 +274,16 @@ function globToRegExp(glob) {
   return new RegExp(`^${glob.includes('/') ? '' : '(?:.*/)?'}${out}$`);
 }
 
-// One entry per changed blob: { oid, path, commit }. Parses the NUL-separated
-// `git diff --raw` / `git log --raw` stream: a ":modes oids status" token is
-// followed by exactly one path token (renames are off), and a "commit <oid>"
-// token names the commit the following entries belong to.
+// One entry per changed blob: { oid, path, commit, time }. Parses the
+// NUL-separated `git diff --raw` / `git log --raw` stream: a ":modes oids
+// status" token is followed by exactly one path token (renames are off), and a
+// "commit <oid> <committer-time>" token names the commit the following entries
+// belong to.
 function parseRaw(buf) {
   const entries = [];
   const tokens = buf.toString('utf8').split('\0');
   let commit = null;
+  let time = null;
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i].replace(/^\n+/, '');
     if (!tok) continue;
@@ -259,25 +293,41 @@ function parseRaw(buf) {
       if (path === undefined) throw new ScanError('git output ended inside a diff entry');
       const mode = raw[2];
       if (/^0+$/.test(raw[3]) || mode === '160000' || mode === '040000') continue; // deleted, submodule, tree
-      entries.push({ oid: raw[3], path, commit });
+      entries.push({ oid: raw[3], path, commit, time });
       continue;
     }
-    const c = /^commit ([0-9a-f]{40,64})$/.exec(tok);
-    if (c) { commit = c[1]; continue; }
+    const c = /^commit ([0-9a-f]{40,64}) (\d+)$/.exec(tok);
+    if (c) { commit = c[1]; time = Number(c[2]); continue; }
     throw new ScanError('unrecognised git output while listing changed files');
   }
   return entries;
 }
 
 function stagedEntries(root) {
-  return parseRaw(git(root, ['diff', '--cached', '--raw', '-r', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--diff-filter=ACMR']));
+  return parseRaw(git(root, ['diff', '--cached', '--raw', '-r', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--diff-filter=ACMRT']));
+}
+
+// A tag can point straight at a blob (lightweight, or annotated one level
+// deep), which no commit diff lists. Nested tag chains and a tag on a tree are
+// a known gap.
+function taggedBlobEntries(root) {
+  const out = git(root, ['for-each-ref', '--format=%(objecttype) %(objectname) %(*objecttype) %(*objectname) %(refname)']).toString();
+  const entries = [];
+  for (const line of out.split('\n')) {
+    const [type, oid, peeledType, peeledOid, ref] = line.split(' ');
+    if (type === 'blob') entries.push({ oid, path: ref, commit: null, time: null });
+    else if (type === 'tag' && peeledType === 'blob') entries.push({ oid: peeledOid, path: ref, commit: null, time: null });
+  }
+  return entries;
 }
 
 function historyEntries(root) {
   if (git(root, ['rev-parse', '--is-shallow-repository']).toString().trim() === 'true') {
     throw new ScanError('shallow clone: history is incomplete (fetch with full depth, e.g. actions/checkout fetch-depth: 0)');
   }
-  return parseRaw(git(root, ['log', '--all', '-m', '-r', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--format=commit %H']));
+  // --root: without it `log.showRoot=false` in a user's config drops the root commit's files.
+  const log = git(root, ['log', '--all', '--root', '-m', '-r', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--format=commit %H %ct']);
+  return [...parseRaw(log), ...taggedBlobEntries(root)];
 }
 
 // Incremental reader over a child's stdout, so a large history never sits in
@@ -369,9 +419,9 @@ function matchNames(text, markers) {
   return names;
 }
 
-// Returns { hits: [{path, commit, name}], blobs, binary, large }.
+// Returns { hits: [{path, commit, time, name}], waived: Map<"path rule", reason>, blobs, binary, large }.
 async function scanGit(mode, root, markers) {
-  const allow = loadAllowlist(root);
+  const allow = loadAllowlist(mode, root);
   const entries = mode === 'staged' ? stagedEntries(root) : historyEntries(root);
   const where = new Map();
   for (const e of entries) {
@@ -380,31 +430,36 @@ async function scanGit(mode, root, markers) {
   }
   const stats = { blobs: 0, binary: 0, large: 0 };
   const hits = [];
+  const waived = new Map();
   const seen = new Set();
   await readBlobs(root, [...where.keys()], stats, (oid, body) => {
     if (body.subarray(0, 8000).includes(0)) { stats.binary++; return; }
     const names = matchNames(body.toString('utf8'), markers);
     for (const e of where.get(oid)) {
       for (const name of names) {
-        if (allow.some((a) => a.rule === name && a.re.test(e.path))) continue;
+        const waiver = allow.find((a) => a.rule === name && a.re.test(e.path));
+        if (waiver) { waived.set(`${e.path} ${name}`, waiver.reason); continue; }
         const key = `${e.commit}\0${e.path}\0${name}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        hits.push({ path: e.path, commit: e.commit, name });
+        hits.push({ path: e.path, commit: e.commit, time: e.time, name });
       }
     }
   });
-  return { hits, ...stats };
+  return { hits, waived, ...stats };
 }
 
 // One line per (path, rule): a secret that survives 19 commits is one leak.
-// History lists newest first, so the last commit seen is the oldest.
+// The commit named is the one with the earliest commit date; a tie goes to the
+// one listed later, which is the older in log order.
 function reportHits(hits) {
   const grouped = new Map();
   for (const h of hits) {
     const key = `${h.path}\0${h.name}`;
     const g = grouped.get(key);
-    if (g) { g.commit = h.commit; g.count++; } else grouped.set(key, { ...h, count: 1 });
+    if (!g) { grouped.set(key, { ...h, count: 1 }); continue; }
+    g.count++;
+    if (h.time !== null && (g.time === null || h.time <= g.time)) { g.commit = h.commit; g.time = h.time; }
   }
   for (const h of grouped.values()) {
     const more = h.count > 1 ? `, and ${h.count - 1} later` : '';
@@ -431,7 +486,10 @@ const CANARIES = {
     ['gh', 'r_', 'a'.repeat(36)].join(''),
     ['github', '_pat_', 'b'.repeat(70)].join(''),
   ],
-  'slack-token': [['xo', 'xb-', '123456789012-1234567890123-abcdefghijklmnopqrstuvwx'].join('')],
+  'slack-token': [
+    ['xo', 'xb-', '123456789012-1234567890123-abcdefghijklmnopqrstuvwx'].join(''),
+    ['xo', 'xp-', '1234567890-1234567890-1234567890-0123456789abcdef0123456789abcdef'].join(''),
+  ],
   'stripe-live-key': [['sk', '_live_', 'a1'.repeat(12)].join('')],
   'google-api-key': [['AI', 'za', 'A'.repeat(35)].join('')],
   'private-key-header': [
@@ -532,10 +590,11 @@ async function runGitMode(mode, args) {
     const patternsArg = args.find((a) => a.startsWith('--patterns='));
     const patternsFile = patternsArg ? resolve(top, patternsArg.slice('--patterns='.length)) : null;
     const markers = [
-      ...markersFromVarsFile(varsFile),
+      ...markersFromVarsFile(varsFile, true),
       ...markersFromConfig(patternsFile, process.env.SCAN_DIST_SECRETS_PATTERNS),
     ];
     const result = await scanGit(mode, top, markers);
+    for (const [what, reason] of result.waived) console.log(`scan-dist-secrets: waived ${what}: ${reason}`);
     if (result.hits.length) {
       reportHits(result.hits);
       process.exit(1);

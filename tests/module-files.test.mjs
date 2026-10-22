@@ -13,7 +13,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, existsSync,
+  mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, existsSync, symlinkSync,
 } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -561,7 +561,8 @@ const SECRET_CANARIES = {
   'aws-access-key-id': ['AK' + 'IA' + 'ZZTESTKEY0000000'],
   'github-token': ['gh' + 'p_' + 'a'.repeat(36), 'gh' + 'o_' + 'a'.repeat(36), 'gh' + 'u_' + 'a'.repeat(36),
     'gh' + 's_' + 'a'.repeat(36), 'gh' + 'r_' + 'a'.repeat(36), 'github' + '_pat_' + 'b'.repeat(70)],
-  'slack-token': ['xo' + 'xb-' + '123456789012-1234567890123-abcdefghijklmnopqrstuvwx'],
+  'slack-token': ['xo' + 'xb-' + '123456789012-1234567890123-abcdefghijklmnopqrstuvwx',
+    'xo' + 'xp-' + '1234567890-1234567890-1234567890-0123456789abcdef0123456789abcdef'],
   'stripe-live-key': ['sk' + '_live_' + 'a1'.repeat(12)],
   'google-api-key': ['AI' + 'za' + 'A'.repeat(35)],
   'private-key-header': ['-----BEGIN ' + 'RSA PRIVATE' + ' KEY-----', '-----BEGIN ' + 'OPENSSH PRIVATE' + ' KEY-----'],
@@ -575,6 +576,7 @@ const SECRET_NEAR_MISSES = [
   'gh' + 'p_' + 'a'.repeat(35),
   'gh' + 'x_' + 'a'.repeat(36),
   'xo' + 'xb-' + '123-456',
+  'xo' + 'xb-' + 'header-nav-item-primary-link-active-state', // CSS-like class, no digit groups
   'sk' + '_live_' + 'short',
   'sk' + '_test_' + 'a1'.repeat(12),
   'AI' + 'za' + 'A'.repeat(34),
@@ -762,13 +764,13 @@ test('scan-dist-secrets: .house/secret-allow waives one path and rule, not anoth
   assert.match(res.stderr, /src\.js/);
   assert.ok(!res.stderr.includes('example.md'), 'the waived path is not reported');
 
-  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/** openai-key  # wrong rule\nsrc.js github-token\n');
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/** openai-key  # wrong rule\nsrc.js github-token  # reason\n');
   const wrong = scanGitMode(dir, '--history');
   assert.equal(wrong.status, 1);
   assert.match(wrong.stderr, /example\.md/, 'a waiver for another rule does not hide this one');
   assert.ok(!wrong.stderr.includes('src.js'));
 
-  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/** github-token\nsrc.js github-token\n');
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/** github-token  # reason\nsrc.js github-token  # reason\n');
   assert.equal(scanGitMode(dir, '--history').status, 0);
 });
 
@@ -776,13 +778,162 @@ test('scan-dist-secrets: a malformed allowlist line is an error, not a silent wa
   const dir = newScanRepo();
   mkdirSync(join(dir, '.house'));
   writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/**\n');
-  const res = scanGitMode(dir, '--staged');
+  const res = scanGitMode(dir, '--history');
   assert.equal(res.status, 2);
   assert.match(res.stderr, /secret-allow:1/);
   writeFileSync(join(dir, '.house', 'secret-allow'), '# ok\n*.md github-token extra\n');
-  const three = scanGitMode(dir, '--staged');
+  const three = scanGitMode(dir, '--history');
   assert.equal(three.status, 2);
   assert.match(three.stderr, /secret-allow:2/);
+});
+
+// ---- rework after the independent refuter (#402) ----
+
+function commitAt(dir, msg, date) {
+  return execFileSync('git', ['-C', dir, '-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false',
+    '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '-m', msg], { env: { ...GIT_TEST_ENV, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date } });
+}
+
+test('scan-dist-secrets --staged: a symlink replaced by a file holding a key is scanned (type change)', () => {
+  const dir = newScanRepo();
+  symlinkSync('target.txt', join(dir, 'link'));
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'link');
+  rmSync(join(dir, 'link'));
+  writeFileSync(join(dir, 'link'), SECRET_CANARIES['github-token'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 1, res.stderr);
+  assert.match(res.stderr, /link.*matches "github-token"/);
+});
+
+test('scan-dist-secrets --history: a key only in the root commit is found even with log.showRoot=false', () => {
+  const dir = newScanRepo();
+  gitIn(dir, 'config', 'log.showRoot', 'false');
+  writeFileSync(join(dir, 'root.txt'), SECRET_CANARIES['openai-key'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'root');
+  writeFileSync(join(dir, 'other.txt'), 'x\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'second');
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 1, res.stderr);
+  assert.match(res.stderr, /root\.txt.*matches "openai-key"/);
+});
+
+test('scan-dist-secrets --history: a blob a tag points at directly is scanned, lightweight and annotated', () => {
+  for (const annotated of [false, true]) {
+    const dir = newScanRepo();
+    writeFileSync(join(dir, 'a.txt'), 'base\n');
+    gitIn(dir, 'add', '-A');
+    gitIn(dir, 'commit', '-q', '-m', 'base');
+    writeFileSync(join(dir, 'loose.txt'), SECRET_CANARIES['google-api-key'][0] + '\n');
+    const oid = gitIn(dir, 'hash-object', '-w', 'loose.txt').trim();
+    rmSync(join(dir, 'loose.txt'));
+    gitIn(dir, 'tag', ...(annotated ? ['-a', '-m', 'm'] : []), 'blobtag', oid);
+    const res = scanGitMode(dir, '--history');
+    assert.equal(res.status, 1, `annotated=${annotated}: ${res.stderr}`);
+    assert.match(res.stderr, /refs\/tags\/blobtag.*matches "google-api-key"/);
+  }
+});
+
+test('scan-dist-secrets --history: "oldest commit" is the earliest by commit date, not the last one listed', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'k.txt'), SECRET_CANARIES['stripe-live-key'][0] + ' one\n');
+  gitIn(dir, 'add', '-A');
+  commitAt(dir, 'first made, dated later', '2030-01-01T00:00:00Z');
+  const later = gitIn(dir, 'rev-parse', 'HEAD').trim();
+  writeFileSync(join(dir, 'k.txt'), SECRET_CANARIES['stripe-live-key'][0] + ' two\n');
+  gitIn(dir, 'add', '-A');
+  commitAt(dir, 'second made, dated earlier', '2020-01-01T00:00:00Z');
+  const earlier = gitIn(dir, 'rev-parse', 'HEAD').trim();
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, new RegExp(`oldest commit ${earlier.slice(0, 12)}, and 1 later`));
+  assert.ok(!res.stderr.includes(later.slice(0, 12)));
+});
+
+test('scan-dist-secrets: a key glued after a word character or underscore is still caught', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'env.txt'), 'GITHUB_TOKEN_' + SECRET_CANARIES['github-token'][0] + '\nfoo_' + SECRET_CANARIES['aws-access-key-id'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /"github-token"/);
+  assert.match(res.stderr, /"aws-access-key-id"/);
+});
+
+test('scan-dist-secrets: the git modes skip plain-word and bare-number vars values and hostnames, keep the rest', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, '.dev.vars'), [
+    'ENVIRONMENT=development', 'PORT_NUMBER=1234567890', 'DB_URL=postgres://user:Zz9pass_word1@localhost-db-host:5432/app', 'SECRET_THING=zz_vars_value_0123456789', '',
+  ].join('\n'));
+  writeFileSync(join(dir, 'ok.txt'), 'development 1234567890 localhost-db-host\n');
+  gitIn(dir, 'add', 'ok.txt');
+  const ok = scanGitMode(dir, '--staged');
+  assert.equal(ok.status, 0, ok.stderr);
+
+  writeFileSync(join(dir, 'pw.txt'), 'Zz9pass_word1\n');
+  gitIn(dir, 'add', 'pw.txt');
+  const pw = scanGitMode(dir, '--staged');
+  assert.equal(pw.status, 1);
+  assert.match(pw.stderr, /pw\.txt.*matches "DB_URL:password"/);
+});
+
+test('scan-dist-secrets: an allowlist line with no reason is an error naming the line', () => {
+  const dir = newScanRepo();
+  mkdirSync(join(dir, '.house'));
+  writeFileSync(join(dir, '.house', 'secret-allow'), '# header\ndocs/** github-token\n');
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 2);
+  assert.match(res.stderr, /secret-allow:2.*reason/);
+});
+
+test('scan-dist-secrets: each applied waiver prints its path, rule and reason', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'fixture.md'), SECRET_CANARIES['github-token'][0] + '\n');
+  mkdirSync(join(dir, '.house'));
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'fixture.md github-token  # documented fake\n');
+  gitIn(dir, 'add', '-A');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /waived fixture\.md github-token: documented fake/);
+});
+
+test('scan-dist-secrets --staged: reads the allowlist from the index, so an unstaged waiver waives nothing', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'fixture.md'), SECRET_CANARIES['github-token'][0] + '\n');
+  gitIn(dir, 'add', 'fixture.md');
+  mkdirSync(join(dir, '.house'));
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'fixture.md github-token  # local only\n');
+  assert.equal(scanGitMode(dir, '--staged').status, 1, 'working-tree-only waiver is ignored');
+  gitIn(dir, 'add', '.house/secret-allow');
+  assert.equal(scanGitMode(dir, '--staged').status, 0, 'once staged it applies');
+});
+
+test('scan-dist-secrets: a pattern hit is named pattern#N or by its object name, never by its value (all modes)', () => {
+  const dir = mktemp('house-scan-pat-');
+  mkdirSync(join(dir, 'dist'));
+  const plain = 'zz_plain_pattern_value_111';
+  const named = 'zz_named_pattern_value_222';
+  const fromEnv = 'zz_env_pattern_value_333';
+  writeFileSync(join(dir, 'dist', 'a.html'), `${plain} ${named} ${fromEnv}`);
+  writeFileSync(join(dir, 'patterns.json'), JSON.stringify([plain, { name: 'MY_NAMED', value: named }]));
+  const res = spawnSync(process.execPath, [SCAN_SECRETS, `--dist-dir=${join(dir, 'dist')}`, `--vars-file=${join(dir, 'none')}`,
+    `--patterns=${join(dir, 'patterns.json')}`], { encoding: 'utf8', env: { ...process.env, SCAN_DIST_SECRETS_PATTERNS: fromEnv } });
+  assert.equal(res.status, 1);
+  for (const v of [plain, named, fromEnv]) assert.ok(!res.stderr.includes(v) && !res.stdout.includes(v), 'value leaked');
+  assert.match(res.stderr, /marker "pattern#0"/);
+
+  const repo = newScanRepo();
+  writeFileSync(join(repo, 'f.txt'), `${named} ${fromEnv}\n`);
+  gitIn(repo, 'add', '-A');
+  const staged = spawnSync(process.execPath, [SCAN_SECRETS, '--staged', `--repo=${repo}`, `--patterns=${join(dir, 'patterns.json')}`],
+    { encoding: 'utf8', env: { ...GIT_TEST_ENV, SCAN_DIST_SECRETS_PATTERNS: fromEnv } });
+  assert.equal(staged.status, 1);
+  assert.match(staged.stderr, /"MY_NAMED"/);
+  assert.match(staged.stderr, /"pattern#2"/);
+  for (const v of [plain, named, fromEnv]) assert.ok(!staged.stderr.includes(v), 'value leaked');
 });
 
 test('scan-dist-secrets: dist mode is unchanged by the git modes (sk-ant- literal still trips)', () => {
