@@ -114,6 +114,13 @@ RT_SUPPORTED=0
 if [[ "$GIT_MAJOR" -gt 2 ]] || { [[ "$GIT_MAJOR" -eq 2 ]] && [[ "$GIT_MINOR" -ge 28 ]]; }; then
   RT_SUPPORTED=1
 fi
+# Before 2.51.0 (git 0e358de64, "fetch: use batched reference updates") a fetch
+# commits each ref update in its own transaction, so a fetch into master
+# arrives before refs/remotes/origin/master and the hook cannot see the proof.
+FETCH_BATCHED=0
+if [[ "$GIT_MAJOR" -gt 2 ]] || { [[ "$GIT_MAJOR" -eq 2 ]] && [[ "$GIT_MINOR" -ge 51 ]]; }; then
+  FETCH_BATCHED=1
+fi
 RT_WHY="git $GIT_VERSION has no reference-transaction hook (needs 2.28)"
 
 # --- fixture ----------------------------------------------------------------
@@ -771,13 +778,32 @@ else
   advance_remote "$r" "$TMP_ROOT/c23-clone"
   landed=$(git -C "$TMP_ROOT/c23-clone" rev-parse HEAD)
   git -C "$r" checkout -q -b feat/x
-  run_git "$r" fetch origin master:master
-  if [[ "$RUN_CODE" -ne 0 ]]; then
-    fail "fetch origin master:master is allowed and moves master" "exit $RUN_CODE: $RUN_OUT"
-  elif [[ "$(git -C "$r" rev-parse master)" != "$landed" ]]; then
-    fail "fetch origin master:master is allowed and moves master" "master did not move"
+  if [[ "$FETCH_BATCHED" -eq 1 ]]; then
+    run_git "$r" fetch origin master:master
+    if [[ "$RUN_CODE" -ne 0 ]]; then
+      fail "fetch origin master:master is allowed and moves master" "exit $RUN_CODE: $RUN_OUT"
+    elif [[ "$(git -C "$r" rev-parse master)" != "$landed" ]]; then
+      fail "fetch origin master:master is allowed and moves master" "master did not move"
+    else
+      pass "fetch origin master:master is allowed and moves master"
+    fi
   else
-    pass "fetch origin master:master is allowed and moves master"
+    before=$(git -C "$r" rev-parse master)
+    run_git "$r" fetch origin master:master
+    if [[ "$RUN_CODE" -ne 0 && "$RUN_OUT" == *"house reference-transaction"* \
+      && "$(git -C "$r" rev-parse master)" == "$before" ]]; then
+      pass "fetch origin master:master is refused and master stays put on git before 2.51"
+    else
+      fail "fetch origin master:master is refused and master stays put on git before 2.51" "exit $RUN_CODE: $RUN_OUT"
+    fi
+    run_git "$r" fetch --atomic origin master:master
+    if [[ "$RUN_CODE" -ne 0 ]]; then
+      fail "fetch --atomic origin master:master is allowed and moves master" "exit $RUN_CODE: $RUN_OUT"
+    elif [[ "$(git -C "$r" rev-parse master)" != "$landed" ]]; then
+      fail "fetch --atomic origin master:master is allowed and moves master" "master did not move"
+    else
+      pass "fetch --atomic origin master:master is allowed and moves master"
+    fi
   fi
 
   # The same replace trick aimed at the reachability test instead of at the
