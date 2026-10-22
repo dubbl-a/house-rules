@@ -40,13 +40,13 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "fe206f59a02986bd577972c21e513bfcc6adca936259598a4a10a2b76fbaaa03"
+      "bodySha256": "b66dae61925aba809faa870d6c7016d58e24737ebdd8496aaf3bb1b9aec77aff"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
       "module": "github",
       "source": "modules/github/files/scan-dist-secrets.mjs",
-      "bodySha256": "c4400043f5b030dd0eec067a68e5efa6d076d004bb70209403ebf1c42ca7e854"
+      "bodySha256": "5017f9a2e960c38ae5e2c364eb42e0c7a41964f344faa85bd636b19581974206"
     },
     {
       "path": "scripts/house/cleanup-worktree.sh",
@@ -153,6 +153,10 @@
     {
       "template": "pre-commit.d/20-secrets",
       "path": ".githooks/pre-commit.d/20-secrets"
+    },
+    {
+      "template": "pre-commit.d/25-secret-content",
+      "path": ".githooks/pre-commit.d/25-secret-content"
     }
   ],
   "detectPaths": {

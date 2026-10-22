@@ -12,6 +12,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Added
 
+- A content-scanning fallback for plans with no push protection, shipped in the `github` module (Part of #402). `scripts/house/scan-dist-secrets.mjs` gains `--staged` (index content of staged files) and `--history` (every blob on every ref, naming commit and path, linear in history size, refusing a shallow clone), eight named key rules, and a `.house/secret-allow` allowlist of `<path-glob> <rule-name>` lines with a reason comment. Dist mode is unchanged. The new `25-secret-content` pre-commit scaffold runs `--staged`, and the `pr-checks.yml` template gains a `secret-scan` job running `--history`. A scaffold is written only where absent, so an adopter's existing `pr-checks.yml` takes the job by hand; the `push-protection` at-adoption step and the github rule no longer point at a checksum-pinned gitleaks recipe.
 - `plugins/house/bin/house`, a wrapper that runs `scripts/house` with the same arguments and exit code, so `house <command>` is on PATH in a Claude Code session with the plugin enabled. A plugin distributed through claude.ai organization settings may not carry a top-level `bin/`; this one is distributed through its public GitHub marketplace.
 
 ## [0.22.5] - 2026-10-21

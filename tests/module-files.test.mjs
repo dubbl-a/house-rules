@@ -550,6 +550,323 @@ test('scan-dist-secrets: --patterns extends detection with a project-specific ma
   assert.match(res.stderr, /LEAK/);
 });
 
+// ---------------------------------------------------------------------------
+// scan-dist-secrets --staged / --history (#402)
+//
+// Token-shaped strings are built from parts so this file never holds a
+// literal that push protection or the scanner itself would flag.
+// ---------------------------------------------------------------------------
+
+const SECRET_CANARIES = {
+  'aws-access-key-id': ['AK' + 'IA' + 'ZZTESTKEY0000000'],
+  'github-token': ['gh' + 'p_' + 'a'.repeat(36), 'gh' + 'o_' + 'a'.repeat(36), 'gh' + 'u_' + 'a'.repeat(36),
+    'gh' + 's_' + 'a'.repeat(36), 'gh' + 'r_' + 'a'.repeat(36), 'github' + '_pat_' + 'b'.repeat(70)],
+  'slack-token': ['xo' + 'xb-' + '123456789012-1234567890123-abcdefghijklmnopqrstuvwx'],
+  'stripe-live-key': ['sk' + '_live_' + 'a1'.repeat(12)],
+  'google-api-key': ['AI' + 'za' + 'A'.repeat(35)],
+  'private-key-header': ['-----BEGIN ' + 'RSA PRIVATE' + ' KEY-----', '-----BEGIN ' + 'OPENSSH PRIVATE' + ' KEY-----'],
+  'anthropic-key': ['sk-' + 'ant-' + 'api03-' + 'x'.repeat(40)],
+  'openai-key': ['sk-' + 'proj-' + 'y'.repeat(40)],
+};
+
+// One-character-short or wrong-prefix lookalikes: the rules anchor on prefix and length.
+const SECRET_NEAR_MISSES = [
+  'AK' + 'IA' + 'ZZTESTKEY000000', // 15 after the prefix
+  'gh' + 'p_' + 'a'.repeat(35),
+  'gh' + 'x_' + 'a'.repeat(36),
+  'xo' + 'xb-' + '123-456',
+  'sk' + '_live_' + 'short',
+  'sk' + '_test_' + 'a1'.repeat(12),
+  'AI' + 'za' + 'A'.repeat(34),
+  '-----BEGIN ' + 'PUBLIC' + ' KEY-----',
+  'sk-' + 'ant-' + 'api03-' + 'x'.repeat(10),
+  'sk-' + 'proj-' + 'y'.repeat(10),
+  'AK' + 'IA' + 'IOSFODNN7EXAMPLE', // AWS's documented example key
+];
+
+const GIT_TEST_ENV = (() => {
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  for (const k of Object.keys(env)) if (k.startsWith('GIT_') && !['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM'].includes(k)) delete env[k];
+  return env;
+})();
+
+function gitIn(dir, ...args) {
+  return execFileSync('git', ['-C', dir, '-c', 'user.name=T', '-c', 'user.email=t@example.com',
+    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8', env: GIT_TEST_ENV });
+}
+
+function newScanRepo() {
+  const dir = mktemp('house-scan-git-');
+  gitIn(dir, 'init', '-q');
+  return dir;
+}
+
+function scanGitMode(dir, ...args) {
+  return spawnSync(process.execPath, [SCAN_SECRETS, ...args, `--repo=${dir}`], { encoding: 'utf8', env: GIT_TEST_ENV });
+}
+
+test('scan-dist-secrets: --self-test covers every rule, --staged, --history and the allowlist', () => {
+  const res = spawnSync(process.execPath, [SCAN_SECRETS, '--self-test'], { encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /8 rules, --staged, --history, allowlist/);
+});
+
+for (const [rule, values] of Object.entries(SECRET_CANARIES)) {
+  test(`scan-dist-secrets --staged: rule ${rule} fires on a staged canary and names the file, never the value (positive control)`, () => {
+    for (const value of values) {
+      const dir = newScanRepo();
+      writeFileSync(join(dir, 'notes.txt'), `token = ${value}\n`);
+      gitIn(dir, 'add', 'notes.txt');
+      const res = scanGitMode(dir, '--staged');
+      assert.equal(res.status, 1, res.stderr);
+      assert.match(res.stderr, new RegExp(`notes\\.txt.*matches "${rule}"`));
+      assert.ok(!res.stderr.includes(value) && !res.stdout.includes(value), 'the value must never be printed');
+    }
+  });
+}
+
+test('scan-dist-secrets --staged: clean content and near-miss lookalikes pass (negative control)', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'a.txt'), 'plain prose\n' + SECRET_NEAR_MISSES.join('\n') + '\n');
+  gitIn(dir, 'add', 'a.txt');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /clean/);
+});
+
+test('scan-dist-secrets --staged: reads the index, not the working tree', () => {
+  const dir = newScanRepo();
+  const secret = SECRET_CANARIES['github-token'][0];
+  writeFileSync(join(dir, 'a.txt'), secret + '\n');
+  gitIn(dir, 'add', 'a.txt');
+  writeFileSync(join(dir, 'a.txt'), 'scrubbed after staging\n');
+  assert.equal(scanGitMode(dir, '--staged').status, 1, 'staged secret still hits though the file on disk is clean');
+
+  const dir2 = newScanRepo();
+  writeFileSync(join(dir2, 'a.txt'), 'clean\n');
+  gitIn(dir2, 'add', 'a.txt');
+  writeFileSync(join(dir2, 'a.txt'), secret + '\n'); // unstaged edit: not part of this commit
+  assert.equal(scanGitMode(dir2, '--staged').status, 0);
+});
+
+test('scan-dist-secrets --staged: skips a binary blob that holds a canary shape', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'b.bin'), Buffer.concat([Buffer.from([0, 1, 2, 0]), Buffer.from(SECRET_CANARIES['openai-key'][0])]));
+  gitIn(dir, 'add', 'b.bin');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /skipped 1 binary/);
+});
+
+test('scan-dist-secrets --staged: a vars-file value pasted into a staged file is caught by name', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, '.dev.vars'), 'MY_API_TOKEN=zz_vars_value_0123456789\n');
+  writeFileSync(join(dir, 'config.js'), 'const t = "zz_vars_value_0123456789";\n');
+  gitIn(dir, 'add', 'config.js');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /config\.js.*matches "MY_API_TOKEN"/);
+});
+
+test('scan-dist-secrets --staged: 200 small staged files scan in under 2 s', () => {
+  const dir = newScanRepo();
+  for (let i = 0; i < 200; i++) writeFileSync(join(dir, `f${i}.txt`), `file ${i}\nconst x = ${i};\n`);
+  gitIn(dir, 'add', '-A');
+  const t0 = process.hrtime.bigint();
+  const res = scanGitMode(dir, '--staged');
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /200 blob/);
+  assert.ok(ms < 2000, `--staged over 200 files took ${Math.round(ms)} ms`);
+});
+
+test('scan-dist-secrets --history: finds a secret committed and then deleted, with its commit and path (positive control)', () => {
+  const dir = newScanRepo();
+  const secret = SECRET_CANARIES['stripe-live-key'][0];
+  writeFileSync(join(dir, 'app.js'), `const k = "${secret}";\n`);
+  gitIn(dir, 'add', 'app.js');
+  gitIn(dir, 'commit', '-q', '-m', 'add key');
+  const sha = gitIn(dir, 'rev-parse', 'HEAD').trim();
+  rmSync(join(dir, 'app.js'));
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'remove key');
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 1, res.stderr);
+  assert.match(res.stderr, new RegExp(`app\\.js \\(oldest commit ${sha.slice(0, 12)}\\) matches "stripe-live-key"`));
+  assert.ok(!res.stderr.includes(secret));
+});
+
+test('scan-dist-secrets --history: finds a secret that exists only on a side branch', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'a.txt'), 'base\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'base');
+  gitIn(dir, 'checkout', '-q', '-b', 'side');
+  writeFileSync(join(dir, 'side.txt'), SECRET_CANARIES['aws-access-key-id'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'side');
+  gitIn(dir, 'checkout', '-q', '-');
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /side\.txt.*matches "aws-access-key-id"/);
+});
+
+test('scan-dist-secrets --history: a clean history passes (negative control)', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'a.txt'), SECRET_NEAR_MISSES.join('\n') + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'one');
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /clean — history/);
+});
+
+test('scan-dist-secrets --history: an empty repo passes, and a shallow clone is refused (fail closed)', () => {
+  assert.equal(scanGitMode(newScanRepo(), '--history').status, 0);
+
+  const src = newScanRepo();
+  for (const n of ['one', 'two']) {
+    writeFileSync(join(src, `${n}.txt`), n + '\n');
+    gitIn(src, 'add', '-A');
+    gitIn(src, 'commit', '-q', '-m', n);
+  }
+  const shallow = join(mktemp('house-scan-shallow-'), 'clone');
+  execFileSync('git', ['clone', '-q', '--depth', '1', `file://${src}`, shallow], { env: GIT_TEST_ENV });
+  const res = scanGitMode(shallow, '--history');
+  assert.equal(res.status, 2);
+  assert.match(res.stderr, /shallow clone/);
+});
+
+test('scan-dist-secrets: outside a repository the git modes error out rather than pass', () => {
+  const dir = mktemp('house-scan-norepo-');
+  for (const mode of ['--staged', '--history']) {
+    const res = spawnSync(process.execPath, [SCAN_SECRETS, mode], { encoding: 'utf8', cwd: dir, env: { ...GIT_TEST_ENV, GIT_CEILING_DIRECTORIES: dirname(dir) } });
+    assert.equal(res.status, 2, mode);
+    assert.match(res.stderr, /ERROR/);
+  }
+});
+
+test('scan-dist-secrets: .house/secret-allow waives one path and rule, not another', () => {
+  const dir = newScanRepo();
+  const key = SECRET_CANARIES['github-token'][0];
+  mkdirSync(join(dir, 'docs'));
+  writeFileSync(join(dir, 'docs', 'example.md'), key + '\n');
+  writeFileSync(join(dir, 'src.js'), key + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'two files');
+
+  mkdirSync(join(dir, '.house'));
+  writeFileSync(join(dir, '.house', 'secret-allow'), '# docs show a fake token on purpose\ndocs/** github-token  # example in the docs\n');
+  const res = scanGitMode(dir, '--history');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /src\.js/);
+  assert.ok(!res.stderr.includes('example.md'), 'the waived path is not reported');
+
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/** openai-key  # wrong rule\nsrc.js github-token\n');
+  const wrong = scanGitMode(dir, '--history');
+  assert.equal(wrong.status, 1);
+  assert.match(wrong.stderr, /example\.md/, 'a waiver for another rule does not hide this one');
+  assert.ok(!wrong.stderr.includes('src.js'));
+
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/** github-token\nsrc.js github-token\n');
+  assert.equal(scanGitMode(dir, '--history').status, 0);
+});
+
+test('scan-dist-secrets: a malformed allowlist line is an error, not a silent waiver', () => {
+  const dir = newScanRepo();
+  mkdirSync(join(dir, '.house'));
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'docs/**\n');
+  const res = scanGitMode(dir, '--staged');
+  assert.equal(res.status, 2);
+  assert.match(res.stderr, /secret-allow:1/);
+  writeFileSync(join(dir, '.house', 'secret-allow'), '# ok\n*.md github-token extra\n');
+  const three = scanGitMode(dir, '--staged');
+  assert.equal(three.status, 2);
+  assert.match(three.stderr, /secret-allow:2/);
+});
+
+test('scan-dist-secrets: dist mode is unchanged by the git modes (sk-ant- literal still trips)', () => {
+  const dir = mktemp('house-scan-dist-');
+  mkdirSync(join(dir, 'dist'));
+  writeFileSync(join(dir, 'dist', 'a.html'), 'sk-' + 'ant-' + 'short');
+  const res = spawnSync(process.execPath, [SCAN_SECRETS, `--dist-dir=${join(dir, 'dist')}`, `--vars-file=${join(dir, 'none')}`], { encoding: 'utf8' });
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /marker "sk-ant-"/);
+});
+
+// ---------------------------------------------------------------------------
+// templates/pre-commit.d/25-secret-content and the pr-checks step (#402)
+// ---------------------------------------------------------------------------
+
+const SECRET_CONTENT_HOOK = join(ROOT, 'plugins/house/templates/pre-commit.d/25-secret-content');
+const PR_CHECKS_TEMPLATE = join(ROOT, 'plugins/house/templates/pr-checks.yml');
+
+function hookRepo({ withScanner }) {
+  const dir = newScanRepo();
+  mkdirSync(join(dir, '.git', 'hooks'), { recursive: true });
+  copyFileSync(SECRET_CONTENT_HOOK, join(dir, '.git', 'hooks', 'pre-commit'));
+  execFileSync('chmod', ['755', join(dir, '.git', 'hooks', 'pre-commit')]);
+  if (withScanner) {
+    mkdirSync(join(dir, 'scripts', 'house'), { recursive: true });
+    copyFileSync(SCAN_SECRETS, join(dir, 'scripts', 'house', 'scan-dist-secrets.mjs'));
+  }
+  return dir;
+}
+
+// core.hooksPath=/dev/null in gitIn would disable the hook under test.
+function commitWithHook(dir, env = GIT_TEST_ENV) {
+  return spawnSync('git', ['-C', dir, '-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false',
+    'commit', '-q', '-m', 'm'], { encoding: 'utf8', env });
+}
+
+test('25-secret-content: refuses a commit whose staged content holds a key (positive control)', () => {
+  const dir = hookRepo({ withScanner: true });
+  writeFileSync(join(dir, 'notes.txt'), SECRET_CANARIES['anthropic-key'][0] + '\n');
+  gitIn(dir, 'add', 'notes.txt');
+  const res = commitWithHook(dir);
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /notes\.txt.*anthropic-key/);
+});
+
+test('25-secret-content: an ordinary commit passes (negative control)', () => {
+  const dir = hookRepo({ withScanner: true });
+  writeFileSync(join(dir, 'notes.txt'), 'nothing here\n');
+  gitIn(dir, 'add', 'notes.txt');
+  assert.equal(commitWithHook(dir).status, 0);
+});
+
+test('25-secret-content: a missing scanner warns and lets the commit through, since CI is the gate', () => {
+  const dir = hookRepo({ withScanner: false });
+  writeFileSync(join(dir, 'notes.txt'), SECRET_CANARIES['anthropic-key'][0] + '\n');
+  gitIn(dir, 'add', 'notes.txt');
+  const res = commitWithHook(dir);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /was not scanned/);
+});
+
+test('25-secret-content: a missing node warns and lets the commit through', () => {
+  const dir = hookRepo({ withScanner: true });
+  writeFileSync(join(dir, 'notes.txt'), SECRET_CANARIES['anthropic-key'][0] + '\n');
+  gitIn(dir, 'add', 'notes.txt');
+  // A PATH holding only git and the shell tools the hook needs, no node.
+  const bin = mktemp('house-scan-bin-');
+  for (const tool of ['git', 'bash', 'env', 'dirname', 'cat']) {
+    const found = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).stdout.trim();
+    if (found) execFileSync('ln', ['-s', found, join(bin, tool)]);
+  }
+  const res = commitWithHook(dir, { ...GIT_TEST_ENV, PATH: bin });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /node not found/);
+});
+
+test('pr-checks template: a secret-scan job checks out full history and runs the scanner with --history', () => {
+  const yml = readFileSync(PR_CHECKS_TEMPLATE, 'utf8');
+  const job = yml.slice(yml.indexOf('  secret-scan:'));
+  assert.match(job, /fetch-depth: 0/);
+  assert.match(job, /run: node scripts\/house\/scan-dist-secrets\.mjs --history/);
+  assert.match(job, /actions\/checkout@[0-9a-f]{40}/);
+});
+
 // ===========================================================================
 // github/cleanup-worktree.sh
 // ===========================================================================
