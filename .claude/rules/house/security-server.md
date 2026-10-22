@@ -1,6 +1,8 @@
 ---
 paths:
   - "scripts/**"
+  - "plugins/house/scripts/**"
+  - "research/*/scripts/**"
 ---
 <!-- house-managed v0.22.6 module=security source=modules/security/rules/security-server.md body-sha256=12c7241d9c16079e776218319d2ffbb1c92b72b36ab3dba3fad672580de8b237 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->

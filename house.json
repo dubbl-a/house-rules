@@ -125,7 +125,10 @@
     "engineering": {
       "enabled": true,
       "config": {
-        "codeGlobs": [],
+        "codeGlobs": [
+          "plugins/house/scripts/**",
+          "research/*/scripts/**"
+        ],
         "gateGlobs": []
       }
     },
@@ -169,7 +172,12 @@
     },
     "security": {
       "enabled": true,
-      "config": {},
+      "config": {
+        "securityGlobs": [
+          "plugins/house/scripts/**",
+          "research/*/scripts/**"
+        ]
+      },
       "confirmed": {
         "code-scanning": "2026-10-21",
         "branch-protection": "2026-10-21",
@@ -222,6 +230,12 @@
       "what": "Declined at-adoption step `code-owners`: Once there is a second maintainer, add a code-owners entry naming a reviewer for workflow, release, and agent config files.",
       "why": "Solo maintainer: dubbl-a is the only collaborator. Add a code-owners entry when a second maintainer joins.",
       "decided": "2026-10-21"
+    },
+    {
+      "kind": "other",
+      "what": "plugins/house/modules/evals is deliberately outside the evals module's rule paths",
+      "why": "It is the evals module's source (rule text and module.json), named evals but not an eval suite; the eval rule does not apply to it.",
+      "decided": "2026-10-22"
     }
   ]
 }
