@@ -70,7 +70,7 @@ Receipts: `docs/handbook/docs.md#cut-dont-append-and-trim-on-a-fixed-cadence`
 ## Split a file only when splitting narrows what loads
 
 Split a topic only when the split makes a session load less. Two files that always load together are worse than one: identical context, plus a second place a rule can hide.
-The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads.
+The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads, and a nested `CLAUDE.md` over the harness's size limit does not load whole, so keep one short enough that it does.
 Pick the escape valve by what is squeezing: too many rules split into a path-scoped directory along a real axis (write-side, measurement, dated evidence), never size alone; too much history moves to the archive with one-hop links; a new subsystem starts as its own path-scoped file, not more of the root file.
 When you do split, name the sibling and the structural blind spot it fills, then cross-reference it and say its rules are never restated here.
 Resolve a co-load collision in order: narrow the colliding module's path slot in `house.json`, tighten this repo's own `paths:`, trim what loads together, and only then raise `maxCoLoadLines`, with a dated `coload-ceiling` deviation carrying the new number as `ceiling`.

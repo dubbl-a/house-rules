@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.22.7 module=docs source=modules/docs/rules/docs.md body-sha256=a58c7fd019f26ac835b46c8869f52ca76eadda53c817279988fecfb6c807eeda DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.8 module=docs source=modules/docs/rules/docs.md body-sha256=9217859a80ab7a6488a7daa4006ea4d3f7c868148e0148aea61bc2c9d49e3315 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -81,7 +81,7 @@ Receipts: `docs/handbook/docs.md#cut-dont-append-and-trim-on-a-fixed-cadence`
 ## Split a file only when splitting narrows what loads
 
 Split a topic only when the split makes a session load less. Two files that always load together are worse than one: identical context, plus a second place a rule can hide.
-The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads.
+The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads, and a nested `CLAUDE.md` over the harness's size limit does not load whole, so keep one short enough that it does.
 Pick the escape valve by what is squeezing: too many rules split into a path-scoped directory along a real axis (write-side, measurement, dated evidence), never size alone; too much history moves to the archive with one-hop links; a new subsystem starts as its own path-scoped file, not more of the root file.
 When you do split, name the sibling and the structural blind spot it fills, then cross-reference it and say its rules are never restated here.
 Resolve a co-load collision in order: narrow the colliding module's path slot in `house.json`, tighten this repo's own `paths:`, trim what loads together, and only then raise `maxCoLoadLines`, with a dated `coload-ceiling` deviation carrying the new number as `ceiling`.

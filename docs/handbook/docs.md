@@ -272,6 +272,17 @@ per-module glob slots), tighten the repo's own rule `paths:` (a design rule has 
 rule set once with how many paths share it, so lowering a ceiling is one run, not a loop of
 fix-one-discover-the-next, and the manifest family refuses a raised ceiling with no entry.
 
+A nested instruction file defers what loads, but it is not an unlimited escape valve. Claude Code
+2.1.309 fixed sessions compacting repeatedly after reading files under a very large nested
+CLAUDE.md, and "a nested CLAUDE.md over the size limit now loads only its start" (changelog:
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-10-22).
+The memory page (https://code.claude.com/docs/en/memory, fetched 2026-10-22) says "Claude Code
+loads a CLAUDE.md file of up to 4 MiB in full and skips a larger file", as the budget section
+above records. The two sources disagree on what happens past the limit, skipped or cut to its
+start, and the changelog does not say whether its limit is the same 4 MiB. Both agree that an
+oversized file does not load whole, so the rule says only that and names no number; the
+disagreement stays open until the page or a later changelog line settles it.
+
 ## Opt a point-in-time doc out with a file-level reason
 
 House scans the archive tier by default, and a genuinely point-in-time document opts out at

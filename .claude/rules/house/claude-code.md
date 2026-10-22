@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.22.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=c874089376f42d8d169474bc9dccf6c4a441122dad225a154aec8db8b3cec806 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.8 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=c97304b6a798bbfd907c85e2586512c90634eba1aa513a036da6a268856f004d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -106,7 +106,7 @@ Keep reviewing while a round returns a must-fix and stop at the first round that
 Before a third round, tell the user what each round found, what the next will check, and why the rounds are converging. When must-fixes sit inside the last round's fixes or one defect class keeps returning, the design is the problem: hand it to the user, offering a simplification pass that keeps the safety core and a check scoped to it as one way on. The user can stop or extend review at any point.
 Delegate file-heavy investigation the same way, so only the summary reaches the main context; the full rule on a verify phase's UNVERIFIED lives in evals.md.
 Let the reviewer apply mechanical fixes in its own commit, and land judgment-level changes as proposals.
-Remember that a background review's applied fixes land outside the session's checkpoints, so git is the only way back.
+Remember that a background review applies its fixes outside the session's checkpoints, so `/rewind` restores only the files the session had already edited and git is the only way back for the rest.
 After an interrupt, work inline; relaunch a killed workflow with the same script in the same or a resumed session, which returns its finished agents' saved results, and recover a killed fan-out of plain agent calls from its transcripts rather than re-running it.
 Anchor: none (because a lens is prose, not a flag; the review report is the only artifact).
 Receipts: `docs/handbook/claude-code.md#run-adversarial-review-in-a-fresh-subagent-with-a-named-lens`

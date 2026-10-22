@@ -6,6 +6,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.8] - 2026-10-22
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It records the Claude Code 2.1.309 survey and rewords two rules to match it. Upgrading from 0.22.7: update the plugin as before, restart Claude Code, then run `/house-rules:sync`.
+
+### Changed
+
+- The docs rule "Split a file only when splitting narrows what loads" now says a nested `CLAUDE.md` over the harness's size limit does not load whole (Claude Code 2.1.309), so keep one short enough that it does. Before, the rule named a nested instruction file as a way to defer what loads with no mention of the cut.
+- The claude-code rule "Run adversarial review in a fresh subagent with a named lens" now says `/rewind` restores the files the session had already edited after a background review applies its fixes, and git is the only way back for the rest, as the local review docs state. It said git was the only way back for every fix.
+
 ## [0.22.7] - 2026-10-22
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It ships the `/house-rules:test-audit` skill, the testing rules and their wider load paths, the `uncovered-root` checker warning, and a `secret-scan` CI fix (#431). Upgrading from 0.22.6: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. Two steps are yours by hand, since render never rewrites an existing file of yours: copy the `secret-scan` job's new command, `--history --rev=HEAD`, into your own `pr-checks.yml`, and add the "Test check" section to your existing pull-request template.
