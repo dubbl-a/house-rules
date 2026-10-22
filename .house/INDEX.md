@@ -222,13 +222,13 @@
 - Read the snapshot diff before accepting it, because a snapshot is a drift gate
   Read the diff a snapshot gate prints and say what changed before accepting the new snapshot, because accepting it unread turns a drift gate into a rubber stamp.
 - Quarantine a flaky test loudly, and never retry it into silence
-  Move a flaky test into a named quarantine list that the run reports, with an owner and the condition for taking it back out, because a retry wrapper converts an intermittent defect into silence and a deletion converts it into nothing.
+  Move a flaky test into a named quarantine list that the run reports, with an owner and the condition for taking it back out, because a deletion converts an intermittent defect into nothing and a retry nobody sees converts it into silence.
 - Delete a test with the code it covered, and prove a test redundant before removing it as a duplicate
   Delete a test in the same change that removes the code it covered, because obsolete tests are most real deletions and the safe kind: nothing is left for them to guard.
 - Fix the test smells that hide what broke, not the ones a detector counts
-  Fix a test that asserts many things with no message saying which one failed, a test that checks several behaviors at once, and a test with no assertion at all, because those are the smells that cost a reader the answer to what broke; developers rate most other detected smells low severity.
+  Fix a test that checks several behaviors at once and a test that asserts many things with no message saying which one failed, because those are the smells that cost a reader the answer to what broke, and do not read the rest as harmless.
 - Treat coverage as a search-light, never as a target
-  Use coverage to find code that nothing exercises, and never set it as a target, because a number set as a goal is met by tests written for the number rather than for the behavior.
+  Use coverage to find code that nothing exercises, and never set it as a target, because a number set as a goal gets gamed by tests written for the number rather than for the behavior.
 - Mirror the module layout in the test tree, and keep each fixture beside its test
   Name each test file after the module it mirrors and keep the tree flat enough to scan, because a reader who cannot find the test for a file assumes there is none and writes a second one.
 - Explain a test-runner config quirk in the config, with the incident that produced it

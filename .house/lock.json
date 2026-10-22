@@ -112,7 +112,7 @@
       "path": ".claude/rules/house/testing.md",
       "module": "testing",
       "source": "modules/testing/rules/testing.md",
-      "bodySha256": "e39e0aaf96838b97690952d9d45f511d38e2cc204c59f7d0b5559c89834d1d21"
+      "bodySha256": "2c509f4f2729aada5230c6178f600caa2dbe5d2ede755a97e8d4bbd0778b32d0"
     },
     {
       "path": ".house/check.mjs",
