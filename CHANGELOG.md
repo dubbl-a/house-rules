@@ -20,6 +20,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Fixed
 
 - `expect_deny_without` in `tests/hooks/run.sh` now fails a case when the hook exits non-zero, as `expect_deny` and `expect_allow` already did (#421). The harness reads a JSON decision only on exit 0, so a hook that printed a deny and then exited 1 would let the action through while the guard's floor-refusal cases still passed. Checked with a planted fault: a `deny()` that clears its EXIT trap and exits 1 passed all nine floor-refusal cases before this change and fails all nine after it.
+- Test-only, no change to what ships: six node tests that returned early when `jq` or `shellcheck` was missing, and so passed without running (the shellcheck lint and five `cleanup-worktree.sh` jq cases in `tests/module-files-github.test.mjs`), now call `t.skip` with the tool and where the case runs (CI), so the run output counts them. The two wall-clock bounds, the 200-file `--staged` scan in `tests/module-files-github.test.mjs` and the session-start hook in `tests/cost-report.test.mjs`, now bound CPU time (read from bash `times` through the new `tests/spawn-cpu.mjs`, which works on macOS and Linux), so a loaded machine running suites side by side no longer fails them, and each still fails on a planted CPU slowdown. The test count is unchanged (#422)
 
 ## [0.22.6] - 2026-10-22
 

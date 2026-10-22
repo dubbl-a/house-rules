@@ -8,6 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawnCpuSync } from './spawn-cpu.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'plugins/house/scripts/cost-report.mjs');
@@ -225,10 +226,9 @@ function hook(cfg, { source = 'startup', env = {}, stdin } = {}) {
   delete e.HOUSE_COST_CHECK;
   delete e.HOUSE_COST_CHECK_USD;
   Object.assign(e, env);
-  const t0 = Date.now();
-  const r = spawnSync(process.execPath, [HOOK], { input: stdin ?? JSON.stringify({ source }), encoding: 'utf8', env: e });
+  const r = spawnCpuSync(process.execPath, [HOOK], { input: stdin ?? JSON.stringify({ source }), encoding: 'utf8', env: e });
   assert.equal(r.status, 0, r.stderr);
-  return { out: r.stdout ? JSON.parse(r.stdout) : null, ms: Date.now() - t0 };
+  return { out: r.stdout ? JSON.parse(r.stdout) : null, cpuMs: r.cpuMs };
 }
 
 const stateFile = (cfg) => join(cfg, 'house', 'cost-check.json');
@@ -290,8 +290,12 @@ test('hook: no state or stale state claims first, spawns the scan detached, and 
     const cfg = tmp();
     put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
     setup(cfg);
-    const { out, ms } = hook(cfg);
-    assert.ok(ms < 4000, `hook took ${ms} ms`);
+    const { out, cpuMs } = hook(cfg);
+    // CPU time, not wall (#422): `npm run verify` runs suites side by side, and on
+    // a loaded machine a hook that needs 100 ms of CPU waits past a wall bound with
+    // nothing wrong. A hook that ran or awaited the scan itself burns that CPU in
+    // its own process tree, so it moves this bound as much as a wall one.
+    assert.ok(cpuMs < 4000, `hook used ${cpuMs} ms of CPU`);
     assert.equal(out.systemMessage, undefined);
     assert.ok(out.hookSpecificOutput.additionalContext);
     const done = await waitFor(() => {
