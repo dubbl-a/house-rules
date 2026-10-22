@@ -136,11 +136,11 @@ function scanGitMode(dir, ...args) {
   return spawnSync(process.execPath, [SCAN_SECRETS, ...args, `--repo=${dir}`], { encoding: 'utf8', env: GIT_TEST_ENV });
 }
 
-test('scan-dist-secrets: --self-test covers every rule, --staged, --history and the allowlist', () => {
+test('scan-dist-secrets: --self-test covers every rule, --staged, --history, --rev and the allowlist', () => {
   const res = spawnSync(process.execPath, [SCAN_SECRETS, '--self-test'], { encoding: 'utf8' });
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stdout, /self-test OK/);
-  assert.match(res.stdout, /8 rules, --staged, --history, allowlist/);
+  assert.match(res.stdout, /8 rules, --staged, --history, --rev, allowlist/);
 });
 
 for (const [rule, values] of Object.entries(SECRET_CANARIES)) {
@@ -244,6 +244,78 @@ test('scan-dist-secrets --history: finds a secret that exists only on a side bra
   const res = scanGitMode(dir, '--history');
   assert.equal(res.status, 1);
   assert.match(res.stderr, /side\.txt.*matches "aws-access-key-id"/);
+});
+
+// #431: CI judges the history the checked-out commit carries, not every branch
+// the clone fetched. A fixture one open PR moves to a new path (waived only on
+// that PR's branch) must not fail the scan on every other PR.
+function repoWithMovedFixtureOnOtherBranch() {
+  const dir = newScanRepo();
+  const secret = SECRET_CANARIES['github-token'][0];
+  mkdirSync(join(dir, '.house'));
+  mkdirSync(join(dir, 'fixtures'));
+  writeFileSync(join(dir, 'fixtures', 'old.txt'), secret + '\n');
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'fixtures/old.txt github-token  # planted fixture\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'base');
+  gitIn(dir, 'checkout', '-q', '-b', 'other-pr');
+  gitIn(dir, 'mv', 'fixtures/old.txt', 'fixtures/new.txt');
+  writeFileSync(join(dir, '.house', 'secret-allow'), 'fixtures/new.txt github-token  # planted fixture, moved\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'move the fixture');
+  gitIn(dir, 'checkout', '-q', '-');
+  return dir;
+}
+
+test('scan-dist-secrets --history --rev=HEAD: a blob only another branch holds, at a path only that branch waives, is not judged (negative control)', () => {
+  const dir = repoWithMovedFixtureOnOtherBranch();
+  const all = scanGitMode(dir, '--history');
+  assert.equal(all.status, 1, 'without --rev every ref is read, so the other branch fails this checkout');
+  assert.match(all.stderr, /fixtures\/new\.txt.*matches "github-token"/);
+  const res = scanGitMode(dir, '--history', '--rev=HEAD');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /clean — history/);
+  assert.match(res.stdout, /waived fixtures\/old\.txt github-token/);
+});
+
+test('scan-dist-secrets --history --rev=HEAD: a secret reachable from HEAD still fails, even when later deleted, and a side branch merged into HEAD counts (positive control)', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'a.txt'), 'base\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'base');
+  gitIn(dir, 'checkout', '-q', '-b', 'side');
+  writeFileSync(join(dir, 'side.txt'), SECRET_CANARIES['aws-access-key-id'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'side');
+  gitIn(dir, 'checkout', '-q', '-');
+  assert.equal(scanGitMode(dir, '--history', '--rev=HEAD').status, 0, 'not merged yet, so not carried');
+  gitIn(dir, 'merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+  writeFileSync(join(dir, 'gone.txt'), SECRET_CANARIES['stripe-live-key'][0] + '\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'add');
+  rmSync(join(dir, 'gone.txt'));
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'remove');
+  const res = scanGitMode(dir, '--history', '--rev=HEAD');
+  assert.equal(res.status, 1, res.stderr);
+  assert.match(res.stderr, /side\.txt.*matches "aws-access-key-id"/);
+  assert.match(res.stderr, /gone\.txt.*matches "stripe-live-key"/);
+});
+
+test('scan-dist-secrets --history --rev: an unknown rev or an option-shaped one is an error, and --rev needs --history', () => {
+  const dir = newScanRepo();
+  writeFileSync(join(dir, 'a.txt'), 'base\n');
+  gitIn(dir, 'add', '-A');
+  gitIn(dir, 'commit', '-q', '-m', 'base');
+  const unknown = scanGitMode(dir, '--history', '--rev=no-such-ref');
+  assert.equal(unknown.status, 2);
+  assert.match(unknown.stderr, /ERROR/);
+  const option = scanGitMode(dir, '--history', '--rev=--all');
+  assert.equal(option.status, 2);
+  assert.match(option.stderr, /--rev/);
+  const staged = scanGitMode(dir, '--staged', '--rev=HEAD');
+  assert.equal(staged.status, 2);
+  assert.match(staged.stderr, /--rev/);
 });
 
 test('scan-dist-secrets --history: a clean history passes (negative control)', () => {
@@ -576,11 +648,11 @@ test('25-secret-content: a missing node warns and lets the commit through', () =
   assert.match(res.stderr, /node not found/);
 });
 
-test('pr-checks template: a secret-scan job checks out full history and runs the scanner with --history', () => {
+test('pr-checks template: a secret-scan job checks out full history and runs the scanner over HEAD\'s history only', () => {
   const yml = readFileSync(PR_CHECKS_TEMPLATE, 'utf8');
   const job = yml.slice(yml.indexOf('  secret-scan:'));
   assert.match(job, /fetch-depth: 0/);
-  assert.match(job, /run: node scripts\/house\/scan-dist-secrets\.mjs --history/);
+  assert.match(job, /run: node scripts\/house\/scan-dist-secrets\.mjs --history --rev=HEAD\n/);
   assert.match(job, /actions\/checkout@[0-9a-f]{40}/);
 });
 

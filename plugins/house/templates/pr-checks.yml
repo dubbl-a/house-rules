@@ -51,6 +51,11 @@ jobs:
   # protection (a private repo on a personal account). Keep it on a plan that
   # has push protection too; it reads the same blobs with named key rules.
   # A known false positive is waived in .house/secret-allow with its reason.
+  # --rev=HEAD scans the history the checked-out commit carries, not every
+  # branch the full-depth clone fetched: on a pull_request run HEAD is the merge
+  # commit (the PR's ancestry plus the default branch), on push and
+  # workflow_dispatch it is the pushed commit. Judged against every ref, another
+  # open PR's blob, waived only on its own branch, fails every other PR (#431).
   secret-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -59,7 +64,7 @@ jobs:
         with: { fetch-depth: 0 } # --history refuses a shallow clone
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: 22 }
-      - run: node scripts/house/scan-dist-secrets.mjs --history
+      - run: node scripts/house/scan-dist-secrets.mjs --history --rev=HEAD
 
 # Need a scheduled workflow too (a sync job, a nightly report)? Offset the
 # cron off the top of the hour (e.g. "17 * * * *") to dodge the stampede,
