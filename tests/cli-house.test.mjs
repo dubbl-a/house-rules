@@ -3074,6 +3074,156 @@ test('#151 with github off, doctor says the floor is off because the module is, 
   assert.equal(arm.stdout, '', 'nothing at session start for a module that is off');
 });
 
+// #161: the github module off in the working tree only, while the policy the
+// remote's default branch runs still has it on. Render, disable and uninstall
+// read the working tree, so before #161 each removed the seven floor files, git
+// then ran no hooks, and a push of an unmerged commit to the protected branch
+// met nothing. The remote's policy is read from the remote-tracking default
+// branch (origin/HEAD, else origin/main or origin/master), the trust the
+// floor's pre-push puts in the remote's tip, with no network call.
+//
+// By hand: adopt with the github module on and commit; `git clone --bare` that
+// repo as the remote and `git clone` the remote; in the clone set
+// modules.github.enabled to false in house.json without committing, and run
+// `house render --apply`: it exits 1, names origin/main, and every
+// .githooks file is still there.
+function adoptedFloorRemote(cliPath) {
+  const repo = buildFloorRepo();
+  const rendered = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(rendered.code, 0, rendered.out + rendered.err);
+  commitAll(repo, 'adopt with the floor');
+  const base = mkdtempSync(join(tmpdir(), 'house-remote-161-'));
+  CLEANUP_DIRS.push(base);
+  const remote = join(base, 'remote.git');
+  const clone = join(base, 'clone');
+  execFileSync('git', ['clone', '-q', '--bare', repo, remote]);
+  execFileSync('git', ['clone', '-q', remote, clone]);
+  return { remote, clone };
+}
+
+function githubOffInWorkingTree(repo) {
+  const p = join(repo, 'house.json');
+  const data = JSON.parse(readFileSync(p, 'utf8'));
+  data.modules.github = { ...data.modules.github, enabled: false };
+  writeFileSync(p, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
+
+const floorPresent = (repo) => FLOOR_FILES.filter((rel) => existsSync(join(repo, '.githooks', rel)));
+
+test('#161 render refuses to remove the floor while the remote default branch still has the github module on', () => {
+  const { cliPath } = buildFloorFixture();
+  const { clone } = adoptedFloorRemote(cliPath);
+  githubOffInWorkingTree(clone);
+  const before = gitStatusShort(clone);
+  assert.match(before, /house\.json/, 'precondition: the change is in the working tree only');
+
+  for (const args of [['render', '--repo', clone], ['render', '--repo', clone, '--apply']]) {
+    const r = runCli(cliPath, args);
+    assert.equal(r.code, 1, r.out + r.err);
+    for (const rel of FLOOR_FILES) assert.match(r.out, new RegExp(`^REFUSE\\s+\\.githooks/${rel.replace(/\./g, '\\.')}\\s`, 'm'), `refuses ${rel}`);
+    assert.match(r.err, /origin\/main:house\.json/, 'names the remote policy it read');
+    assert.match(r.err, /pull request/, 'says to land the change through a merged PR first');
+    assert.match(r.err, /Nothing was written/);
+    assert.deepEqual(floorPresent(clone), FLOOR_FILES, 'all seven floor files stay');
+    assert.equal(gitStatusShort(clone), before, 'nothing else written either');
+  }
+});
+
+test('#161 disable github --apply refuses, writing neither house.json nor removing the floor, while the remote has the module on', () => {
+  const { cliPath } = buildFloorFixture();
+  const base = mkdtempSync(join(tmpdir(), 'house-remote-161-'));
+  CLEANUP_DIRS.push(base);
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  // A remote added to an existing clone and fetched: origin/main, no origin/HEAD.
+  const remote = join(base, 'remote.git');
+  execFileSync('git', ['clone', '-q', '--bare', repo, remote]);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', remote]);
+  execFileSync('git', ['-C', repo, 'fetch', '-q', 'origin']);
+  const houseBefore = readFileSync(join(repo, 'house.json'), 'utf8');
+
+  const r = runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']);
+  assert.notEqual(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.githooks\/pre-push\s/m);
+  assert.match(r.err, /origin\/main:house\.json/);
+  assert.match(r.err, /pull request/);
+  assert.equal(readFileSync(join(repo, 'house.json'), 'utf8'), houseBefore, 'house.json is not written');
+  assert.deepEqual(floorPresent(repo), FLOOR_FILES, 'all seven floor files stay');
+  assert.equal(gitStatusShort(repo), '', 'nothing written');
+});
+
+test('#161 once the remote default branch has the github module off, render removes the floor as before', () => {
+  const { cliPath } = buildFloorFixture();
+  const { remote, clone } = adoptedFloorRemote(cliPath);
+  githubOffInWorkingTree(clone);
+  commitAll(clone, 'github off, floor kept');
+  // The pull request merging: the remote's main moves to that commit, and the
+  // clone fetches it.
+  execFileSync('git', ['-C', remote, 'fetch', '-q', '--update-head-ok', clone, 'HEAD:refs/heads/main']);
+  execFileSync('git', ['-C', clone, 'fetch', '-q', 'origin']);
+  const r = runCli(cliPath, ['render', '--repo', clone, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(floorPresent(clone), [], 'the floor goes once the remote has merged the module off');
+});
+
+test('#161 with no remote, or a remote default branch with no house.json, render removes the floor as before', () => {
+  const { cliPath } = buildFloorFixture();
+  const noRemote = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', noRemote, '--apply']).code, 0);
+  commitAll(noRemote, 'adopt with the floor');
+  githubOffInWorkingTree(noRemote);
+  const a = runCli(cliPath, ['render', '--repo', noRemote, '--apply']);
+  assert.equal(a.code, 0, a.out + a.err);
+  assert.deepEqual(floorPresent(noRemote), [], 'no remote: no remote policy to protect');
+
+  // The remote holds only the commit from before adoption.
+  const repo = buildTargetRepo();
+  const base = mkdtempSync(join(tmpdir(), 'house-remote-161-'));
+  CLEANUP_DIRS.push(base);
+  execFileSync('git', ['clone', '-q', '--bare', repo, join(base, 'remote.git')]);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', join(base, 'remote.git')]);
+  execFileSync('git', ['-C', repo, 'fetch', '-q', 'origin']);
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: { github: { enabled: true, config: {} } } });
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  githubOffInWorkingTree(repo);
+  const b = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(b.code, 0, b.out + b.err);
+  assert.deepEqual(floorPresent(repo), [], 'origin/main has no house.json: nothing to protect');
+});
+
+test('#161 uninstall refuses to remove the floor while the remote default branch still has the github module on', () => {
+  const { cliPath } = buildFloorFixture();
+  const { clone } = adoptedFloorRemote(cliPath);
+  const env = isolatedGitEnv();
+  const r = runCli(cliPath, ['uninstall', '--repo', clone, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.githooks\/pre-push\s/m);
+  assert.match(r.err, /origin\/main:house\.json/);
+  assert.deepEqual(floorPresent(clone), FLOOR_FILES);
+  assert.ok(existsSync(join(clone, 'house.json')));
+  assert.equal(gitStatusShort(clone), '', 'nothing removed');
+});
+
+test('#161 doctor with github off reports a core.hooksPath naming a directory that does not exist', () => {
+  const { cliPath } = buildFloorFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  commitAll(repo, 'adopt with the floor');
+  assert.equal(runCli(cliPath, ['disable', 'github', '--repo', repo, '--apply', '--why', 'fixture']).code, 0);
+  commitAll(repo, 'github off');
+  assert.ok(gitConfigGet(repo, 'core.hooksPath').endsWith('/.githooks'), 'precondition: still armed at .githooks');
+  const kept = runCli(cliPath, ['doctor', '--repo', repo]).out;
+  assert.match(kept, /^git-hook floor: off \(the github module is off/m);
+  assert.doesNotMatch(kept, /does not exist/, 'the scaffold keeps .githooks a directory: nothing dangles');
+
+  rmSync(join(repo, '.githooks'), { recursive: true, force: true });
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]).out;
+  assert.match(doc, /^git-hook floor: off \(the github module is off/m);
+  assert.match(doc, /^ {2}core\.hooksPath is \S+\/\.githooks \(.+\), a directory that does not exist, so git runs no hooks in this clone; unset it yourself: `git config --unset core\.hooksPath`/m);
+});
+
 // What the branch guard actually follows (plugins/house/hooks/no-direct-master.sh,
 // ADR 0017): modules.github.enabled from HEAD:house.json, so with the module off
 // it quiets its commit, push and history refusals and its arming advice, and

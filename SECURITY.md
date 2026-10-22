@@ -67,9 +67,10 @@ checkout. Two findings from 2026-10-03 show the edge:
   f:refs/remotes/origin/main`, `git remote set-head`, `git config remote.origin.url`). The git-hook
   floor's "the remote already has it" test then accepts moving a local protected branch to an
   unmerged commit. Probed against the hook with the floor armed.
-- The CLI removes the vendored floor files from inside its own process (`house render --apply` after
+- The CLI removed the vendored floor files from inside its own process (`house render --apply` after
   the github module is turned off, `house disable github`), which a guard scanning command text does
-  not see. Reasoned, not run end to end.
+  not see. Render, disable and uninstall now refuse while the remote's default branch still has the
+  github module on; a script that deletes the files itself still gets past.
 
 Branch protection on the remote is the control that holds: see "Protect the default branch at the
 remote" in `plugins/house/modules/github/rules/github.md`, and issue #161. ADR 0013 lists both
