@@ -22,7 +22,7 @@
       "path": ".claude/rules/house/engineering.md",
       "module": "engineering",
       "source": "modules/engineering/rules/engineering.md",
-      "bodySha256": "8bded5709e4b9b9f59d079b32347f90cad1796b9da0b307a38b221f319c9f3d6"
+      "bodySha256": "78b5fe087737b692ab57d0a1afbbd375193a19c579c60f0d0ef194a85c433336"
     },
     {
       "path": "scripts/house/is-main.mjs",
@@ -40,13 +40,13 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "e78a0b6107c463fda5a3e4f0a5922350f374823e255c446aed0b5ce4711503fa"
+      "bodySha256": "11545d7a15e7be723daa1cffe24acb60bfd8a96b3136fd9e6beee242d2f47473"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
       "module": "github",
       "source": "modules/github/files/scan-dist-secrets.mjs",
-      "bodySha256": "5c1fc6576c17892164ae400b66e16b4432f9204e60b253838cfc5802fdd252d2"
+      "bodySha256": "0f9e266b2e0bade9311d20aeed291fafe6bac963f8e31617589114b7ea59a8b0"
     },
     {
       "path": "scripts/house/cleanup-worktree.sh",
@@ -100,13 +100,13 @@
       "path": ".claude/rules/house/security.md",
       "module": "security",
       "source": "modules/security/rules/security.md",
-      "bodySha256": "fb72282865583008c99de536c6b51c6a9ce9651842cf7da222f4d18a97dbf151"
+      "bodySha256": "36ebd457adff98836239cf1f0793853b18df86aa5cb40d2c0923bca134887df0"
     },
     {
       "path": ".claude/rules/house/security-server.md",
       "module": "security",
       "source": "modules/security/rules/security-server.md",
-      "bodySha256": "62c2383539b9718efbbaadf2722f7a28f1477ef3108cd393784c25cf27cf2b6c"
+      "bodySha256": "5ffdc569d17a14eac4e537417d30dc47d2eff435d9f4cbae22db95320600ec3e"
     },
     {
       "path": ".claude/rules/house/testing.md",
@@ -118,7 +118,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "55f2eccb753925d8d2f6b31055f48b0c1852814fb57d5eb0338b6154338fa776"
+      "bodySha256": "7f7e74d4ad6924788a942de14dc3c9cffd859ecd2c923faa1f20004c3f8af61d"
     },
     {
       "path": "AGENTS.md",
@@ -126,7 +126,7 @@
       "source": "targets",
       "kind": "block",
       "sep": "",
-      "bodySha256": "0c9ce9f76cb71e0cebf19ea970530431424c4d09cccc8066d5c2f95e3b2ab9ca"
+      "bodySha256": "97d5d7862f1384a1866136d6ab03e233bc15e23e890f22eb6f230065ffeb667f"
     }
   ],
   "scaffolds": [
@@ -308,7 +308,10 @@
       "default": "on",
       "rules": 1,
       "config": {
-        "codeGlobs": [],
+        "codeGlobs": [
+          "plugins/house/scripts/**",
+          "research/*/scripts/**"
+        ],
         "gateGlobs": []
       },
       "pathSlots": [
@@ -319,7 +322,9 @@
       "globs": [
         "scripts/**",
         "src/**",
-        "lib/**"
+        "lib/**",
+        "plugins/house/scripts/**",
+        "research/*/scripts/**"
       ]
     },
     "evals": {
@@ -374,7 +379,12 @@
     "security": {
       "default": "off",
       "rules": 2,
-      "config": {},
+      "config": {
+        "securityGlobs": [
+          "plugins/house/scripts/**",
+          "research/*/scripts/**"
+        ]
+      },
       "pathSlots": [
         "securityAgentRoots",
         "securityGlobs",
@@ -386,6 +396,8 @@
         ".mcp.json",
         "package.json",
         ".github/workflows/**",
+        "plugins/house/scripts/**",
+        "research/*/scripts/**",
         "src/**",
         "lib/**",
         "scripts/**"

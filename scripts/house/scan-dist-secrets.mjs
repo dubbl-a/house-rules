@@ -19,6 +19,12 @@
 //              with each blob read once, so the cost is linear in history
 //              size. Also reads a blob a tag points at directly. Refuses a
 //              shallow clone.
+//   --history --rev=<rev>
+//              scan only the history reachable from <rev> instead of every ref
+//              (a blob only a tag points at is then out of scope). The allowlist
+//              is read from the checkout, so CI passes --rev=HEAD: the scan
+//              judges exactly the history the checked-out commit carries, and a
+//              waiver that lives only on another branch cannot fail it (#431).
 //   Both apply RULES (named key formats) plus the vars-file and --patterns
 //   markers, minus the allowlist: .house/secret-allow, one
 //   `<path-glob> <rule-name>  # reason` per line (the reason is required and
@@ -51,6 +57,7 @@
 //                               [--patterns=path/to/patterns.json]
 //   node scan-dist-secrets.mjs --staged|--history [--repo=<path>]
 //                               [--vars-file=...] [--patterns=...]
+//                               [--rev=<rev>]  (--history only)
 //   node scan-dist-secrets.mjs --self-test
 //
 // Exit: 0 clean, 1 a hit, 2 an error (git failure, unreadable blob, bad
@@ -335,13 +342,18 @@ function taggedBlobEntries(root) {
   return entries;
 }
 
-function historyEntries(root) {
+function historyEntries(root, rev) {
   if (git(root, ['rev-parse', '--is-shallow-repository']).toString().trim() === 'true') {
     throw new ScanError('shallow clone: history is incomplete (fetch with full depth, e.g. actions/checkout fetch-depth: 0)');
   }
   // --root: without it `log.showRoot=false` in a user's config drops the root commit's files.
-  const log = git(root, ['log', '--all', '--root', '-m', '-r', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--format=commit %H %ct']);
-  return [...parseRaw(log), ...taggedBlobEntries(root)];
+  if (rev !== null) git(root, ['rev-parse', '--verify', `${rev}^{commit}`]);
+  // The trailing `--` keeps a path named like the rev (a root file `HEAD`) from making it ambiguous.
+  const log = git(root, ['log', ...(rev === null ? ['--all'] : [rev]), '--root', '-m', '-r', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--format=commit %H %ct', '--']);
+  // A verified rev always reaches a commit; an empty log means nothing was scanned, never clean.
+  if (rev !== null && log.length === 0) throw new ScanError(`--rev=${rev} reached no commits, so nothing was scanned`);
+  // A tag on a blob is reachable from no commit, so a --rev scan leaves it out.
+  return rev === null ? [...parseRaw(log), ...taggedBlobEntries(root)] : parseRaw(log);
 }
 
 // Incremental reader over a child's stdout, so a large history never sits in
@@ -434,9 +446,9 @@ function matchNames(text, markers) {
 }
 
 // Returns { hits: [{path, commit, time, name}], waived: Map<"path rule", reason>, blobs, binary, large }.
-async function scanGit(mode, root, markers) {
+async function scanGit(mode, root, markers, rev = null) {
   const allow = loadAllowlist(mode, root);
-  const entries = mode === 'staged' ? stagedEntries(root) : historyEntries(root);
+  const entries = mode === 'staged' ? stagedEntries(root) : historyEntries(root, rev);
   const where = new Map();
   for (const e of entries) {
     if (!where.has(e.oid)) where.set(e.oid, []);
@@ -584,12 +596,23 @@ async function runSelfTest() {
       selfTestFail('the allowlist waived more than its entry');
     }
 
+    // --rev scans only what the revision reaches: a canary committed on a
+    // side branch is out of HEAD's history, in the all-refs scan.
+    g('checkout', '-q', '-b', 'side');
+    writeFileSync(join(repo, 'side-canary.txt'), `${CANARIES['github-token'][0]}\n`);
+    g('add', '-A');
+    g('commit', '-q', '-m', 'side canary');
+    g('checkout', '-q', '-');
+    if (!(await scanGit('history', repo, [])).hits.some((h) => h.path === 'side-canary.txt')) selfTestFail('--history missed a side branch');
+    if ((await scanGit('history', repo, [], 'HEAD')).hits.some((h) => h.path === 'side-canary.txt')) selfTestFail('--history --rev read a ref HEAD does not reach');
+    if (!(await scanGit('history', repo, [], 'side')).hits.some((h) => h.path === 'side-canary.txt')) selfTestFail('--history --rev missed its own history');
+
     // Fail closed: a directory that is not a repo is an error, not a pass.
     let threw = false;
     try { await scanGit('history', dir, []); } catch (e) { threw = e instanceof ScanError; }
     if (!threw) selfTestFail('a git error did not fail the scan');
 
-    console.log(`scan-dist-secrets: self-test OK — planted canary was detected (dist, ${names.length} rules, --staged, --history, allowlist)`);
+    console.log(`scan-dist-secrets: self-test OK — planted canary was detected (dist, ${names.length} rules, --staged, --history, --rev, allowlist)`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -597,6 +620,13 @@ async function runSelfTest() {
 
 async function runGitMode(mode, args) {
   try {
+    const revArgs = args.filter((a) => a.startsWith('--rev='));
+    if (revArgs.length > 1) throw new ScanError('--rev may be given once');
+    const rev = revArgs.length ? revArgs[0].slice('--rev='.length) : null;
+    if (revArgs.length && mode !== 'history') throw new ScanError('--rev goes with --history only');
+    if (revArgs.length && (!rev || rev.startsWith('-') || rev.startsWith('^'))) {
+      throw new ScanError('--rev needs one revision, not an option or an exclusion (^rev)');
+    }
     const repoArg = args.find((a) => a.startsWith('--repo='));
     const top = git(repoArg ? resolve(repoArg.slice('--repo='.length)) : process.cwd(), ['rev-parse', '--show-toplevel']).toString().trim();
     const varsArg = args.find((a) => a.startsWith('--vars-file='));
@@ -607,7 +637,7 @@ async function runGitMode(mode, args) {
       ...markersFromVarsFile(varsFile, true),
       ...markersFromConfig(patternsFile, process.env.SCAN_DIST_SECRETS_PATTERNS),
     ];
-    const result = await scanGit(mode, top, markers);
+    const result = await scanGit(mode, top, markers, rev);
     for (const [what, reason] of result.waived) console.log(`scan-dist-secrets: waived ${what}: ${reason}`);
     if (result.hits.length) {
       reportHits(result.hits);

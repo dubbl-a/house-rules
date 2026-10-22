@@ -886,3 +886,102 @@ test('#388 manifest: a glob character in the directory name is escaped in the db
   const dir = sandbox({ 'house.json': dbHouse({ dbGlobs: ['db/**', 'app\\[1\\]/db/**'] }), ...files });
   assert.equal(dbWarnings(run(dir, ['--only=manifest', '--json'], NO_PLUGIN)).length, 0);
 });
+
+// #420: the engineering, security, evals and retrieval default paths are
+// anchored at the repo root, so a nested package loads nothing; the checker
+// says so, naming the directory, the module and the slot to extend.
+const rootHouse = (modules) => houseJson({ modules });
+const rootWarnings = (res) => (res.json.warnings || []).filter((w) => w.kind === 'uncovered-root');
+const rootRun = (files) => rootWarnings(run(sandbox(files), ['--only=manifest', '--json'], NO_PLUGIN));
+
+test('#420 manifest: a nested pkg/lib/ the engineering paths miss warns, naming the directory, module and slot', () => {
+  const w = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: {} } }),
+    'lib/a.js': 'x\n',
+    'pkg/lib/b.js': 'x\n',
+  });
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.equal(w[0].family, 'manifest');
+  assert.match(w[0].message, /module `engineering`/);
+  assert.match(w[0].message, /`pkg\/lib\/`/);
+  assert.match(w[0].message, /`pkg\/lib\/\*\*` to modules\.engineering\.config\.codeGlobs/);
+  assert.match(w[0].message, /kind "other"/);
+});
+
+test('#420 manifest: a nested pkg/lib/ covered by a codeGlobs override is silent', () => {
+  const w = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: { codeGlobs: ['pkg/lib/**'] } } }),
+    'pkg/lib/b.js': 'x\n',
+  });
+  assert.equal(w.length, 0, JSON.stringify(w));
+});
+
+test('#420 manifest: a gitignored build/lib/ is never a candidate', () => {
+  const w = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: {} } }),
+    '.gitignore': 'build/\n',
+    'build/lib/y.js': 'x\n',
+    'src/a.js': 'x\n',
+  });
+  assert.equal(w.length, 0, JSON.stringify(w));
+});
+
+test('#420 manifest: a root-level lib/ the default covers is silent', () => {
+  const w = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: {} } }),
+    'lib/a.js': 'x\n',
+    'src/b.js': 'x\n',
+  });
+  assert.equal(w.length, 0, JSON.stringify(w));
+});
+
+test('#420 manifest: each enabled module with that root warns; a disabled module, a test-like parent and a dot parent do not', () => {
+  const files = { 'pkg/evals/e.json': '{}\n', 'pkg/src/a.js': 'x\n', 'tests/fixtures/lib/f.js': 'x\n', '.hidden/lib/g.js': 'x\n' };
+  const on = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: {} }, security: { enabled: true, config: {} }, evals: { enabled: true, config: {} } }),
+    ...files,
+  });
+  assert.deepEqual(on.map((w) => `${/module `([^`]+)`/.exec(w.message)[1]}:${/`([^`]+)\/`/.exec(w.message)[1]}`).sort(),
+    ['engineering:pkg/src', 'evals:pkg/evals', 'security:pkg/src']);
+  assert.match(on.find((w) => w.message.includes('module `security`')).message, /modules\.security\.config\.securityGlobs/);
+  assert.match(on.find((w) => w.message.includes('module `evals`')).message, /modules\.evals\.config\.evalGlobs/);
+  const off = rootRun({ 'house.json': rootHouse({ engineering: { enabled: false, config: {} } }), ...files });
+  assert.equal(off.length, 0, JSON.stringify(off));
+});
+
+const otherDev = (what) => ({ kind: 'other', what, why: 'not ours to guide', decided: '2026-10-22' });
+const devRun = (what, files, modules = { engineering: { enabled: true, config: {} } }) =>
+  rootWarnings(run(sandbox({ 'house.json': houseJson({ modules, deviations: [otherDev(what)] }), ...files }), ['--only=manifest', '--json'], NO_PLUGIN));
+
+test('#420 manifest: a deviations entry (kind "other") naming the module and the directory records it as out of scope', () => {
+  const w = devRun('engineering: pkg/lib is vendored third-party code', { 'pkg/lib/b.js': 'x\n' });
+  assert.equal(w.length, 0, JSON.stringify(w));
+});
+
+test('#420 manifest: a deviation naming rauzon-takeover/app/src silences that directory only, not app/src', () => {
+  const w = devRun('engineering: rauzon-takeover/app/src is a separate product', { 'app/src/b.js': 'x\n', 'rauzon-takeover/app/src/c.js': 'x\n' });
+  assert.deepEqual(w.map((x) => /`([^`]+)\/` holds/.exec(x.message)[1]), ['app/src']);
+});
+
+test('#420 manifest: a deviation naming pkg/lib2 does not silence pkg/lib, and one naming pkg/lib/ does', () => {
+  assert.equal(devRun('engineering: pkg/lib2 is vendored', { 'pkg/lib/b.js': 'x\n' }).length, 1);
+  assert.equal(devRun('engineering: pkg/lib/ is vendored', { 'pkg/lib/b.js': 'x\n' }).length, 0);
+});
+
+test('#420 manifest: a deviation that does not name the module silences nothing, and the warning says to name both', () => {
+  const w = devRun('pkg/lib is vendored third-party code', { 'pkg/lib/b.js': 'x\n' });
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.match(w[0].message, /names both the module and the directory/);
+  assert.equal(devRun('security: pkg/lib is vendored', { 'pkg/lib/b.js': 'x\n' }).length, 1);
+});
+
+test('#420 manifest: a repo that replaces a Roots slot is shown its effective rule paths, not "default paths"', () => {
+  const w = rootRun({
+    'house.json': rootHouse({ engineering: { enabled: true, config: { codeRoots: ['app/**'] } } }),
+    'app/a.js': 'x\n',
+    'pkg/lib/b.js': 'x\n',
+  });
+  assert.equal(w.length, 1, JSON.stringify(w));
+  assert.match(w[0].message, /its rule paths \(`app\/\*\*`\) match from the repo root/);
+  assert.doesNotMatch(w[0].message, /default paths/);
+});
