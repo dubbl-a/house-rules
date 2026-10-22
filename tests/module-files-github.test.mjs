@@ -16,6 +16,7 @@ import { mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, symlinkSy
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { ROOT, mktemp, makeRepoWithOrigin } from './module-files-helpers.mjs';
+import { spawnCpuSync } from './spawn-cpu.mjs';
 
 const SCAN_SECRETS = join(ROOT, 'plugins/house/modules/github/files/scan-dist-secrets.mjs');
 const CLEANUP_SH = join(ROOT, 'plugins/house/modules/github/files/cleanup-worktree.sh');
@@ -199,16 +200,19 @@ test('scan-dist-secrets --staged: a vars-file value pasted into a staged file is
   assert.match(res.stderr, /config\.js.*matches "MY_API_TOKEN"/);
 });
 
-test('scan-dist-secrets --staged: 200 small staged files scan in under 2 s', () => {
+test('scan-dist-secrets --staged: 200 small staged files scan in under 2 s of CPU', () => {
   const dir = newScanRepo();
   for (let i = 0; i < 200; i++) writeFileSync(join(dir, `f${i}.txt`), `file ${i}\nconst x = ${i};\n`);
   gitIn(dir, 'add', '-A');
-  const t0 = process.hrtime.bigint();
-  const res = scanGitMode(dir, '--staged');
-  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  // CPU time, not wall (#422): `npm run verify` runs suites side by side, and on
+  // a loaded machine a scan that needs a few hundred ms of CPU waits past a
+  // wall bound with nothing wrong. What this guards, a git spawn per blob
+  // instead of one `cat-file --batch` stream, is CPU the scan and its git
+  // children burn, so it moves this bound as much as a wall one.
+  const res = spawnCpuSync(process.execPath, [SCAN_SECRETS, '--staged', `--repo=${dir}`], { encoding: 'utf8', env: GIT_TEST_ENV });
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stdout, /200 blob/);
-  assert.ok(ms < 2000, `--staged over 200 files took ${Math.round(ms)} ms`);
+  assert.ok(res.cpuMs < 2000, `--staged over 200 files used ${res.cpuMs} ms of CPU`);
 });
 
 test('scan-dist-secrets --history: finds a secret committed and then deleted, with its commit and path (positive control)', () => {
@@ -589,10 +593,9 @@ test('cleanup-worktree.sh: bash -n syntax check', () => {
   assert.equal(res.status, 0, res.stderr);
 });
 
-test('cleanup-worktree.sh: shellcheck, if available (informational when not installed)', () => {
-  const has = spawnSync('sh', ['-c', 'command -v shellcheck']);
-  if (has.status !== 0) {
-    console.log('  (shellcheck not installed on this machine, skipping)');
+test('cleanup-worktree.sh: shellcheck, if available (informational when not installed)', (t) => {
+  if (spawnSync('sh', ['-c', 'command -v shellcheck']).status !== 0) {
+    t.skip('shellcheck not installed here, so cleanup-worktree.sh is not linted; it runs on CI, whose ubuntu runners ship shellcheck');
     return;
   }
   const res = spawnSync('shellcheck', [CLEANUP_SH], { encoding: 'utf8' });
@@ -684,15 +687,14 @@ test('cleanup-worktree.sh: refuses a path that is not a registered worktree of t
   assert.match(res.stderr, /is not a registered worktree/);
 });
 
-test('cleanup-worktree.sh: honors house.json defaultBranch for the preflight, not a hardcoded "master"', () => {
+test('cleanup-worktree.sh: honors house.json defaultBranch for the preflight, not a hardcoded "master"', (t) => {
   const { work } = makeRepoWithOrigin('release');
   writeFileSync(join(work, 'house.json'), JSON.stringify({ defaultBranch: 'release' }));
   execFileSync('git', ['-C', work, 'add', 'house.json']);
   execFileSync('git', ['-C', work, 'commit', '-q', '-m', 'add house.json']);
 
-  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
-  if (!hasJq) {
-    console.log('  (jq not installed, skipping house.json-driven branch resolution check)');
+  if (spawnSync('sh', ['-c', 'command -v jq']).status !== 0) {
+    t.skip('jq not installed here, so the house.json-driven branch resolution check does not run; it runs on CI, whose ubuntu runners ship jq');
     return;
   }
 
@@ -724,15 +726,14 @@ test('cleanup-worktree.sh: resolve_kill_list defaults to node and npm without a 
   assert.equal(res.stdout, 'node\nnpm\n');
 });
 
-test('cleanup-worktree.sh: resolve_kill_list honors house.json worktreeKillProcesses slot', () => {
+test('cleanup-worktree.sh: resolve_kill_list honors house.json worktreeKillProcesses slot', (t) => {
   const { work } = makeRepoWithOrigin('main');
   writeFileSync(join(work, 'house.json'), JSON.stringify({
     modules: { github: { config: { worktreeKillProcesses: ['deno', 'vite'] } } },
   }));
 
-  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
-  if (!hasJq) {
-    console.log('  (jq not installed, skipping house.json-driven kill-list resolution check)');
+  if (spawnSync('sh', ['-c', 'command -v jq']).status !== 0) {
+    t.skip('jq not installed here, so the house.json-driven kill-list resolution check does not run; it runs on CI, whose ubuntu runners ship jq');
     return;
   }
 
@@ -759,15 +760,14 @@ test('cleanup-worktree.sh: resolve_kill_list falls back to the default without j
   assert.equal(res.stdout, 'node\nnpm\n');
 });
 
-test('cleanup-worktree.sh: resolve_kill_list falls back to the default and warns when the slot is not an array', () => {
+test('cleanup-worktree.sh: resolve_kill_list falls back to the default and warns when the slot is not an array', (t) => {
   const { work } = makeRepoWithOrigin('main');
   writeFileSync(join(work, 'house.json'), JSON.stringify({
     modules: { github: { config: { worktreeKillProcesses: { not: 'an array' } } } },
   }));
 
-  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
-  if (!hasJq) {
-    console.log('  (jq not installed, skipping non-array kill-list resolution check)');
+  if (spawnSync('sh', ['-c', 'command -v jq']).status !== 0) {
+    t.skip('jq not installed here, so the non-array kill-list resolution check does not run; it runs on CI, whose ubuntu runners ship jq');
     return;
   }
 
@@ -777,15 +777,14 @@ test('cleanup-worktree.sh: resolve_kill_list falls back to the default and warns
   assert.match(res.stderr, /worktreeKillProcesses/);
 });
 
-test('cleanup-worktree.sh: resolve_kill_list honors an explicit empty array as "kill nothing"', () => {
+test('cleanup-worktree.sh: resolve_kill_list honors an explicit empty array as "kill nothing"', (t) => {
   const { work } = makeRepoWithOrigin('main');
   writeFileSync(join(work, 'house.json'), JSON.stringify({
     modules: { github: { config: { worktreeKillProcesses: [] } } },
   }));
 
-  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
-  if (!hasJq) {
-    console.log('  (jq not installed, skipping empty-array kill-list resolution check)');
+  if (spawnSync('sh', ['-c', 'command -v jq']).status !== 0) {
+    t.skip('jq not installed here, so the empty-array kill-list resolution check does not run; it runs on CI, whose ubuntu runners ship jq');
     return;
   }
 
@@ -797,15 +796,14 @@ test('cleanup-worktree.sh: resolve_kill_list honors an explicit empty array as "
   assert.equal(res.stdout, '');
 });
 
-test('cleanup-worktree.sh: resolve_kill_list keeps only the string entries of a mixed-type array', () => {
+test('cleanup-worktree.sh: resolve_kill_list keeps only the string entries of a mixed-type array', (t) => {
   const { work } = makeRepoWithOrigin('main');
   writeFileSync(join(work, 'house.json'), JSON.stringify({
     modules: { github: { config: { worktreeKillProcesses: ['node', 123, 'npm', false] } } },
   }));
 
-  const hasJq = spawnSync('sh', ['-c', 'command -v jq']).status === 0;
-  if (!hasJq) {
-    console.log('  (jq not installed, skipping mixed-type kill-list resolution check)');
+  if (spawnSync('sh', ['-c', 'command -v jq']).status !== 0) {
+    t.skip('jq not installed here, so the mixed-type kill-list resolution check does not run; it runs on CI, whose ubuntu runners ship jq');
     return;
   }
 
