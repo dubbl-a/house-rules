@@ -7,7 +7,7 @@
 // on every call, so this suite never reads or writes the real machine's
 // ~/.claude/house/instructions-loaded log.
 
-import { test, after } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, utimesSync, realpathSync,
@@ -452,28 +452,36 @@ function payloadFor(cwd) {
   });
 }
 
-test('a linked worktree cwd logs under the main checkout root key, with repo_root and cwd on the line', () => {
-  const { root, worktree } = sandboxRepoWithWorktree();
-  const { code, out, configDir } = runHook(payloadFor(worktree));
-  assert.equal(code, 0);
-  assert.equal(out, '');
-  const logPath = logPathFor(configDir, root.replace(/\//g, '-'));
-  assert.ok(existsSync(logPath), `expected a log at ${logPath}`);
-  const rec = JSON.parse(readFileSync(logPath, 'utf8').trim());
-  assert.equal(rec.repo_root, root);
-  assert.equal(rec.cwd, worktree);
-  assert.ok(!existsSync(logPathFor(configDir, worktree.replace(/\//g, '-'))), 'no worktree-keyed log');
-});
+// Both cases read one repo and its linked worktree: the hook only asks git
+// for the root, and each run logs under its own fresh CLAUDE_CONFIG_DIR. The
+// file-level after() removes the repo.
+describe('log key from a cwd inside one repo', () => {
+  let repo;
+  before(() => { repo = sandboxRepoWithWorktree(); });
 
-test('a subdirectory cwd logs under the main checkout root key', () => {
-  const { root } = sandboxRepoWithWorktree();
-  const sub = join(root, 'sub', 'dir');
-  const { code, out, configDir } = runHook(payloadFor(sub));
-  assert.equal(code, 0);
-  assert.equal(out, '');
-  const rec = JSON.parse(readFileSync(logPathFor(configDir, root.replace(/\//g, '-')), 'utf8').trim());
-  assert.equal(rec.repo_root, root);
-  assert.equal(rec.cwd, sub);
+  test('a linked worktree cwd logs under the main checkout root key, with repo_root and cwd on the line', () => {
+    const { root, worktree } = repo;
+    const { code, out, configDir } = runHook(payloadFor(worktree));
+    assert.equal(code, 0);
+    assert.equal(out, '');
+    const logPath = logPathFor(configDir, root.replace(/\//g, '-'));
+    assert.ok(existsSync(logPath), `expected a log at ${logPath}`);
+    const rec = JSON.parse(readFileSync(logPath, 'utf8').trim());
+    assert.equal(rec.repo_root, root);
+    assert.equal(rec.cwd, worktree);
+    assert.ok(!existsSync(logPathFor(configDir, worktree.replace(/\//g, '-'))), 'no worktree-keyed log');
+  });
+
+  test('a subdirectory cwd logs under the main checkout root key', () => {
+    const { root } = repo;
+    const sub = join(root, 'sub', 'dir');
+    const { code, out, configDir } = runHook(payloadFor(sub));
+    assert.equal(code, 0);
+    assert.equal(out, '');
+    const rec = JSON.parse(readFileSync(logPathFor(configDir, root.replace(/\//g, '-')), 'utf8').trim());
+    assert.equal(rec.repo_root, root);
+    assert.equal(rec.cwd, sub);
+  });
 });
 
 test('a cwd outside any repo falls back to its own key, and bad input still exits 0 with empty stdout', () => {

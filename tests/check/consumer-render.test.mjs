@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -675,36 +675,46 @@ test('#26: a repo with no CLAUDE.md still vendors claude-code and gates clean', 
   assert.match(out, /Summary: 0 finding/, `a repo with no CLAUDE.md must still gate clean:\n${out}`);
 });
 
-// Same defect one module over: the github rule is governed by `.github/**`,
-// and this render writes the two .github/ scaffolds, so the glob must not be
-// dropped for matching nothing beforehand. Before the fix the rule appeared
-// only on a SECOND render.
-test('#26: the github rule is vendored on a FIRST render, because that render creates .github/', () => {
-  const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n' });
-  house(repo, 'init', '--apply');
-  house(repo, 'render', '--apply');
-  assert.ok(existsSync(join(repo, '.github/PULL_REQUEST_TEMPLATE.md')), 'precondition: the render scaffolds .github/');
-  assert.ok(existsSync(join(repo, '.claude/rules/house/github.md')), 'and the rule that governs it is vendored in the same pass');
-});
+// The next two read one first render of a repo with no CLAUDE.md and write
+// nothing: after it, the github case only reads files and the glob case runs
+// render --json, a dry run. The #26 sidecar case above deletes and re-renders,
+// so it builds its own.
+describe('#26: a first render with no CLAUDE.md, read only', () => {
+  let repo;
+  let firstOut;
+  before(() => {
+    repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n' });
+    house(repo, 'init', '--apply');
+    firstOut = house(repo, 'render', '--apply').toString();
+  });
+  after(() => { rmSync(repo, { recursive: true, force: true }); });
 
-// Negative control for that widening: a glob matching neither a tracked file
-// nor anything this render writes is still dropped.
-test('#26: a glob matching nothing tracked and nothing rendered is still dropped', () => {
-  const repo = fixtureRepo({ 'package.json': '{"name":"x"}', 'README.md': '# X\n', 'scripts/a.mjs': 'export const a=1;\n' });
-  house(repo, 'init', '--apply');
-  const out = house(repo, 'render', '--apply').toString();
-  // #25: src/** and lib/** are engineering's own declared codeRoots default
-  // (scripts/** is the sibling that matches here), a known alternative
-  // convention rather than something this adopter wrote, so the drop goes
-  // quiet in text mode.
-  assert.doesNotMatch(out, /warning:/, 'a dropped default prints no warning');
-  const eng = readFileSync(join(repo, '.claude/rules/house/engineering.md'), 'utf8').split('\n---\n')[0];
-  assert.doesNotMatch(eng, /^ {2}- "src\/\*\*"$/m, 'src/** is absent here and stays dropped from the frontmatter');
+  // Same defect one module over: the github rule is governed by `.github/**`,
+  // and this render writes the two .github/ scaffolds, so the glob must not be
+  // dropped for matching nothing beforehand. Before the fix the rule appeared
+  // only on a SECOND render.
+  test('#26: the github rule is vendored on a FIRST render, because that render creates .github/', () => {
+    assert.ok(existsSync(join(repo, '.github/PULL_REQUEST_TEMPLATE.md')), 'precondition: the render scaffolds .github/');
+    assert.ok(existsSync(join(repo, '.claude/rules/house/github.md')), 'and the rule that governs it is vendored in the same pass');
+  });
 
-  const outJson = JSON.parse(house(repo, 'render', '--json').toString());
-  const eng2 = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/engineering.md');
-  assert.ok(eng2, `expected an engineering.md droppedDefaults entry, got ${JSON.stringify(outJson.droppedDefaults)}`);
-  assert.deepEqual(eng2.paths.sort(), ['lib/**', 'src/**'], 'the drop still surfaces, just in --json rather than as a warning');
+  // Negative control for that widening: a glob matching neither a tracked file
+  // nor anything this render writes is still dropped.
+  test('#26: a glob matching nothing tracked and nothing rendered is still dropped', () => {
+    const out = firstOut;
+    // #25: src/** and lib/** are engineering's own declared codeRoots default
+    // (scripts/** is the sibling that matches here), a known alternative
+    // convention rather than something this adopter wrote, so the drop goes
+    // quiet in text mode.
+    assert.doesNotMatch(out, /warning:/, 'a dropped default prints no warning');
+    const eng = readFileSync(join(repo, '.claude/rules/house/engineering.md'), 'utf8').split('\n---\n')[0];
+    assert.doesNotMatch(eng, /^ {2}- "src\/\*\*"$/m, 'src/** is absent here and stays dropped from the frontmatter');
+
+    const outJson = JSON.parse(house(repo, 'render', '--json').toString());
+    const eng2 = outJson.droppedDefaults.find((d) => d.rule === '.claude/rules/house/engineering.md');
+    assert.ok(eng2, `expected an engineering.md droppedDefaults entry, got ${JSON.stringify(outJson.droppedDefaults)}`);
+    assert.deepEqual(eng2.paths.sort(), ['lib/**', 'src/**'], 'the drop still surfaces, just in --json rather than as a warning');
+  });
 });
 
 // #25: the flip side, an adopter-written glob is not a known alternative
