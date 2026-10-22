@@ -124,8 +124,15 @@ reason, in any repo (ADR 0018); a CLI older than that still runs it (#157). The 
 `remote.origin.url`, lets it accept
 a local protected branch moved to an unmerged commit (#161). An inline `git -c alias.x='!...'`
 body is not read in any state, and an alias that calls another alias is read one level deep (#161).
-The CLI removes the floor from inside `house render --apply` (after the github module is disabled)
-or `house disable github --apply`, which the text guard does not see; reasoned, not run (#161).
+The CLI removed the floor from inside `house render --apply` (after the github module is disabled)
+or `house disable github --apply`, which the text guard does not see; run end to end, it let a
+push of an unmerged commit land on the protected branch (#161). That route is now refused: render,
+`house enable`, `house disable` and `house uninstall` keep every floor file unless the
+remote-tracking default branch's `house.json` (`origin/HEAD`, else `origin/main` or `origin/master`)
+sets `modules.github.enabled` to `false`, so the change turning it off lands through a merged pull
+request first. Only the remote named `origin` is read, so a clone whose only remote has another
+name is not held. A script that deletes the floor files itself remains residue, as does a forged
+remote-tracking ref (above).
 
 ### Confirmation
 
