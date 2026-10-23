@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.8] - 2026-10-22
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It ships the `adopter-preflight` CI workflow, `house defer` for at-adoption steps planned for later, the `/house-rules:doctor` skill, `house doctor` pin advice that depends on direction, progress logs inside the `/house-rules:test-audit` phases with a `maxReworks` argument, and warning changes: a new `pr-template-section` warning and a memory-index warning that names its fix. Upgrading from 0.22.7: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. An adopter whose pull-request template lacks an enabled module's section now sees a `pr-template-section` warning that quotes the section to paste; it is a warning, not a finding, and fails no gate.
+
 ### Added
 
 - The checker's workflows family warns (`pr-template-section`) when the github module is on and the repo's single-file PR template lacks the `## Docs check`, `## Changelog check`, or `## Test check` heading of an enabled docs, changelog, or testing module (#446). Render writes the template only where it is absent, so an adopter with an older template never got a section added later; the warning quotes the section to paste. It is waivable like the other workflows warnings and fails no gate.
@@ -15,6 +19,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- `/house-rules:test-audit` logs progress inside its long phases (Merge, Refute, Build) and takes an optional `maxReworks` argument, default 2, for the review rework rounds (#449, #450).
 - The auto-memory index warning names the fix that clears it (#445). A long line in an index under both the line and byte warn levels is told to be shortened by hand after its detail is in its topic file, not sent to `/house-rules:trim-memory`, which moves lines only while a warn level is exceeded and never rewords one; over a warn level it still names trim-memory, and names the hand fix too when long lines are present.
 - The sync skill's step 6 and `CONTRIBUTING.md`'s release section say what a `drift` finding on the `CLAUDE.md` rules table after sync means (#447): a release changed a rule's `paths:`, and the fix is to copy the globs from the vendored rule's frontmatter into the table in the sync PR. A release that changes default `paths:` now says so in its CHANGELOG entry.
 - `/house-rules:sync` points at `house upgrade` when the loaded plugin is behind the latest release (#443): step 0 runs the plan, offers `--apply`, and has the user restart and re-run the sync, with the README's "To move a pin" as the manual path. Step 7 no longer restates what each doctor line means and links to `/house-rules:doctor` instead. `house doctor` prints the plugin-enablement caveat once, under the first line that relies on it, where it printed twice (`--json` is unchanged).
