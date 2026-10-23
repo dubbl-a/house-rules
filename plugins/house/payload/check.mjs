@@ -3377,7 +3377,7 @@ function checkWorkflows(ctx) {
 
   // #446: one warning per enabled module whose section the PR template lacks.
   for (const x of template.missing) {
-    warn('pr-template-section', template.path, null, `has no \`${x.heading}\` section, which the ${x.module} module's PR check reads: render writes the template only where it is absent, so a template older than the section never gets it. The section to paste:\n\n${x.text}\n\nPaste it into the template.`);
+    warn('pr-template-section', template.path, null, `has no \`${x.heading}\` section, the checklist the ${x.module} module adds to the template: render writes the template only where it is absent, so a template older than the section never gets it. The section to paste:\n\n${x.text}\n\nPaste it into the template.`);
   }
   if (workflowFiles.length === 0) return { findings, warnings };
 
