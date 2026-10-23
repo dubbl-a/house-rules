@@ -219,7 +219,7 @@ Native floor, as of 2026-09-20: git's own `pre-commit`, `pre-push`, and `referen
 
 ## What the workflows and agent-config checks read
 
-Issue #134 added two checker families that read repo files only, with no network and no credential. The `workflows` family runs when the github module is enabled and the repo has workflow files under `.github/workflows/`; with none, it reports nothing. The `agent-config` family runs when the claude-code module is enabled.
+Issue #134 added two checker families that read repo files only, with no network and no credential. The `workflows` family runs when the github module is enabled and the repo has workflow files under `.github/workflows/`; with none, it reports nothing but check 12. The `agent-config` family runs when the claude-code module is enabled.
 
 1. A `uses:` to an action or reusable workflow not pinned to a 40-character commit SHA. A local `./` path and a `docker://` image pinned by `@sha256:` digest are exempt.
 2. A workflow with no top-level `permissions:` key.
@@ -232,8 +232,9 @@ Issue #134 added two checker families that read repo files only, with no network
 9. An install that is not the frozen-lockfile form, checked only where that installer's lockfile is committed.
 10. A committed binary, by extension or a NUL byte in its first 8000 bytes. Images, fonts, and other media are skipped.
 11. No `SECURITY.md` at the root, in `.github/`, or in `docs/`.
+12. A single-file PR template (`.github/PULL_REQUEST_TEMPLATE.md`, `.github/pull_request_template.md`, `PULL_REQUEST_TEMPLATE.md`, or `docs/PULL_REQUEST_TEMPLATE.md`) missing the `## Docs check`, `## Changelog check`, or `## Test check` heading of an enabled docs, changelog, or testing module (#446): render writes the template only where it is absent, so a template older than a section never gets it, and the warning quotes the section to paste. Its waiver id is `pr-template-section`, and it runs even in a repo with no workflow files.
 
-Checks 1 to 5 are failures and fail the run; checks 6 to 11 are warnings and fail no gate. A recorded waiver clears either kind.
+Checks 1 to 5 are failures and fail the run; checks 6 to 12 are warnings and fail no gate. A recorded waiver clears either kind.
 
 A repo that cannot act on a finding or warning records why, as ADR 0009 asks, in `modules.github.config.waivers` (or `modules.claude-code.config.waivers` for check 5): `{"check": "codeowners", "why": "solo repo, nobody to route a review to"}`, with an optional `path` narrowing it to a file or directory. A `binary` waiver's path is the allowlist for committed binaries. An entry with no reason clears nothing and is itself a warning.
 

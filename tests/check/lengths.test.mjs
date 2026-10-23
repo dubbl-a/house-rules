@@ -360,6 +360,45 @@ test('memory index: an over-threshold auto-memory index warns and never fails th
   cleanup(dir);
 });
 
+// #445: trim-memory moves lines only while the index is over a line or byte
+// warn level and never rewords one, so a lone long line cannot be cleared by it.
+function memoryWarning(body) {
+  const dir = sandbox({
+    'README.md': '# r\n',
+    'house.json': houseJson({ modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': 100 } } } } }),
+  });
+  const cfg = memoryConfigDir(dir, body);
+  const { code, json } = run(dir, ['--only=lengths', '--json'], { CLAUDE_CONFIG_DIR: cfg });
+  cleanup(cfg);
+  cleanup(dir);
+  assert.equal(code, 0);
+  const w = (json.warnings || []).filter((x) => x.kind === 'memory-index');
+  assert.equal(w.length, 1);
+  return w[0].message;
+}
+const LONG_LINE = `- [Long](long.md) ${'x'.repeat(200)}`;
+const HAND_FIX = /Shorten the line by hand after its detail is in its topic file/;
+
+test('memory index #445: a lone long line under both warn levels names the hand fix and not trim-memory', () => {
+  const msg = memoryWarning(`${linesOf(20)}${LONG_LINE}\n`);
+  assert.match(msg, /1 line\(s\) over 160 chars/);
+  assert.match(msg, HAND_FIX);
+  assert.match(msg, /keeping every name a future prompt would mention/);
+  assert.doesNotMatch(msg, /trim-memory/);
+});
+
+test('memory index #445: over a warn level with no long line names trim-memory and not the hand fix', () => {
+  const msg = memoryWarning(linesOf(180));
+  assert.match(msg, /Run \/house-rules:trim-memory/);
+  assert.doesNotMatch(msg, HAND_FIX);
+});
+
+test('memory index #445: over a warn level and a long line present names both fixes', () => {
+  const msg = memoryWarning(`${linesOf(180)}${LONG_LINE}\n`);
+  assert.match(msg, /Run \/house-rules:trim-memory/);
+  assert.match(msg, HAND_FIX);
+});
+
 test('memory index: an index under every threshold says nothing', () => {
   const dir = sandbox({
     'README.md': '# r\n',
