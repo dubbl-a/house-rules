@@ -1085,6 +1085,15 @@
       "notes": "Model-invocable. Frontmatter name must equal the directory. Never rewords an index line: adds missing lines and moves whole lines for closed topics into an overflow index, with a backup, a self-check, and no review step."
     },
     {
+      "path": "plugins/house/skills/doctor/SKILL.md",
+      "kind": "skill",
+      "module": "core",
+      "budgetLines": 500,
+      "owns": [],
+      "crossRefs": [],
+      "notes": "Model-invocable and read-only. Frontmatter name must equal the directory. One-sentence third-person description carrying its trigger phrases. Holds what each `house doctor` line means and its next action; it names house confirm, house decline, render --apply and house upgrade --apply and never runs them. /house-rules:sync step 7 points here instead of restating the lines."
+    },
+    {
       "path": "plugins/house/skills/test-audit/SKILL.md",
       "kind": "skill",
       "module": "core",

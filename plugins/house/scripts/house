@@ -3780,8 +3780,8 @@ function guardRecordIsWellFormed(houseData) {
 // Shared by both doctor lines that rely on the plugin actually being
 // installed and enabled in this session (the branch guard's "plugin" state,
 // and the rule-load probe's "plugin" source): neither is verifiable from the
-// repo alone, so both carry the identical caveat rather than two wordings of
-// the same gap.
+// repo alone, so one caveat covers both. The text output prints it once, under
+// the first of the two lines that prints.
 const PLUGIN_ENABLEMENT_CAVEAT = 'assumes the house plugin is installed and enabled in this session (user-scope install) -- doctor cannot verify plugin enablement from the repo alone.';
 
 // #58: the floor's state as prose, from the probe the arming script prints.
@@ -4397,8 +4397,9 @@ async function cmdDoctor(args) {
   if (args.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
+    let caveatPrinted = false;
     console.log(`effective branch guard: ${guard}`);
-    if (caveat) console.log(`  caveat: ${caveat}`);
+    if (caveat) { console.log(`  caveat: ${caveat}`); caveatPrinted = true; }
     for (const line of gitHookFloorLines(gitHookFloor, houseData, repoRoot)) console.log(line);
     console.log(`jq on PATH: ${jqOnPath ? 'yes' : 'no'}`);
     console.log(`plugin version: ${pluginVersion}`);
@@ -4414,7 +4415,7 @@ async function cmdDoctor(args) {
         ? `rule-load positive control: plugin hook; log ${ruleLoadProbe.logPath}: last load ${ruleLoadProbe.lastLoadAt}, ${ruleLoadProbe.vendoredSeen} of ${ruleLoadProbe.vendoredTotal} vendored rules seen${unseenVendoredSuffix(ruleLoadProbe)}`
         : 'rule-load positive control: plugin hook declared; no log yet for this checkout (start a session here, then re-run doctor)');
       if (ruleLoadProbe.lastLoadAt) console.log(`  pooled ${ruleLoadProbe.logFiles} log ${ruleLoadProbe.logFiles === 1 ? 'file' : 'files'} (this checkout's root-keyed log plus any legacy worktree-keyed logs)`);
-      console.log(`  caveat: ${PLUGIN_ENABLEMENT_CAVEAT}`);
+      if (!caveatPrinted) console.log(`  caveat: ${PLUGIN_ENABLEMENT_CAVEAT}`);
     } else {
       console.log('rule-load positive control: none wired (add an InstructionsLoaded hook to log which rule files load; without it a rule whose glob never matches looks exactly like a rule that does nothing)');
     }

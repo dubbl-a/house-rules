@@ -871,6 +871,24 @@ test('doctor: plugin hook declared but no log yet for this checkout', () => {
   assert.equal(j.ruleLoadProbe.vendoredTotal, 0); // no house.json/render yet: nothing vendored
 });
 
+// Both lines rest on one unverifiable fact (the plugin is installed and enabled
+// in this session), so the caveat prints once, not under each.
+test('doctor: the plugin-enablement caveat prints exactly once when both the guard and the rule-load line rely on the plugin', () => {
+  const { dir, cliPath } = buildFixturePlugin();
+  writePluginInstructionsLoadedHooks(dir);
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, modules: {} });
+
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /effective branch guard:\s*plugin/);
+  assert.match(r.out, /rule-load positive control: plugin hook declared/);
+  assert.equal(r.out.split('cannot verify plugin enablement').length - 1, 1, r.out);
+
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.match(j.caveat, /cannot verify plugin enablement/);
+});
+
 test('doctor: plugin hook with a log reports the last load and how many vendored rules were seen', () => {
   const { dir, cliPath } = buildFixturePlugin();
   writePluginInstructionsLoadedHooks(dir);
