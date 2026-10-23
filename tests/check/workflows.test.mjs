@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
-
 // #134: the workflows and agent-config families. unpinned-uses, no-permissions,
 // event-in-run, pr-target-checkout and agent-settings are findings and exit 1;
 // the rest are warnings and exit 0. Each test pairs a well-formed fixture with
@@ -739,4 +738,75 @@ test('agent-settings: settings.local.json is not read, and the claude-code modul
 test('agent-settings: a recorded reason clears it', () => {
   const dir = settingsRepo({ enableAllProjectMcpServers: true }, { 'house.json': houseJson({ modules: { 'claude-code': { enabled: true, config: { waivers: [{ check: 'agent-settings', why: 'the one server is vendored and reviewed' }] } } } }) });
   assert.deepEqual(warns(dir, 'agent-config'), []);
+});
+
+// #446: the PR template is scaffolded only where absent, so an adopter whose
+// template predates a module's section never gets it. The checker embeds the
+// section texts (it is vendored standalone and cannot read the plugin's
+// templates) and warns once per enabled module whose heading is missing.
+
+const TEMPLATE_PATH = join(dirname(CHECK_SRC), '..', 'templates', 'PULL_REQUEST_TEMPLATE.md');
+const OLD_TEMPLATE = '## Summary\n-\n\n## Test plan\n- [ ]\n';
+const MODULE_SECTIONS = { docs: '## Docs check', changelog: '## Changelog check', testing: '## Test check' };
+const modules = (...names) => houseJson({ modules: { github: { enabled: true }, ...Object.fromEntries(names.map((n) => [n, { enabled: true }])) } });
+const templateWarns = (dir) => warns(dir).filter((w) => w.kind === 'pr-template-section');
+
+// The same sections cut from the shipped template, heading through the line
+// before the next heading, trailing blank lines dropped.
+function templateSection(heading) {
+  const lines = readFileSync(TEMPLATE_PATH, 'utf8').split('\n');
+  const start = lines.indexOf(heading);
+  assert.ok(start >= 0, `${heading} is in the shipped template`);
+  let end = lines.findIndex((l, i) => i > start && l.startsWith('## '));
+  if (end < 0) end = lines.length;
+  return lines.slice(start, end).join('\n').replace(/\n+$/, '');
+}
+
+test('#446 pr-template-section: an old template with the testing module on warns and quotes ## Test check', () => {
+  const dir = repo({ '.github/PULL_REQUEST_TEMPLATE.md': OLD_TEMPLATE, 'house.json': modules('testing') });
+  const ws = templateWarns(dir);
+  assert.equal(ws.length, 1);
+  assert.equal(ws[0].path, '.github/PULL_REQUEST_TEMPLATE.md');
+  assert.match(ws[0].message, /testing module/);
+  assert.ok(ws[0].message.includes(templateSection('## Test check')), ws[0].message);
+  assert.match(ws[0].message, /pr-template-section/);
+});
+
+test('#446 pr-template-section: every embedded section equals the shipped template, and the template holds no other module section', () => {
+  const dir = repo({ '.github/PULL_REQUEST_TEMPLATE.md': OLD_TEMPLATE, 'house.json': modules('docs', 'changelog', 'testing') });
+  const ws = templateWarns(dir);
+  assert.equal(ws.length, 3);
+  for (const [mod, heading] of Object.entries(MODULE_SECTIONS)) {
+    const w = ws.find((x) => x.message.includes(`${mod} module`));
+    assert.ok(w, `a warning names the ${mod} module`);
+    assert.ok(w.message.includes(templateSection(heading)), `${heading} drifted from the shipped template: ${w.message}`);
+  }
+  const headings = readFileSync(TEMPLATE_PATH, 'utf8').split('\n').filter((l) => l.startsWith('## '));
+  assert.deepEqual(headings, ['## Summary', '## Test plan', ...Object.values(MODULE_SECTIONS)]);
+});
+
+test('#446 pr-template-section: the shipped template, a module that is off, and a present heading are all silent', () => {
+  const full = readFileSync(TEMPLATE_PATH, 'utf8');
+  assert.deepEqual(templateWarns(repo({ '.github/PULL_REQUEST_TEMPLATE.md': full, 'house.json': modules('docs', 'changelog', 'testing') })), []);
+  assert.deepEqual(templateWarns(repo({ '.github/PULL_REQUEST_TEMPLATE.md': OLD_TEMPLATE, 'house.json': modules() })), []);
+  const trailing = `${OLD_TEMPLATE}\n## Test check   \n- [ ] x\n`;
+  assert.deepEqual(templateWarns(repo({ '.github/PULL_REQUEST_TEMPLATE.md': trailing, 'house.json': modules('testing') })), []);
+});
+
+test('#446 pr-template-section: the github module off, no template, or a template-directory form is silent; every single-file location is read', () => {
+  const off = houseJson({ modules: { github: { enabled: false }, testing: { enabled: true } } });
+  assert.deepEqual(templateWarns(repo({ '.github/PULL_REQUEST_TEMPLATE.md': OLD_TEMPLATE, 'house.json': off })), []);
+  assert.deepEqual(templateWarns(repo({ 'house.json': modules('testing') })), []);
+  assert.deepEqual(templateWarns(repo({ '.github/PULL_REQUEST_TEMPLATE/feature.md': OLD_TEMPLATE, 'house.json': modules('testing') })), []);
+  for (const p of ['.github/pull_request_template.md', 'PULL_REQUEST_TEMPLATE.md', 'docs/PULL_REQUEST_TEMPLATE.md']) {
+    assert.equal(templateWarns(repo({ [p]: OLD_TEMPLATE, 'house.json': modules('testing') })).length, 1, p);
+  }
+});
+
+test('#446 pr-template-section: warns in a repo with no workflow files, and a waiver clears it', () => {
+  const files = { '.github/workflows/ci.yml': null, '.github/CODEOWNERS': null, 'SECURITY.md': null, '.github/dependabot.yml': null, 'package-lock.json': null, '.github/PULL_REQUEST_TEMPLATE.md': OLD_TEMPLATE };
+  assert.equal(templateWarns(repo({ ...files, 'house.json': modules('testing') })).length, 1);
+  const waiver = houseJson({ modules: { github: { enabled: true, config: { waivers: [{ check: 'pr-template-section', why: 'testing section lives in CONTRIBUTING instead' }] } }, testing: { enabled: true } } });
+  assert.deepEqual(templateWarns(repo({ ...files, 'house.json': waiver })), []);
+  assert.deepEqual(warns(repo({ ...files, 'house.json': waiver })), []);
 });

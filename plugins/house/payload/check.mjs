@@ -1977,14 +1977,20 @@ function checkLengths(ctx) {
     const memBytes = Buffer.byteLength(memRaw, 'utf8');
     const longLines = memLines.filter((l) => l.length > MEMORY_INDEX_MAX_LINE_CHARS);
     const over = [];
+    const fix = [];
     if (memLines.length > MEMORY_INDEX_WARN_LINES) over.push(`${memLines.length} lines (warn over ${MEMORY_INDEX_WARN_LINES}, harness cap ${MEMORY_INDEX_CAP_LINES})`);
     if (memBytes > MEMORY_INDEX_WARN_BYTES) over.push(`${memBytes} bytes (warn over ${MEMORY_INDEX_WARN_BYTES}, harness cap ${MEMORY_INDEX_CAP_BYTES})`);
     if (longLines.length) {
       const sample = longLines.slice(0, 3).map((l) => `"${l.slice(0, 60)}"`).join(', ');
       over.push(`${longLines.length} line(s) over ${MEMORY_INDEX_MAX_LINE_CHARS} chars, first: ${sample}`);
     }
+    // #445: trim-memory moves lines only while a line or byte warn level is
+    // exceeded and never rewords one, so it is named only for that case; a
+    // long line is cleared by hand.
+    if (memLines.length > MEMORY_INDEX_WARN_LINES || memBytes > MEMORY_INDEX_WARN_BYTES) fix.push('Run /house-rules:trim-memory to move closed topics into an overflow index without rewording a line.');
+    if (longLines.length) fix.push('Shorten the line by hand after its detail is in its topic file, keeping every name a future prompt would mention.');
     if (over.length) {
-      warnings.push(mk('lengths', memIndex, null, 'memory-index', `${over.join('; ')}. The harness loads the first ${MEMORY_INDEX_CAP_LINES} lines or ${MEMORY_INDEX_CAP_BYTES} bytes, whichever comes first, and drops the rest silently. Run /house-rules:trim-memory to move closed topics into an overflow index without rewording a line. Shorten a long line by hand only after its detail is in its topic file, keeping every name a future prompt would mention.`));
+      warnings.push(mk('lengths', memIndex, null, 'memory-index', `${over.join('; ')}. The harness loads the first ${MEMORY_INDEX_CAP_LINES} lines or ${MEMORY_INDEX_CAP_BYTES} bytes, whichever comes first, and drops the rest silently. ${fix.join(' ')}`));
     }
   }
 
@@ -2935,9 +2941,48 @@ function checkMinutes(ctx) {
 // are findings and fail the run; the rest are warnings. A recorded waiver
 // clears either. zizmor covers the workflow checks in
 // more depth; this family is the floor every adopter gets without installing it.
-const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy', 'pr-credential'];
+const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy', 'pr-credential', 'pr-template-section'];
 const FAILING_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout']);
 const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+
+// #446: the sections of plugins/house/templates/PULL_REQUEST_TEMPLATE.md that
+// belong to one module. Render writes the template only where absent, so a
+// template older than a section never gets it, and this file is vendored
+// standalone and cannot read the plugin's template. A test holds each text
+// equal to the template's section, so the two cannot drift.
+const PR_TEMPLATE_SECTIONS = [
+  { module: 'docs', heading: '## Docs check', text: [
+    '## Docs check',
+    '<!-- README + CLAUDE.md ride along with the code that changes them. Confirm one: -->',
+    '- [ ] README.md / CLAUDE.md updates included in this PR',
+    '- [ ] No docs change needed (refactor / bug fix restoring documented behavior / dep bump / etc.), reason:',
+  ].join('\n') },
+  { module: 'changelog', heading: '## Changelog check', text: [
+    '## Changelog check',
+    '<!-- Only when the changelog module is on. Confirm one: -->',
+    '- [ ] CHANGELOG.md entry under [Unreleased] included (user-noticeable change)',
+    '- [ ] Not user-noticeable (refactor / infra / CI / silent fix)',
+  ].join('\n') },
+  { module: 'testing', heading: '## Test check', text: [
+    '## Test check',
+    '<!-- Only when the testing module is on. Confirm if it applies: -->',
+    '- [ ] A removed test names the test that still covers it; a quarantined test names its owner and exit condition; a skipped test names where it does run',
+  ].join('\n') },
+];
+const PR_TEMPLATE_PATH_RE = /^(?:\.github\/|docs\/)?pull_request_template\.md$/i;
+
+// The single-file PR template, when the github module is on and it lacks the
+// heading of an enabled module's section. A `.github/PULL_REQUEST_TEMPLATE/`
+// directory of templates is not read.
+function prTemplateGaps(ctx) {
+  const modules = ctx.house?.data?.modules;
+  if (!isPlainObject(modules?.github) || modules.github.enabled !== true) return { path: null, missing: [] };
+  const path = ctx.allTracked.find((f) => PR_TEMPLATE_PATH_RE.test(f));
+  if (!path) return { path: null, missing: [] };
+  const headings = new Set(safeRead(join(ctx.repoRoot, path)).split(YAML_LINE_BREAK_RE).map((l) => l.replace(/[ \t]+$/, '')));
+  const missing = PR_TEMPLATE_SECTIONS.filter((x) => isPlainObject(modules[x.module]) && modules[x.module].enabled === true && !headings.has(x.heading));
+  return { path, missing };
+}
 
 // ADR 0009: a warning the repo cannot act on is cleared by a recorded reason,
 // never a flag. `modules.<module>.config.waivers` holds {check, path?, why}:
@@ -3322,12 +3367,19 @@ function checkWorkflows(ctx) {
   const github = ctx.house?.data?.modules?.github;
   if (isPlainObject(github) && github.enabled === false) return { findings, warnings };
   const workflowFiles = ctx.allTracked.filter((f) => WORKFLOW_FILE_RE.test(f));
-  if (workflowFiles.length === 0) return { findings, warnings };
+  const template = prTemplateGaps(ctx);
+  if (workflowFiles.length === 0 && template.missing.length === 0) return { findings, warnings };
   const waivers = readWaivers(moduleConfig(ctx.house, 'github'), 'github', WORKFLOW_CHECKS, 'workflows', warnings);
   const warn = (check, path, line, message) => {
     if (isWaived(waivers, check, path)) return;
     (FAILING_CHECKS.has(check) ? findings : warnings).push(mk('workflows', path, line, check, `${message} Or record why with a {"check": "${check}", "path": "${path}", "why": "..."} entry in modules.github.config.waivers.`));
   };
+
+  // #446: one warning per enabled module whose section the PR template lacks.
+  for (const x of template.missing) {
+    warn('pr-template-section', template.path, null, `has no \`${x.heading}\` section, the checklist the ${x.module} module adds to the template: render writes the template only where it is absent, so a template older than the section never gets it. The section to paste:\n\n${x.text}\n\nPaste it into the template.`);
+  }
+  if (workflowFiles.length === 0) return { findings, warnings };
 
   for (const f of workflowFiles) {
     const raw = safeRead(join(ctx.repoRoot, f));
