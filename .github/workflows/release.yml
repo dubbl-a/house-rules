@@ -206,6 +206,7 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
+        # adopter-preflight.yml mirrors this matrix; change both together.
         include:
           - { repo: resume-tailor, branch: main, protect: '' }
           - { repo: aaron-gtm, branch: master, protect: '' }

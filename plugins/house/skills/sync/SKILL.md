@@ -96,6 +96,8 @@ This writes clean and missing files. It never writes a still-refused locally mod
 
 If render printed a `warning: ... is git-ignored` line, stop and fix the ignore rule before going on: a destination git cannot see never reaches the checker or CI. Ignore only `.claude/settings.local.json`, never `.claude/` or `.house/`.
 
+Render drops a default `paths:` glob that matches no tracked file, so a vendored rule's frontmatter can list fewer globs than the config or module default names. After adding files that glob would match, re-render so the rule loads on them.
+
 If render or the checker printed `warning: module `<name>` is not in house.json, but <path> exists here`, a module shipped after this repo's `house.json` was written, and its rules are not vendored until the repo adds `"<name>": {"enabled": true}` under `modules`. Do not add the key yourself: copy the warning line verbatim into the sync PR body, under a line saying a new module applies to this repo and needs the adopter's choice. Render writes each detect module's paths into `.house/lock.json`, so the checker repeats this warning in the adopter's CI with no plugin installed there.
 
 ### 4b. Stage what render wrote, by path
