@@ -136,7 +136,7 @@ node .house/check.mjs
 
 `node ${CLAUDE_PLUGIN_ROOT}/scripts/house check --repo <path>` runs the identical logic against the plugin's own payload and is useful before `.house/check.mjs` has been vendored into the repo (a first-time sync). Once the vendored copy exists, running it directly proves the file that ships is the file that passes, not a copy that only looks the same.
 
-A `[untracked]` warning here means step 4b was skipped for that file; stage it and re-run. A `[gitignored]` finding means the ignore rule from step 4 still swallows a managed file.
+A `[untracked]` warning here means step 4b was skipped for that file; stage it and re-run. A `[gitignored]` finding means the ignore rule from step 4 still swallows a managed file. A `drift` finding on `CLAUDE.md` "rules table" right after render means the new version changed a rule's `paths:` and the table's "Loads when working in" cell is stale: copy the globs from the vendored rule's frontmatter into the table in the same sync PR, since render never touches the repo's `CLAUDE.md` (#447).
 
 ### 7. Print doctor output
 

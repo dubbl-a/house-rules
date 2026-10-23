@@ -14,6 +14,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- The sync skill's step 6 and `CONTRIBUTING.md`'s release section say what a `drift` finding on the `CLAUDE.md` rules table after sync means (#447): a release changed a rule's `paths:`, and the fix is to copy the globs from the vendored rule's frontmatter into the table in the sync PR. A release that changes default `paths:` now says so in its CHANGELOG entry.
 - `/house-rules:sync` points at `house upgrade` when the loaded plugin is behind the latest release (#443): step 0 runs the plan, offers `--apply`, and has the user restart and re-run the sync, with the README's "To move a pin" as the manual path. Step 7 no longer restates what each doctor line means and links to `/house-rules:doctor` instead. `house doctor` prints the plugin-enablement caveat once, under the first line that relies on it, where it printed twice (`--json` is unchanged).
 
 ### Fixed
