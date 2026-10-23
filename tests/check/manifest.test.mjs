@@ -224,7 +224,7 @@ test('manifest: every deviation kind in the schema enum is accepted; an unknown 
   const kinds = JSON.parse(readFileSync(schemaPath, 'utf8')).properties.deviations.items.properties.kind.enum;
   assert.ok(kinds.includes('coload-ceiling'), 'the schema declares coload-ceiling');
   for (const kind of kinds) {
-    const extra = kind === 'coload-ceiling' ? { ceiling: 500 } : kind === 'declined-step' ? { module: 'github', step: 'community-profile' } : {};
+    const extra = kind === 'coload-ceiling' ? { ceiling: 500 } : kind === 'declined-step' ? { module: 'github', step: 'community-profile' } : kind === 'deferred-step' ? { module: 'github', step: 'community-profile', until: '2099-12-31' } : {};
     const dir = sandbox({ 'house.json': houseJson({ modules: { github: { enabled: true } }, deviations: [{ kind, ...extra, what: 'x', why: 'y', decided: '2026-08-25' }] }) });
     const { code, out } = run(dir, ['--only=manifest'], NO_PLUGIN);
     assert.equal(code, 0, `${kind}: ${out}`);
@@ -805,6 +805,31 @@ test('#247 manifest: a declined-step deviation missing module, step, why, or a r
     [{ module: 'nosuch' }, /\(declined-step\) names module `nosuch`, which is not in house\.json modules/],
   ]) {
     const { code, out } = run(sandbox({ 'house.json': declinedHouse(declinedStep(over)) }), ['--only=manifest']);
+    assert.equal(code, 1, `${JSON.stringify(over)}: ${out}`);
+    assert.match(out, re, JSON.stringify(over));
+  }
+});
+
+// #448: a deferred at-adoption step is the same shape plus the date it lapses.
+const deferredStep = (over = {}) => ({ kind: 'deferred-step', module: 'github', step: 'community-profile', what: 'Deferred at-adoption step `community-profile`', why: 'waiting on the org admin', decided: '2026-10-15', until: '2099-12-31', ...over });
+
+test('#448 manifest: a deferred-step deviation with a date, and with a ref, passes', () => {
+  for (const over of [{}, { ref: 'https://example.test/issues/9' }]) {
+    const { code, out } = run(sandbox({ 'house.json': declinedHouse(deferredStep(over)) }), ['--only=manifest']);
+    assert.equal(code, 0, out);
+  }
+});
+
+test('#448 manifest: a deferred-step deviation missing module, step, or a real until date is a finding', () => {
+  for (const [over, re] of [
+    [{ module: undefined }, /deviations\[0\] \(deferred-step\) must name a `module`/],
+    [{ step: undefined }, /deviations\[0\] \(deferred-step\) must name a `step`/],
+    [{ module: 'nosuch' }, /\(deferred-step\) names module `nosuch`, which is not in house\.json modules/],
+    [{ until: undefined }, /deviations\[0\] \(deferred-step\) must carry `until`, a YYYY-MM-DD date/],
+    [{ until: '2026-13-40' }, /deviations\[0\] \(deferred-step\) must carry `until`, a YYYY-MM-DD date/],
+    [{ until: 'next week' }, /must carry `until`/],
+  ]) {
+    const { code, out } = run(sandbox({ 'house.json': declinedHouse(deferredStep(over)) }), ['--only=manifest']);
     assert.equal(code, 1, `${JSON.stringify(over)}: ${out}`);
     assert.match(out, re, JSON.stringify(over));
   }

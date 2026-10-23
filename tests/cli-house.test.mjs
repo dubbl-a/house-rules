@@ -4354,7 +4354,7 @@ test('#247 decline: writes a dated declined-step deviation and doctor lists the 
   assert.doesNotMatch(doc.out, /not confirmed for gamma:[^\n]*owners/);
   assert.match(doc.out, new RegExp(`^at-adoption steps declined for gamma: owners \\(${today}: no outside contributors\\)$`, 'm'));
   const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
-  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [{ id: 'owners', decided: today, why: 'no outside contributors' }], undeclared: [], undeclaredDeclined: [] }]);
+  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [{ id: 'owners', decided: today, why: 'no outside contributors' }], deferred: [], expiredDeferrals: [], undeclared: [], undeclaredDeclined: [] }]);
 
   assert.equal(runCli(cliPath, ['decline', 'gamma', 'scan-on', '--why', 'not needed', '--repo', repo]).code, 0);
   assert.doesNotMatch(runCli(cliPath, ['doctor', '--repo', repo]).out, /not confirmed/, 'nothing left to confirm');
@@ -4421,6 +4421,135 @@ test('#247 doctor: a declined step the module no longer declares is named, not h
   house.deviations = [{ kind: 'declined-step', module: 'gamma', step: 'gone', what: 'x', why: 'y', decided: '2026-10-15' }];
   writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
   assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /declined steps gamma no longer declares: gone/);
+});
+
+// #448: a step planned for later leaves the not-confirmed list until a date,
+// through a "deferred-step" deviation that `house defer` writes. Once the date
+// passes the step is not confirmed again.
+const deferredOf = (repo) => JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8')).deviations.filter((d) => d.kind === 'deferred-step');
+const FAR_FUTURE = '2099-12-31';
+const PAST_DATE = '2026-01-01';
+
+test('#448 defer: writes a dated deferred-step deviation and doctor lists the step as deferred, not as not confirmed', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'waiting on the org admin', '--until', FAR_FUTURE, '--ref', 'https://example.test/issues/9', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  const now = new Date();
+  const today = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+  const [dev] = deferredOf(repo);
+  assert.equal(deferredOf(repo).length, 1);
+  assert.deepEqual({ kind: dev.kind, module: dev.module, step: dev.step, why: dev.why, decided: dev.decided, until: dev.until, ref: dev.ref }, { kind: 'deferred-step', module: 'gamma', step: 'owners', why: 'waiting on the org admin', decided: today, until: FAR_FUTURE, ref: 'https://example.test/issues/9' });
+  assert.match(dev.what, /owners/);
+  assert.equal(runVendoredCheck(repo).status, 0, 'the vendored checker accepts the record');
+
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.match(doc.out, /^at-adoption steps not confirmed for gamma: scan-on \(/m);
+  assert.doesNotMatch(doc.out, /not confirmed for gamma:[^\n]*owners/);
+  assert.match(doc.out, new RegExp(`^at-adoption steps deferred for gamma: owners \\(until ${FAR_FUTURE}, https://example.test/issues/9\\)$`, 'm'));
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [], deferred: [{ id: 'owners', until: FAR_FUTURE, why: 'waiting on the org admin', ref: 'https://example.test/issues/9', decided: today }], expiredDeferrals: [], undeclared: [], undeclaredDeclined: [] }]);
+
+  const noRef = runCli(cliPath, ['defer', 'gamma', 'scan-on', '--why', 'next quarter', '--until', FAR_FUTURE, '--repo', repo]);
+  assert.equal(noRef.code, 0, noRef.out + noRef.err);
+  assert.equal('ref' in deferredOf(repo)[1], false, 'no --ref writes no ref key');
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, new RegExp(`deferred for gamma: scan-on \\(until ${FAR_FUTURE}, next quarter\\), owners \\(until ${FAR_FUTURE}, https://example.test/issues/9\\)$`, 'm'));
+  assert.doesNotMatch(runCli(cliPath, ['doctor', '--repo', repo]).out, /not confirmed/, 'nothing left to confirm');
+});
+
+test('#448 defer: needs a why and a future real --until, refuses an undeclared step, and writes nothing on a refusal', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const base = ['defer', 'gamma', 'owners'];
+  const tail = ['--repo', repo];
+  const noUntil = runCli(cliPath, [...base, '--why', 'x', ...tail]);
+  assert.equal(noUntil.code, 2, noUntil.out + noUntil.err);
+  assert.match(noUntil.err, /--until/);
+  assert.equal(runCli(cliPath, [...base, '--why', 'x', '--until', '--ref', 'r', ...tail]).code, 2, 'a flag where the date belongs is not the date');
+  const past = runCli(cliPath, [...base, '--why', 'x', '--until', PAST_DATE, ...tail]);
+  assert.equal(past.code, 2, past.out + past.err);
+  assert.match(past.err, /future/);
+  assert.equal(runCli(cliPath, [...base, '--why', 'x', '--until', todayForTest(), ...tail]).code, 2, 'today is not in the future');
+  assert.equal(runCli(cliPath, [...base, '--why', 'x', '--until', '2099-02-30', ...tail]).code, 2, 'not a real date');
+  assert.equal(runCli(cliPath, [...base, '--why', 'x', '--until', 'next week', ...tail]).code, 2);
+  assert.equal(runCli(cliPath, [...base, '--until', FAR_FUTURE, ...tail]).code, 2, 'a deferral needs its why');
+  assert.equal(runCli(cliPath, ['defer', 'gamma', 'nope', '--why', 'x', '--until', FAR_FUTURE, ...tail]).code, 2);
+  assert.equal(runCli(cliPath, ['defer', 'delta', 'deny-list', '--why', 'x', '--until', FAR_FUTURE, ...tail]).code, 2);
+  assert.equal(runCli(cliPath, ['defer', 'nosuch', 'x', '--why', 'x', '--until', FAR_FUTURE, ...tail]).code, 2);
+  assert.equal(gitStatusShort(repo), '', 'every refusal wrote nothing');
+});
+
+function todayForTest() {
+  const now = new Date();
+  return [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+}
+
+test('#448 doctor: a deferral past its date puts the step back in not confirmed, annotated with the date', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  // defer refuses a past date, so the fixture is written the way a deferral ages: the file outlives its date.
+  house.deviations = [{ kind: 'deferred-step', module: 'gamma', step: 'owners', what: 'x', why: 'next quarter', decided: '2025-12-01', until: PAST_DATE }];
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.match(doc.out, /^at-adoption steps not confirmed for gamma: scan-on, owners \(deferral expired 2026-01-01\) \(/m);
+  assert.doesNotMatch(doc.out, /deferred for gamma/);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.atAdoption[0].unconfirmed, ['scan-on', 'owners']);
+  assert.deepEqual(j.atAdoption[0].deferred, []);
+  assert.deepEqual(j.atAdoption[0].expiredDeferrals, [{ id: 'owners', until: PAST_DATE }]);
+
+  // An expired deferral can be renewed; an active one keeps its first record.
+  const again = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'renewed', '--until', FAR_FUTURE, '--repo', repo]);
+  assert.equal(again.code, 0, again.out + again.err);
+  assert.deepEqual(deferredOf(repo).map((d) => d.why), ['renewed'], 'the expired record is replaced');
+  const keep = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'third', '--until', FAR_FUTURE, '--repo', repo]);
+  assert.equal(keep.code, 0);
+  assert.match(keep.out, /already deferred until/);
+  assert.deepEqual(deferredOf(repo).map((d) => d.why), ['renewed']);
+});
+
+test('#448 defer with confirm and decline: confirm wins and keeps the record as history, decline replaces it, defer refuses a decided step', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const defer = (id) => runCli(cliPath, ['defer', 'gamma', id, '--why', 'later', '--until', FAR_FUTURE, '--repo', repo]);
+  assert.equal(defer('owners').code, 0);
+  assert.equal(defer('scan-on').code, 0);
+
+  const c = runCli(cliPath, ['confirm', 'gamma', 'owners', '--repo', repo]);
+  assert.equal(c.code, 0, c.out + c.err);
+  assert.match(c.out, /earlier deferral/);
+  assert.equal(deferredOf(repo).length, 2, 'the deferral record is kept');
+  assert.doesNotMatch(runCli(cliPath, ['doctor', '--repo', repo]).out, /owners/, 'confirmed wins over a deferral');
+  const onConfirmed = defer('owners');
+  assert.equal(onConfirmed.code, 2, 'a confirmed step is not deferred over');
+  assert.match(onConfirmed.err, /already confirmed/);
+
+  const d = runCli(cliPath, ['decline', 'gamma', 'scan-on', '--why', 'not needed', '--repo', repo]);
+  assert.equal(d.code, 0, d.out + d.err);
+  assert.deepEqual(deferredOf(repo).map((x) => x.step), ['owners'], 'declining replaced the deferral of that step');
+  const doc = runCli(cliPath, ['doctor', '--repo', repo]).out;
+  assert.match(doc, /declined for gamma: scan-on/);
+  assert.doesNotMatch(doc, /deferred for gamma/);
+  const onDeclined = defer('scan-on');
+  assert.equal(onDeclined.code, 2, 'a declined step is not deferred over');
+  assert.match(onDeclined.err, /already declined/);
+});
+
+test('#448 defer: refuses, writing nothing, while the vendored checker lacks the kind; a checker that has it is not refused', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  vendCheckerAs(repo, DECLINE_ONLY_CHECK_MJS);
+  const r = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'x', '--until', FAR_FUTURE, '--repo', repo]);
+  assert.equal(r.code, 2, r.out + r.err);
+  assert.match(r.err, /house defer: nothing was written/);
+  assert.match(r.err, /\/house-rules:sync/);
+  assert.equal(gitStatusShort(repo), '');
+
+  const repo2 = enabledGammaRepo(cliPath);
+  vendCheckerAs(repo2, `${readFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), 'utf8')}\n// a later plugin release changed something else\n`);
+  const ok = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'x', '--until', FAR_FUTURE, '--repo', repo2]);
+  assert.equal(ok.code, 0, 'the real payload carries the deferred-step support marker: ' + ok.out + ok.err);
 });
 
 // ── house hook add (#248) ────────────────────────────────────────────────

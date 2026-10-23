@@ -9,6 +9,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Added
 
 - An `adopter-preflight` workflow renders a pull request's plugin into each of the five adopters read-only and runs the checker gate the release sync uses, so a release the sync would refuse shows red on its PR first (#440). It reads the new `ADOPTER_READ_TOKEN` secret. The `testing` module's config docs now say `testGlobs` adds to `testRoots`, so narrowing the defaults means setting `testRoots`, and the sync skill notes that render drops a default `paths:` glob matching no tracked file.
+- `house defer <module> <step-id> --why "..." --until <YYYY-MM-DD> [--ref <url>]` records an at-adoption step planned for later as a `deferred-step` deviation (#448). `house doctor` lists it as deferred until `--until` passes, then back under not confirmed as `(deferral expired <date>)`; `--json` carries `deferred` and `expiredDeferrals`. The checker accepts the new kind, so an adopter's vendored checker needs the sync before `defer` will write.
 
 ### Fixed
 
