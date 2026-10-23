@@ -74,6 +74,18 @@ It writes a dated `declined-step` deviation (the same sync-first refusal applies
 doctor` then lists the step as declined rather than not confirmed. Confirming it later still
 works and wins; the decline stays in `deviations` as history. Ask for the reason; do not invent one.
 
+When the person plans to do a step later, and tracks it somewhere, record that as a deferral with
+an expiry, so it does not read as an unexamined step and does not go stale unnoticed:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house defer <module> <step-id> --why "<reason>" --until <YYYY-MM-DD> [--ref <url>] --repo <path>
+```
+
+It writes a dated `deferred-step` deviation (the same sync-first refusal applies; `--until` must be
+a future date, `--ref` is optional). `house doctor` lists the step as deferred until that date, then
+as not confirmed again, annotated `(deferral expired <date>)`. Confirming it works and wins;
+declining it replaces the deferral. Ask for the date and the reason; do not invent either.
+
 ## Disable modules in an adopted repo
 
 When the person asks to turn modules off, run the plan first, for every module named, in one run:
