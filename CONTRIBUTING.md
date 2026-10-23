@@ -125,6 +125,8 @@ or a silent fix; those live in git history instead.
 
 Before merging a release PR, check that the `adopter-preflight` workflow (`.github/workflows/adopter-preflight.yml`) is green on it. It renders the PR's plugin into each adopter and runs the same checker gate the sync job applies, so a release the sync would refuse shows red there first. It needs the `ADOPTER_READ_TOKEN` secret, and it is not a required check, since a path-filtered workflow does not report on a PR that touches none of its paths.
 
+When a release changes a module's default `paths:`, its CHANGELOG entry says that adopters will see a `drift` finding on the `CLAUDE.md` rules table after sync, and that the fix is to copy the globs from the vendored rule's frontmatter into that table in the sync PR (#447).
+
 Immutable releases are on for this repository (since 2026-10-03), so a published release's tag and
 assets cannot be changed, and `gh release verify vX.Y.Z` checks the release attestation. Only
 `v0.18.0` has a gitsign-signed tag; `v0.16.0` and `v0.17.0` are annotated and unsigned, and

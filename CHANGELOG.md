@@ -8,8 +8,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Added
 
+- A `/house-rules:doctor` skill runs `house doctor` and explains every line it prints with the next action for each one that is not clean (#444): `house confirm` or `house decline` for at-adoption steps, `house upgrade` then `house upgrade --apply` for a release behind, the `--install` command for a stale `/deep-research` fork, `render --apply` for an unarmed floor, and the plugin update (never `render --apply`) for a pin ahead of the installed plugin. It also lists when `house upgrade` refuses. It is read-only and model-invocable, so "run the house doctor" works outside a sync.
 - An `adopter-preflight` workflow renders a pull request's plugin into each of the five adopters read-only and runs the checker gate the release sync uses, so a release the sync would refuse shows red on its PR first (#440). It reads the new `ADOPTER_READ_TOKEN` secret. The `testing` module's config docs now say `testGlobs` adds to `testRoots`, so narrowing the defaults means setting `testRoots`, and the sync skill notes that render drops a default `paths:` glob matching no tracked file.
 - `house defer <module> <step-id> --why "..." --until <YYYY-MM-DD> [--ref <url>]` records an at-adoption step planned for later as a `deferred-step` deviation (#448). `house doctor` lists it as deferred until `--until` passes, then back under not confirmed as `(deferral expired <date>)`; `--json` carries `deferred` and `expiredDeferrals`. The checker accepts the new kind, so an adopter's vendored checker needs the sync before `defer` will write.
+
+### Changed
+
+- The sync skill's step 6 and `CONTRIBUTING.md`'s release section say what a `drift` finding on the `CLAUDE.md` rules table after sync means (#447): a release changed a rule's `paths:`, and the fix is to copy the globs from the vendored rule's frontmatter into the table in the sync PR. A release that changes default `paths:` now says so in its CHANGELOG entry.
+- `/house-rules:sync` points at `house upgrade` when the loaded plugin is behind the latest release (#443): step 0 runs the plan, offers `--apply`, and has the user restart and re-run the sync, with the README's "To move a pin" as the manual path. Step 7 no longer restates what each doctor line means and links to `/house-rules:doctor` instead. `house doctor` prints the plugin-enablement caveat once, under the first line that relies on it, where it printed twice (`--json` is unchanged).
 
 ### Fixed
 
