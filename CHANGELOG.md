@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- An `adopter-preflight` workflow renders a pull request's plugin into each of the five adopters read-only and runs the checker gate the release sync uses, so a release the sync would refuse shows red on its PR first (#440). It reads the new `ADOPTER_READ_TOKEN` secret. The `testing` module's config docs now say `testGlobs` adds to `testRoots`, so narrowing the defaults means setting `testRoots`, and the sync skill notes that render drops a default `paths:` glob matching no tracked file.
+
 ### Fixed
 
 - `house doctor`'s pin line now depends on direction (#441). A pin ahead of the installed plugin says to update the plugin (`claude plugin update house-rules@house-rules`, then restart Claude Code) and not to run `render --apply`, which would roll the vendored files back; a pin behind keeps the `render --apply` advice; a version that is not plain semver gets a neutral `differs` line.

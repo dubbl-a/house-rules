@@ -1,0 +1,119 @@
+name: adopter-preflight
+# Renders this PR's plugin into each adopter and runs the checker there, the same
+# gate release.yml's sync job applies, so a release that would be refused at sync
+# time shows red here first (#440). Local only: nothing is committed or pushed.
+#
+# Not a required check: a path-filtered workflow never reports on a PR that
+# touches none of the paths, and a required check that never reports blocks the
+# merge. Read it as a release gate by hand: a release PR shows it green first.
+#
+# Needs the ADOPTER_READ_TOKEN secret: a fine-grained PAT with contents:read on
+# the five adopters and nothing else. Set it with
+#   gh secret set ADOPTER_READ_TOKEN -R dubbl-a/house-rules
+# It is read only by the adopter checkout step's `with:`, so the PR's code in
+# the later steps never has it in its environment. A fork PR or a Dependabot PR
+# has no such secret and fails the first step by design.
+on:
+  pull_request:
+    paths:
+      - plugins/house/.claude-plugin/**
+      - plugins/house/modules/**
+      - plugins/house/payload/**
+      - plugins/house/schema/**
+      - plugins/house/scripts/**
+      - plugins/house/hooks/**
+      - plugins/house/templates/**
+      - .github/workflows/adopter-preflight.yml
+  workflow_dispatch:
+permissions:
+  contents: read # Read-only: this workflow checks out and renders, and never writes back.
+concurrency:
+  group: adopter-preflight-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Mirrors release.yml's sync matrix (minus the protect column, which
+        # only guards a push); change both together.
+        include:
+          - { repo: resume-tailor, branch: main }
+          - { repo: aaron-gtm, branch: master }
+          - { repo: aaron-personal, branch: main }
+          - { repo: torrance-watch, branch: master }
+          - { repo: sb-takeover, branch: master }
+    env:
+      REPO: dubbl-a/${{ matrix.repo }}
+    steps:
+      # Only a boolean reaches this step's environment, never the token.
+      - name: Check for the read token
+        env:
+          TOKEN_SET: ${{ secrets.ADOPTER_READ_TOKEN != '' }}
+        run: |
+          if [ "$TOKEN_SET" != true ]; then
+            echo "::error::ADOPTER_READ_TOKEN is not set, so ${REPO} cannot be read. Add a fine-grained PAT with contents:read on the five adopters: gh secret set ADOPTER_READ_TOKEN -R dubbl-a/house-rules"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: house-rules
+          persist-credentials: false
+      - id: adopter
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dubbl-a/${{ matrix.repo }}
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.ADOPTER_READ_TOKEN }}
+          persist-credentials: false
+          path: adopter
+      - name: Explain a failed clone
+        if: steps.adopter.outcome == 'failure'
+        run: |
+          echo "::error::could not clone ${REPO}: ADOPTER_READ_TOKEN may be expired, or missing ${REPO} in its repository access. Regenerate it with contents:read on all five adopters, then: gh secret set ADOPTER_READ_TOKEN -R dubbl-a/house-rules"
+          exit 1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: house-rules/.nvmrc }
+      # Same gate as release.yml's sync: render, then the checker, and pass only
+      # on "Summary: 0 finding(s)". The branch exists before render because
+      # render arms the adopter's vendored .githooks floor, which refuses
+      # commits on the default branch. The baseline run first tells a finding
+      # the adopter already carried from one this PR caused.
+      - name: Render and check
+        working-directory: adopter
+        run: |
+          set +e
+          if [ -f .house/check.mjs ]; then
+            node .house/check.mjs > "$RUNNER_TEMP/baseline.txt" 2>&1
+            BASELINE_EXIT=$?
+          else
+            echo "no .house/check.mjs vendored" > "$RUNNER_TEMP/baseline.txt"
+            BASELINE_EXIT=1
+          fi
+          set -e
+          git switch -c chore/house-preflight
+          node ../house-rules/plugins/house/scripts/house render --repo . --apply
+          set +e
+          node .house/check.mjs > "$RUNNER_TEMP/check.txt" 2>&1
+          set -e
+          cat "$RUNNER_TEMP/check.txt"
+          {
+            echo "### ${REPO}"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/check.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if ! grep -q '^Summary: 0 finding(s)' "$RUNNER_TEMP/check.txt"; then
+            if [ "$BASELINE_EXIT" != 0 ] || ! grep -q '^Summary: 0 finding(s)' "$RUNNER_TEMP/baseline.txt"; then
+              echo "::error::${REPO}: the checker reports findings after render, and it already reported findings before render, so this is likely debt the adopter carried; see the baseline below, and the sync would refuse this adopter regardless of this PR"
+              echo "--- baseline (before render) ---"
+              cat "$RUNNER_TEMP/baseline.txt"
+            else
+              echo "::error::${REPO}: the checker reports findings after render and was clean before it, so this PR causes them; the sync would refuse this adopter"
+            fi
+            exit 1
+          fi
