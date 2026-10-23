@@ -1,7 +1,7 @@
 export const meta = {
   name: 'test-audit',
   description: 'Audit one repo\'s tests (prune, smells, silent skips, speed) with the house-rules test-audit method, build the confirmed changes as one commit, and review and rework it',
-  whenToUse: 'Run by the /house-rules:test-audit skill. args: {root, rules, scratch, date, apply?, maxAuditors?}. One repo per run; the session pushes and opens the PR.',
+  whenToUse: 'Run by the /house-rules:test-audit skill. args: {root, rules, scratch, date, apply?, maxAuditors?, maxReworks?}. One repo per run; the session pushes and opens the PR.',
   phases: [
     { title: 'Survey', detail: 'test suites, files and sizes, CI critical path' },
     { title: 'Audit', detail: 'one auditor per batch of test files, sent back for unread ranges' },
@@ -35,6 +35,8 @@ export const meta = {
 //   date         YYYY-MM-DD, names the branch and worktree (required: scripts
 //                cannot read the clock)
 //   apply        false stops after Refute and returns the confirmed list (default true)
+//   maxReworks   cap on rework rounds, a non-negative integer (default 2; anything else is
+//                ignored with a log line)
 //   maxAuditors  cap on audit batches (default 4; a run is then about 12 agents:
 //                survey, auditors and their re-reads, merge, up to 4 refuters,
 //                builder, reviewer, plus 2 agents per rework round, at most 2 rounds)
@@ -51,7 +53,10 @@ const RULES = args.rules
 const SCRATCH = args.scratch.replace(/\/+$/, '')
 const APPLY = args.apply !== false
 const MAX_AUDITORS = Number.isInteger(args.maxAuditors) && args.maxAuditors > 0 ? args.maxAuditors : 4
-const MAX_REWORKS = 2
+const REWORKS_GIVEN = args.maxReworks !== undefined && args.maxReworks !== null
+const REWORKS_OK = Number.isInteger(args.maxReworks) && args.maxReworks >= 0
+const MAX_REWORKS = REWORKS_OK ? args.maxReworks : 2
+if (REWORKS_GIVEN && !REWORKS_OK) log(`args.maxReworks ${JSON.stringify(args.maxReworks)} ignored: not a non-negative integer; using 2`)
 const BRANCH = `tests-audit-${args.date}`
 const WORKTREE = `${ROOT}/.claude/worktrees/${BRANCH}`
 
@@ -276,14 +281,16 @@ const VERDICTS = {
 const byFile = {}
 // Proof is mandatory for a removal or a merge, whatever the merge agent set.
 const items = merged.items.map(it => ({ ...it, needsProof: it.needsProof || it.kind === 'remove-duplicate' || it.kind === 'merge' }))
+log(`merge: ${items.length} item(s), ${merged.dropped.length} dropped, ${items.filter(it => it.needsProof).length} need proof`)
 for (const it of items) (byFile[it.file] ||= []).push(it)
 const proveFiles = Object.entries(byFile).filter(([, items]) => items.some(it => it.needsProof))
 const nRefuters = Math.min(4, proveFiles.length)
 const toProve = Array.from({ length: nRefuters }, () => [])
 proveFiles.forEach((entry, i) => toProve[i % nRefuters].push(entry))
 
-const refuted = await pipeline(toProve, (group, _o, i) =>
-  agent(
+let refuteDone = 0
+const refuted = await pipeline(toProve, async (group, _o, i) => {
+  const r = await agent(
     `Try to refute each claim below about tests in ${ROOT}. For every remove-duplicate and merge: plant the defect the removed test would catch (change the code under test, not the test), run the named covering test, and report whether it fails. A covering test that still passes means the claim is refuted; if another test does catch it, mark "corrected" and name that test. For other claims with needsProof, run what settles them.
 
 Work ONLY in a scratch copy, never in ${ROOT}: \`mkdir -p ${SCRATCH}/refute/r${i + 1} && git -C ${ROOT} archive ${survey.headSha} | tar -x -C ${SCRATCH}/refute/r${i + 1}\`, install there as the suite's CI does, run there. Remove the scratch copy when done.
@@ -293,8 +300,11 @@ ${JSON.stringify(group.flatMap(([, items]) => items.filter(it => it.needsProof))
 
 Default to refuted when you cannot show the covering test failing. ${COMMON_DONT}`,
     { label: `refute ${i + 1}/${nRefuters}`, phase: 'Refute', schema: VERDICTS, model: 'opus', effort: 'high', agentType: 'house-rules:refuter' },
-  ),
-)
+  )
+  const count = v => (r ? r.verdicts.filter(x => x.verdict === v).length : 0)
+  log(`refute ${++refuteDone}/${nRefuters} returned (batch ${i + 1}): ${r ? `${r.verdicts.length} verdict(s): ${count('confirmed')} confirmed, ${count('corrected')} corrected, ${count('refuted')} refuted` : 'nothing'}`)
+  return r
+})
 const verdicts = Object.fromEntries(refuted.filter(Boolean).flatMap(r => r.verdicts).map(v => [v.id, v]))
 const confirmed = items
   .filter(it => !it.needsProof || ['confirmed', 'corrected'].includes(verdicts[it.id]?.verdict))
@@ -308,6 +318,7 @@ if (!APPLY || !confirmed.length) return result
 
 // ── Build ─────────────────────────────────────────────────────────────
 phase('Build')
+log(`build: applying ${confirmed.length} item(s) in ${WORKTREE}`)
 const BUILD = {
   type: 'object',
   properties: {
@@ -336,6 +347,7 @@ ${JSON.stringify(confirmed, null, 1)}
 Skip an item you find wrong while applying it, and say why. ${COMMON_DONT}`,
   { label: 'build', phase: 'Build', schema: BUILD, model: 'sonnet', effort: 'high', agentType: 'house-rules:builder' },
 )
+if (built && built.sha) log(`build: commit ${built.sha} on ${BRANCH}, ${built.applied.length} applied, ${built.skipped.length} skipped`)
 if (!built || !built.sha) {
   log(`build produced no commit${built ? `: ${built.checks}` : ''}; nothing to review`)
   return { ...result, build: built || null, verdict: null }
@@ -433,6 +445,9 @@ const remainingMustFix = last.verdict === 'ACCEPT' ? [] : last.mustFix
 // The verdict is the last review's, and null when a review died: null is "not reviewed", never ACCEPT.
 const verdict = last.verdict
 if (verdict === null) log('a review returned nothing: the result is not reviewed, so it is not push-eligible')
-if (remainingMustFix.length) log(`stopped after ${reworks} rework round(s) with ${remainingMustFix.length} must-fix(es) open; the maintainer decides`)
+if (remainingMustFix.length) {
+  log(`stopped after ${reworks} rework round(s) with ${remainingMustFix.length} must-fix(es) open; the maintainer decides`)
+  for (const r of rounds) log(`round ${r.round}: ${r.verdict || 'not reviewed'}, ${r.mustFix.length} must-fix(es)`)
+}
 
 return { ...result, build: built, review, rounds, tip, branch: BRANCH, worktree: WORKTREE, verdict, remainingMustFix }
