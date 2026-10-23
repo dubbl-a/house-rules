@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- `house doctor`'s pin line now depends on direction (#441). A pin ahead of the installed plugin says to update the plugin (`claude plugin update house-rules@house-rules`, then restart Claude Code) and not to run `render --apply`, which would roll the vendored files back; a pin behind keeps the `render --apply` advice; a version that is not plain semver gets a neutral `differs` line.
+
 ## [0.22.7] - 2026-10-22
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It ships the `/house-rules:test-audit` skill, the testing rules and their wider load paths, the `uncovered-root` checker warning, and a `secret-scan` CI fix (#431). Upgrading from 0.22.6: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. Two steps are yours by hand, since render never rewrites an existing file of yours: copy the `secret-scan` job's new command, `--history --rev=HEAD`, into your own `pr-checks.yml`, and add the "Test check" section to your existing pull-request template.

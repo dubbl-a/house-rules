@@ -4250,9 +4250,19 @@ async function cmdDoctor(args) {
     } catch { /* unreadable package.json: report no wiring found */ }
   }
 
-  const pinStatus = houseData && typeof houseData.version === 'string'
-    ? (houseData.version === pluginVersion ? `pin v${houseData.version} matches plugin v${pluginVersion}` : `pin v${houseData.version} differs from installed plugin v${pluginVersion} (run \`house render --apply\` to sync)`)
-    : 'no version pin (house.json absent, unparseable, or missing "version")';
+  // #441: direction decides the advice. Re-rendering with a plugin older than
+  // the pin rolls the vendored files back, so a pin ahead says to update the
+  // plugin instead; a version that is not plain semver gets no direction.
+  let pinStatus = 'no version pin (house.json absent, unparseable, or missing "version")';
+  if (houseData && typeof houseData.version === 'string') {
+    const pin = houseData.version;
+    const bothSemver = SEMVER_TAG.test(pin) && SEMVER_TAG.test(pluginVersion);
+    const cmp = bothSemver ? compareSemver(pin.replace(/^v/, ''), pluginVersion.replace(/^v/, '')) : 0;
+    if (pin === pluginVersion) pinStatus = `pin v${pin} matches plugin v${pluginVersion}`;
+    else if (cmp > 0) pinStatus = `pin v${pin} is ahead of installed plugin v${pluginVersion} (update the plugin: claude plugin update house-rules@house-rules, then restart Claude Code; render --apply would roll back)`;
+    else if (cmp < 0) pinStatus = `pin v${pin} is behind installed plugin v${pluginVersion} (run \`house render --apply\` to sync)`;
+    else pinStatus = `pin v${pin} differs from installed plugin v${pluginVersion}`;
+  }
 
   const targets = targetLines(houseTargets(houseData), ruleLoadProbe, gitHookFloor);
   const latestRelease = await latestReleaseStatus(pluginVersion);

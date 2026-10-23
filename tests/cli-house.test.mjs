@@ -584,6 +584,38 @@ test('#305 doctor: an unreleased local version is ahead, not behind', () => {
   assert.equal(ahead.behind, null, '--json: ahead is not behind');
 });
 
+// #441: the pin line's advice depends on direction. A pin ahead of the plugin
+// needs a plugin update, and `render --apply` with the older plugin would roll
+// the vendored files back; a pin behind it is the ordinary sync.
+function pinLine(pin) {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  writeHouseJson(repo, { ...BASE_HOUSE_JSON, version: pin, modules: {} });
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  const status = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out).pinStatus;
+  return { line: r.out.split('\n').find((l) => l.startsWith('pin v')) || '', status };
+}
+
+test('#441 doctor: a pin ahead of the installed plugin says to update the plugin, not to render', () => {
+  const { line, status } = pinLine('9.9.10');
+  const want = 'pin v9.9.10 is ahead of installed plugin v9.9.9 (update the plugin: claude plugin update house-rules@house-rules, then restart Claude Code; render --apply would roll back)';
+  assert.equal(line, want);
+  assert.equal(status, want);
+});
+
+test('#441 doctor: a pin behind the installed plugin still advises render --apply', () => {
+  const { line, status } = pinLine('9.9.8');
+  const want = 'pin v9.9.8 is behind installed plugin v9.9.9 (run `house render --apply` to sync)';
+  assert.equal(line, want);
+  assert.equal(status, want);
+});
+
+test('#441 doctor: a non-semver pin gets a neutral differs line with no direction', () => {
+  const { line } = pinLine('local-build');
+  assert.equal(line, 'pin vlocal-build differs from installed plugin v9.9.9');
+});
+
 test('#305 doctor: offline prints not checked and keeps the exit code', () => {
   const { cliPath } = buildFixturePlugin();
   const repo = buildTargetRepo();
