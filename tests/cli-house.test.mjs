@@ -4372,7 +4372,7 @@ test('#247 decline: writes a dated declined-step deviation and doctor lists the 
   assert.doesNotMatch(doc.out, /not confirmed for gamma:[^\n]*owners/);
   assert.match(doc.out, new RegExp(`^at-adoption steps declined for gamma: owners \\(${today}: no outside contributors\\)$`, 'm'));
   const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
-  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [{ id: 'owners', decided: today, why: 'no outside contributors' }], deferred: [], expiredDeferrals: [], undeclared: [], undeclaredDeclined: [] }]);
+  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [{ id: 'owners', decided: today, why: 'no outside contributors' }], deferred: [], expiredDeferrals: [], undeclared: [], undeclaredDeclined: [], undeclaredDeferred: [] }]);
 
   assert.equal(runCli(cliPath, ['decline', 'gamma', 'scan-on', '--why', 'not needed', '--repo', repo]).code, 0);
   assert.doesNotMatch(runCli(cliPath, ['doctor', '--repo', repo]).out, /not confirmed/, 'nothing left to confirm');
@@ -4464,14 +4464,14 @@ test('#448 defer: writes a dated deferred-step deviation and doctor lists the st
   const doc = runCli(cliPath, ['doctor', '--repo', repo]);
   assert.match(doc.out, /^at-adoption steps not confirmed for gamma: scan-on \(/m);
   assert.doesNotMatch(doc.out, /not confirmed for gamma:[^\n]*owners/);
-  assert.match(doc.out, new RegExp(`^at-adoption steps deferred for gamma: owners \\(until ${FAR_FUTURE}, https://example.test/issues/9\\)$`, 'm'));
+  assert.match(doc.out, new RegExp(`^at-adoption steps deferred for gamma: owners \\(until ${FAR_FUTURE}, waiting on the org admin; https://example.test/issues/9\\)$`, 'm'));
   const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
-  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [], deferred: [{ id: 'owners', until: FAR_FUTURE, why: 'waiting on the org admin', ref: 'https://example.test/issues/9', decided: today }], expiredDeferrals: [], undeclared: [], undeclaredDeclined: [] }]);
+  assert.deepEqual(j.atAdoption, [{ module: 'gamma', unconfirmed: ['scan-on'], declined: [], deferred: [{ id: 'owners', until: FAR_FUTURE, why: 'waiting on the org admin', ref: 'https://example.test/issues/9', decided: today }], expiredDeferrals: [], undeclared: [], undeclaredDeclined: [], undeclaredDeferred: [] }]);
 
   const noRef = runCli(cliPath, ['defer', 'gamma', 'scan-on', '--why', 'next quarter', '--until', FAR_FUTURE, '--repo', repo]);
   assert.equal(noRef.code, 0, noRef.out + noRef.err);
   assert.equal('ref' in deferredOf(repo)[1], false, 'no --ref writes no ref key');
-  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, new RegExp(`deferred for gamma: scan-on \\(until ${FAR_FUTURE}, next quarter\\), owners \\(until ${FAR_FUTURE}, https://example.test/issues/9\\)$`, 'm'));
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, new RegExp(`deferred for gamma: scan-on \\(until ${FAR_FUTURE}, next quarter\\), owners \\(until ${FAR_FUTURE}, waiting on the org admin; https://example.test/issues/9\\)$`, 'm'));
   assert.doesNotMatch(runCli(cliPath, ['doctor', '--repo', repo]).out, /not confirmed/, 'nothing left to confirm');
 });
 
@@ -4568,6 +4568,41 @@ test('#448 defer: refuses, writing nothing, while the vendored checker lacks the
   vendCheckerAs(repo2, `${readFileSync(join(HERE, '..', 'plugins', 'house', 'payload', 'check.mjs'), 'utf8')}\n// a later plugin release changed something else\n`);
   const ok = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'x', '--until', FAR_FUTURE, '--repo', repo2]);
   assert.equal(ok.code, 0, 'the real payload carries the deferred-step support marker: ' + ok.out + ok.err);
+});
+
+// #455: three gaps in the #448 defer surface.
+test('#455 doctor: a deferral for a step the module no longer declares is named, in text and in --json', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.deviations = [{ kind: 'deferred-step', module: 'gamma', step: 'gone', what: 'x', why: 'y', decided: '2026-10-15', until: FAR_FUTURE }];
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, /^at-adoption deferrals gamma no longer declares: gone \(remove their deferred-step deviations\)$/m);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.atAdoption.find((a) => a.module === 'gamma').undeclaredDeferred, ['gone']);
+});
+
+test('#455 doctor: the deferred line shows the reason and the ref together', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const r = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'waiting on admin', '--until', FAR_FUTURE, '--ref', 'https://example.test/9', '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(runCli(cliPath, ['doctor', '--repo', repo]).out, new RegExp(`deferred for gamma: owners \\(until ${FAR_FUTURE}, waiting on admin; https://example.test/9\\)`));
+});
+
+test('#455 defer: replaces an invalid deferred-step record for the same step and says so', () => {
+  const { cliPath } = buildEnableFixture();
+  const repo = enabledGammaRepo(cliPath);
+  const house = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  house.deviations = [
+    { kind: 'deferred-step', module: 'gamma', step: 'owners', what: 'x', why: 'y', decided: '2026-10-15' },
+    { kind: 'deferred-step', module: 'gamma', step: 'scan-on', what: 'x', why: 'y', decided: '2026-10-15', until: 'soon' },
+  ];
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(house, null, 2)}\n`);
+  const r = runCli(cliPath, ['defer', 'gamma', 'owners', '--why', 'later', '--until', FAR_FUTURE, '--repo', repo]);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /replaced an invalid deferred-step record/);
+  assert.deepEqual(deferredOf(repo).map((d) => [d.step, d.until]), [['scan-on', 'soon'], ['owners', FAR_FUTURE]], 'only the same step\'s invalid record is dropped');
 });
 
 // ── house hook add (#248) ────────────────────────────────────────────────

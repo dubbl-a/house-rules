@@ -19,6 +19,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Fixed
 
+- `house doctor` now names a deferral for a step its module no longer declares (`at-adoption deferrals <module> no longer declares`, and `undeclaredDeferred` in `--json`), the deferred line shows the reason and the ref together, and `house defer` replaces an invalid hand-edited deferred-step record for the same step instead of keeping it beside the new one (#455).
 - `house doctor`'s pin line now depends on direction (#441). A pin ahead of the installed plugin says to update the plugin (`claude plugin update house-rules@house-rules`, then restart Claude Code) and not to run `render --apply`, which would roll the vendored files back; a pin behind keeps the `render --apply` advice; a version that is not plain semver gets a neutral `differs` line.
 
 ## [0.22.7] - 2026-10-22

@@ -2386,7 +2386,8 @@ function unconfirmedAtAdoption(houseData, modules) {
     const expiredDeferrals = open.filter((id) => id in later).map((id) => ({ id, until: later[id].until }));
     const undeclared = Object.keys(done).filter((id) => !declared.includes(id));
     const undeclaredDeclined = Object.keys(no).filter((id) => !declared.includes(id));
-    if (open.length || declined.length || deferred.length || undeclared.length || undeclaredDeclined.length) out.push({ module: name, unconfirmed: open, declined, deferred, expiredDeferrals, undeclared, undeclaredDeclined });
+    const undeclaredDeferred = Object.keys(later).filter((id) => !declared.includes(id));
+    if (open.length || declined.length || deferred.length || undeclared.length || undeclaredDeclined.length || undeclaredDeferred.length) out.push({ module: name, unconfirmed: open, declined, deferred, expiredDeferrals, undeclared, undeclaredDeclined, undeclaredDeferred });
   }
   return out;
 }
@@ -2646,6 +2647,8 @@ function cmdDefer(args) {
     process.exit(2);
   }
   const prior = deferredSteps(houseData, name, today)[id];
+  const isDeferral = (d) => isPlainObject(d) && d.kind === 'deferred-step' && d.module === name && d.step === id;
+  const hasInvalid = !prior && arr(houseData.deviations).some(isDeferral);
   if (prior && !prior.expired) {
     console.log(`${name} step \`${id}\` was already deferred until ${prior.until} (${prior.why}); the first record is kept and nothing was written.`);
     process.exit(0);
@@ -2656,11 +2659,11 @@ function cmdDefer(args) {
   }
   refuseIfCheckerStale('defer', repoRoot, 'rejects the `deferred-step` deviation kind');
   const record = { kind: 'deferred-step', module: name, step: id, what: `Deferred at-adoption step \`${id}\`: ${step.step}`, why: args.why, decided: today, until: args.until, ...(args.ref === null ? {} : { ref: args.ref }) };
-  // A lapsed deferral of this step is replaced by the renewal.
-  const isDeferral = (d) => isPlainObject(d) && d.kind === 'deferred-step' && d.module === name && d.step === id;
-  houseData.deviations = [...arr(houseData.deviations).filter((d) => !(prior && isDeferral(d))), record];
+  // A lapsed deferral of this step, or an invalid one that reads as no decision, is replaced by the renewal.
+  houseData.deviations = [...arr(houseData.deviations).filter((d) => !((prior || hasInvalid) && isDeferral(d))), record];
   writeFileSync(housePath, `${JSON.stringify(houseData, null, 2)}\n`, 'utf8');
   console.log(`Wrote a deferred-step deviation for ${name} step \`${id}\` (until ${record.until}) to ${housePath}; \`house doctor\` lists it as deferred until then, and as not confirmed after.`);
+  if (hasInvalid) console.log('replaced an invalid deferred-step record for this step.');
   process.exit(0);
 }
 
@@ -4426,8 +4429,9 @@ async function cmdDoctor(args) {
       const lapsed = Object.fromEntries(a.expiredDeferrals.map((x) => [x.id, x.until]));
       if (a.unconfirmed.length) console.log(`at-adoption steps not confirmed for ${a.module}: ${a.unconfirmed.map((id) => (id in lapsed ? `${id} (deferral expired ${lapsed[id]})` : id)).join(', ')} (${checkerReadsConfirmed ? `record each with \`house confirm ${a.module} <step-id>\`` : `sync first: ${SYNC_FIRST}; then record each with house confirm`})`);
       if (a.declined.length) console.log(`at-adoption steps declined for ${a.module}: ${a.declined.map((x) => `${x.id} (${x.decided}: ${x.why})`).join(', ')}`);
-      if (a.deferred.length) console.log(`at-adoption steps deferred for ${a.module}: ${a.deferred.map((x) => `${x.id} (until ${x.until}, ${x.ref || x.why})`).join(', ')}`);
+      if (a.deferred.length) console.log(`at-adoption steps deferred for ${a.module}: ${a.deferred.map((x) => `${x.id} (until ${x.until}, ${x.why}${x.ref ? `; ${x.ref}` : ''})`).join(', ')}`);
       if (a.undeclaredDeclined.length) console.log(`at-adoption declined steps ${a.module} no longer declares: ${a.undeclaredDeclined.join(', ')} (remove their declined-step deviations)`);
+      if (a.undeclaredDeferred.length) console.log(`at-adoption deferrals ${a.module} no longer declares: ${a.undeclaredDeferred.join(', ')} (remove their deferred-step deviations)`);
       if (a.undeclared.length) console.log(`at-adoption confirmations ${a.module} no longer declares: ${a.undeclared.join(', ')} (remove them from modules.${a.module}.confirmed)`);
     }
     if (houseParseError) console.log(`house.json is present but unparseable: ${houseParseError}`);

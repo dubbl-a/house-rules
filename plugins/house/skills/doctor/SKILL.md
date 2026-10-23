@@ -56,9 +56,9 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house doctor --repo <root>
 - **`at-adoption steps not confirmed | declined | deferred for <module>: ...`.** Information, not a failure; they are settings no repo file shows. Report them as printed and never confirm, decline or defer on the person's behalf.
   - `not confirmed`: nobody has recorded the step. Next: do the step, then `house confirm <module> <step-id>`; or decide against it with `house decline <module> <step-id> --why "<reason>"`; or plan it for later with `house defer <module> <step-id> --why "<reason>" --until <YYYY-MM-DD> [--ref <url>]`. When the line says `sync first`, run `/house-rules:sync` first so the vendored checker reads the record.
   - `(deferral expired <date>)` on a not-confirmed step: it was deferred and the date passed. Next: ask whether it is now done (`house confirm`), still planned (`house defer` again with a new `--until`), or decided against (`house decline`).
-  - `deferred`: steps planned for later, each with its `until` date and tracking link or reason. Nothing to do until the date.
+  - `deferred`: steps planned for later, each with its `until` date, its reason, and the tracking link after a semicolon when one was given. Nothing to do until the date.
   - `declined`: decided-against steps. Nothing to do.
-  - `at-adoption declined steps <module> no longer declares: ...`: remove those declined-step deviations from `house.json`. `at-adoption confirmations <module> no longer declares: ...`: remove them from `modules.<module>.confirmed`.
+  - `at-adoption declined steps <module> no longer declares: ...`: remove those declined-step deviations from `house.json`.  `at-adoption deferrals <module> no longer declares: ...`: remove those deferred-step deviations from `house.json`. `at-adoption confirmations <module> no longer declares: ...`: remove them from `modules.<module>.confirmed`.
 - **`house.json is present but unparseable: <error>`.** Next: fix the JSON; the lines above were computed without it.
 
 ## When `house upgrade` refuses
