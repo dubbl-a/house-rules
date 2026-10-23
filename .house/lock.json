@@ -355,6 +355,11 @@
           {
             "check": "codeowners",
             "why": "solo repo: github.md asks for code owners once there is a second maintainer, and until then there is nobody to route a review to"
+          },
+          {
+            "check": "pr-credential",
+            "path": ".github/workflows/adopter-preflight.yml",
+            "why": "#440: the preflight must read the five private adopters on the PR that would break them. ADOPTER_READ_TOKEN is a fine-grained PAT with contents:read on those five only, used only in the checkout step's with: and not persisted, so PR code never has it in its environment; fork and Dependabot PRs get no secret. The write token stays in release.yml, which never runs on a pull request."
           }
         ]
       },
