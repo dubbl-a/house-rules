@@ -254,7 +254,6 @@ ${COMMON_DONT}`,
   { label: 'merge', phase: 'Merge', schema: MERGED, model: 'opus', effort: 'high' },
 )
 if (!merged) throw new Error('merge returned nothing')
-log(`merge: ${merged.items.length} item(s), ${merged.dropped.length} dropped, ${merged.items.filter(it => it.needsProof).length} need proof`)
 
 // ── Refute ────────────────────────────────────────────────────────────
 // At most four Opus refuters, each over whole files and its own scratch copy,
@@ -282,6 +281,7 @@ const VERDICTS = {
 const byFile = {}
 // Proof is mandatory for a removal or a merge, whatever the merge agent set.
 const items = merged.items.map(it => ({ ...it, needsProof: it.needsProof || it.kind === 'remove-duplicate' || it.kind === 'merge' }))
+log(`merge: ${items.length} item(s), ${merged.dropped.length} dropped, ${items.filter(it => it.needsProof).length} need proof`)
 for (const it of items) (byFile[it.file] ||= []).push(it)
 const proveFiles = Object.entries(byFile).filter(([, items]) => items.some(it => it.needsProof))
 const nRefuters = Math.min(4, proveFiles.length)
