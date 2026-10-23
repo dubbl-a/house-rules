@@ -44,6 +44,7 @@ can lag until the next sync.
    | `date` | today's date as YYYY-MM-DD (the script cannot read the clock) |
    | `apply` | optional, default true |
    | `maxAuditors` | optional, default 4 |
+   | `maxReworks` | optional, default 2; a non-negative integer, anything else is ignored with a log line. A round past the second still requires telling the user what each round found and why the next converges, per the orchestration rule |
 
    `root` and `scratch` must hold no spaces. The script creates branch `tests-audit-<date>` and a
    worktree under `<root>/.claude/worktrees/`.
@@ -57,12 +58,18 @@ can lag until the next sync.
    `remainingMustFix` and stop: the maintainer decides. Never merge. If a PR body would pass GitHub's size limit, write a summary and attach
    the detail (the confirmed list with its planted-defect evidence) as a comment or file.
 
+## While it runs
+
+Point the user at `/workflows`: each agent completion logs a line there (merge counts, each
+refuter as it returns, build start and end, each rework round). For a mid-run summary, read those
+log lines, not subagent transcripts.
+
 ## The rework loop
 
 After the first review, while the verdict is `REWORK` and fewer than 2 rework rounds have run, a
 builder (Sonnet) fixes the must-fixes only as a new commit in the same worktree, and an Opus
-refuter reviews that commit alone. After 2 rounds the script stops, logs that it stopped, and
-returns the open must-fixes. A third round would mean the design is the problem; hand it to the
+refuter reviews that commit alone. After 2 rounds (or `maxReworks`) the script stops, logs that it stopped with one line per round,
+and returns the open must-fixes. A third round would mean the design is the problem; hand it to the
 user.
 
 ## Hazards

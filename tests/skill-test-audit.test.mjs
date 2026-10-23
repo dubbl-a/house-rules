@@ -220,3 +220,27 @@ test('missing or malformed args throw a message naming the arg', async () => {
   }
   await assert.rejects(run(undefined), /args\.root/)
 })
+
+test('progress lines: merge counts, each refuter, build start and end', async () => {
+  const { logs } = await run(ARGS)
+  assert.ok(logs.includes('merge: 3 item(s), 0 dropped, 2 need proof'), logs.join('\n'))
+  assert.ok(logs.some(l => /^refute 1\/1 returned .*1 confirmed, 0 corrected, 1 refuted/.test(l)), logs.join('\n'))
+  assert.ok(logs.some(l => /^build: applying 2 item\(s\)/.test(l)), logs.join('\n'))
+  assert.ok(logs.some(l => /^build: commit sha0 .*2 applied, 0 skipped/.test(l)), logs.join('\n'))
+})
+
+test('maxReworks caps the rework rounds; a bad value falls back to 2 with a log line', async () => {
+  const rework = (n) => Array.from({ length: n }, (_, i) => review('REWORK', [`m${i}`]))
+  const zero = await run({ ...ARGS, maxReworks: 0 }, { reviews: rework(3) })
+  assert.equal(byLabel(zero.calls, /^rework/).length, 0)
+  const one = await run({ ...ARGS, maxReworks: 1 }, { reviews: rework(3) })
+  assert.equal(byLabel(one.calls, /^rework/).length, 1)
+  assert.ok(one.logs.includes('round 0: REWORK, 1 must-fix(es)'), one.logs.join('\n'))
+  assert.ok(one.logs.includes('round 1: REWORK, 1 must-fix(es)'), one.logs.join('\n'))
+  for (const bad of [-1, 1.5, '3', NaN]) {
+    const r = await run({ ...ARGS, maxReworks: bad }, { reviews: rework(4) })
+    assert.equal(byLabel(r.calls, /^rework/).length, 2)
+    assert.ok(r.logs.some(l => /maxReworks .* ignored/.test(l)), r.logs.join('\n'))
+  }
+  assert.ok(!(await run(ARGS)).logs.some(l => /ignored/.test(l)))
+})
