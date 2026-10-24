@@ -40,6 +40,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
       - run: bash tests/hooks/run.sh
+      - run: bash tests/hooks/cloud-arming.sh
       # Wall time, so it runs alone: the cases above bound CPU time and pass
       # under load, which lets a sleep or a lock wait in the guard through.
       # Its own job's runner is idle once the step above finishes.

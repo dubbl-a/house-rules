@@ -3595,6 +3595,12 @@ function cmdUninstall(args) {
   const blockUnsafe = blockRemoval && blockRemoval.deleteFile ? unsafeRemovalReason(repoRoot, blockRemoval.path) : null;
   const removing = new Set([...removals.map((r) => r.path), ...(blockRemoval && blockRemoval.deleteFile ? [blockRemoval.path] : []), ...(removeConfig ? ['house.json'] : [])]);
   const emptied = dirsLeftEmpty(repoRoot, removing);
+  // ADR 0019: house's SessionStart entry goes with the script it runs, so no
+  // entry is left naming a deleted file. A settings file render would leave
+  // unwritten (with a warning) is refused here, since the script would go.
+  const settingsNotes = [];
+  const settingsEntry = removing.has(ARM_DEST) ? planArmEntry(repoRoot, false, settingsNotes) : null;
+  const settingsRefusal = !settingsEntry && settingsNotes.length ? settingsNotes[0].slice(SETTINGS_JSON.length + 1).split(', so ')[0] : null;
   // The floor is house's when a module that ships it is on before this run,
   // or the lock records one of its files: only then did arming set the path.
   const floorSet = new Set(floorDests(modules));
@@ -3625,6 +3631,7 @@ function cmdUninstall(args) {
   };
   for (const r of removals.filter((x) => !x.unsafe)) { const b = blocker(r.path); if (b) blockers.push({ path: r.path, reason: b }); }
   if (blockRemoval && blockRemoval.status !== 'refuse' && !blockUnsafe) { const b = blocker(AGENTS_MD, !blockRemoval.deleteFile); if (b) blockers.push({ path: AGENTS_MD, reason: b }); }
+  if (settingsEntry) { const b = blocker(SETTINGS_JSON, true); if (b) blockers.push({ path: SETTINGS_JSON, reason: b }); }
   if (removeConfig && !configUnsafe) { const b = blocker('house.json'); if (b) blockers.push({ path: 'house.json', reason: b }); }
   for (const h of hooks.filter((x) => x.action === 'unset')) {
     const file = path.resolve(repoRoot, h.origin || '.git/config');
@@ -3663,6 +3670,12 @@ function cmdUninstall(args) {
   if (blockRemoval) {
     console.log(`${(blockRemoval.status === 'refuse' || blockUnsafe ? 'REFUSE' : 'remove-block').padEnd(15)} ${AGENTS_MD}  (${blockUnsafe || (blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'the house-managed block only; your text stays')})`);
     if (blockRemoval.status === 'refuse') console.log('  the house-managed block was edited by hand, or its markers are broken, so it is not removed silently. Move your edit outside the markers or restore the block, then re-run uninstall.');
+  }
+  if (settingsEntry) console.log(`${'remove-hook'.padEnd(15)} ${SETTINGS_JSON}  (house's SessionStart entry only, which runs ${ARM_DEST}; every other key and hook stays)`);
+  for (const n of settingsEntry ? settingsNotes : []) console.log(`  ${n}`);
+  if (settingsRefusal) {
+    console.log(`${'REFUSE'.padEnd(15)} ${SETTINGS_JSON}  (${settingsRefusal})`);
+    console.log(`  house's SessionStart entry there runs ${ARM_DEST}, which uninstall removes, so it cannot be left behind unread. Fix the file by hand (or take the entry out yourself), then re-run uninstall.`);
   }
   if (removeConfig) {
     const ledger = arr(houseData.deviations).length;
@@ -3751,7 +3764,7 @@ function cmdUninstall(args) {
     : '\nRe-adopting later: /house-rules:bootstrap, from scratch. To keep this repo\'s decisions, first restore the old house.json from a commit that has it (`git show <commit>:house.json > house.json`) and run `house render --apply` instead, which brings back the rules, the checker, the AGENTS.md block and the floor, writes any scaffold that is missing, and arms core.hooksPath where no scope sets one.');
 
   const refused = removals.some((r) => r.edited || r.unsafe) || Boolean(blockUnsafe) || Boolean(configUnsafe)
-    || (blockRemoval && blockRemoval.status === 'refuse') || differ.length > 0 || blockers.length > 0;
+    || (blockRemoval && blockRemoval.status === 'refuse') || differ.length > 0 || blockers.length > 0 || Boolean(settingsRefusal);
   if (floorHold.held.length) console.error(`\n${floorHoldMessage('uninstall', floorHold.hold, 'Then run uninstall again.')}`);
   if (refused) console.error('\nhouse uninstall: a file above is refused (REFUSE), so nothing was deleted or unset, house.json included. Resolve it as that line says, then re-run uninstall.');
   if (refused || floorHold.held.length) process.exit(1);
@@ -3777,6 +3790,7 @@ function cmdUninstall(args) {
   const fileSteps = removals.filter((x) => !tail.includes(x.path)).map((r) => r.path);
   const pending = [
     ...hooks.filter((h) => h.action === 'unset').flatMap((h) => h.values.filter((v) => v.isFloor).map((v) => `unset core.hooksPath ${v.value} at ${h.scope} scope`)),
+    ...(settingsEntry ? [`${SETTINGS_JSON} (house's SessionStart entry)`] : []),
     ...fileSteps, ...(blockRemoval ? [`${AGENTS_MD} (house-managed block)`] : []), ...tail, ...(removeConfig ? ['house.json'] : []),
   ];
   const settle = (step) => { const i = pending.indexOf(step); if (i !== -1) pending.splice(i, 1); };
@@ -3798,6 +3812,12 @@ function cmdUninstall(args) {
     if (err) stop(`unset core.hooksPath at ${h.scope} scope`, err);
     const still = h.values.filter((x) => x.isFloor && h.after.includes(x.value)).map((x) => x.value);
     if (still.length) stop(`unset core.hooksPath at ${h.scope} scope`, new Error(`git still holds ${still.join(', ')} there after the unset`));
+  }
+  // Before the files, so the entry never outlives the script it runs.
+  if (settingsEntry) {
+    try { writeIfChanged(path.join(repoRoot, SETTINGS_JSON), settingsEntry.content); } catch (e) { stop(`edit ${SETTINGS_JSON}`, e); }
+    removed.push(`${SETTINGS_JSON} (house's SessionStart entry only; the rest stays)`);
+    settle(`${SETTINGS_JSON} (house's SessionStart entry)`);
   }
   for (const rel of fileSteps) {
     const abs = path.join(repoRoot, rel);

@@ -5923,3 +5923,31 @@ test('ADR 0019 render: turning the github module off removes house\'s entry, and
   assert.equal(readFileSync(settingsPath(repo), 'utf8'), '{}\n');
   assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false, 'the vendored script goes with its module');
 });
+
+test('ADR 0019 uninstall --apply: house\'s SessionStart entry goes with the script it runs, and the adopter\'s settings stay byte for byte', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env, { '.claude/settings.json': ADOPTER_SETTINGS });
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED);
+  const dry = runCli(cliPath, ['uninstall', '--repo', repo], env);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /^remove-hook\s+\.claude\/settings\.json\s+\(/m);
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS);
+});
+
+test('ADR 0019 uninstall --apply: a settings file it cannot read is refused, so the script is not deleted from under the entry', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const broken = `${readFileSync(settingsPath(repo), 'utf8')},`;
+  writeFileSync(settingsPath(repo), broken);
+  commitAll(repo, 'break the settings');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(.*not valid JSON/m);
+  assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), 'nothing was deleted');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), broken);
+});
