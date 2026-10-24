@@ -2461,6 +2461,20 @@ _tok_cases=(
   "$(_heredoc_cmd 3 '')"
 )
 _tok_print() { printf '%s|' "${#toks[@]}"; printf '%s\x1f' ${toks[@]+"${toks[@]}"}; printf '|%s' "$-"; }
+# args_tokens reads git_split's argument list, one word per line, as git_next
+# used to read it after turning the newlines into spaces. Both splits run in
+# the C locale on a clause of more than 4096 characters (#467), so the cases
+# include long ones, with multibyte characters and invalid bytes in them; the
+# words must be the same bytes.
+_args_src=$(sed -n '/^args_tokens() {$/,/^}$/p' "$HOOK")
+_tok_long=$(printf '%04200d' 0 | tr 0 Q)
+_tok_cases+=(
+  "$_tok_long"
+  "one $_tok_long two  three	four"
+  "caf"$'\xc3\xa9'" $_tok_long "$'\xff\xfe'" z "$'\xe2\x80\x83'" $_tok_long end"
+  "$_sg status $_tok_long \"x y\" \$HOME * ? [a] {b,c}"
+  "$_tok_long"$'\nsecond line'
+)
 _tok_bad=0
 for _loc in C C.UTF-8; do
   for _glob in on off; do
@@ -2475,15 +2489,36 @@ for _loc in C C.UTF-8; do
              _f() { local toks=(); clause_tokens "$1"; _tok_print; }; _f "$_c")
       if [[ "$_old" != "$_new" ]]; then
         _tok_bad=$((_tok_bad + 1))
-        printf '        differs (LC_ALL=%s, glob %s) on %q\n          old=%q\n          new=%q\n' "$_loc" "$_glob" "$_c" "$_old" "$_new"
+        printf '        differs (LC_ALL=%s, glob %s) on %q\n          old=%q\n          new=%q\n' "$_loc" "$_glob" "${_c:0:80}" "${_old:0:80}" "${_new:0:80}"
+      fi
+      # The same words as git_split holds them: one per line, a newline after each.
+      _oldA=$(cd "$_tok_dir" && export LC_ALL="$_loc"; set -Euf -o pipefail
+              [[ "$_glob" == on ]] && set +f
+              _f() { local toks=() w=() a=; IFS=$' \t\n' read -r -a w <<<"$1"
+                     [[ "${#w[@]}" -eq 0 ]] || a="$(printf '%s\n' "${w[@]}")"$'\n'
+                     IFS=$' \t\n' read -r -a toks <<<"${a//$'\n'/ }"; _tok_print; }; _f "$_c")
+      _newA=$(cd "$_tok_dir" && export LC_ALL="$_loc"; set -Euf -o pipefail
+              trap 'echo "ERR in args_tokens"; exit 1' ERR
+              eval "$_args_src"
+              [[ "$_glob" == on ]] && set +f
+              # The wrapper's own read is not under test. bash 5 in a UTF-8
+              # locale returns 1 when a lone lead byte swallows the here-string's
+              # newline, though the words are filled; the old side ignores that
+              # status too, so only the words are compared.
+              _f() { local toks=() w=() a=; IFS=$' \t\n' read -r -a w <<<"$1" || true
+                     [[ "${#w[@]}" -eq 0 ]] || a="$(printf '%s\n' "${w[@]}")"$'\n'
+                     args_tokens "$a"; _tok_print; }; _f "$_c")
+      if [[ "$_oldA" != "$_newA" ]]; then
+        _tok_bad=$((_tok_bad + 1))
+        printf '        args differ (LC_ALL=%s, glob %s) on %q\n          old=%q\n          new=%q\n' "$_loc" "$_glob" "${_c:0:80}" "${_oldA:0:80}" "${_newA:0:80}"
       fi
     done
   done
 done
-if [[ -n "$_tok_src" && "$_tok_bad" -eq 0 ]]; then
-  pass "clause_tokens matches read -r -a on ${#_tok_cases[@]} inputs, in two locales, with globbing on and off"
+if [[ -n "$_tok_src" && -n "$_args_src" && "$_tok_bad" -eq 0 ]]; then
+  pass "clause_tokens and args_tokens match read -r -a on ${#_tok_cases[@]} inputs, long ones included, in two locales, with globbing on and off"
 else
-  fail "clause_tokens matches read -r -a" "$_tok_bad runs differ (src=${#_tok_src} bytes)"
+  fail "clause_tokens and args_tokens match read -r -a" "$_tok_bad runs differ (src=${#_tok_src}+${#_args_src} bytes)"
 fi
 # The issue's payload size, end to end: the scan of a 200-line heredoc ahead
 # of a hooks-path write must still reach that write. The bound is CPU time
@@ -2512,6 +2547,80 @@ if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disabl
 else
   fail "a hooks-path write behind a 72 KB one-line clause is denied under 3000 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
 fi
+# One 200 KB clause with no separator in it, the shape #467 found past the 5 s
+# timeout. Four scans re-read the words after the git verb with
+# `${GV_ARGS//$'\n'/ }`, quadratic in the text on bash 3.2 (8 s a scan at
+# 20 KB), and the rest of the cost was a handful of long-string operations
+# that are five times dearer in a UTF-8 locale. The words are 10 KB each, so
+# the old code takes well over 20 s here and the new one about 2. The payload
+# goes in over stdin (Linux caps one argv string at 128 KB), and the bound is
+# CPU time, not the 5 s wall timeout.
+_w=$(printf '%010000d' 0 | tr 0 Q)
+_words=''
+for ((_i = 0; _i < 20; _i++)); do _words+=" $_w"; done
+mk_stdin_payload() {
+  printf '%s' "$1" | jq -Rs --arg cwd "$2" '{tool_name: "Bash", tool_input: {command: .}, cwd: $cwd, hook_event_name: "PreToolUse"}'
+}
+for _lead in "$_sg status" "$_sg -C $sc status"; do
+  _shape="${_lead/$sc/<repo>}"
+  cpu_mark _start
+  run_hook "$(mk_stdin_payload "$_lead$_words" "$sc")"
+  cpu_mark _end
+  _ms=$((_end - _start))
+  if [[ "$HOOK_CODE" -eq 0 && -z "$HOOK_OUT" && "$_ms" -lt 4500 ]]; then
+    pass "'$_shape' with a 200 KB single clause is allowed in ${_ms} ms CPU, under 4500"
+  else
+    fail "'$_shape' with a 200 KB single clause is allowed under 4500 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fi
+done
+# The words are still read: a second git command at the end of the same clause
+# is found, and its --no-verify denied.
+for _lead in "$_sg status" "$_sg -C $sc status"; do
+  _shape="${_lead/$sc/<repo>}"
+  cpu_mark _start
+  run_hook "$(mk_stdin_payload "$_lead$_words $_sg $_cm --no-verify" "$sc")"
+  cpu_mark _end
+  _ms=$((_end - _start))
+  if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 4500 ]]; then
+    pass "'$_shape' with a 200 KB single clause, then a commit with --no-verify, is denied in ${_ms} ms CPU, under 4500"
+  else
+    fail "'$_shape' with a 200 KB single clause, then a commit with --no-verify, is denied under 4500 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fi
+done
+# Backslashes, the other long-clause cost: the four `${cmd//\\.../}`
+# substitutions that read them away are quadratic in the text on bash 3.2, so a
+# 40 KB clause with an escaped quote every 70 bytes took 36 s (9 s at 20 KB)
+# and 200 KB would take most of an hour. Over 4096 bytes one sed pass reads
+# them away; the obfuscated words behind them must still be read, which is
+# what makes this a denial and not only a timing: `--no-\verify`, a
+# backslash-newline inside a word, and a SOH byte in the command, which keeps
+# the substitutions for want of a free newline stand-in.
+_esc=$(printf '%040000d' 0 | tr 0 Q | sed 's/\(.\{70\}\)/\1 \\"/g')
+cpu_mark _start
+run_hook "$(mk_stdin_payload "$_sg status $_esc" "$sc")"
+cpu_mark _end
+_ms=$((_end - _start))
+if [[ "$HOOK_CODE" -eq 0 && -z "$HOOK_OUT" && "$_ms" -lt 3000 ]]; then
+  pass "a 40 KB single clause with an escaped quote every 70 bytes is allowed in ${_ms} ms CPU, under 3000"
+else
+  fail "a 40 KB single clause with an escaped quote every 70 bytes is allowed under 3000 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
+fi
+_q5k=$(printf '%05000d' 0 | tr 0 Q)
+for _case in \
+    "a --no-\\verify:$_esc:$_sg $_cm --no-\\verify" \
+    "a backslash-newline inside a word:$_esc:$_sg \\"$'\n'"$_cm --no-verify" \
+    "a --no-\\verify behind a SOH byte and an escaped quote:$_q5k \\\" "$'\x01'":$_sg $_cm --no-\\verify"; do
+  _what="${_case%%:*}"; _rest="${_case#*:}"; _pad="${_rest%%:*}"; _tail="${_rest#*:}"
+  cpu_mark _start
+  run_hook "$(mk_stdin_payload "$_sg status $_pad $_tail" "$sc")"
+  cpu_mark _end
+  _ms=$((_end - _start))
+  if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 3000 ]]; then
+    pass "a long single clause then a commit with $_what is denied in ${_ms} ms CPU, under 3000"
+  else
+    fail "a long single clause then a commit with $_what is denied under 3000 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
+  fi
+done
 
 # ── the harness side of failing closed: the guard's entry in hooks.json ───
 # Every case above is the script's own decision. A guard that cannot start,

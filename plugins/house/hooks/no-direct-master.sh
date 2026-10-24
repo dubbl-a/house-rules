@@ -523,8 +523,26 @@ crashed_on_exit() {
 # anywhere in a word hid that word from every reader here (`--no-\verify`,
 # `gi\t commit`), and deleting one can only merge characters into a word the
 # scans then see, never split one apart.
+# A long command with backslashes in it goes through one sed pass instead:
+# each of the four substitutions below costs time quadratic in the text's
+# length on macOS's bash 3.2 (a 20 KB command with an escaped quote every 70
+# bytes took 9 s), so a 200 KB one outran the 5 s timeout (#467). tr maps the
+# newlines to SOH so the sed can see them, and a command that already holds a
+# SOH keeps the substitutions, since the map back would turn it into a newline.
+# The sed applies the same four replacements in the same order, bytewise.
 if [[ "$MODE" == bash ]]; then
-  cmd="${cmd//\\$'\n'/}"; cmd="${cmd//\\\"/}"; cmd="${cmd//\\\'/}"; cmd="${cmd//\\/}"
+  path_bytes "$cmd"
+  if (( PATH_BYTES > 4096 )) && [[ "$cmd" == *\\* && "$cmd" != *$'\x01'* ]]; then
+    _soh=$'\x01'
+    cmd=$(trap - ERR; printf '%sx' "$cmd" | LC_ALL=C tr '\n' '\001' | LC_ALL=C sed \
+        -e "s/\\\\$_soh//g" -e 's/\\"//g' -e "s/\\\\'//g" -e 's/\\//g' | LC_ALL=C tr '\001' '\n') || crashed
+    # A pipe that died mid-stream would hand back a cut-short command, and the
+    # cheap exit below would allow it; the trailing x proves the stream ended.
+    [[ "$cmd" == *x ]] || crashed
+    cmd="${cmd%x}"
+  else
+    cmd="${cmd//\\$'\n'/}"; cmd="${cmd//\\\"/}"; cmd="${cmd//\\\'/}"; cmd="${cmd//\\/}"
+  fi
   # The cheap exit for Bash, on the parsed command rather than the raw
   # payload, whose cwd or hook_event_name always names one of these words.
   case "$cmd" in
@@ -681,6 +699,9 @@ SPLIT_N=0; SPLIT_IN=(); SPLIT_OUT=()
 # kept, and a failing one runs, and fails, every time.
 split_clauses() {
   local nl=$'\\\n' soh=$'\x01' i rc
+  # The lookup compares bytes: `==` on a long text costs about five times
+  # as much in a UTF-8 locale on bash 3.2, and it runs once per scan (#467).
+  local LC_ALL=C
   for ((i = 0; i < ${SPLIT_N:-0}; i++)); do
     if [[ "${SPLIT_IN[$i]}" == "$1" ]]; then CLAUSES="${SPLIT_OUT[$i]}"; return 0; fi
   done
@@ -786,9 +807,16 @@ local_hook_is_substantive() {
 # here and left as the caller had it. A clause with a newline (an alias body)
 # goes back to read itself: in a UTF-8 locale `${1%%$'\n'*}` is quadratic in
 # the clause's length on bash 3.2, and a 66 KB one-line command took 5 s.
+# A clause of more than 4096 characters is split in the C locale: the split
+# breaks only on ASCII blanks, which no UTF-8 character contains, so the words
+# are the same bytes, and on a long clause each step costs about a fifth of
+# what it does in a UTF-8 locale (#467). Switching costs about 30 microseconds
+# a call, which a short clause, of which a command can hold thousands, does not
+# earn back; `${s:4096:1}` finds a long one without measuring all of it.
 # tests/hooks/run.sh pins the equivalence.
 clause_tokens() {
   local s="$1" IFS=$' \t\n' glob=0
+  if [[ -n "${s:4096:1}" ]]; then local LC_ALL=C; fi
   case "$s" in *$'\n'*) read -r -a toks <<<"$s"; return 0 ;; esac
   case "$-" in *f*) ;; *) glob=1; set -f ;; esac
   # shellcheck disable=SC2206 # the split is the point; -f is on
@@ -803,10 +831,25 @@ clause_tokens() {
 # floor is armed a computed verb is simply not chased, because the floor reads
 # the ref the shell finally produces; while it is not, GV_BAD is refused.
 GV_VERB=''; GV_ARGS=''; GV_BAD=0
+# args_tokens TEXT sets the caller's `toks` to every blank-separated word of
+# TEXT, newlines included. git_next hands it GV_ARGS (one word per line, no
+# word holding a blank) as it is, where it used to turn the newlines into
+# spaces first: that `${GV_ARGS//$'\n'/ }` is quadratic in the text's length
+# on macOS's bash 3.2, four scans ran it, and one 20 KB clause took 8 s a
+# scan (#467). Pathname expansion is forced off, as in clause_tokens.
+args_tokens() {
+  local s="$1" IFS=$' \t\n' glob=0
+  if [[ -n "${s:4096:1}" ]]; then local LC_ALL=C; fi
+  case "$-" in *f*) ;; *) glob=1; set -f ;; esac
+  # shellcheck disable=SC2206 # the split is the point; -f is on
+  toks=($s)
+  if [[ "$glob" -eq 1 ]]; then set +f; fi
+  return 0
+}
 git_split() {
   local toks=() i=0 n tok
   GV_VERB=''; GV_ARGS=''; GV_BAD=0
-  clause_tokens "$1"
+  if [[ "${2:-}" == args ]]; then args_tokens "$1"; else clause_tokens "$1"; fi
   n="${#toks[@]}"
   while [[ "$i" -lt "$n" ]]; do
     tok="${toks[$i]}"; i=$((i + 1))
@@ -820,7 +863,13 @@ git_split() {
         *'$'*|*'{'*) GV_BAD=1; return 1 ;;
         *)
           GV_VERB="$tok"
-          while [[ "$i" -lt "$n" ]]; do GV_ARGS+="${toks[$i]}"$'\n'; i=$((i + 1)); done
+          # The rest, one word per line, in one expansion: a loop that
+          # appended each word cost thousands of steps a call on a 200 KB
+          # clause, and the scans make dozens of calls (#467).
+          if [[ "$i" -lt "$n" ]]; then
+            local IFS=$'\n'
+            GV_ARGS="${toks[*]:$i}"$'\n'
+          fi
           return 0 ;;
       esac
     done
@@ -830,7 +879,7 @@ git_split() {
 }
 # A clause can hold more than one git command (one inside a substitution is a
 # second). git_next reloads GV_* from what follows the verb just read.
-git_next() { git_split "${GV_ARGS//$'\n'/ }"; }
+git_next() { git_split "$GV_ARGS" args; }
 
 # True when $1 is one of git's own command names (GIT_VERBS above).
 verb_is_known() {
