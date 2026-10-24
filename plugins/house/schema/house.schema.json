@@ -24,11 +24,11 @@
     },
     "targets": {
       "type": "array",
-      "items": { "enum": ["claude-code", "codex", "gemini"] },
+      "items": { "enum": ["claude-code", "codex", "gemini", "antigravity"] },
       "uniqueItems": true,
       "contains": { "const": "claude-code" },
       "default": ["claude-code"],
-      "description": "Agents this repo's rules are rendered for (ADR 0015). Absent means [\"claude-code\"], which must be present. codex or gemini makes render write a house-managed block into the root AGENTS.md; gemini also needs GEMINI.md to import AGENTS.md (render scaffolds it) or .gemini/settings.json context.fileName to name it."
+      "description": "Agents this repo's rules are rendered for (ADR 0015). Absent means [\"claude-code\"], which must be present. codex, gemini, or antigravity makes render write a house-managed block into the root AGENTS.md; gemini also needs GEMINI.md to import AGENTS.md (render scaffolds it) or .gemini/settings.json context.fileName to name it."
     },
     "modules": {
       "type": "object",

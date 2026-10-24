@@ -43,6 +43,8 @@ the plan first, for every module named, in one run:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/house enable <module...> --repo <path>
 ```
 
+Outside Claude Code (Antigravity CLI), where `${CLAUDE_PLUGIN_ROOT}` is not set, run `house <args>` instead of `node ${CLAUDE_PLUGIN_ROOT}/scripts/house <args>`: the plugin's `bin/house` is on the agent's PATH, and `${CLAUDE_PLUGIN_ROOT}` paths elsewhere in this skill are relative to the directory holding this `skills/` folder.
+
 It writes nothing. It prints the `house.json` change, the files render would write, the paths
 each module's slots resolve to here (a default path matching nothing is dropped), the
 at-adoption checklist, and the load cost, including any path pushed over the co-load ceiling.

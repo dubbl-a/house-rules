@@ -2027,6 +2027,35 @@ test('targets: gemini scaffolds GEMINI.md importing AGENTS.md, unless Gemini is 
   assert.equal(readFileSync(join(own, 'GEMINI.md'), 'utf8'), '# our gemini notes\n', 'an existing GEMINI.md is never overwritten');
 });
 
+test('targets: antigravity renders the AGENTS.md block like codex, writes no GEMINI.md, and dropping it removes the block', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo();
+  writeHouseJson(repo, targetsHouse(['claude-code', 'antigravity']));
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const raw = readFileSync(join(repo, 'AGENTS.md'), 'utf8');
+  assert.match(raw.split('\n')[0], /^<!-- house-managed:begin v9\.9\.9 .*-->$/);
+  assert.match(raw, /^### alpha$/m);
+  assert.ok(!existsSync(join(repo, 'GEMINI.md')), 'antigravity reads AGENTS.md natively; no GEMINI.md');
+  assert.equal(JSON.parse(readFileSync(join(repo, '.house', 'lock.json'), 'utf8')).files.find((e) => e.path === 'AGENTS.md').kind, 'block');
+  writeHouseJson(repo, targetsHouse(null));
+  const gone = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(gone.code, 0, gone.out + gone.err);
+  assert.ok(!existsSync(join(repo, 'AGENTS.md')), 'nothing but the block was there, so the file goes');
+});
+
+test('targets: doctor prints an unverified line for antigravity', () => {
+  const { cliPath } = buildTargetsFixture();
+  const repo = targetsRepo();
+  writeHouseJson(repo, targetsHouse(['claude-code', 'antigravity']));
+  const r = runCli(cliPath, ['doctor', '--repo', repo]);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^target antigravity: unverified: Antigravity CLI fires no instructions-loaded event; git floor /m);
+  const j = JSON.parse(runCli(cliPath, ['doctor', '--repo', repo, '--json']).out);
+  assert.deepEqual(j.targets.map((t) => t.target), ['claude-code', 'antigravity']);
+  assert.equal(j.targets[1].verified, false);
+});
+
 test('targets: doctor prints one line per target; only claude-code can carry verified evidence', () => {
   const { cliPath } = buildTargetsFixture();
   const repo = targetsRepo();

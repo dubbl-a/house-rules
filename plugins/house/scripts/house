@@ -963,13 +963,13 @@ function buildIndex(plan) {
 
 // ── targets: the AGENTS.md block (ADR 0015) ──────────────────────────────
 //
-// Claude Code loads the vendored rules by path; Codex and Gemini CLI read a
+// Claude Code loads the vendored rules by path; Codex, Gemini CLI, and Antigravity CLI read a
 // root AGENTS.md and nothing under .claude/. For those targets render owns a
 // delimited BLOCK inside AGENTS.md, never the file: everything outside the
 // markers is the adopter's, preserved byte for byte and never read. The block
 // is a routing table (globs, rule file, H2 headings), not the rule text, so it
 // stays far under Codex's 32 KiB project-doc cap.
-const TARGETS = ['claude-code', 'codex', 'gemini'];
+const TARGETS = ['claude-code', 'codex', 'gemini', 'antigravity'];
 const AGENTS_MD = 'AGENTS.md';
 const GEMINI_MD = 'GEMINI.md';
 const BLOCK_END = '<!-- house-managed:end -->';
@@ -984,7 +984,7 @@ function houseTargets(houseData) {
   if (!Array.isArray(t)) return ['claude-code'];
   return TARGETS.filter((x) => t.includes(x));
 }
-function wantsAgentsBlock(targets) { return targets.includes('codex') || targets.includes('gemini'); }
+function wantsAgentsBlock(targets) { return targets.includes('codex') || targets.includes('gemini') || targets.includes('antigravity'); }
 
 // Unreadable input fails closed: a `targets` render cannot read would
 // otherwise fall back to ["claude-code"] and remove a block the repo asked
@@ -1191,7 +1191,7 @@ function planAgentsBlock(repoRoot, plan, pluginVersion, priorLock, forceManagedP
 function planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath) {
   // No block in the lock means render never wrote one here, so there is
   // nothing to remove: marker lines in such a file are the adopter's own
-  // (a quoted example), and a repo without codex or gemini never reads them.
+  // (a quoted example), and a repo without codex, gemini, or antigravity never reads them.
   const recorded = priorLock.get(AGENTS_MD);
   if (!recorded || recorded.kind !== 'block') return null;
   const abs = path.join(repoRoot, AGENTS_MD);
@@ -1985,7 +1985,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
   }
   if (blockRemoval) {
     const label = blockRemoval.status === 'refuse' ? 'REFUSE' : 'remove-block';
-    console.log(`${label.padEnd(15)} ${blockRemoval.path}  (no codex or gemini target; ${blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'text outside the markers stays'})`);
+    console.log(`${label.padEnd(15)} ${blockRemoval.path}  (no codex, gemini, or antigravity target; ${blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'text outside the markers stays'})`);
     if (blockRemoval.reason === 'not-regular') {
       console.log(`  ${AGENTS_MD} is ${blockRemoval.detail}.`);
     } else if (blockRemoval.status === 'refuse' && blockRemoval.reason === 'reserved') {
@@ -3632,7 +3632,7 @@ function cmdUninstall(args) {
   const githubOff = isPlainObject(houseData) && isPlainObject(houseData.modules) && isPlainObject(houseData.modules.github) && houseData.modules.github.enabled === false;
   console.log('\nWhat stops:');
   if (ruleCount) console.log(`  ${ruleCount} rule file(s) stop loading in Claude Code sessions here`);
-  if (blockRemoval) console.log(`  Codex and Gemini CLI stop reading the house block in ${AGENTS_MD}`);
+  if (blockRemoval) console.log(`  Codex, Gemini CLI, and Antigravity CLI stop reading the house block in ${AGENTS_MD}`);
   const checkerGoes = removing.has('.house/check.mjs');
   if (checkerGoes || workflowCallers.length) {
     console.log(`  ${checkerGoes ? 'the checker goes, so its families (drift, tamper, lengths, and the rest) run nowhere' : 'the checker is already gone'}; ${workflowCallers.length ? 'the workflow line(s) above still run it in CI and fail once this is merged, until you remove them' : 'no tracked workflow runs it, so CI was not running it'}`);
@@ -3866,7 +3866,7 @@ function gitHookFloorLines(probe, houseData, repoRoot) {
 // (InstructionsLoaded), so only its line can ever say `verified`; the others
 // say plainly that their load cannot be observed, and name the git floor,
 // which is the one guard they get until they have native hooks.
-const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI' };
+const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI', antigravity: 'Antigravity CLI' };
 function targetLines(targets, ruleLoadProbe, floor) {
   const floorState = floor === null ? 'unknown'
     : (!floor.applicable ? 'not applicable' : (!floor.rendered ? 'not rendered' : (floor.armed ? 'armed' : 'NOT armed')));

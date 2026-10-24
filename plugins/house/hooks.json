@@ -1,0 +1,7 @@
+{
+  "house-arm-git-hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "node \"${extensionPath}/hooks/antigravity-session-start.mjs\"", "timeout": 10 }
+    ]
+  }
+}
