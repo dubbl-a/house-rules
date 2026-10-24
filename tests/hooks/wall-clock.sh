@@ -136,7 +136,43 @@ timed() {
   fi
 }
 
+# exec_counted <label> <max> <payload>: the guard is allowed at most <max>
+# process starts (counted by PATH shims for the tools it runs) on this payload.
+# Wall time cannot show the cost of a process start that only an endpoint
+# security agent makes expensive: on 2026-10-22 (#460) a machine at load 140,
+# with such an agent scanning every exec, spent the whole 5 s on short git
+# commands. Each start there cost tens of milliseconds, so the count is the
+# measurable thing. The limits sit a little above the counts after #460's cut
+# (21 and 24; they were 37 and 62), so a few more processes on the common path
+# fail here, not as a timeout on somebody's busy machine.
+SHIM_DIR="$TMP_ROOT/shims"; mkdir -p "$SHIM_DIR"
+for _tool in git jq sed tr cat cmp head readlink dirname basename grep awk find uname; do
+  _real=$(command -v "$_tool") || continue
+  printf '#!/bin/sh\necho %s >> "$EXEC_LOG"\nexec %s "$@"\n' "$_tool" "$_real" >"$SHIM_DIR/$_tool"
+  chmod +x "$SHIM_DIR/$_tool"
+done
+exec_counted() {
+  local label="$1" max="$2" payload="$3" n
+  EXEC_LOG="$TMP_ROOT/exec.log"; : >"$EXEC_LOG"; export EXEC_LOG
+  printf '%s' "$payload" | PATH="$SHIM_DIR:$PATH" bash "$HOOK" >/dev/null 2>&1
+  n=$(wc -l <"$EXEC_LOG" | tr -d ' ')
+  TOTAL=$((TOTAL + 1))
+  if [[ "$n" -gt "$max" ]]; then
+    FAILED=$((FAILED + 1))
+    printf '  FAIL  %s -- started %s processes, limit %s\n' "$label" "$n" "$max"
+  else
+    printf '  ok    %s started %s processes (limit %s)\n' "$label" "$n" "$max"
+  fi
+}
+
 echo "=== guard wall-clock: decides inside ${_timeout_s} s less ${MARGIN_MS} ms (serial, never beside another suite) ==="
+
+ex="$TMP_ROOT/execs"; new_repo "$ex"; adopt "$ex"; git -C "$ex" checkout -q -b feat/ex
+git -C "$ex" config core.hooksPath "$ex/.githooks"
+exec_counted "git status on a feature branch, floor armed: process starts" 26 \
+  "$(mk_payload "git status" "$ex")"
+exec_counted "git -C <cwd> worktree remove, two candidates: process starts" 28 \
+  "$(mk_payload "git -C $ex worktree remove $TMP_ROOT/nosuch" "$ex")"
 
 sc="$TMP_ROOT/split"; new_repo "$sc"; adopt "$sc"; git -C "$sc" checkout -q -b feat/sc
 pg="$TMP_ROOT/pathgaps"; new_repo "$pg"; adopt "$pg"
