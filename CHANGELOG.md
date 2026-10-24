@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- The handbook now links the decision record (`docs/decisions/`) behind a rule from the section that explains it (ADR 0003, 0006, 0007, 0008, 0013, 0019), so an adopter reaches the reason through the handbook link with no new file in the adopting repo and no change to any rule file (#419).
+
 ## [0.22.10] - 2026-10-24
 
 A patch release under ADR 0012: no heading renamed, one optional config slot added (the minor class ADR 0011 names, which ADR 0012 spends as a patch below 1.0, as ADR 0019 says), and no change to what the guard denies. It is the first release that writes into an adopter's committed `.claude/settings.json`: the sync adds one house-owned SessionStart entry and vendors `scripts/house/arm-git-hooks.sh`, so a cloud session arms the git-hook floor (#351). It also makes `plugins/house/` a Codex and an Antigravity plugin, and stops one long command from timing out the branch guard (#467). Upgrading from 0.22.9: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. To keep the entry out of a repo, set `cloudArming: false` in the github module's config before syncing. A settings file render cannot safely edit (invalid JSON, comments, a symlink) is left untouched with a warning.

@@ -42,6 +42,8 @@ or bytes, and so does listing it in `ratchet`.
 
 ## Keep the auto-memory index to hooks, and hold it under its cap
 
+Decision record: [ADR 0008](../decisions/0008-warn-on-machine-local-state.md).
+
 repo-b's own auto-memory index is the incident, measured 2026-08-29: 94 lines and 20.9 KB
 against a ceiling of 200 lines or 25 KB, with 58 of its 75 entries running past 200 characters.
 Several of those entries carried rulings that appeared nowhere in the topic file they pointed at,
@@ -76,6 +78,8 @@ harness asks Claude to shorten after a write and errors on once the index sits o
 (https://code.claude.com/docs/en/memory).
 
 ## Give a domain rule a paths list, and never leave a rule file unscoped
+
+Decision record: [ADR 0007](../decisions/0007-path-scoped-rules-load-on-read.md).
 
 repo-a's own CLAUDE.md is the reference implementation: "Topic-specific rules live in
 `.claude/rules/*.md` with `paths:` frontmatter. They load only when Claude reads files matching

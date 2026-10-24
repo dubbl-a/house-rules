@@ -172,6 +172,8 @@ never become incident logs, "that is how `entity-resolution.md` once reached 1,5
 
 ## Keep files under budget, and raise a ceiling only with a written reason
 
+Decision record: [ADR 0003](../decisions/0003-ratchet-never-trim.md).
+
 repo-a's stated targets: `CLAUDE.md` at most 100 lines, each rule file at most 200,
 `README.md` at most 110, cited to the reasoning that shorter files get better adherence (a claim the evidence below does not carry for file length alone). As
 surveyed on 2026-08-23, the targets were documented but not machine-enforced: `CLAUDE.md` measured
