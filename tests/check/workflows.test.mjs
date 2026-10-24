@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
+import { spawnCpuSync } from '../spawn-cpu.mjs';
 // #134: the workflows and agent-config families. unpinned-uses, no-permissions,
 // event-in-run, pr-target-checkout and agent-settings are findings and exit 1;
 // the rest are warnings and exit 0. Each test pairs a well-formed fixture with
@@ -253,11 +254,11 @@ test('#408 pr-credential: # inside a quoted multi-line scalar is content, so the
 test('#408 exprsIn: unclosed ${{ openers do not make the scan quadratic', () => {
   const body = Array.from({ length: 8000 }, () => 'echo ${{ x').join('\n          ');
   const dir = exprRun(`run: |\n          ${body}`);
-  const t0 = Date.now();
-  const ws = warns(dir);
-  const ms = Date.now() - t0;
-  assert.deepEqual(ws, []);
-  assert.ok(ms < 2000, `took ${ms} ms`);
+  assert.deepEqual(warns(dir), []);
+  // CPU, not wall: a loaded machine stretches wall time with nothing wrong (#434).
+  const r = spawnCpuSync('node', [CHECK_SRC, '--repo', dir, '--only=workflows'], { encoding: 'utf8', timeout: 60_000 });
+  assert.equal(r.error, undefined, 'checker timed out');
+  assert.ok(r.cpuMs < 2000, `used ${r.cpuMs} ms of CPU`);
 });
 
 test('#408 single-quoted scalar: the reported expression is the written text', () => {

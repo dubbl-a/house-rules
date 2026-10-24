@@ -43,7 +43,9 @@ test('a hung suite is killed, named, its output printed, and verify fails', () =
   const hang = 'console.log("before the hang"); setTimeout(() => {}, 600000)';
   const started = Date.now();
   const r = verify([stub('hung', hang), stub('fine', 'console.log("fine ran")')], { VERIFY_SUITE_TIMEOUT_S: '1' });
-  assert.ok(Date.now() - started < 30000, 'the stub was not left to run its 600 s');
+  // Wall time is the point: the kill must fire at the 1 s cap, not at the stub's own 600 s. 120 s leaves
+  // a loaded machine room and still fails a kill that never came.
+  assert.ok(Date.now() - started < 120000, 'the stub was not left to run its 600 s');
   assert.equal(r.code, 1);
   assert.match(r.out, /TIMED OUT/);
   assert.match(r.out, /before the hang/);
