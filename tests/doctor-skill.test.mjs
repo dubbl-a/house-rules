@@ -54,21 +54,25 @@ function labelOf(lead) {
 function doctorLabels(body, helperBody) {
   const labels = new Set();
   const unknown = [];
+  // A lead that starts with an interpolation has no label to look up, and an
+  // empty label would match any skill text, so it is reported, never added.
+  const add = (label, shape) => (label ? labels.add(label) : unknown.push(`no label before the first interpolation: ${shape}`));
   for (const m of body.matchAll(/console\.log\(/g)) {
     const rest = body.slice(m.index + m[0].length);
+    const shape = rest.slice(0, 60).split('\n')[0];
     const arg = rest.match(/^\s*([`'"])/);
     const ternary = rest.match(/^\s*[\w.]+\s*\?\s*([`'"])/);
     const ident = rest.match(/^\s*([\w.]+)\s*\)/);
-    if (arg) labels.add(labelOf(literalLead(rest, rest.indexOf(arg[1]))));
-    else if (ternary) labels.add(labelOf(literalLead(rest, rest.indexOf(ternary[1], ternary[0].length - 1))));
+    if (arg) add(labelOf(literalLead(rest, rest.indexOf(arg[1]))), shape);
+    else if (ternary) add(labelOf(literalLead(rest, rest.indexOf(ternary[1], ternary[0].length - 1))), shape);
     else if (/^\s*JSON\.stringify\(/.test(rest)) continue;
     else if (ident && PASSTHROUGH[ident[1]]) labels.add(PASSTHROUGH[ident[1]]);
     else unknown.push(rest.slice(0, 60).split('\n')[0]);
   }
   // Indented follow-on lines the floor helper pushes after its main line.
-  for (const m of helperBody.matchAll(/\.push\(\s*([`'])(  [^`'$]*)/g)) labels.add(labelOf(m[2]));
-  for (const m of helperBody.matchAll(/\?\s*([`'])(  [^`'$]*)/g)) labels.add(labelOf(m[2]));
-  for (const m of helperBody.matchAll(/:\s*([`'])(  [^`'$]*)/g)) labels.add(labelOf(m[2]));
+  for (const m of helperBody.matchAll(/\.push\(\s*([`'])(  [^`'$]*)/g)) add(labelOf(m[2]), m[0]);
+  for (const m of helperBody.matchAll(/\?\s*([`'])(  [^`'$]*)/g)) add(labelOf(m[2]), m[0]);
+  for (const m of helperBody.matchAll(/:\s*([`'])(  [^`'$]*)/g)) add(labelOf(m[2]), m[0]);
   return { labels, unknown };
 }
 
@@ -90,4 +94,13 @@ test('#462: the label reader sees a doctor line the skill does not name (positiv
 test('#462: the label reader reports a console.log shape it cannot read (negative control)', () => {
   const body = functionBody('cmdDoctor').replace("console.log(`jq on PATH:", "console.log(someNewLine);\n    console.log(`jq on PATH:");
   assert.deepEqual(doctorLabels(body, functionBody('gitHookFloorLines')).unknown.length, 1);
+});
+
+test('#462: the label reader reports a line with no label before its first interpolation (negative control)', () => {
+  for (const planted of ['console.log(`${x}: brand new`);', 'console.log(`  ${x}: brand new`);']) {
+    const body = functionBody('cmdDoctor').replace('console.log(`jq on PATH:', `${planted}\n    console.log(\`jq on PATH:`);
+    const { labels, unknown } = doctorLabels(body, functionBody('gitHookFloorLines'));
+    assert.equal(unknown.length, 1, planted);
+    assert.ok(!labels.has(''), 'an empty label would match any skill text');
+  }
 });
