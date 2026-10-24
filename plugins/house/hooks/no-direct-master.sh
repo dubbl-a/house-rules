@@ -535,7 +535,10 @@ if [[ "$MODE" == bash ]]; then
   if (( PATH_BYTES > 4096 )) && [[ "$cmd" == *\\* && "$cmd" != *$'\x01'* ]]; then
     _soh=$'\x01'
     cmd=$(trap - ERR; printf '%sx' "$cmd" | LC_ALL=C tr '\n' '\001' | LC_ALL=C sed \
-        -e "s/\\\\$_soh//g" -e 's/\\"//g' -e "s/\\\\'//g" -e 's/\\//g' | LC_ALL=C tr '\001' '\n')
+        -e "s/\\\\$_soh//g" -e 's/\\"//g' -e "s/\\\\'//g" -e 's/\\//g' | LC_ALL=C tr '\001' '\n') || crashed
+    # A pipe that died mid-stream would hand back a cut-short command, and the
+    # cheap exit below would allow it; the trailing x proves the stream ended.
+    [[ "$cmd" == *x ]] || crashed
     cmd="${cmd%x}"
   else
     cmd="${cmd//\\$'\n'/}"; cmd="${cmd//\\\"/}"; cmd="${cmd//\\\'/}"; cmd="${cmd//\\/}"
