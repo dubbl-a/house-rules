@@ -839,6 +839,21 @@ else
   fi
 fi
 
+# --- 20c. the split cache's globals come from the hook, never the environment (#460) ---
+# split_clauses keeps results in SPLIT_N / SPLIT_IN / SPLIT_OUT. An environment
+# that plants them must change no decision: a planted hit once made a push to
+# master read as `echo` and exit 0 with nothing, and a stray count crashed the
+# hook on an unset array element before any trap was armed.
+r="$TMP_ROOT/case20c"; new_repo "$r"; adopt "$r"
+git -C "$r" checkout -q -b feat/u
+HOOK_ENV=(SPLIT_N=1 "SPLIT_IN=git push origin master" SPLIT_OUT=echo)
+expect_deny "planted SPLIT_* hit does not turn a push to master into an allow" \
+  "$(mk_payload "git push origin master" "$r")" "protected branch"
+HOOK_ENV=(SPLIT_N=3)
+expect_deny "a stray SPLIT_N does not crash the hook past a push to master" \
+  "$(mk_payload "git push origin master" "$r")" "protected branch"
+HOOK_ENV=()
+
 # --- 21. non-git command (ls), and a tool this hook does not handle: ALLOW ---
 r="$TMP_ROOT/case21"; new_repo "$r"; adopt "$r"
 expect_allow "non-git command (ls) allowed instantly" \

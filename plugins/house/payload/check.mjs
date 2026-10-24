@@ -582,6 +582,23 @@ function readLockEntries(repoRoot) {
     return Array.isArray(j) ? j : (Array.isArray(j.files) ? j.files : []);
   } catch { return null; }
 }
+// The lock's per-module record ({name: {default, rules, config?, pathSlots?,
+// globs?}}), or null when the lock is absent, unparseable, or has none. Advisory
+// only: no verdict reads it (#258).
+function readLockModules(repoRoot) {
+  const p = join(repoRoot, '.house', 'lock.json');
+  if (!existsSync(p) || specialFileKind(p)) return null;
+  try {
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    return isPlainObject(j) && isPlainObject(j.modules) ? j.modules : null;
+  } catch { return null; }
+}
+// JSON with object keys sorted, so two equal values compare equal as strings.
+function canonJson(v) {
+  if (Array.isArray(v)) return `[${v.map(canonJson).join(',')}]`;
+  if (isPlainObject(v)) return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonJson(v[k])}`).join(',')}}`;
+  return JSON.stringify(v) ?? 'undefined';
+}
 function loadLockManagedPaths(repoRoot) {
   const set = new Set();
   for (const e of readLockEntries(repoRoot) || []) if (isPlainObject(e) && typeof e.path === 'string') set.add(e.path);
@@ -2694,6 +2711,28 @@ function checkManifest(ctx) {
       if (Object.prototype.hasOwnProperty.call(d.modules, name)) continue;
       const hit = paths.find((p) => detectPathHit(ctx.repoRoot, p));
       if (hit) warnings.push(mk('manifest', 'house.json', null, 'manifest', `module \`${name}\` is not in house.json, but ${hit} exists here, so its rules never load: add "${name}": {"enabled": true} under modules (or "enabled": false to keep it off), then re-render`));
+    }
+  }
+
+  // #461: render embeds each enabled module's house.json config in the lock, so
+  // a config slot edited by hand and not rendered leaves the lock stale, and the
+  // next sync's render mixes that change into a version bump. A warning, not a
+  // finding: #258 moved every verdict off the lock's modules record, which a
+  // hand edit can rewrite, so this reads the record only to advise. A stale
+  // path set is still a finding above, judged from house.json and the
+  // hash-verified rule files. A record with no config (written before render
+  // embedded it, or while the module was off) is skipped. A slot the record
+  // names in pathSlots is compared as a set, as render treats its order.
+  const lockModules = readLockModules(ctx.repoRoot);
+  if (lockModules && isPlainObject(d.modules)) {
+    for (const [name, entry] of Object.entries(d.modules)) {
+      const rec = lockModules[name];
+      if (!isPlainObject(entry) || entry.enabled !== true || !isPlainObject(rec) || !isPlainObject(rec.config)) continue;
+      const have = isPlainObject(entry.config) ? entry.config : {};
+      const pathSlots = new Set(Array.isArray(rec.pathSlots) ? rec.pathSlots : []);
+      const canon = (slot, v) => canonJson(pathSlots.has(slot) && Array.isArray(v) ? v.map(canonJson).sort() : v);
+      const differs = [...new Set([...Object.keys(have), ...Object.keys(rec.config)])].filter((k) => canon(k, have[k]) !== canon(k, rec.config[k]));
+      if (differs.length) warnings.push(mk('manifest', 'house.json', null, 'manifest', `modules.${name}.config differs from what the last render recorded in .house/lock.json (${differs.join(', ')}), so the lock is stale and the next sync's render will rewrite it; run \`house render --apply\` and commit the result`));
     }
   }
 

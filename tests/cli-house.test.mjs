@@ -669,7 +669,9 @@ test('#305 doctor: a server that never answers times out in seconds, exit code u
   await withReleasesServer('hang', (url) => {
     const t0 = Date.now();
     const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url });
-    assert.ok(Date.now() - t0 < 10000, 'finishes well inside 10 s');
+    // Wall time is the point: the command must give up on a silent server in seconds (its own cap is 3 s).
+    // 30 s leaves a loaded machine room and still fails a cap that stopped working.
+    assert.ok(Date.now() - t0 < 30000, 'finishes well inside 30 s');
     assert.equal(r.code, 0);
     assert.match(r.out, /^latest release: not checked \(timed out after 3s\)$/m);
   });
@@ -4073,7 +4075,7 @@ function runCliTimed(cliPath, args, env) {
 }
 
 test('#152 a FIFO at a managed path is reported, not read, by render and uninstall', (t) => {
-  if (spawnSync('mkfifo', ['--version']).error && spawnSync('which', ['mkfifo']).status !== 0) { t.skip('no mkfifo on this machine, so a FIFO cannot be made'); return; }
+  if (spawnSync('mkfifo', ['--version']).error && spawnSync('which', ['mkfifo']).status !== 0) { t.skip('no mkfifo on this machine, so a FIFO cannot be made; this case runs on macOS and Linux CI (ubuntu-latest), where mkfifo exists'); return; }
   const { cliPath } = buildFloorFixture();
   const env = isolatedGitEnv();
   const repo = uninstallRepo(cliPath, env);

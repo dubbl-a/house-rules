@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox, run, houseJson, CHECK_SRC } from './helpers.mjs';
+import { spawnCpuSync } from '../spawn-cpu.mjs';
 
 // #165: inputs a repo can plant must end in a named finding or a bounded
 // result, never a stack trace, a hang, or truncated output.
@@ -41,10 +42,11 @@ test('robust: a lock path naming a symlink to a directory is a named finding, no
 
 test('robust: a long line of unclosed docs markers scans in linear time (1 MB)', () => {
   const dir = sandbox({ 'house.json': houseJson(), 'README.md': `${'<!-- docs-drift-ignore: '.repeat(40_000)}\n` });
-  const t = Date.now();
-  const r = spawnSync('node', [CHECK_SRC, '--repo', dir], { encoding: 'utf8', timeout: 20_000 });
+  // CPU, not wall: a loaded machine stretches wall time with nothing wrong (#434). The 60 s wall timeout only
+  // stops a runaway; a quadratic scan of this line burns far more CPU than the bound.
+  const r = spawnCpuSync('node', [CHECK_SRC, '--repo', dir], { encoding: 'utf8', timeout: 60_000 });
   assert.equal(r.error, undefined, 'checker timed out');
-  assert.ok(Date.now() - t < 5000, `took ${Date.now() - t} ms`);
+  assert.ok(r.cpuMs < 5000, `used ${r.cpuMs} ms of CPU`);
 });
 
 test('robust: --json output over 64 KB reaches a piped consumer whole', () => {
