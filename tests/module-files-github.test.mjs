@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, copyFileSync, rmSync, readFileSync, symlinkSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { ROOT, mktemp, makeRepoWithOrigin } from './module-files-helpers.mjs';
@@ -677,6 +677,32 @@ test('pr-checks template: a secret-scan job checks out full history and runs the
   assert.match(job, /fetch-depth: 0/);
   assert.match(job, /run: node scripts\/house\/scan-dist-secrets\.mjs --history --rev=HEAD\n/);
   assert.match(job, /actions\/checkout@[0-9a-f]{40}/);
+});
+
+// ===========================================================================
+// github/arm-git-hooks.sh (ADR 0019)
+// ===========================================================================
+
+const ARM_VENDORED = join(ROOT, 'plugins/house/modules/github/files/arm-git-hooks.sh');
+const ARM_PLUGIN = join(ROOT, 'plugins/house/hooks/arm-git-hooks.sh');
+
+test('arm-git-hooks.sh: the github module copy is byte-identical to the plugin hook and executable, so one script arms the floor everywhere', () => {
+  assert.equal(readFileSync(ARM_VENDORED, 'utf8'), readFileSync(ARM_PLUGIN, 'utf8'), 'the two copies differ: copy plugins/house/hooks/arm-git-hooks.sh over the module copy');
+  assert.ok(statSync(ARM_VENDORED).mode & 0o100, 'the module copy lost its execute bit');
+});
+
+test('arm-git-hooks.sh: run from scripts/house/, the not-rendered hint names `house render --apply`, not a CLI path that does not exist there', () => {
+  const repo = mktemp('house-arm-vendored-');
+  execFileSync('git', ['init', '-q', repo]);
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify({ branchPolicy: 'pr', modules: { github: { enabled: true } } })}\n`);
+  mkdirSync(join(repo, 'scripts', 'house'), { recursive: true });
+  copyFileSync(ARM_VENDORED, join(repo, 'scripts', 'house', 'arm-git-hooks.sh'));
+  const res = spawnSync('bash', [join(repo, 'scripts', 'house', 'arm-git-hooks.sh'), '--repo', repo], { encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /git-hook floor not rendered here \(missing: .*; run: house render --apply\)/);
+  // From the plugin, the hint still names the plugin's own CLI.
+  const fromPlugin = spawnSync('bash', [ARM_PLUGIN, '--repo', repo], { encoding: 'utf8' });
+  assert.match(fromPlugin.stdout, /run: node \S+\/plugins\/house\/scripts\/house render --apply\)/);
 });
 
 // ===========================================================================

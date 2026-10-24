@@ -32,5 +32,18 @@
       "Bash(git * --exec-path*)",
       "Bash(psql *\\!*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/house/arm-git-hooks.sh\" --repo \"$CLAUDE_PROJECT_DIR\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

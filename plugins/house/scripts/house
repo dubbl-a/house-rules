@@ -1220,6 +1220,83 @@ function planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath) {
   return { status: 'remove', path: AGENTS_MD, content: text, deleteFile: text.trim() === '' };
 }
 
+// ── the committed SessionStart entry (ADR 0019) ──────────────────────────
+//
+// A cloud session installs no plugin, so nothing arms the git-hook floor there
+// unless the repo's own committed settings do. The github module renders one
+// SessionStart entry into .claude/settings.json that runs its vendored copy of
+// the arming script. The file is the adopter's: house owns only that entry,
+// known by its exact command string and by nothing else (not the lock, which
+// would need a checker family to read it), so a hook whose command differs is
+// foreign and never touched. The entry passes --repo because without it the
+// script needs jq to read the payload's cwd, and exits silently when jq is
+// missing. Not written when the file is not a JSON object, or its hooks or
+// SessionStart value is not the shape the harness reads; a warning names it.
+const SETTINGS_JSON = '.claude/settings.json';
+const ARM_DEST = 'scripts/house/arm-git-hooks.sh';
+const ARM_COMMAND = `bash "$CLAUDE_PROJECT_DIR/${ARM_DEST}" --repo "$CLAUDE_PROJECT_DIR"`;
+
+// On when the github module is on, its config does not set cloudArming false,
+// and its files[] vendors the script the entry runs, so the entry never points
+// at a file render did not write.
+function wantsArmEntry(houseData, modules, moduleWarnings) {
+  if (!moduleEnabled(houseData, 'github')) return false;
+  const cfg = houseData.modules.github.config;
+  const flag = isPlainObject(cfg) ? cfg.cloudArming : undefined;
+  if (flag !== undefined && typeof flag !== 'boolean') moduleWarnings.push(`modules.github.config.cloudArming is ${JSON.stringify(flag)}, not true or false, so it reads as the default, true; set it to false to leave ${SETTINGS_JSON} without house's SessionStart entry`);
+  if (flag === false) return false;
+  const gh = modules.find((m) => !m.error && m.json && moduleName(m) === 'github');
+  return Boolean(gh) && arr(gh.json.files).some((f) => isPlainObject(f) && f.dest === ARM_DEST);
+}
+
+function isArmHook(h) { return isPlainObject(h) && h.command === ARM_COMMAND; }
+
+// null when nothing changes; else {action, content} for the whole new file.
+// Removal drops house's hook, then its group, SessionStart and hooks only when
+// each is empty because of that removal. A file house created is left as {}
+// rather than deleted: render cannot tell it from an adopter's own, since
+// nothing records who created it.
+function planArmEntry(repoRoot, want, moduleWarnings) {
+  const abs = path.join(repoRoot, SETTINGS_JSON);
+  const notWritten = (why) => { moduleWarnings.push(`${SETTINGS_JSON} ${why}, so house's SessionStart entry that arms the git-hook floor was not written ${want ? 'into' : 'out of'} it; fix the file by hand, then \`house render --apply\``); return null; };
+  const escape = writeEscapeReason(repoRoot, SETTINGS_JSON);
+  if (!existsSync(abs)) {
+    if (!want) return null;
+    if (escape) return notWritten(`is ${escape}`);
+    const created = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }] } };
+    return { action: 'create', content: `${JSON.stringify(created, null, 2)}\n` };
+  }
+  const notRegular = notRegularReason(abs);
+  if (notRegular) return want ? notWritten(`is ${notRegular.split(',')[0]}`) : null;
+  const raw = readFileSync(abs, 'utf8');
+  let j;
+  try { j = JSON.parse(raw); } catch { return want || raw.includes(ARM_DEST) ? notWritten('is not valid JSON') : null; }
+  if (!isPlainObject(j)) return want || raw.includes(ARM_DEST) ? notWritten('is not a JSON object') : null;
+  if (j.hooks !== undefined && !isPlainObject(j.hooks)) return want ? notWritten('has a "hooks" value that is not an object') : null;
+  const groups = j.hooks ? j.hooks.SessionStart : undefined;
+  if (groups !== undefined && !Array.isArray(groups)) return want ? notWritten('has a "hooks.SessionStart" value that is not an array') : null;
+  const present = arr(groups).some((g) => isPlainObject(g) && Array.isArray(g.hooks) && g.hooks.some(isArmHook));
+  if (want === present) return null;
+  if (escape) return notWritten(`is ${escape}`);
+  const serialize = (obj) => `${JSON.stringify(obj, null, 2)}${raw.endsWith('\n') ? '\n' : ''}`;
+  if (serialize(j) !== raw) moduleWarnings.push(`${SETTINGS_JSON} is not in 2-space JSON form, so writing house's SessionStart entry ${want ? 'into' : 'out of'} it rewrites its layout too (its keys and values stay as they are)`);
+  if (want) {
+    j.hooks = j.hooks || {};
+    j.hooks.SessionStart = [...arr(groups), { hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }];
+    return { action: 'add', content: serialize(j) };
+  }
+  const kept = [];
+  for (const g of groups) {
+    if (!isPlainObject(g) || !Array.isArray(g.hooks) || !g.hooks.some(isArmHook)) { kept.push(g); continue; }
+    const rest = g.hooks.filter((h) => !isArmHook(h));
+    if (rest.length) kept.push({ ...g, hooks: rest });
+  }
+  if (kept.length) j.hooks.SessionStart = kept;
+  else delete j.hooks.SessionStart;
+  if (Object.keys(j.hooks).length === 0) delete j.hooks;
+  return { action: 'remove', content: serialize(j) };
+}
+
 // Gemini CLI reads GEMINI.md, not AGENTS.md, unless `.gemini/settings.json`
 // names AGENTS.md in context.fileName. Shared by render (which scaffolds a
 // GEMINI.md importing AGENTS.md only when neither is true) and doctor.
@@ -1921,7 +1998,7 @@ function migrationLine(m, applied) {
     : `${verb} ${m.from} (your own pre-commit hook) to ${m.to}; the house dispatcher now runs it after the branch guard`;
 }
 
-function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, floorHeld, orphans, unmanaged, differing, json, apply }) {
+function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, settingsEntry = null, geminiScaffold, editedOrphans, unsafeOrphans, floorHeld, orphans, unmanaged, differing, json, apply }) {
   if (json) {
     console.log(JSON.stringify({
       plan: plan.map((p) => ({
@@ -1933,6 +2010,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
       skips, moduleWarnings, available: arr(available), droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
       migrations: arr(migrations),
       blockRemoval: blockRemoval ? { status: blockRemoval.status, path: blockRemoval.path, deleteFile: Boolean(blockRemoval.deleteFile) } : null,
+      settingsEntry: settingsEntry ? { action: settingsEntry.action, path: SETTINGS_JSON } : null,
       scaffolds: geminiScaffold ? [GEMINI_MD] : [],
       editedOrphans: arr(editedOrphans),
       unsafeOrphans: arr(unsafeOrphans),
@@ -1995,6 +2073,10 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
     } else if (blockRemoval.status === 'refuse') {
       console.log(`  the house-managed block was edited by hand (or its markers are broken), so it is not removed silently. Exits: move your edit outside the markers, or \`house render --force-managed ${AGENTS_MD}\` to remove it anyway.`);
     }
+  }
+  if (settingsEntry) {
+    const what = { create: 'new file holding only house\'s SessionStart entry', add: 'adds house\'s SessionStart entry; every other key and hook stays', remove: 'removes house\'s SessionStart entry only; every other key and hook stays' }[settingsEntry.action];
+    console.log(`${`${settingsEntry.action}-hook`.padEnd(15)} ${SETTINGS_JSON}  (${what}; it runs ${ARM_DEST} to arm the git-hook floor, ADR 0019)`);
   }
   if (geminiScaffold) console.log(`${'scaffold'.padEnd(15)} ${GEMINI_MD}  (one-time, yours to edit; imports @${AGENTS_MD} so Gemini CLI reads the block)`);
   for (const s of skips) {
@@ -2079,6 +2161,9 @@ function cmdRender(args) {
     built = buildRenderPlan(repoRoot, houseData, modules, pluginVersion, forceManagedPath, scaffoldRecord, args.scaffold, treatAsAbsent);
   }
   const { plan, skips, moduleWarnings, available, droppedDefaults, blockRemoval, targets, modulePaths } = built;
+  // ADR 0019: decided once, before anything writes, so the dry run lists the
+  // same change to the committed settings the apply phase below makes.
+  const settingsEntry = planArmEntry(repoRoot, wantsArmEntry(houseData, modules, moduleWarnings), moduleWarnings);
   // #406: refused before anything is written, forced or not, like any other
   // destination render cannot safely write; the all-or-nothing exit below
   // then keeps every other file untouched too.
@@ -2093,7 +2178,7 @@ function cmdRender(args) {
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
-  const ignoredDests = gitIgnored(repoRoot, [...plan.map((p) => p.target.path), '.house/lock.json', '.house/INDEX.md']) || [];
+  const ignoredDests = gitIgnored(repoRoot, [...plan.map((p) => p.target.path), '.house/lock.json', '.house/INDEX.md', ...(settingsEntry ? [SETTINGS_JSON] : [])]) || [];
   // ADR 0015: decided once, before anything writes, so the dry run lists the
   // same GEMINI.md scaffold the apply phase below writes.
   const geminiScaffold = targets.includes('gemini') && !existsSync(path.join(repoRoot, GEMINI_MD)) && !geminiSettingsReadsAgents(repoRoot);
@@ -2121,7 +2206,7 @@ function cmdRender(args) {
   // #161: refused like a hand-edited orphan, with no --force-managed way past.
   const floorHold = heldFloorRemovals(repoRoot, modules, sweepRemovals);
   const floorHeld = floorHold.held.map((rel) => ({ path: rel, reason: floorHoldReason(floorHold.hold) }));
-  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, geminiScaffold, editedOrphans, unsafeOrphans, floorHeld, orphans: sweepRemovals.filter((rel) => !floorHold.held.includes(rel)), unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
+  printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, droppedDefaults, ignoredDests, migrations, blockRemoval, settingsEntry, geminiScaffold, editedOrphans, unsafeOrphans, floorHeld, orphans: sweepRemovals.filter((rel) => !floorHold.held.includes(rel)), unmanaged: sweep.unmanaged, differing: sweep.differing, json: args.json, apply: args.apply });
 
   const sideBlockers = renderSideFileBlockers(repoRoot);
   if (!args.json) for (const b of sideBlockers) console.log(`${'REFUSE'.padEnd(15)} ${b.path}  (${b.reason})`);
@@ -2161,6 +2246,8 @@ function cmdRender(args) {
       if (isGitHookDest(p.target.path) || p.target.exec) ensureExecutable(abs);
     }
   }
+  // After the plan, so the script the entry runs is on disk before it is named.
+  if (settingsEntry) writeIfChanged(path.join(repoRoot, SETTINGS_JSON), settingsEntry.content);
 
   // #12: render OWNS the vendored tree, so after writing the plan it must also
   // remove any managed file no longer in the plan. When a module's paths narrow
@@ -3508,6 +3595,12 @@ function cmdUninstall(args) {
   const blockUnsafe = blockRemoval && blockRemoval.deleteFile ? unsafeRemovalReason(repoRoot, blockRemoval.path) : null;
   const removing = new Set([...removals.map((r) => r.path), ...(blockRemoval && blockRemoval.deleteFile ? [blockRemoval.path] : []), ...(removeConfig ? ['house.json'] : [])]);
   const emptied = dirsLeftEmpty(repoRoot, removing);
+  // ADR 0019: house's SessionStart entry goes with the script it runs, so no
+  // entry is left naming a deleted file. A settings file render would leave
+  // unwritten (with a warning) is refused here, since the script would go.
+  const settingsNotes = [];
+  const settingsEntry = removing.has(ARM_DEST) ? planArmEntry(repoRoot, false, settingsNotes) : null;
+  const settingsRefusal = !settingsEntry && settingsNotes.length ? settingsNotes[0].slice(SETTINGS_JSON.length + 1).split(', so ')[0] : null;
   // The floor is house's when a module that ships it is on before this run,
   // or the lock records one of its files: only then did arming set the path.
   const floorSet = new Set(floorDests(modules));
@@ -3538,6 +3631,7 @@ function cmdUninstall(args) {
   };
   for (const r of removals.filter((x) => !x.unsafe)) { const b = blocker(r.path); if (b) blockers.push({ path: r.path, reason: b }); }
   if (blockRemoval && blockRemoval.status !== 'refuse' && !blockUnsafe) { const b = blocker(AGENTS_MD, !blockRemoval.deleteFile); if (b) blockers.push({ path: AGENTS_MD, reason: b }); }
+  if (settingsEntry) { const b = blocker(SETTINGS_JSON, true); if (b) blockers.push({ path: SETTINGS_JSON, reason: b }); }
   if (removeConfig && !configUnsafe) { const b = blocker('house.json'); if (b) blockers.push({ path: 'house.json', reason: b }); }
   for (const h of hooks.filter((x) => x.action === 'unset')) {
     const file = path.resolve(repoRoot, h.origin || '.git/config');
@@ -3576,6 +3670,12 @@ function cmdUninstall(args) {
   if (blockRemoval) {
     console.log(`${(blockRemoval.status === 'refuse' || blockUnsafe ? 'REFUSE' : 'remove-block').padEnd(15)} ${AGENTS_MD}  (${blockUnsafe || (blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'the house-managed block only; your text stays')})`);
     if (blockRemoval.status === 'refuse') console.log('  the house-managed block was edited by hand, or its markers are broken, so it is not removed silently. Move your edit outside the markers or restore the block, then re-run uninstall.');
+  }
+  if (settingsEntry) console.log(`${'remove-hook'.padEnd(15)} ${SETTINGS_JSON}  (house's SessionStart entry only, which runs ${ARM_DEST}; every other key and hook stays)`);
+  for (const n of settingsEntry ? settingsNotes : []) console.log(`  ${n}`);
+  if (settingsRefusal) {
+    console.log(`${'REFUSE'.padEnd(15)} ${SETTINGS_JSON}  (${settingsRefusal})`);
+    console.log(`  house's SessionStart entry there runs ${ARM_DEST}, which uninstall removes, so it cannot be left behind unread. Fix the file by hand (or take the entry out yourself), then re-run uninstall.`);
   }
   if (removeConfig) {
     const ledger = arr(houseData.deviations).length;
@@ -3664,7 +3764,7 @@ function cmdUninstall(args) {
     : '\nRe-adopting later: /house-rules:bootstrap, from scratch. To keep this repo\'s decisions, first restore the old house.json from a commit that has it (`git show <commit>:house.json > house.json`) and run `house render --apply` instead, which brings back the rules, the checker, the AGENTS.md block and the floor, writes any scaffold that is missing, and arms core.hooksPath where no scope sets one.');
 
   const refused = removals.some((r) => r.edited || r.unsafe) || Boolean(blockUnsafe) || Boolean(configUnsafe)
-    || (blockRemoval && blockRemoval.status === 'refuse') || differ.length > 0 || blockers.length > 0;
+    || (blockRemoval && blockRemoval.status === 'refuse') || differ.length > 0 || blockers.length > 0 || Boolean(settingsRefusal);
   if (floorHold.held.length) console.error(`\n${floorHoldMessage('uninstall', floorHold.hold, 'Then run uninstall again.')}`);
   if (refused) console.error('\nhouse uninstall: a file above is refused (REFUSE), so nothing was deleted or unset, house.json included. Resolve it as that line says, then re-run uninstall.');
   if (refused || floorHold.held.length) process.exit(1);
@@ -3690,6 +3790,7 @@ function cmdUninstall(args) {
   const fileSteps = removals.filter((x) => !tail.includes(x.path)).map((r) => r.path);
   const pending = [
     ...hooks.filter((h) => h.action === 'unset').flatMap((h) => h.values.filter((v) => v.isFloor).map((v) => `unset core.hooksPath ${v.value} at ${h.scope} scope`)),
+    ...(settingsEntry ? [`${SETTINGS_JSON} (house's SessionStart entry)`] : []),
     ...fileSteps, ...(blockRemoval ? [`${AGENTS_MD} (house-managed block)`] : []), ...tail, ...(removeConfig ? ['house.json'] : []),
   ];
   const settle = (step) => { const i = pending.indexOf(step); if (i !== -1) pending.splice(i, 1); };
@@ -3711,6 +3812,12 @@ function cmdUninstall(args) {
     if (err) stop(`unset core.hooksPath at ${h.scope} scope`, err);
     const still = h.values.filter((x) => x.isFloor && h.after.includes(x.value)).map((x) => x.value);
     if (still.length) stop(`unset core.hooksPath at ${h.scope} scope`, new Error(`git still holds ${still.join(', ')} there after the unset`));
+  }
+  // Before the files, so the entry never outlives the script it runs.
+  if (settingsEntry) {
+    try { writeIfChanged(path.join(repoRoot, SETTINGS_JSON), settingsEntry.content); } catch (e) { stop(`edit ${SETTINGS_JSON}`, e); }
+    removed.push(`${SETTINGS_JSON} (house's SessionStart entry only; the rest stays)`);
+    settle(`${SETTINGS_JSON} (house's SessionStart entry)`);
   }
   for (const rel of fileSteps) {
     const abs = path.join(repoRoot, rel);

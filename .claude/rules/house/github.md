@@ -4,7 +4,7 @@ paths:
   - ".githooks/**"
   - ".env.example"
 ---
-<!-- house-managed v0.22.9 module=github source=modules/github/rules/github.md body-sha256=fcb092a4f90c79312ce2cd73e9540e9970b2d166175a3ff6c956d19746e3f7eb DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.9 module=github source=modules/github/rules/github.md body-sha256=867036a3b1535e73d0e95c34617a9fb46e3b617c701b161d3a6ece6569887e7c DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -156,7 +156,7 @@ Arm the floor with `core.hooksPath`, set by `house render --apply` and every ses
 Read the policy from `HEAD:house.json`, never the working tree, so a flipped `branchPolicy` counts only once landed.
 Keep the PreToolUse hook's job to verifying the floor is intact (every vendored hook byte-identical to the plugin's copy, `core.hooksPath` pointing at it) and refusing its short disable/bypass list (`--no-verify`, `core.hooksPath` or `include.path` in any form, `GIT_CONFIG_*`, `git replace`, `send-pack`, a `GIT_DIR`-named repo), never inferring a branch or tree from text, since the harness documents text-matched rules as no boundary, lets auto mode push to the default branch by default, and loads no project hooks in a bare or safe-mode session while git still runs its own.
 Read `house doctor` for whether the floor is armed here, or `node .house/check.mjs --floor-status` in a session where the plugin is not enabled and `house` is not on PATH (a cloud session, say), since `core.hooksPath` is machine-local state a repo-only checker cannot see.
-Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb. A cloud session installs no plugin a repo declares, so nothing arms the floor there and the remote branch rule is the only guard.
+Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb. A cloud session installs no plugin a repo declares, so the floor is armed there by the `SessionStart` entry the github module renders into the committed `.claude/settings.json` (`cloudArming: false` removes it), with the remote branch rule above it.
 Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`
 
 ## Don't

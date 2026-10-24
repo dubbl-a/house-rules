@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.22.9 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=c97304b6a798bbfd907c85e2586512c90634eba1aa513a036da6a268856f004d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.22.9 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=665b2237e0008a332ed7215006f6da2329d2eaeb7a89f1723dea8e15cb72b770 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -86,7 +86,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
 Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
-Know the floor under the hook: a deny rule is evaluated whatever the hook returns, a bare, safe-mode, or restricted session, a run started with all hooks disabled, or an SDK run whose setting sources leave out the project never loads project hooks, and a cloud session loads no plugin from repo or user settings, so anything that must survive needs a deny rule in managed settings too.
+Know the floor under the hook: a deny rule is evaluated whatever the hook returns, a bare, safe-mode, or restricted session, a run started with all hooks disabled, or an SDK run whose setting sources leave out the project never loads project hooks, and a cloud session loads no plugin from repo or user settings, only the hooks committed in the project's own settings, so anything that must survive needs a deny rule in managed settings too.
 Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since by default the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout; set the hook's `onFailure` to `block` as the floor, so a hook that cannot start, times out, or exits with an unexpected code blocks the call, and keep the script's own denial, which names its reason and still holds on a CLI that ignores the key.
 Know where that exit stops binding: of the events around a tool call, only the pre-tool event blocks the call on a failing exit, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, since text left in only adds denials while text wrongly removed hides the verb and bypasses. Pin both directions in the tests.
@@ -138,7 +138,7 @@ Never create a branch in the main checkout, not even for a one-commit change: th
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.
 Squash-merge another session's branch, not rebase it, and never force-clean a checkout you do not own.
-Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout. If the worktree feels costly, the levers are a `.worktreeinclude` file, `worktree.baseRef`, and a `WorktreeCreate` hook recipe, in the receipt. A cloud session loads no plugin from repo or user settings, so the guard does not run there and branch protection or rulesets on the host are the floor.
+Anchor: the pre-tool branch guard at `plugins/house/hooks/no-direct-master.sh`, which re-reads the branch on every git command it sees and refuses a `checkout -b` or `switch -c` in a main checkout. If the worktree feels costly, the levers are a `.worktreeinclude` file, `worktree.baseRef`, and a `WorktreeCreate` hook recipe, in the receipt. A cloud session loads no plugin from repo or user settings, so the guard does not run there; the github module's committed `SessionStart` entry arms the git-hook floor there, with branch protection or rulesets on the host above it.
 Receipts: `docs/handbook/claude-code.md#treat-git-state-as-shared-across-sessions`
 
 ## Keep the committed settings narrow and the local settings local
@@ -154,7 +154,7 @@ Write each deny in both the leading and the interior form, and run it against th
 Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, auto mode suspends a broad allow in favor of its classifier, and only a hook, or the sandbox where it is on and set to fail rather than run unsandboxed, enforces independent of command text; never grow the deny list chasing completeness.
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
 Expect a path deny to miss a search that names no path, and a search tool the client treats as read-only to run with no allow naming it; keep a path out of a built-in search with a hook and out of a shell search with a sandbox read deny, and read tool results for it as the fallback.
-Anchor: `plugins/house/templates/settings.json` is a reference copy of the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags; render never writes it into a repo and sync does not manage the committed settings file, so the adopter copies it by hand and nothing checks the copy against the template. `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, or a bypass permission mode.
+Anchor: `plugins/house/templates/settings.json` is a reference copy of the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags; render never writes it into a repo, so the adopter copies it by hand and nothing checks the copy against the template. Render and sync write one thing into the committed settings file, the github module's `SessionStart` entry running `scripts/house/arm-git-hooks.sh` (ADR 0019; `cloudArming: false` removes it), known by its exact command, and leave every other key and hook as they are. `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, or a bypass permission mode.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 
 ## Read a resume file as a harness artifact, not a handoff

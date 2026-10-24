@@ -5755,3 +5755,199 @@ test('#406 render --apply: a symlinked directory that stays inside the repo is s
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(readFileSync(ruleFile, 'utf8'), /A line the source gained\./);
 });
+
+// ── ADR 0019: the committed SessionStart entry that arms the floor ───────
+//
+// A cloud session installs no plugin, so the github module renders one
+// house-owned SessionStart entry into the committed .claude/settings.json that
+// runs the vendored scripts/house/arm-git-hooks.sh. House knows its entry only
+// by the exact command string; every other key and hook is the adopter's and
+// stays byte for byte.
+
+const ARM_COMMAND = 'bash "$CLAUDE_PROJECT_DIR/scripts/house/arm-git-hooks.sh" --repo "$CLAUDE_PROJECT_DIR"';
+const ARM_HOOK_LINES = (pad) => [
+  `${pad}{`,
+  `${pad}  "hooks": [`,
+  `${pad}    {`,
+  `${pad}      "type": "command",`,
+  `${pad}      "command": ${JSON.stringify(ARM_COMMAND)},`,
+  `${pad}      "timeout": 10`,
+  `${pad}    }`,
+  `${pad}  ]`,
+  `${pad}}`,
+];
+const ARM_ONLY_SETTINGS = ['{', '  "hooks": {', '    "SessionStart": [', ...ARM_HOOK_LINES('      '), '    ]', '  }', '}', ''].join('\n');
+
+// The adopter's own settings: other keys, a foreign SessionStart entry (one
+// whose command differs from house's only by a missing --repo), and another
+// event's hooks. In the repo's normal 2-space form, so the only diff render
+// may make is the entry itself.
+const FOREIGN_GROUP_LINES = [
+  '      {',
+  '        "matcher": "startup",',
+  '        "hooks": [',
+  '          {',
+  '            "type": "command",',
+  '            "command": "bash \\"$CLAUDE_PROJECT_DIR/scripts/house/arm-git-hooks.sh\\""',
+  '          }',
+  '        ]',
+  '      }',
+];
+const ADOPTER_SETTINGS_HEAD = [
+  '{',
+  '  "permissions": {',
+  '    "allow": [',
+  '      "Bash(npm test)"',
+  '    ]',
+  '  },',
+  '  "hooks": {',
+  '    "SessionStart": [',
+];
+const ADOPTER_SETTINGS_TAIL = [
+  '    ],',
+  '    "PostToolUse": [',
+  '      {',
+  '        "matcher": "Edit",',
+  '        "hooks": [',
+  '          {',
+  '            "type": "command",',
+  '            "command": "npm run lint"',
+  '          }',
+  '        ]',
+  '      }',
+  '    ]',
+  '  },',
+  '  "env": {',
+  '    "FOO": "1"',
+  '  }',
+  '}',
+  '',
+];
+const ADOPTER_SETTINGS = [...ADOPTER_SETTINGS_HEAD, ...FOREIGN_GROUP_LINES, ...ADOPTER_SETTINGS_TAIL].join('\n');
+const ADOPTER_SETTINGS_ARMED = [
+  ...ADOPTER_SETTINGS_HEAD, ...FOREIGN_GROUP_LINES.slice(0, -1), '      },', ...ARM_HOOK_LINES('      '), ...ADOPTER_SETTINGS_TAIL,
+].join('\n');
+
+/** The floor fixture, with the github module also vendoring the real arming script and declaring cloudArming. */
+function buildCloudArmingFixture() {
+  const fx = buildFloorFixture();
+  const mjPath = join(fx.dir, 'modules', 'github', 'module.json');
+  const mj = JSON.parse(readFileSync(mjPath, 'utf8'));
+  mj.files.push({ src: 'files/arm-git-hooks.sh', dest: 'scripts/house/arm-git-hooks.sh' });
+  mj.configSlots.push({ name: 'cloudArming', default: true });
+  writeFileSync(mjPath, `${JSON.stringify(mj, null, 2)}\n`);
+  copyFileSync(REAL_ARM_SCRIPT, join(fx.dir, 'modules', 'github', 'files', 'arm-git-hooks.sh'));
+  chmodSync(join(fx.dir, 'modules', 'github', 'files', 'arm-git-hooks.sh'), 0o755);
+  return fx;
+}
+
+function settingsPath(repo) { return join(repo, '.claude', 'settings.json'); }
+
+function setGithubConfig(repo, patch, enabled = true) {
+  const data = JSON.parse(readFileSync(join(repo, 'house.json'), 'utf8'));
+  data.modules.github = { ...data.modules.github, enabled, config: { ...data.modules.github.config, ...patch } };
+  writeFileSync(join(repo, 'house.json'), `${JSON.stringify(data, null, 2)}\n`);
+}
+
+test('ADR 0019 render: an absent .claude/settings.json is planned on a dry run, then created holding only the entry, and the script is vendored executable', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo();
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /^create-hook\s+\.claude\/settings\.json\s+\(/m);
+  assert.equal(existsSync(settingsPath(repo)), false, 'a dry run writes nothing');
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ARM_ONLY_SETTINGS);
+  const script = join(repo, 'scripts', 'house', 'arm-git-hooks.sh');
+  assert.equal(readFileSync(script, 'utf8'), readFileSync(REAL_ARM_SCRIPT, 'utf8'));
+  assert.ok(modeOf(script) & 0o100, 'the vendored script is executable');
+});
+
+test('ADR 0019 render: an adopter settings file gains only the entry, every other key and hook byte for byte, and a second render changes nothing', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': ADOPTER_SETTINGS });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED);
+  commitAll(repo, 'rendered');
+  const dry = runCli(cliPath, ['render', '--repo', repo, '--json']);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.equal(JSON.parse(dry.out).settingsEntry, null, 'a second render plans no settings change');
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(again.code, 0, again.out + again.err);
+  assert.doesNotMatch(again.out, /settings\.json/);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED);
+});
+
+test('ADR 0019 render: cloudArming false removes only house\'s entry, keeping the adopter\'s file and a foreign hook that shared its group', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': ADOPTER_SETTINGS });
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  setGithubConfig(repo, { cloudArming: false });
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.match(dry.out, /^remove-hook\s+\.claude\/settings\.json\s+\(/m);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED, 'a dry run writes nothing');
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS);
+
+  // House's hook beside a foreign one in the same group: only house's goes,
+  // and the group stays because it is not empty.
+  const shared = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo mine' }, { type: 'command', command: ARM_COMMAND, timeout: 10 }] }] } };
+  writeFileSync(settingsPath(repo), `${JSON.stringify(shared, null, 2)}\n`);
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  assert.deepEqual(JSON.parse(readFileSync(settingsPath(repo), 'utf8')), { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } });
+});
+
+test('ADR 0019 render: a settings file that is not a JSON object is left untouched with a warning naming it', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  for (const body of ['{ "permissions": { ', '[1, 2]\n']) {
+    const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': body });
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /^warning: \.claude\/settings\.json .*not written/m);
+    assert.equal(readFileSync(settingsPath(repo), 'utf8'), body);
+  }
+});
+
+test('ADR 0019 render: turning the github module off removes house\'s entry, and a file house created is left as an empty object', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo();
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ARM_ONLY_SETTINGS);
+  commitAll(repo, 'rendered');
+  setGithubConfig(repo, {}, false);
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), '{}\n');
+  assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false, 'the vendored script goes with its module');
+});
+
+test('ADR 0019 uninstall --apply: house\'s SessionStart entry goes with the script it runs, and the adopter\'s settings stay byte for byte', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env, { '.claude/settings.json': ADOPTER_SETTINGS });
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED);
+  const dry = runCli(cliPath, ['uninstall', '--repo', repo], env);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /^remove-hook\s+\.claude\/settings\.json\s+\(/m);
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS);
+});
+
+test('ADR 0019 uninstall --apply: a settings file it cannot read is refused, so the script is not deleted from under the entry', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const broken = `${readFileSync(settingsPath(repo), 'utf8')},`;
+  writeFileSync(settingsPath(repo), broken);
+  commitAll(repo, 'break the settings');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(.*not valid JSON/m);
+  assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), 'nothing was deleted');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), broken);
+});

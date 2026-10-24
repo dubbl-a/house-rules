@@ -380,10 +380,14 @@ fi
 [ "$(read_github_off "$TOPLEVEL/house.json")" = "1" ] && exit 0
 
 if [ "$RENDERED" != "1" ]; then
+  # The CLI sits beside this script only in the plugin. The github module's
+  # vendored copy runs from scripts/house/ (ADR 0019), where no CLI is.
+  RENDER_CMD="house render --apply"
+  [ -f "$PLUGIN_ROOT/scripts/house" ] && RENDER_CMD="node $PLUGIN_ROOT/scripts/house render --apply"
   # MISSING is a space-separated list; the splitting is the point.
   # shellcheck disable=SC2086
-  printf 'house: git-hook floor not rendered here (missing:%s; run: node %s/scripts/house render --apply)\n' \
-    "$(printf ' %s' $MISSING)" "$PLUGIN_ROOT"
+  printf 'house: git-hook floor not rendered here (missing:%s; run: %s)\n' \
+    "$(printf ' %s' $MISSING)" "$RENDER_CMD"
   exit 0
 fi
 
