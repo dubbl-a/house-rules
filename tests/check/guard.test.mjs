@@ -332,9 +332,8 @@ test('guard: declared targets print one verdict line each; codex and gemini say 
   const lines = targetInfo(json).map((i) => i.message);
   assert.equal(lines.length, 3, JSON.stringify(lines));
   assert.match(lines[0], /^claude-code: /);
-  for (const [i, name] of [[1, 'codex'], [2, 'gemini']]) {
-    assert.match(lines[i], new RegExp(`^${name}: instructions via AGENTS\\.md block; guard = git floor plus remote ruleset \\(no native hook yet\\); load = unverified`));
-  }
+  assert.match(lines[1], /^codex: instructions via AGENTS\.md block; guard = git floor plus remote ruleset \(the house-rules plugin SessionStart hook arms the floor once installed and trusted; no tool-call hook\); load = unverified \(Codex fires no load event\)$/);
+  assert.match(lines[2], /^gemini: instructions via AGENTS\.md block; guard = git floor plus remote ruleset \(no native hook yet\); load = unverified/);
   assert.equal(targetFindings(json).length, 0);
   const text = run(dir, ['--only=guard']).out;
   assert.match(text, /^== guard ==$/m);

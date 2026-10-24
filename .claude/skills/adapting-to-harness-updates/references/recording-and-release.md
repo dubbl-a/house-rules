@@ -35,7 +35,7 @@ Release, per the repo's version rules:
 1. Choose the class. Under ADR 0012, below 1.0 the breaking class (ADR 0011) takes the minor and
    everything else the patch. Rule prose with no heading renamed and no change to the guard's
    deny set is a patch.
-2. Bump `plugins/house/.claude-plugin/plugin.json`, the pin in `house.json`, and every release tag
+2. Bump `plugins/house/.claude-plugin/plugin.json` and `plugins/house/.codex-plugin/plugin.json` (same version; `tests/codex-plugin.test.mjs` fails until they match), the pin in `house.json`, and every release tag
    in `README.md`'s install section (`tests/readme-pin.test.mjs` fails until they match).
 3. Cut the CHANGELOG section. Its summary sentence names the class and the ADR it follows.
 4. Run `node plugins/house/scripts/house render --apply --repo .`, then run the gate with

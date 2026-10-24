@@ -16,6 +16,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/house <init|render|check> [--repo <path>] [--
 
 Outside Claude Code (Antigravity CLI), where `${CLAUDE_PLUGIN_ROOT}` is not set, run `house <args>` instead of `node ${CLAUDE_PLUGIN_ROOT}/scripts/house <args>`: the plugin's `bin/house` is on the agent's PATH, and `${CLAUDE_PLUGIN_ROOT}` paths elsewhere in this skill are relative to the directory holding this `skills/` folder.
 
+On Codex, where `${CLAUDE_PLUGIN_ROOT}` is likewise unconfirmed and the plugin's `bin/` may not be on PATH, run `node <that directory>/scripts/house <args>`, where `<that directory>` is the one holding this `skills/` folder.
+
 `--repo` defaults to the current directory. Nothing below invents a subcommand outside `init`, `render`, `check`, plus the read-only `doctor` (steps 0 and 7) and `changes <from> [<to>]` (step 7b).
 
 ## Default path: plan, then apply
