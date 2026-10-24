@@ -52,10 +52,10 @@ Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-ru
 
 ## Keep files under budget, and raise a ceiling only with a written reason
 
-The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, and skips only a file past its hard size cap; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. The Claude Code docs say a file over 200 lines "may reduce adherence", and every loaded line costs context on each read.
+The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, skips a file that loads at launch past its hard size cap, and gives one that loads on demand only its start past a smaller per-file limit; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. The Claude Code docs say a file over 200 lines "may reduce adherence", and every loaded line costs context on each read.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work, not renegotiated.
 Raising a ceiling takes an entry naming the path, the old and new limit (the old must be the file's ratchet entry, or its configured limit when it has none, so a raise is spent once the file tightens), the reason, and the date decided, so it argues for itself in the diff, not as a quiet edit; it takes effect on its own, with no flag to run.
-Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema.
+Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema; lengths also warns, without failing, on a path-scoped rule or nested `CLAUDE.md` past the smallest on-demand limit (`ON_DEMAND_INSTRUCTION_MAX_CHARS` in `.house/check.mjs`).
 Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-only-with-a-written-reason`
 
 ## Cut, don't append, and trim on a fixed cadence
@@ -70,7 +70,7 @@ Receipts: `docs/handbook/docs.md#cut-dont-append-and-trim-on-a-fixed-cadence`
 ## Split a file only when splitting narrows what loads
 
 Split a topic only when the split makes a session load less. Two files that always load together are worse than one: identical context, plus a second place a rule can hide.
-The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads.
+The harness loads an `@` import and a rule with no `paths:` at launch, so splitting into either narrows nothing; only a path-scoped rule, a nested instruction file, or a skill defers what loads, and a nested `CLAUDE.md` or a path-scoped rule over the harness's per-file limit for files that load on demand reaches Claude cut to its start, so keep each short enough that it arrives whole.
 Pick the escape valve by what is squeezing: too many rules split into a path-scoped directory along a real axis (write-side, measurement, dated evidence), never size alone; too much history moves to the archive with one-hop links; a new subsystem starts as its own path-scoped file, not more of the root file.
 When you do split, name the sibling and the structural blind spot it fills, then cross-reference it and say its rules are never restated here.
 Resolve a co-load collision in order: narrow the colliding module's path slot in `house.json`, tighten this repo's own `paths:`, trim what loads together, and only then raise `maxCoLoadLines`, with a dated `coload-ceiling` deviation carrying the new number as `ceiling`.

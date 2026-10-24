@@ -1879,6 +1879,11 @@ const MEMORY_INDEX_WARN_LINES = 140;
 const MEMORY_INDEX_WARN_BYTES = 17500;
 const MEMORY_INDEX_MAX_LINE_CHARS = 160;
 const CODEX_PROJECT_DOC_MAX_BYTES = 32768;
+// Claude Code gives a file that loads on demand (a subdirectory CLAUDE.md or
+// CLAUDE.local.md, a rules file under a subdirectory's .claude/rules/, a
+// path-scoped rule) only its start past a per-file limit set by the context
+// window; this is the smallest, the 200K window's 40,000 characters.
+const ON_DEMAND_INSTRUCTION_MAX_CHARS = 40000;
 
 // Where the harness keeps this repo's auto-memory index. CLAUDE_CONFIG_DIR
 // relocates the whole config tree (the same variable readInstalledPlugins
@@ -2006,6 +2011,27 @@ function checkLengths(ctx) {
     const bytes = Buffer.byteLength(safeRead(agentsAbs), 'utf8');
     if (bytes > CODEX_PROJECT_DOC_MAX_BYTES) {
       warnings.push(mk('lengths', 'AGENTS.md', null, 'length', `${bytes} bytes, over ${CODEX_PROJECT_DOC_MAX_BYTES}, which is Codex's default cap (project_doc_max_bytes) on the AGENTS.md text it reads; past it Codex silently drops the rest, the house-managed block included when it sits below the cut. Trim the file, or move the block nearer the top.`));
+    }
+  }
+
+  // Past ON_DEMAND_INSTRUCTION_MAX_CHARS an on-demand file reaches Claude cut
+  // to its start, with a note to read the rest, so its tail rules are not in
+  // context until Claude chooses to. A warning, not a finding: the limit moves
+  // with the session's context window, and this is its smallest value. A root
+  // rule with no paths: loads at launch, whole up to the 4 MiB skip, so it is
+  // left out here.
+  const onDemand = ctx.allTracked.filter((f) => {
+    if (/^(.+\/)?\.claude\/rules\/.*\.md$/.test(f)) return true;
+    return /\/CLAUDE(\.local)?\.md$/.test(f) && !/(^|\/)\.claude\//.test(f);
+  });
+  for (const file of onDemand) {
+    const abs = join(ctx.repoRoot, file);
+    if (!existsSync(abs) || specialFileKind(abs)) continue;
+    const raw = readFileSync(abs, 'utf8');
+    if (file.startsWith('.claude/rules/') && parseRuleFrontmatterPaths(raw).globs.length === 0) continue;
+    const chars = [...raw].length;
+    if (chars > ON_DEMAND_INSTRUCTION_MAX_CHARS) {
+      warnings.push(mk('lengths', file, null, 'length', `${chars} characters, over ${ON_DEMAND_INSTRUCTION_MAX_CHARS}, the smallest per-file limit Claude Code sets for an instruction file that loads on demand (a 200K context window's); past it Claude receives only the start, so the rules below the cut are not in context. Split it along a real axis or trim it.`));
     }
   }
 

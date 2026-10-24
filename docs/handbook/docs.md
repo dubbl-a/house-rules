@@ -201,7 +201,10 @@ the full text before quoting one elsewhere.
 Native floor, as of 2026-09-28: the warning at startup and in status when an instruction file
 passes its recommended length or the loaded set passes a combined limit, and the hard
 file-size cap past which the harness skips the file entirely
-(https://code.claude.com/docs/en/memory). No other document in a repo has a native budget.
+(https://code.claude.com/docs/en/memory). No other document in a repo has a native budget. As of
+2026-10-24 the same page adds a smaller per-file limit for files that load on demand, past which
+Claude receives only the start; the split section below records it, and the lengths family warns
+on a path-scoped rule or nested CLAUDE.md past its smallest value.
 
 ## Cut, don't append, and trim on a fixed cadence
 
@@ -271,6 +274,25 @@ per-module glob slots), tighten the repo's own rule `paths:` (a design rule has 
 `coload-ceiling` deviation whose integer `ceiling` equals it. The checker reports each colliding
 rule set once with how many paths share it, so lowering a ceiling is one run, not a loop of
 fix-one-discover-the-next, and the manifest family refuses a raised ceiling with no entry.
+
+A nested instruction file or a path-scoped rule defers what loads, but it is not an unlimited
+escape valve. Claude Code 2.1.309 fixed sessions compacting repeatedly after reading files under a
+very large nested CLAUDE.md, and "a nested CLAUDE.md over the size limit now loads only its start"
+(changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched
+2026-10-22). The memory page (https://code.claude.com/docs/en/memory, fetched 2026-10-24) now
+separates two limits. A CLAUDE.md that loads at launch loads whole up to 4 MiB, and "Claude Code
+skips a file over 4 MiB and loads none of it". Files that load on demand have a smaller per-file
+limit of their own: "When a subdirectory `CLAUDE.md` or a rules file that loads on demand is over a
+per-file size limit, Claude receives only the start of it", with a note telling Claude to read the
+rest, and the page lists path-scoped rules in the project's `.claude/rules/` among those files. It
+sets that limit by context window, 40,000 characters on a 200K window. The 2026-10-22 receipt here
+read the two sources as disagreeing, skipped or cut to the start; the page now says both hold, each
+for its own kind of file, so the rule names both on-demand kinds and no number, since the number
+moves with the window and the model. House rule files are path-scoped, so they sit under the smaller
+limit; the largest shipped rule file, `plugins/house/modules/claude-code/rules/claude-code.md`, held
+about 29,000 characters on 2026-10-24, inside it. A line ceiling does not bound characters, since
+a rule line can run long, so the lengths family warns on a path-scoped rule or nested CLAUDE.md
+past 40,000 characters (`ON_DEMAND_INSTRUCTION_MAX_CHARS`), the smallest value the page lists.
 
 ## Opt a point-in-time doc out with a file-level reason
 

@@ -6,6 +6,20 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.9] - 2026-10-24
+
+A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It records the Claude Code 2.1.309 and 2.1.310 survey, rewords three rules to match it, and adds one checker warning. Upgrading from 0.22.8: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. A repo with a path-scoped rule or a nested `CLAUDE.md` over 40,000 characters now sees a `lengths` warning; it is a warning, not a finding, and fails no gate.
+
+### Added
+
+- The checker's lengths family warns when a path-scoped rule, a rules file under a subdirectory's `.claude/rules/`, or a subdirectory `CLAUDE.md` or `CLAUDE.local.md` passes 40,000 characters (`ON_DEMAND_INSTRUCTION_MAX_CHARS`). Claude Code's memory page says a file that loads on demand past its per-file limit reaches Claude cut to its start, and 40,000 characters is that limit on a 200K context window, the smallest it lists. A line ceiling does not bound characters, so nothing caught this before.
+
+### Changed
+
+- The docs rule "Split a file only when splitting narrows what loads" now says a nested `CLAUDE.md` or a path-scoped rule over the harness's per-file limit for files that load on demand reaches Claude cut to its start (Claude Code 2.1.309 and the memory page), so keep each short enough that it arrives whole. Before, the rule named a nested instruction file as a way to defer what loads with no mention of the cut.
+- The docs rule "Keep files under budget, and raise a ceiling only with a written reason" said the harness skips only a file past its hard size cap, which holds only for a file that loads at launch; it now also names the smaller on-demand limit, and its Anchor names the new warning.
+- The claude-code rule "Run adversarial review in a fresh subagent with a named lens" now says `/rewind` restores the files the session had already edited after a background review applies its fixes, and git is the only way back for the rest, as the local review docs state. It said git was the only way back for every fix.
+
 ## [0.22.8] - 2026-10-22
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It ships the `adopter-preflight` CI workflow, `house defer` for at-adoption steps planned for later, the `/house-rules:doctor` skill, `house doctor` pin advice that depends on direction, progress logs inside the `/house-rules:test-audit` phases with a `maxReworks` argument, and warning changes: a new `pr-template-section` warning and a memory-index warning that names its fix. Upgrading from 0.22.7: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. An adopter whose pull-request template lacks an enabled module's section now sees a `pr-template-section` warning that quotes the section to paste; it is a warning, not a finding, and fails no gate.
