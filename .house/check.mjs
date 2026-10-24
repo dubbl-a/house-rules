@@ -3850,6 +3850,11 @@ function checkGuardFloor(ctx, d) {
 // only what a repo can fix: codex, gemini, or antigravity with no block in AGENTS.md (when
 // the lock records one, tamper owns the report), and gemini left unwired.
 const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI', antigravity: 'Antigravity CLI' };
+// Targets whose agent loads the house-rules plugin: its SessionStart hook arms the floor.
+const PLUGIN_HOOK_NOTES = {
+  antigravity: 'the house-rules plugin SessionStart hook arms the floor once installed; no tool-call hook',
+  codex: 'the house-rules plugin SessionStart hook arms the floor once installed and trusted; no tool-call hook',
+};
 function geminiReadsAgents(repoRoot) {
   if (/^\s*@(\.\/)?AGENTS\.md\s*$/m.test(safeRead(join(repoRoot, 'GEMINI.md')))) return true;
   try {
@@ -3867,7 +3872,7 @@ function checkTargets(ctx, d) {
   for (const t of targets) {
     info.push(mk('guard', 'house.json', null, 'target', t === 'claude-code'
       ? `claude-code: instructions via .claude/rules/house/ (loaded by path); guard = ${pr ? 'PreToolUse hook plus git floor' : 'none (branchPolicy direct)'}; load = verifiable (InstructionsLoaded; \`house doctor\` reports it)`
-      : `${t}: instructions via AGENTS.md block; guard = ${pr ? `git floor plus remote ruleset (${t === 'antigravity' ? 'the house-rules plugin SessionStart hook arms the floor once installed; no tool-call hook' : 'no native hook yet'})` : 'none (branchPolicy direct; no native hook yet)'}; load = unverified (${TARGET_AGENT_NAMES[t]} fires no load event)`));
+      : `${t}: instructions via AGENTS.md block; guard = ${pr ? `git floor plus remote ruleset (${PLUGIN_HOOK_NOTES[t] || 'no native hook yet'})` : 'none (branchPolicy direct; no native hook yet)'}; load = unverified (${TARGET_AGENT_NAMES[t]} fires no load event)`));
   }
   if (targets.includes('codex') || targets.includes('gemini') || targets.includes('antigravity')) {
     const lockHasBlock = (readLockEntries(ctx.repoRoot) || []).some((e) => isPlainObject(e) && e.path === 'AGENTS.md' && e.kind === 'block');

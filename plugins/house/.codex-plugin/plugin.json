@@ -1,0 +1,23 @@
+{
+  "name": "house-rules",
+  "version": "0.22.9",
+  "description": "Persistent repository conventions: rule files vendored into your repo as an AGENTS.md routing block, a drift and tamper checker, and a SessionStart hook that arms the git-hook floor enforcing the repo's branch policy.",
+  "author": {
+    "name": "Aaron Altamura"
+  },
+  "repository": "https://github.com/dubbl-a/house-rules",
+  "license": "MIT",
+  "keywords": [
+    "conventions",
+    "documentation",
+    "git-workflow",
+    "codex"
+  ],
+  "hooks": "./hooks/codex-hooks.json",
+  "interface": {
+    "displayName": "House Rules",
+    "shortDescription": "Vendored repo conventions, a drift checker, and a git-hook floor for your branch policy",
+    "developerName": "Aaron Altamura",
+    "category": "Developer Tools"
+  }
+}

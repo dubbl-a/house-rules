@@ -1,0 +1,12 @@
+{
+  "description": "house-rules: arm the vendored git-hook floor at session start",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${PLUGIN_ROOT}/hooks/arm-git-hooks.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

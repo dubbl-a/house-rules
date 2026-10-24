@@ -126,7 +126,7 @@ non-Claude targets, since `agy` emits no instructions-loaded event.
 The same `plugins/house/` directory is also an Antigravity plugin (formats from
 https://antigravity.google/docs/plugins?app=cli and https://antigravity.google/docs/hooks?app=cli,
 plus the agy changelog). `.antigravity-plugin/plugin.json` is the manifest (`name`, `description`,
-`$schema`, no version field; a root `plugin.json` is left free for Codex's layout). `hooks.json` at
+`$schema`, no version field; a root `plugin.json` is left free, since Codex would read one carrying an Agent Plugins schema before `.codex-plugin/plugin.json`). `hooks.json` at
 the plugin root is Antigravity's dialect and holds one named hook, `house-arm-git-hooks`, whose
 SessionStart handler runs `hooks/antigravity-session-start.mjs`. Claude Code's `hooks/hooks.json` is
 a different file that `agy` does not read, so `agy plugin validate` warns that it isn't read; that is
@@ -160,6 +160,52 @@ What is not settled, and what to rely on instead:
 - `agy` cuts a `SKILL.md` body past 24 KB; `tests/antigravity-plugin.test.mjs` holds every skill under it.
 - The orchestration, idle-cache, resume-cost, and instructions-loaded hooks are Claude Code only
   and are not ported.
+
+### Adopting on Codex
+
+The same `plugins/house/` directory is also a Codex plugin. Everything below was written against the
+Codex 0.164.0 source (openai/codex at tag rust-v0.164.0); it was not run against a live `codex`.
+
+To adopt: `codex plugin marketplace add dubbl-a/house-rules --ref main`, then
+`codex plugin add house-rules@house-rules`. Codex reads `.claude-plugin/marketplace.json` as it
+stands (per entry only `name` and `source` are required, and `./plugins/house` is a valid source), so
+that file has no Codex-specific edit. Add `"codex"` to `targets` in `house.json` and run
+`/house-rules:sync` or `house render --apply`; render then writes the `AGENTS.md` block, which Codex
+reads natively (ADR 0015). There is no `codex plugin validate` subcommand, so nothing can load-check
+the manifest short of installing it.
+
+`.codex-plugin/plugin.json` is the manifest. Codex 0.164.0 source tries a root `plugin.json` only if it
+carries an Agent Plugins schema, then `.codex-plugin/plugin.json`, then `.claude-plugin/plugin.json`,
+then `.cursor-plugin/plugin.json`. Before this manifest existed, Codex loaded the Claude Code one,
+found no `hooks` there, and fell back to `hooks/hooks.json`, which is Claude Code's file and holds the
+PreToolUse branch guard and the other Claude hooks. The Codex manifest sets `hooks` to
+`./hooks/codex-hooks.json`; an explicit value replaces that default discovery. The loader enforces no
+manifest field, so `name`, `version`, `description`, `author.name`, and `interface` follow the docs'
+and the store's required set instead. Its `version` must equal the Claude Code manifest's, and
+`tests/codex-plugin.test.mjs` fails when a release bumps only one. Skills are found in `skills/` by
+default, so the manifest lists none.
+
+`hooks/codex-hooks.json` holds one SessionStart command, `bash "${PLUGIN_ROOT}/hooks/arm-git-hooks.sh"`
+(Codex substitutes `${PLUGIN_ROOT}` in the text and exports it). It is the script Claude Code's
+SessionStart hook runs, unchanged: it reads `cwd` from the payload on stdin, prints at most one plain
+line starting `house:` and always exits 0.
+
+What is not settled, and what to rely on instead:
+
+- Plugin hooks never run until the user trusts them in the TUI's `/hooks` screen, so the floor is not
+  armed silently on the first session. In 0.164.0 trust is bound to a hash of the plugin's contents
+  (changelog #54619), so each plugin update needs the review again. `--dangerously-bypass-hook-trust`
+  skips it. Until then the vendored git-hook floor is armed only by `house render --apply`, and
+  `house doctor` reports whether it is.
+- The hook fails open. Per Codex 0.164.0 source, exit 0 with plain stdout adds the trimmed text as model
+  context; a non-zero exit or a timeout marks the run failed and the session continues; stdout that
+  looks like JSON but does not parse is also failed; only JSON `{"continue": false}` stops a session.
+  The script never prints JSON, so none of those paths stops anything. The guarantee is the git floor
+  and the remote branch ruleset, as on every non-Claude target.
+- Whether a plugin's `bin/` is on Codex's PATH, and whether `${CLAUDE_PLUGIN_ROOT}` is set for skill
+  bodies, is unverified. The skills tell a Codex host to run `node <dir holding skills/>/scripts/house <args>`.
+- The PreToolUse branch guard and the orchestration, idle-cache, resume-cost, and instructions-loaded
+  hooks are Claude Code only and are not ported, so there is no tool-call guard on Codex.
 
 ## Make a procedure a skill, not a rule
 
