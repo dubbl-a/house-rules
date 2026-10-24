@@ -356,7 +356,15 @@ fi
 # The plugin's own copy of the floor: what an armed checkout's .githooks must
 # be byte-identical to. Sits beside this hook inside the plugin, so a stale
 # render (a floor from an older plugin version) reads as not armed.
-SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || echo '')
+# dirname with builtins: every process this hook starts is latency, and under
+# an exec-scanning endpoint agent a lot of it (#460).
+_self="${BASH_SOURCE[0]:-$0}"
+case "$_self" in
+  /*/*|[!/]*/*) _self_dir="${_self%/*}" ;;
+  /*) _self_dir=/ ;;
+  *) _self_dir=. ;;
+esac
+SELF_DIR=$(cd "$_self_dir" >/dev/null 2>&1 && pwd || echo '')
 FLOOR_SRC="$SELF_DIR/../modules/github/files/githooks"
 # The seven vendored floor paths, relative to the hooks directory. Kept in
 # step with the github module's files[] entries and with the checker's
@@ -608,7 +616,8 @@ _strip_flag_args() {
     s/(^|[[:space:]])($1)=?[[:space:]]*'[^']*'/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*\"[^\"\`\$]*\"/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(&;|<>]*&>/\1>/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(&;|<>]+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*[^[:space:]'\"\`\$(&;|<>]+/\1/g
+    $_UNQUOTE_SED"
 }
 # The BLIND strip: the value is one shell WORD (bare characters, quoted spans,
 # substitutions and parameter expansions in any mix, ending at unquoted
@@ -634,57 +643,78 @@ _strip_flag_args_blind() {
   printf '%s' "$2" | sed -E "
     s/(^|[[:space:]])($1)=?[[:space:]]*$bare*$subst$word*/\1/g;
     s/(^|[[:space:]])($1)=?[[:space:]]*$bare*&>/\1>/g;
-    s/(^|[[:space:]])($1)=?[[:space:]]*$bare+/\1/g"
+    s/(^|[[:space:]])($1)=?[[:space:]]*$bare+/\1/g
+    $_UNQUOTE_SED"
 }
 # Quote characters go, but not the tokens: a blind strip of every quoted span
 # turns `git 'commit'` into `git `, which is a bypass. Trailing comments go.
-_unquote() { sed -E "s/['\"]//g; s/(^|[[:space:]])#.*\$//"; }
+_UNQUOTE_SED="s/['\"]//g; s/(^|[[:space:]])#.*\$//"
+_unquote() { sed -E "$_UNQUOTE_SED"; }
 
 # One clause per line: the text split on every shell separator, so a scan that
 # walks clauses reads ALL of them and a command chained behind an innocent one
 # is not missed (#1). Parentheses and backticks become SPACES, not clause
 # breaks: a substitution closes with `)` glued to the last token and a space
 # frees it, while a break there would move the rest of the command out of the
-# clause. The substitution clears the ERR trap first, so a failing sed or tr
+# clause. The substitution clears the ERR trap first, so a failing sed
 # makes the assignment fail in this shell, where the trap denies; inherited
 # under errtrace, the trap would print its deny into CLAUSES and the parent
 # would carry on with no decision.
 CLAUSES=''
+# The split cache (see split_clauses) starts empty: the environment must not
+# be able to plant a hit.
+SPLIT_N=0; SPLIT_IN=(); SPLIT_OUT=()
 # One sed pass, not `${c//pat/repl}`: on macOS's bash 3.2 each substitution
 # costs about matches x length x length, and this runs about eleven times a
 # call, so a 10 KB heredoc took a minute and the 5 s timeout blocked an
 # ordinary command (#290). sed applies the same replacements in the same
-# order, line by line, and none of them spans a newline. sed and tr run under
-# LC_ALL=C: in a UTF-8 locale a byte that is not UTF-8 stops tr with "Illegal
-# byte sequence", and the clauses after it were lost.
+# order, line by line, and none of them spans a newline. sed runs under
+# LC_ALL=C, as tr (since folded into the sed) did: in a UTF-8 locale a byte
+# that is not UTF-8 stopped tr with "Illegal byte sequence", and the clauses
+# after it were lost.
+# The same text is split again and again in one call (the scanned text, the
+# plumbing text and the target text are one string unless the command carries a
+# message flag, and every candidate re-reads the whole command), and a process
+# costs about 8 ms here and far more under an exec-scanning endpoint agent
+# (#460). The split is a pure function of its argument, so a result is kept by
+# the exact text that produced it and reused; only a split that succeeded is
+# kept, and a failing one runs, and fails, every time.
 split_clauses() {
-  local nl=$'\\\n' soh=$'\x01'
+  local nl=$'\\\n' soh=$'\x01' i rc
+  for ((i = 0; i < ${SPLIT_N:-0}; i++)); do
+    if [[ "${SPLIT_IN[$i]}" == "$1" ]]; then CLAUSES="${SPLIT_OUT[$i]}"; return 0; fi
+  done
   # A bare `&` is the backgrounding operator and is a clause break; `>&`, a
   # stream-duplicating redirection (2>&1, 1>&2, >&1, >&2), is not one, and the
   # `&` split must not cut it in half. Protected first with a control
   # character no shell text carries, and restored once the splits are done.
   # `|&` is a pipe that carries stderr too: one break, not the `&` and `|`
   # splits cutting it into two with an empty clause between (#147).
-  # Restored with tr, not in the sed replacement, where `&` means "the
-  # matched text".
+  # Restored by the last sed command, as `\&`: in a replacement a bare `&`
+  # means "the matched text".
   CLAUSES=$(trap - ERR; printf '%s' "$1" | LC_ALL=C sed \
       -e "s/>&/>$soh/g; s/||/$nl/g; s/|&/$nl/g; s/&&/$nl/g; s/;/$nl/g; s/&/$nl/g; s/|/$nl/g" \
-      -e "s/[()\`]/ /g" | LC_ALL=C tr '\001' '&')
+      -e "s/[()\`]/ /g" -e "s/$soh/\\&/g")
+  rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    i="${SPLIT_N:-0}"; SPLIT_IN[$i]="$1"; SPLIT_OUT[$i]="$CLAUSES"; SPLIT_N=$((i + 1))
+  fi
+  return "$rc"
 }
 
 if [[ "$MODE" == bash ]]; then
   # The scanned text keeps `-c` values: `-c core.hooksPath=` is exactly what
   # the disable list has to see. The cost is a `-c` value carrying spaces,
   # whose tail is read as the verb; the floor catches that commit.
-  cmd_safe=$(_strip_flag_args '-m|--message|-F|--file' "$cmd" | _unquote)
+  cmd_safe=$(_strip_flag_args '-m|--message|-F|--file' "$cmd")
   # `git branch -m <protected>` is a rename of a protected branch, and the -m
   # strip above eats its argument before the plumbing scan can see it. So the
   # plumbing scan gets a second pass over text that kept -m, restricted to
   # `branch` clauses (see run_scans).
-  cmd_plumb=$(_strip_flag_args '--message|-F|--file' "$cmd" | _unquote)
+  cmd_plumb=$(_strip_flag_args '--message|-F|--file' "$cmd")
   # Target resolution reads the blind strip, `-c` included, so neither prose
   # nor a config value can steer which checkout is decided.
-  cmd_for_target=$(_strip_flag_args_blind '-m|--message|-F|--file|-c' "$cmd" | _unquote)
+  cmd_for_target=$(_strip_flag_args_blind '-m|--message|-F|--file|-c' "$cmd")
 else
   cmd_safe=''; cmd_plumb=''; cmd_for_target=''
 fi
@@ -1224,6 +1254,25 @@ floor_is_armed() {
   FLOOR_REASON=''
   return 0
 }
+# floor_is_armed reads only the checkout (its toplevel and main root), never
+# the command, and nothing in a call changes the checkout, so a second
+# candidate in the same checkout (`git -C <cwd> ...` from the cwd itself) takes
+# the first one's answer instead of paying the config read, seven cmp and the
+# two git calls again (#460).
+FLOOR_N=0
+floor_is_armed_once() {
+  local key="$toplevel$US$MAIN_ROOT" i rc=0
+  for ((i = 0; i < FLOOR_N; i++)); do
+    if [[ "${FLOOR_KEY[$i]}" == "$key" ]]; then
+      FLOOR_REASON="${FLOOR_WHY[$i]}"
+      return "${FLOOR_RC[$i]}"
+    fi
+  done
+  floor_is_armed || rc=$?
+  FLOOR_KEY[$FLOOR_N]="$key"; FLOOR_WHY[$FLOOR_N]="$FLOOR_REASON"; FLOOR_RC[$FLOOR_N]="$rc"
+  FLOOR_N=$((FLOOR_N + 1))
+  return "$rc"
+}
 # The remedy sentence every not-armed refusal ends with, chosen by the reason.
 set_arm_suffix() {
   local extra=''
@@ -1531,7 +1580,7 @@ run_branch_scans() {
   # With the github module off there is no floor to read and no arming advice
   # to give: E still runs below, and B and C stand down after it (ADR 0017).
   if [[ "$github_module" != off ]]; then
-    if floor_is_armed; then armed=1; fi
+    if floor_is_armed_once; then armed=1; fi
     set_arm_suffix
   fi
 
@@ -1756,6 +1805,20 @@ decide_file_mode() {
   fi
   run_file_scan
 }
+# The jq call below finds a deferring entry only under the key PreToolUse, and
+# a JSON key is either spelled out or written with a unicode escape (a
+# backslash, u and four hex digits; no other escape yields a letter), so a file
+# with neither the word nor a backslash-u cannot hold one and jq is not started
+# for it. Bytewise (LC_ALL=C), so a byte that is not UTF-8 cannot hide
+# the word from the match. A file that cannot be read cannot defer either, as
+# jq would find.
+settings_may_defer() {
+  local LC_ALL=C s
+  [[ -r "$1" ]] || return 1
+  s=$(<"$1")
+  case "$s" in *PreToolUse*|*\\u*) return 0 ;; esac
+  return 1
+}
 decide_for_target() {
   local dir="${1/#\~/$HOME}"
   CAND_TEXT="${2:-}"
@@ -1931,7 +1994,7 @@ decide_for_target() {
   # Repo-local guard present: defer to it during migration onto house.
   local local_hook="$toplevel/.claude/hooks/no-direct-master.sh"
   if [[ -f "$local_hook" ]] && local_hook_is_substantive "$local_hook"; then return 0; fi
-  if [[ -f "$toplevel/.claude/settings.json" ]]; then
+  if [[ -f "$toplevel/.claude/settings.json" ]] && settings_may_defer "$toplevel/.claude/settings.json"; then
     # Defer only to a PreToolUse entry that can SEE the call: a settings.json
     # carrying only PostToolUse is not a branch guard, `length > 0` alone is
     # satisfied by any non-empty value (a malformed file Claude Code itself

@@ -136,7 +136,58 @@ timed() {
   fi
 }
 
+# exec_counted <label> <max> <payload>: the guard is allowed at most <max>
+# process starts (counted by PATH shims for the tools it runs) on this payload.
+# Wall time cannot show the cost of a process start that only an endpoint
+# security agent makes expensive: on 2026-10-22 (#460) a machine at load 140,
+# with such an agent scanning every exec, spent the whole 5 s on short git
+# commands. Each start there cost tens of milliseconds, so the count is the
+# measurable thing. The limits sit a little above the counts after #460's cut
+# (21 and 24; they were 37 and 62), so a few more processes on the common path
+# fail here, not as a timeout on somebody's busy machine.
+SHIM_DIR="$TMP_ROOT/shims"; mkdir -p "$SHIM_DIR"
+for _tool in git jq sed tr cat cmp head readlink dirname basename grep awk find uname; do
+  _real=$(command -v "$_tool") || continue
+  printf '#!/bin/sh\necho %s >> "$EXEC_LOG"\nexec %s "$@"\n' "$_tool" "$_real" >"$SHIM_DIR/$_tool"
+  chmod +x "$SHIM_DIR/$_tool"
+done
+# <want> is "allow" or "deny": the hook must exit 0 and decide that way, and
+# an allow must also have run the common path (at least 10 starts), so a hook
+# that exits early on a payload it should have read cannot pass on a low count.
+exec_counted() {
+  local label="$1" max="$2" want="$3" payload="$4" n out code decision
+  EXEC_LOG="$TMP_ROOT/exec.log"; : >"$EXEC_LOG"; export EXEC_LOG
+  out=$(printf '%s' "$payload" | PATH="$SHIM_DIR:$PATH" bash "$HOOK" 2>/dev/null)
+  code=$?
+  n=$(wc -l <"$EXEC_LOG" | tr -d ' ')
+  decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
+  TOTAL=$((TOTAL + 1))
+  if [[ "$code" -ne 0 || ( "$want" == deny && "$decision" != deny ) || ( "$want" == allow && -n "$out" ) ]]; then
+    FAILED=$((FAILED + 1))
+    printf '  FAIL  %s -- wanted %s, got code=%s decision=[%s] out=[%s]\n' "$label" "$want" "$code" "$decision" "${out:0:120}"
+  elif [[ "$n" -gt "$max" ]]; then
+    FAILED=$((FAILED + 1))
+    printf '  FAIL  %s -- started %s processes, limit %s\n' "$label" "$n" "$max"
+  elif [[ "$want" == allow && "$n" -lt 10 ]]; then
+    FAILED=$((FAILED + 1))
+    printf '  FAIL  %s -- started only %s processes: the hook did not run the common path\n' "$label" "$n"
+  else
+    printf '  ok    %s started %s processes (limit %s), %s\n' "$label" "$n" "$max" "$want"
+  fi
+}
+
 echo "=== guard wall-clock: decides inside ${_timeout_s} s less ${MARGIN_MS} ms (serial, never beside another suite) ==="
+
+ex="$TMP_ROOT/execs"; new_repo "$ex"; adopt "$ex"; git -C "$ex" checkout -q -b feat/ex
+git -C "$ex" config core.hooksPath "$ex/.githooks"
+exec_counted "git status on a feature branch, floor armed: process starts" 26 allow \
+  "$(mk_payload "git status" "$ex")"
+exec_counted "git -C <cwd> worktree remove, two candidates: process starts" 28 allow \
+  "$(mk_payload "git -C $ex worktree remove $TMP_ROOT/nosuch" "$ex")"
+git -C "$ex" checkout -q master
+exec_counted "git commit on master, floor armed: process starts" 30 deny \
+  "$(mk_payload "git commit -m x" "$ex")"
+git -C "$ex" checkout -q feat/ex
 
 sc="$TMP_ROOT/split"; new_repo "$sc"; adopt "$sc"; git -C "$sc" checkout -q -b feat/sc
 pg="$TMP_ROOT/pathgaps"; new_repo "$pg"; adopt "$pg"

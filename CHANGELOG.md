@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- The branch guard (`plugins/house/hooks/no-direct-master.sh`) starts about half as many processes per call, so a short git command no longer outlasts its 5 s timeout on a machine slowed by an exec-scanning endpoint agent and gets blocked (#460). What the guard allows and denies is unchanged; the timeout is unchanged. A single very long command can still reach the timeout (#467).
+
 ### Added
 
 - The checker's manifest family warns when an enabled module's `config` in `house.json` differs from the config `.house/lock.json` recorded at the last render (#461), naming the slots and `house render --apply`. A hand edit to a slot such as `waivers` used to pass `check:house` and surface only when the next sync's render rewrote the lock. It is a warning, not a finding: no verdict reads the lock's modules record (#258), and a stale path set is still a finding. A reordered path-glob slot is not drift, and a lock record with no `config` is skipped.
