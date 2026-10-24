@@ -18,7 +18,7 @@ import { test as nodeTest, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, symlinkSync, readdirSync,
-  chmodSync, existsSync, statSync, rmSync, realpathSync, lstatSync, cpSync,
+  chmodSync, existsSync, statSync, rmSync, realpathSync, lstatSync, cpSync, renameSync,
 } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -5950,4 +5950,134 @@ test('ADR 0019 uninstall --apply: a settings file it cannot read is refused, so 
   assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(.*not valid JSON/m);
   assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), 'nothing was deleted');
   assert.equal(readFileSync(settingsPath(repo), 'utf8'), broken);
+});
+
+// ── #479: edge cases of the ADR 0019 entry ───────────────────────────────
+
+const ARM_HOOK = { type: 'command', command: ARM_COMMAND, timeout: 10 };
+const stringifyJson = (obj) => `${JSON.stringify(obj, null, 2)}\n`;
+
+test('#479 render: a settings file not in the 2-space form is left untouched, with a warning naming the file and the entry to add by hand', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const base = { permissions: { allow: ['Bash(npm test)'] } };
+  const variants = {
+    'four-space indent': `${JSON.stringify(base, null, 4)}\n`,
+    'CRLF line endings': stringifyJson(base).replace(/\n/g, '\r\n'),
+    'a number form a round trip changes': '{\n  "ratio": 1.0\n}\n',
+    'duplicate keys a round trip drops': '{\n  "a": 1,\n  "a": 2\n}\n',
+  };
+  for (const [name, body] of Object.entries(variants)) {
+    const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': body });
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, `${name}: ${r.out}${r.err}`);
+    assert.equal(readFileSync(settingsPath(repo), 'utf8'), body, `${name}: the file is untouched`);
+    assert.match(r.out, /^warning: \.claude\/settings\.json is not in the 2-space JSON form.*add this hook to "hooks"\."SessionStart" by hand: .*arm-git-hooks\.sh/m, name);
+    assert.doesNotMatch(r.out, /keys and values stay/, name);
+  }
+});
+
+test('#479 render: a canonical file still gains the entry, and a 4-space file with no entry to remove is left alone silently', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': stringifyJson({ env: { FOO: '1' } }) });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(JSON.parse(readFileSync(settingsPath(repo), 'utf8')).hooks.SessionStart, [{ hooks: [ARM_HOOK] }]);
+  assert.doesNotMatch(r.out, /warning: \.claude\/settings\.json/);
+  commitAll(repo, 'armed');
+  setGithubConfig(repo, { cloudArming: false });
+  const four = `${JSON.stringify({ env: { FOO: '1' } }, null, 4)}\n`;
+  writeFileSync(settingsPath(repo), four);
+  const off = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(off.code, 0, off.out + off.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), four);
+  assert.doesNotMatch(off.out, /warning: \.claude\/settings\.json/);
+});
+
+test('#479 render: a 4-space file that holds house\'s entry is not rewritten when cloudArming turns off, and the warning names the entry to remove', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const body = `${JSON.stringify({ hooks: { SessionStart: [{ hooks: [ARM_HOOK] }] } }, null, 4)}\n`;
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': body });
+  setGithubConfig(repo, { cloudArming: false });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), body);
+  assert.match(r.out, /^warning: \.claude\/settings\.json is not in the 2-space JSON form.*remove this hook from "hooks"\."SessionStart" by hand/m);
+});
+
+test('#479 uninstall --apply: a settings file in a non-canonical layout holding the entry is refused, so the script is not deleted from under it', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const four = `${JSON.stringify(JSON.parse(readFileSync(settingsPath(repo), 'utf8')), null, 4)}\n`;
+  writeFileSync(settingsPath(repo), four);
+  commitAll(repo, 'reindent the settings');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(.*2-space JSON form/m);
+  assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), 'nothing was deleted');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), four);
+});
+
+test('#479 render: an unmanaged scripts/house/arm-git-hooks.sh gets no entry, and the warning says why', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', 'scripts/house/arm-git-hooks.sh': '#!/bin/sh\necho mine\n' });
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.doesNotMatch(dry.out, /-hook\s+\.claude\/settings\.json/, dry.out);
+  assert.match(dry.out, /^warning: scripts\/house\/arm-git-hooks\.sh is not a file house manages here.*SessionStart entry.*not written/m, dry.out);
+  const json = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
+  assert.equal(json.settingsEntry, null);
+  const forced = runCli(cliPath, ['render', '--repo', repo, '--force-managed', 'scripts/house/arm-git-hooks.sh']);
+  assert.match(forced.out, /^create-hook\s+\.claude\/settings\.json/m, 'a file house now manages gets its entry');
+});
+
+test('#479 uninstall --apply: a settings file that is not a regular file is refused, so the script is not deleted from under a possible entry', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  for (const shape of ['directory', 'symlink to a directory', 'symlink to a file']) {
+    const repo = uninstallRepo(cliPath, env);
+    const file = settingsPath(repo);
+    const target = join(repo, 'elsewhere');
+    if (shape === 'directory') { rmSync(file); mkdirSync(file); }
+    else if (shape === 'symlink to a directory') { rmSync(file); mkdirSync(target); symlinkSync(target, file); }
+    else { renameSync(file, target); symlinkSync(target, file); }
+    const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+    assert.equal(r.code, 1, `${shape}: ${r.out}${r.err}`);
+    assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(/m, shape);
+    assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), `${shape}: nothing was deleted`);
+  }
+});
+
+test('#479 render: house\'s command in a matcher-scoped SessionStart group does not count as present, so the unscoped entry is added', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const scoped = { matcher: 'resume', hooks: [ARM_HOOK] };
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': stringifyJson({ hooks: { SessionStart: [scoped] } }) });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(JSON.parse(readFileSync(settingsPath(repo), 'utf8')).hooks.SessionStart, [scoped, { hooks: [ARM_HOOK] }]);
+  commitAll(repo, 'armed');
+  const again = runCli(cliPath, ['render', '--repo', repo, '--json']);
+  assert.equal(JSON.parse(again.out).settingsEntry, null, 'a second render adds nothing');
+});
+
+test('#479 render: an unscoped group (no matcher, an empty one, or "*") counts as present (negative control)', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  for (const group of [{ hooks: [ARM_HOOK] }, { matcher: '', hooks: [ARM_HOOK] }, { matcher: '*', hooks: [ARM_HOOK] }]) {
+    const body = stringifyJson({ hooks: { SessionStart: [group] } });
+    const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': body });
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.equal(readFileSync(settingsPath(repo), 'utf8'), body, JSON.stringify(group));
+  }
+});
+
+test('#479 uninstall --apply: house\'s command is removed from a matcher-scoped group too, so no entry is left naming the deleted script', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const mine = { type: 'command', command: 'echo mine' };
+  writeFileSync(settingsPath(repo), stringifyJson({ hooks: { SessionStart: [{ matcher: 'resume', hooks: [mine, ARM_HOOK] }] } }));
+  commitAll(repo, 'scope the entry');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.deepEqual(JSON.parse(readFileSync(settingsPath(repo), 'utf8')), { hooks: { SessionStart: [{ matcher: 'resume', hooks: [mine] }] } });
 });
