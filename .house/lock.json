@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "7d67f9a799c70e71b225f40d6bdc300bb7e2e99f935875b64c9419415d9b0d9c"
+      "bodySha256": "307b4f8f3b48970543595535dfaee8202e842d3a08186260b798e6336cff4876"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -40,7 +40,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "a0fbc5fbedd836d3102d2fd33f9b64de021e81947771c05eeb07bab78ece5cdb"
+      "bodySha256": "11c1962ba4af511c6e3e20279dd3e0f71f260a5f90f542b946fbacb4d9f73a3d"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
@@ -53,6 +53,12 @@
       "module": "github",
       "source": "modules/github/files/cleanup-worktree.sh",
       "bodySha256": "7b35987fcb65a881b89212b0550388a7adef2167b63501cba28565ea36dfe8b0"
+    },
+    {
+      "path": "scripts/house/arm-git-hooks.sh",
+      "module": "github",
+      "source": "modules/github/files/arm-git-hooks.sh",
+      "bodySha256": "c3bc985cb8e36aacdc3d2b57e4b0b537261969229451f1f8c864d7d2911ad7fd"
     },
     {
       "path": ".githooks/pre-commit",
@@ -118,7 +124,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "443927e6046462e08910440bfbbf7f19e8305d323333de2febb03ccf18fa420b"
+      "bodySha256": "c73f0032f1fa31d5659213fe00310c4a47064f3a5c7d143d7bd56e2aa1baf029"
     },
     {
       "path": "AGENTS.md",

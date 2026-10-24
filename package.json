@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test ${TEST_SHARD:+--test-shard=$TEST_SHARD} tests/*.test.mjs tests/check/*.test.mjs",
-    "test:hooks": "bash tests/hooks/run.sh",
+    "test:hooks": "bash tests/hooks/run.sh && bash tests/hooks/cloud-arming.sh",
     "test:hooks:wall": "bash tests/hooks/wall-clock.sh",
     "test:githooks": "bash tests/githooks/run.sh && bash tests/templates/pre-commit.test.sh",
     "check:traceability": "node scripts/check-traceability.mjs",
