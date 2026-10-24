@@ -126,7 +126,7 @@ non-Claude targets, since `agy` emits no instructions-loaded event.
 The same `plugins/house/` directory is also an Antigravity plugin (formats from
 https://antigravity.google/docs/plugins?app=cli and https://antigravity.google/docs/hooks?app=cli,
 plus the agy changelog). `.antigravity-plugin/plugin.json` is the manifest (`name`, `description`,
-`$schema`, no version field; a root `plugin.json` is left free for Codex's layout). `hooks.json` at
+`$schema`, no version field; a root `plugin.json` is left free, since Codex would read one carrying an Agent Plugins schema before `.codex-plugin/plugin.json`). `hooks.json` at
 the plugin root is Antigravity's dialect and holds one named hook, `house-arm-git-hooks`, whose
 SessionStart handler runs `hooks/antigravity-session-start.mjs`. Claude Code's `hooks/hooks.json` is
 a different file that `agy` does not read, so `agy plugin validate` warns that it isn't read; that is

@@ -96,6 +96,8 @@ test('the manifest names its hooks file with an explicit ./ path that exists, wh
 test('the hooks file is one SessionStart command running arm-git-hooks.sh, and names no Claude Code hook', () => {
   const raw = readFileSync(join(PLUGIN, 'hooks', 'codex-hooks.json'), 'utf8');
   const j = JSON.parse(raw);
+  // Codex's HooksFile denies unknown fields, so an extra top-level key makes it skip the whole file.
+  assert.deepEqual(Object.keys(j).filter((k) => k !== 'description' && k !== 'hooks'), [], 'only description and hooks at the top level');
   assert.deepEqual(Object.keys(j.hooks), ['SessionStart']);
   assert.equal(j.hooks.SessionStart.length, 1);
   const group = j.hooks.SessionStart[0];
