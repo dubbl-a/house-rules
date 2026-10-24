@@ -661,6 +661,9 @@ _unquote() { sed -E "$_UNQUOTE_SED"; }
 # under errtrace, the trap would print its deny into CLAUSES and the parent
 # would carry on with no decision.
 CLAUSES=''
+# The split cache (see split_clauses) starts empty: the environment must not
+# be able to plant a hit.
+SPLIT_N=0; SPLIT_IN=(); SPLIT_OUT=()
 # One sed pass, not `${c//pat/repl}`: on macOS's bash 3.2 each substitution
 # costs about matches x length x length, and this runs about eleven times a
 # call, so a 10 KB heredoc took a minute and the 5 s timeout blocked an

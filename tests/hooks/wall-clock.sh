@@ -151,17 +151,28 @@ for _tool in git jq sed tr cat cmp head readlink dirname basename grep awk find 
   printf '#!/bin/sh\necho %s >> "$EXEC_LOG"\nexec %s "$@"\n' "$_tool" "$_real" >"$SHIM_DIR/$_tool"
   chmod +x "$SHIM_DIR/$_tool"
 done
+# <want> is "allow" or "deny": the hook must exit 0 and decide that way, and
+# an allow must also have run the common path (at least 10 starts), so a hook
+# that exits early on a payload it should have read cannot pass on a low count.
 exec_counted() {
-  local label="$1" max="$2" payload="$3" n
+  local label="$1" max="$2" want="$3" payload="$4" n out code decision
   EXEC_LOG="$TMP_ROOT/exec.log"; : >"$EXEC_LOG"; export EXEC_LOG
-  printf '%s' "$payload" | PATH="$SHIM_DIR:$PATH" bash "$HOOK" >/dev/null 2>&1
+  out=$(printf '%s' "$payload" | PATH="$SHIM_DIR:$PATH" bash "$HOOK" 2>/dev/null)
+  code=$?
   n=$(wc -l <"$EXEC_LOG" | tr -d ' ')
+  decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
   TOTAL=$((TOTAL + 1))
-  if [[ "$n" -gt "$max" ]]; then
+  if [[ "$code" -ne 0 || ( "$want" == deny && "$decision" != deny ) || ( "$want" == allow && -n "$out" ) ]]; then
+    FAILED=$((FAILED + 1))
+    printf '  FAIL  %s -- wanted %s, got code=%s decision=[%s] out=[%s]\n' "$label" "$want" "$code" "$decision" "${out:0:120}"
+  elif [[ "$n" -gt "$max" ]]; then
     FAILED=$((FAILED + 1))
     printf '  FAIL  %s -- started %s processes, limit %s\n' "$label" "$n" "$max"
+  elif [[ "$want" == allow && "$n" -lt 10 ]]; then
+    FAILED=$((FAILED + 1))
+    printf '  FAIL  %s -- started only %s processes: the hook did not run the common path\n' "$label" "$n"
   else
-    printf '  ok    %s started %s processes (limit %s)\n' "$label" "$n" "$max"
+    printf '  ok    %s started %s processes (limit %s), %s\n' "$label" "$n" "$max" "$want"
   fi
 }
 
@@ -169,10 +180,14 @@ echo "=== guard wall-clock: decides inside ${_timeout_s} s less ${MARGIN_MS} ms 
 
 ex="$TMP_ROOT/execs"; new_repo "$ex"; adopt "$ex"; git -C "$ex" checkout -q -b feat/ex
 git -C "$ex" config core.hooksPath "$ex/.githooks"
-exec_counted "git status on a feature branch, floor armed: process starts" 26 \
+exec_counted "git status on a feature branch, floor armed: process starts" 26 allow \
   "$(mk_payload "git status" "$ex")"
-exec_counted "git -C <cwd> worktree remove, two candidates: process starts" 28 \
+exec_counted "git -C <cwd> worktree remove, two candidates: process starts" 28 allow \
   "$(mk_payload "git -C $ex worktree remove $TMP_ROOT/nosuch" "$ex")"
+git -C "$ex" checkout -q master
+exec_counted "git commit on master, floor armed: process starts" 30 deny \
+  "$(mk_payload "git commit -m x" "$ex")"
+git -C "$ex" checkout -q feat/ex
 
 sc="$TMP_ROOT/split"; new_repo "$sc"; adopt "$sc"; git -C "$sc" checkout -q -b feat/sc
 pg="$TMP_ROOT/pathgaps"; new_repo "$pg"; adopt "$pg"
