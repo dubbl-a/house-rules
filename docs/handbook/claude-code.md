@@ -60,6 +60,17 @@ The index is machine-local state that no repo tracks and no CI checkout has, so 
 watches it warns and never fails; ADR 0008 records that boundary and the two environment
 variables it honors.
 
+Machine-local also means unbacked. Auto memory and the user-scope `~/.claude/CLAUDE.md` hold the
+user's standing preferences and corrections, nothing syncs or versions either one, and a lost disk
+loses both. Back them up outside house, which vendors no rule for it because these are the user's
+own facts, not a repo's practice. The traps found on 2026-10-24 against Claude Code 2.1.310: a
+user-scope `autoMemoryDirectory` is one folder every project shares (the per-project path is
+skipped once it is set), and a checked-in `.claude/settings.json` cannot set it at all; Edit and
+Write refuse to write through a symlinked CLAUDE.md; and a live git checkout must not sit in a
+synced folder. What holds up is mirroring real copies of both stores into a private repo on a
+schedule or a file watch, with a secret scan before each commit. The research and its sources are
+in #219.
+
 Native floor, as of 2026-09-02: the MEMORY.md index and its documented load limit, which the
 harness asks Claude to shorten after a write and errors on once the index sits over the ceiling
 (https://code.claude.com/docs/en/memory).
