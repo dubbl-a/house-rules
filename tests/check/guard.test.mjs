@@ -386,7 +386,7 @@ test('guard: an antigravity target says AGENTS.md block, git floor armed by the 
   assert.equal(code, 0, out);
   const lines = targetInfo(json).map((i) => i.message);
   assert.equal(lines.length, 2, JSON.stringify(lines));
-  assert.match(lines[1], /^antigravity: instructions via AGENTS\.md block; guard = git floor plus remote ruleset \(the plugin SessionStart hook arms the floor; no tool-call hook\); load = unverified \(Antigravity CLI fires no load event\)$/);
+  assert.match(lines[1], /^antigravity: instructions via AGENTS\.md block; guard = git floor plus remote ruleset \(the house-rules plugin SessionStart hook arms the floor once installed; no tool-call hook\); load = unverified \(Antigravity CLI fires no load event\)$/);
   assert.equal(targetFindings(json).length, 0, 'no GEMINI.md wiring is asked of antigravity');
 });
 

@@ -162,5 +162,8 @@ test('the skills that drive the CLI tell a host without CLAUDE_PLUGIN_ROOT to ru
   const elsewhere = mkdtempSync(join(tmpdir(), 'house-agy-cwd-'));
   const r = spawnSync(join(PLUGIN, 'bin', 'house'), ['--help'], { cwd: elsewhere, encoding: 'utf8' });
   assert.notEqual(r.error?.code, 'ENOENT');
-  assert.match(`${r.stdout}${r.stderr}`, /house/i, 'bin/house ran and printed usage from a foreign cwd');
+  // --help is not a subcommand: the CLI prints usage to stderr and exits 2. A broken forwarder
+  // exits 1 with a module-not-found error and no usage line, so both assertions can fail.
+  assert.equal(r.status, 2, `bin/house --help exited ${r.status}: ${r.stderr}`);
+  assert.match(r.stderr, /^usage: house /m, 'bin/house ran and printed usage from a foreign cwd');
 });
