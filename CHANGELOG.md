@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- The checker's manifest family warns when an enabled module's `config` in `house.json` differs from the config `.house/lock.json` recorded at the last render (#461), naming the slots and `house render --apply`. A hand edit to a slot such as `waivers` used to pass `check:house` and surface only when the next sync's render rewrote the lock. It is a warning, not a finding: no verdict reads the lock's modules record (#258), and a stale path set is still a finding. A reordered path-glob slot is not drift, and a lock record with no `config` is skipped.
+
 ## [0.22.8] - 2026-10-22
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It ships the `adopter-preflight` CI workflow, `house defer` for at-adoption steps planned for later, the `/house-rules:doctor` skill, `house doctor` pin advice that depends on direction, progress logs inside the `/house-rules:test-audit` phases with a `maxReworks` argument, and warning changes: a new `pr-template-section` warning and a memory-index warning that names its fix. Upgrading from 0.22.7: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. An adopter whose pull-request template lacks an enabled module's section now sees a `pr-template-section` warning that quotes the section to paste; it is a warning, not a finding, and fails no gate.

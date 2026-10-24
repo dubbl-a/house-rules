@@ -684,7 +684,9 @@ test('#244: an installed plugin that differs from the checker only warns locally
 // a hand edit to it changes none. Each case builds a repo with the real CLI,
 // takes the verdict, edits the record the way the issue describes, and asserts
 // the verdict is the same. The first four were silent or downgraded before.
-const verdict = (r) => ({ code: r.code, findings: r.json.findings.map((x) => x.message).sort(), warnings: r.json.warnings.map((x) => x.message).sort() });
+// #461: the one advisory that reads the record (lock config vs house.json) is
+// left out of the comparison; it decides no finding and goes quiet with the record.
+const verdict = (r) => ({ code: r.code, findings: r.json.findings.map((x) => x.message).sort(), warnings: r.json.warnings.map((x) => x.message).filter((m) => !/config differs from what the last render recorded/.test(m)).sort() });
 function sameAfterLockEdit(d, edit, expectFinding) {
   const before = ciAndLocal(d);
   assert.equal(before.code, 1, `the repo must start with a finding: ${before.out}`);
@@ -1009,4 +1011,41 @@ test('#420 manifest: a repo that replaces a Roots slot is shown its effective ru
   assert.equal(w.length, 1, JSON.stringify(w));
   assert.match(w[0].message, /its rule paths \(`app\/\*\*`\) match from the repo root/);
   assert.doesNotMatch(w[0].message, /default paths/);
+});
+
+// #461: house.json edited by hand without a render leaves the config the lock
+// embeds stale. Only an advisory: #258 moved every verdict off the lock's
+// modules record, so the finding for stale paths still comes from house.json
+// and the hash-verified rule files, and this warning decides nothing.
+const LOCK_CONFIG_DRIFT = /modules\.github\.config differs from what the last render recorded in \.house\/lock\.json.*waivers.*house render --apply/;
+const ANY_LOCK_CONFIG_DRIFT = /config differs from what the last render recorded/;
+
+test('#461: a hand-edited config slot not yet rendered is a warning, locally and in CI', () => {
+  const d = freshBootstrap();
+  editHouse(d, (h) => { h.modules.github.config = { ...h.modules.github.config, waivers: [{ check: 'codeowners', why: 'solo repo' }] }; });
+  gitIn(d, 'commit', '-q', '-am', 'waiver added by hand, no re-render');
+  const r = ciAndLocal(d);
+  assert.ok(has(r.json.warnings, LOCK_CONFIG_DRIFT), r.out);
+  assert.ok(!has(r.json.findings, ANY_LOCK_CONFIG_DRIFT), 'a warning, not a finding');
+  rerender(d);
+  const after = ciAndLocal(d);
+  assert.ok(!has(after.json.warnings, ANY_LOCK_CONFIG_DRIFT), `negative control: the re-render clears it: ${after.out}`);
+});
+
+test('#461: a freshly rendered repo, and a reordered path-glob slot, report no lock config drift', () => {
+  const d = freshBootstrap();
+  assert.ok(!has(ciAndLocal(d).json.warnings, ANY_LOCK_CONFIG_DRIFT));
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**', 'specs/**']; });
+  rerender(d);
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['specs/**', 'spec/**']; });
+  gitIn(d, 'commit', '-q', '-am', 'reordered');
+  assert.ok(!has(ciAndLocal(d).json.warnings, ANY_LOCK_CONFIG_DRIFT), 'path-slot order is not a config change');
+});
+
+test('#461: a lock with no config record for a module reports nothing', () => {
+  const d = freshBootstrap();
+  editLock(d, (l) => { delete l.modules.testing.config; });
+  editHouse(d, (h) => { h.modules.testing.config.testRoots = ['spec/**']; });
+  gitIn(d, 'commit', '-q', '-am', 'old lock shape');
+  assert.ok(!has(ciAndLocal(d).json.warnings, ANY_LOCK_CONFIG_DRIFT));
 });
