@@ -9,6 +9,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 ### Changed
 
 - The handbook now links the decision record (`docs/decisions/`) behind a rule from the section that explains it (ADR 0003, 0006, 0007, 0008, 0013, 0019), so an adopter reaches the reason through the handbook link with no new file in the adopting repo and no change to any rule file (#419).
+- The handbook (`github.md`, the branch-policy section) records a known limit of the cloud arming entry: a cloud session with several repositories, or one in a project thread, reads no repository hooks, so the floor stays unarmed there; open one repository per session when its branch policy matters (#483).
 
 ## [0.22.10] - 2026-10-24
 
