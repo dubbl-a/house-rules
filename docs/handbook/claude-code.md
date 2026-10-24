@@ -114,6 +114,53 @@ advisory there: nothing loads the rule for the agent, and neither agent emits a 
 own and is never checked. Gemini CLI reads `GEMINI.md` by default, so a `gemini` target also needs
 an `@AGENTS.md` import there, or `AGENTS.md` named in `.gemini/settings.json`'s `context.fileName`.
 
+### Adopting on Antigravity CLI
+
+Google moved consumer Gemini CLI users to Antigravity CLI (`agy`) on 2026-06-18
+(https://developers.googleblog.com/en/an-important-update-transitioning-gemini-cli-to-antigravity-cli/);
+Gemini CLI stays for enterprise and paid-API use, so the `gemini` target is unchanged. The
+`antigravity` target renders the same `AGENTS.md` block as `codex`, which `agy` reads natively at the
+workspace root, and writes no `GEMINI.md`. `house doctor` reports it as unverified, like the other
+non-Claude targets, since `agy` emits no instructions-loaded event.
+
+The same `plugins/house/` directory is also an Antigravity plugin (formats from
+https://antigravity.google/docs/plugins?app=cli and https://antigravity.google/docs/hooks?app=cli,
+plus the agy changelog). `.antigravity-plugin/plugin.json` is the manifest (`name`, `description`,
+`$schema`, no version field; a root `plugin.json` is left free for Codex's layout). `hooks.json` at
+the plugin root is Antigravity's dialect and holds one named hook, `house-arm-git-hooks`, whose
+SessionStart handler runs `hooks/antigravity-session-start.mjs`. Claude Code's `hooks/hooks.json` is
+a different file that `agy` does not read, so `agy plugin validate` warns that it isn't read; that is
+expected. The wrapper reads `workspacePaths` from the event, runs `arm-git-hooks.sh --repo <path>`
+for each, and prints one JSON object (`{}`, or an `injectSteps` entry carrying the script's line).
+
+To adopt: install with `agy plugin install https://github.com/dubbl-a/house-rules/tree/main/plugins/house`
+(GitHub subpath installs are in the agy changelog since 1.0.7; this exact URL form is untested) or
+`agy plugin install <clone>/plugins/house`; the floor is `agy` 1.3.2 or newer, the version that added
+the `.antigravity-plugin/` manifest folder and the plugin `bin/` folder. Add `"antigravity"` to
+`targets` and run `/house-rules:sync` or `house render --apply`. When `agy` is present,
+`agy plugin validate --strict --json plugins/house` loads the plugin with the CLI's own loader.
+
+What is not settled, and what to rely on instead:
+
+- Nothing here ran against a live `agy`. The `${extensionPath}` substitution in a `hooks.json`
+  command is inferred from the agy 1.0.7 changelog line saying it resolves to the final installation
+  directory in plugins; it is not documented for hooks and is untested. Relative command paths have
+  no documented base, so the command does not use one.
+- Exit codes, timeout, and failure behavior of a SessionStart hook are undocumented. The changelog
+  says `agy` logs a failing PostToolUse hook and continues; nothing says the same of SessionStart.
+  The wrapper therefore never exits non-zero and never writes anything but JSON to stdout. Treat the
+  hook as a convenience: the vendored git-hook floor and the remote branch ruleset are the
+  guarantee, and `house doctor` reports whether the floor is armed.
+- The `bin/` folder of a plugin is on the agent's PATH in `agy` (1.3.2), so the skills tell a host
+  without `${CLAUDE_PLUGIN_ROOT}` to run `house <args>` (`plugins/house/bin/house`, which resolves
+  its own directory and runs from any cwd) in place of `node ${CLAUDE_PLUGIN_ROOT}/scripts/house`.
+- Antigravity has no `disable-model-invocation`, so `sync` and `bootstrap`, which set it in Claude
+  Code, become model-invocable there. Dry run is their default and both name `--apply` as a step the
+  user confirms, but nothing stops the model choosing the skill unprompted.
+- `agy` cuts a `SKILL.md` body past 24 KB; `tests/antigravity-plugin.test.mjs` holds every skill under it.
+- The orchestration, idle-cache, resume-cost, and instructions-loaded hooks are Claude Code only
+  and are not ported.
+
 ## Make a procedure a skill, not a rule
 
 repo-a's six `.claude/commands/*.md` files are each a one-sentence `description:`

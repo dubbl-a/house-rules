@@ -11,6 +11,8 @@ Run `house doctor` on a repo and explain each line it prints, with the next acti
 node ${CLAUDE_PLUGIN_ROOT}/scripts/house doctor --repo <root>
 ```
 
+Outside Claude Code (Antigravity CLI), where `${CLAUDE_PLUGIN_ROOT}` is not set, run `house <args>` instead of `node ${CLAUDE_PLUGIN_ROOT}/scripts/house <args>`: the plugin's `bin/house` is on the agent's PATH, and `${CLAUDE_PLUGIN_ROOT}` paths elsewhere in this skill are relative to the directory holding this `skills/` folder.
+
 `<root>` is the repo root (the current directory when omitted). `--json` prints the same facts as one object. Report the lines the user needs to act on first, then the rest. Do not compute any line by hand; this skill reports what the doctor printed. The doctor always exits 0, so a clean exit proves nothing: read the lines.
 
 ## What each line means, and the next action

@@ -380,6 +380,23 @@ test('guard: Gemini wiring passes through GEMINI.md\'s import or settings contex
   }
 });
 
+test('guard: an antigravity target says AGENTS.md block, git floor armed by the SessionStart hook, and unverified load; it needs no GEMINI.md', () => {
+  const dir = sandbox({ 'house.json': houseJson({ targets: ['claude-code', 'antigravity'] }), 'AGENTS.md': AGENTS_BLOCK });
+  const { code, json, out } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 0, out);
+  const lines = targetInfo(json).map((i) => i.message);
+  assert.equal(lines.length, 2, JSON.stringify(lines));
+  assert.match(lines[1], /^antigravity: instructions via AGENTS\.md block; guard = git floor plus remote ruleset \(the plugin SessionStart hook arms the floor; no tool-call hook\); load = unverified \(Antigravity CLI fires no load event\)$/);
+  assert.equal(targetFindings(json).length, 0, 'no GEMINI.md wiring is asked of antigravity');
+});
+
+test('guard: an antigravity target with no AGENTS.md block is a finding', () => {
+  const dir = sandbox({ 'house.json': houseJson({ targets: ['claude-code', 'antigravity'] }) });
+  const { code, json } = run(dir, ['--only=guard', '--json']);
+  assert.equal(code, 1);
+  assert.ok(targetFindings(json).some((f) => f.path === 'AGENTS.md' && /antigravity/.test(f.message) && /house render --apply/.test(f.message)), JSON.stringify(json.findings));
+});
+
 // #246: a team repo cannot honestly record "plugin" (not every contributor has
 // it installed). "floor" says the vendored git hooks plus remote branch
 // protection are the guard; "remote" says the server alone is. The checker can

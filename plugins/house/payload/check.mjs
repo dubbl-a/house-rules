@@ -2238,7 +2238,7 @@ function checkCoload(ctx) {
 const MANIFEST_TOP_KEYS = new Set(['version', 'defaultBranch', 'branchPolicy', 'protectedBranches', 'carveOuts', 'guard', 'targets', 'modules', 'deviations', 'ratchet', 'ratchetRaises']);
 // ADR 0015. Absent means ["claude-code"]; the package ships as a Claude Code
 // plugin, so claude-code is required whenever the key is present.
-const TARGETS = ['claude-code', 'codex', 'gemini'];
+const TARGETS = ['claude-code', 'codex', 'gemini', 'antigravity'];
 const DEVIATION_KINDS = new Set(['disabled-module', 'branch-policy', 'carve-out', 'unmanaged-file', 'coload-ceiling', 'declined-step', 'deferred-step', 'other']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // A real calendar date: the shape, and it survives a round trip through Date.
@@ -3847,9 +3847,9 @@ function checkGuardFloor(ctx, d) {
 // ADR 0015: one verdict line per declared target, as info, since a verdict is
 // not a defect. Printed only when house.json declares `targets`, so a repo on
 // the implicit ["claude-code"] reads exactly what it read before. Findings are
-// only what a repo can fix: codex or gemini with no block in AGENTS.md (when
+// only what a repo can fix: codex, gemini, or antigravity with no block in AGENTS.md (when
 // the lock records one, tamper owns the report), and gemini left unwired.
-const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI' };
+const TARGET_AGENT_NAMES = { codex: 'Codex', gemini: 'Gemini CLI', antigravity: 'Antigravity CLI' };
 function geminiReadsAgents(repoRoot) {
   if (/^\s*@(\.\/)?AGENTS\.md\s*$/m.test(safeRead(join(repoRoot, 'GEMINI.md')))) return true;
   try {
@@ -3867,9 +3867,9 @@ function checkTargets(ctx, d) {
   for (const t of targets) {
     info.push(mk('guard', 'house.json', null, 'target', t === 'claude-code'
       ? `claude-code: instructions via .claude/rules/house/ (loaded by path); guard = ${pr ? 'PreToolUse hook plus git floor' : 'none (branchPolicy direct)'}; load = verifiable (InstructionsLoaded; \`house doctor\` reports it)`
-      : `${t}: instructions via AGENTS.md block; guard = ${pr ? 'git floor plus remote ruleset (no native hook yet)' : 'none (branchPolicy direct; no native hook yet)'}; load = unverified (${TARGET_AGENT_NAMES[t]} fires no load event)`));
+      : `${t}: instructions via AGENTS.md block; guard = ${pr ? `git floor plus remote ruleset (${t === 'antigravity' ? 'the plugin SessionStart hook arms the floor; no tool-call hook' : 'no native hook yet'})` : 'none (branchPolicy direct; no native hook yet)'}; load = unverified (${TARGET_AGENT_NAMES[t]} fires no load event)`));
   }
-  if (targets.includes('codex') || targets.includes('gemini')) {
+  if (targets.includes('codex') || targets.includes('gemini') || targets.includes('antigravity')) {
     const lockHasBlock = (readLockEntries(ctx.repoRoot) || []).some((e) => isPlainObject(e) && e.path === 'AGENTS.md' && e.kind === 'block');
     const abs = join(ctx.repoRoot, 'AGENTS.md');
     if (!lockHasBlock && (!existsSync(abs) || agentsBlock(safeRead(abs)).status === 'absent')) {

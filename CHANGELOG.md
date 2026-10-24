@@ -6,6 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+- **Antigravity CLI as a render target and a plugin host.** `house.json` `targets` accepts `antigravity`: render writes the same `AGENTS.md` block as `codex` (no `GEMINI.md`), the checker prints a per-target verdict line, and `house doctor` reports it as unverified. `plugins/house/` is also an Antigravity plugin (`.antigravity-plugin/plugin.json`, a root `hooks.json` whose SessionStart hook arms the git-hook floor in each workspace path), and the sync, bootstrap, and doctor skills say to run `house <args>` where `${CLAUDE_PLUGIN_ROOT}` is unset. Nothing was tested against a live `agy`; the handbook section "Adopting on Antigravity CLI" says what is inferred and what to rely on instead.
+
 ## [0.22.9] - 2026-10-24
 
 A patch release under ADR 0012: no heading renamed, no config slot changed, and no change to what the guard denies. It records the Claude Code 2.1.309 and 2.1.310 survey, rewords three rules to match it, adds two checker warnings, and ships the branch guard's process cut so a short command clears its 5 s timeout under load (#460). Upgrading from 0.22.8: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. A repo with a path-scoped rule or a nested `CLAUDE.md` over 40,000 characters now sees a `lengths` warning, and a repo whose `house.json` module config differs from `.house/lock.json` now sees a `manifest` warning (#461); each is a warning, not a finding, and fails no gate.
