@@ -2501,7 +2501,11 @@ for _loc in C C.UTF-8; do
               trap 'echo "ERR in args_tokens"; exit 1' ERR
               eval "$_args_src"
               [[ "$_glob" == on ]] && set +f
-              _f() { local toks=() w=() a=; IFS=$' \t\n' read -r -a w <<<"$1"
+              # The wrapper's own read is not under test. bash 5 in a UTF-8
+              # locale returns 1 when a lone lead byte swallows the here-string's
+              # newline, though the words are filled; the old side ignores that
+              # status too, so only the words are compared.
+              _f() { local toks=() w=() a=; IFS=$' \t\n' read -r -a w <<<"$1" || true
                      [[ "${#w[@]}" -eq 0 ]] || a="$(printf '%s\n' "${w[@]}")"$'\n'
                      args_tokens "$a"; _tok_print; }; _f "$_c")
       if [[ "$_oldA" != "$_newA" ]]; then
