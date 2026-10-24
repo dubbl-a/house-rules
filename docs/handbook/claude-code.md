@@ -603,7 +603,13 @@ a separate window and return only a summary (code.claude.com/docs/en/best-practi
 
 Native floor, as of 2026-09-02: the bundled local review command, which already runs in its own
 subagent over the branch diff and whose background runs apply fixes outside the session's
-checkpoints (https://code.claude.com/docs/en/code-review#review-a-diff-locally).
+checkpoints (https://code.claude.com/docs/en/code-review#review-a-diff-locally). The local review
+page now states the limit exactly: "After one, `/rewind` restores only the files Claude had
+already edited in your conversation. The review's edits to other files stay, so use git to revert
+them" (https://code.claude.com/docs/en/code-review-local, fetched 2026-10-22). Claude Code 2.1.309
+fixed the `/rewind` list showing "No code changes" for a turn that changed checkpointed files
+through `/code-review --fix`, a subagent or a shell command (changelog, fetched 2026-10-22), so
+that partial restore is now offered, and the rule says which files it covers.
 
 On 2026-09-21 the owner decided review should be proportionate. The evidence for keeping
 review at all: in the fourteen days before the decision, the refuter ran four times and returned

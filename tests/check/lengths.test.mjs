@@ -522,3 +522,29 @@ test('lengths: a root AGENTS.md over 32768 bytes warns naming Codex\'s default c
   const at = sandbox({ 'house.json': houseJson(), 'AGENTS.md': 'x'.repeat(32768) });
   assert.ok(!(run(at, ['--only=lengths', '--json']).json.warnings || []).some((x) => x.path === 'AGENTS.md'));
 });
+
+// Claude Code gives an on-demand instruction file only its start past a
+// per-file limit, 40,000 characters on a 200K window, so the tail of a
+// path-scoped rule or a subdirectory CLAUDE.md past it is not in context.
+test('lengths: an on-demand instruction file over 40000 characters warns; at the limit, or a root rule with no paths:, it does not', () => {
+  const head = '---\npaths:\n  - "src/**"\n---\n';
+  const scoped = (n) => `${head}${'x'.repeat(n - head.length)}`;
+  assert.equal([...scoped(40000)].length, 40000);
+  const dir = sandbox({
+    'house.json': houseJson(),
+    'src/x.js': '1\n',
+    '.claude/rules/over.md': scoped(40001),
+    '.claude/rules/at.md': scoped(40000),
+    '.claude/rules/launch.md': 'x'.repeat(50000),
+    'pkg/CLAUDE.md': 'é'.repeat(40001),
+    'pkg/.claude/rules/sub.md': 'x'.repeat(40001),
+    'CLAUDE.md': 'x'.repeat(50000),
+    '.claude/CLAUDE.md': 'x'.repeat(50000),
+    'pkg/x.claude/CLAUDE.md': 'x'.repeat(40001),
+  });
+  const res = run(dir, ['--only=lengths', '--json']);
+  const hit = (res.json.warnings || []).filter((x) => /loads on demand/.test(x.message)).map((x) => x.path).sort();
+  assert.deepEqual(hit, ['.claude/rules/over.md', 'pkg/.claude/rules/sub.md', 'pkg/CLAUDE.md', 'pkg/x.claude/CLAUDE.md'], res.out);
+  const pkg = res.json.warnings.find((x) => x.path === 'pkg/CLAUDE.md');
+  assert.match(pkg.message, /^40001 characters, over 40000/);
+});
