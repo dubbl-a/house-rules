@@ -7,25 +7,28 @@
 //    both, must match an entry in CATALOGUE below. An entry names the SKILL.md
 //    bullet it is documented under, and the bullet must carry that text inside a
 //    code span of its heading or its nested bullets: a word that only appears in
-//    a bullet's prose, or in a paragraph, never documents a line. Each entry
-//    matches the whole line, so a new line that shares its first words with an
-//    existing one, or a new state of an existing line, matches nothing.
-// 2. A static read of the output sites in cmdDoctor and gitHookFloorLines. It
-//    covers both branches of a ternary and every writer (console.log, .error,
-//    process.stdout.write...). Each site's literal lead must be the start of a
-//    line a fixture printed, which is how a branch no fixture drives is found.
-//    The only sites that are static alone are listed in CATALOGUE as `lead`
-//    entries with no `re`: they cannot be driven here (git older than 2.28).
+//    a bullet's prose, or in a paragraph, never documents a line. An entry
+//    matches from the start of the line through the fixed wording that names its
+//    state (some also pin the end); the variable tail after that wording is not
+//    checked. A new line, or a new state of an existing line, matches nothing.
+// 2. A static read of the output sites. It covers both branches of a ternary and
+//    every writer in cmdDoctor (console.log, .error, process.stdout.write...), the
+//    floor helper's literals, and the literals that build a line elsewhere: the
+//    `guard` and `pinStatus` assignments in cmdDoctor, `line:` in
+//    latestReleaseStatus and targetLines, the line argument of status() in
+//    deepResearchForkStatus, and unseenVendoredSuffix. Each literal lead must be
+//    how some printed line continues after the part code elsewhere prints, which
+//    is how a state no fixture drives is found. The only sites that are static
+//    alone are listed in CATALOGUE as `lead` entries with no `re`: they cannot
+//    be driven here (git older than 2.28).
 //
-// Lines built in producer functions (pinStatus, latestRelease.line,
-// deepResearchFork.line, unseenVendoredSuffix, targetLines) have no site to scan
-// in cmdDoctor; the fixtures are what reach them. The one fork reason no fixture
-// drives is "built from an older Claude Code native body" (it needs a Claude Code
-// binary to compare against); it shares the STALE entry with the others.
-//
-// An entry marked `gap` is a line doctor prints that SKILL.md has no bullet for
-// today. It is listed so this test passes and the gap stays visible; the test
-// fails once the bullet exists, so the mark comes off with it.
+// What the static read cannot see: the reason text inside the fork's stale()
+// calls and releaseFetchWhy(), the floor word in a target line, and
+// formatIgnoredDests; only the fixtures reach those. The one fork reason no
+// fixture drives is "built from an older Claude Code native body" (it needs a
+// Claude Code binary to compare against); it shares the STALE entry. A lead is
+// read up to its first interpolation, so a new state that shares that opening
+// text with an existing one is caught by the fixtures only if one drives it.
 
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -98,11 +101,10 @@ const CATALOGUE = [
   { re: /^ {2}not executable \(git silently ignores a hook without the bit\): /, under: FLOOR, doc: 'not executable' },
   { re: /^ {2}reference-transaction: supported by git \S+ \(>= 2\.28\)$/, under: FLOOR, doc: 'reference-transaction: supported by git <version> (>= 2.28)' },
   { lead: 'reference-transaction: inert on git', under: FLOOR, doc: 'inert on git <version> (needs 2.28)' },
-  // Printed today with no bullet in SKILL.md.
-  { re: /^git-hook floor: off \(the github module is off in house\.json/, under: FLOOR, doc: 'git-hook floor: off', gap: true },
-  { re: /^ {2}core\.hooksPath is \S+( \(.+?\))?, a directory that does not exist, /, under: FLOOR, doc: 'a directory that does not exist', gap: true },
-  { re: /^git-hook floor: unknown \(/, under: FLOOR, doc: 'git-hook floor: unknown', gap: true },
-  { re: /^git-hook floor: NOT armed -- core\.hooksPath is \S+ \(.+?\), a \.githooks that is not a directory \(a moved repo\?\); /, under: FLOOR, doc: 'a moved repo', gap: true },
+  { re: /^git-hook floor: off \(the github module is off in house\.json/, under: FLOOR, doc: 'git-hook floor: off (...)' },
+  { re: /^ {2}core\.hooksPath is \S+( \(.+?\))?, a directory that does not exist, /, under: FLOOR, doc: 'core.hooksPath is <path>, a directory that does not exist' },
+  { re: /^git-hook floor: unknown \(/, under: FLOOR, doc: 'git-hook floor: unknown (...)' },
+  { re: /^git-hook floor: NOT armed -- core\.hooksPath is \S+ \(.+?\), a \.githooks that is not a directory \(a moved repo\?\); /, under: FLOOR, doc: 'NOT armed -- core.hooksPath is <path> (...), a .githooks that is not a directory (a moved repo?)' },
 
   { re: /^jq on PATH: (yes|no)$/, under: 'jq on PATH', doc: 'jq on PATH: yes | no' },
   { re: /^plugin version: \S+$/, under: 'plugin version', doc: 'plugin version: <v>' },
@@ -110,7 +112,7 @@ const CATALOGUE = [
   { re: /^pin v\S+ is behind installed plugin v\S+ \(run `house render --apply` to sync\)$/, under: 'pin vX matches', doc: 'pin vX is behind installed plugin vY' },
   { re: /^pin v\S+ is ahead of installed plugin v\S+ \(update the plugin: /, under: 'pin vX matches', doc: 'pin vX is ahead of installed plugin vY' },
   { re: /^pin v\S+ differs from installed plugin v\S+$/, under: 'pin vX matches', doc: 'pin vX differs from installed plugin vY' },
-  { re: /^no version pin \(/, under: 'pin vX matches', doc: 'no version pin', gap: true },
+  { re: /^no version pin \(/, under: 'pin vX matches', doc: 'no version pin (...)' },
   { re: /^latest release v\S+; installed v\S+ \(\d+ behind\)$/, under: RELEASE, doc: 'latest release vX; installed vY (N behind)' },
   { re: /^installed v\S+ is the latest release$/, under: RELEASE, doc: 'installed vY is the latest release' },
   { re: /^latest release v\S+; installed v\S+ is ahead of it \(unreleased\)$/, under: RELEASE, doc: 'latest release vX; installed vY is ahead of it (unreleased)' },
@@ -436,21 +438,26 @@ function literalLead(src, at) {
   return out;
 }
 
-// Every literal lead one writer argument can print: a literal, either branch of
-// a ternary (nested ones too), or a named producer. Anything else is unknown.
-function argumentLeads(src, at, out) {
+// What the line already holds when the literal is printed: another piece of code
+// prints `head`, and the literal continues it. Most literals start the line.
+const START = /^\s*/;
+
+// Every literal lead one argument or assigned value can print: a literal, either
+// branch of a ternary (nested ones too), or a named producer. Anything else is
+// unknown.
+function argumentLeads(src, at, out, head = START) {
   const rest = src.slice(at);
-  const head = rest.match(/^\s*/)[0].length;
-  const open = at + head;
-  if ('\'"`'.includes(src[open])) { out.leads.push(literalLead(src, open)); return; }
+  const open = at + rest.match(/^\s*/)[0].length;
+  const lead = (from) => out.leads.push({ text: literalLead(src, from), head });
+  if ('\'"`'.includes(src[open])) { lead(open); return; }
   const cond = rest.match(/^\s*[\w.]+\s*\?\s*/);
   if (cond) {
     const first = at + cond[0].length;
     if (!'\'"`'.includes(src[first])) { out.unknown.push(rest.slice(0, 60).split('\n')[0]); return; }
-    out.leads.push(literalLead(src, first));
+    lead(first);
     const after = skipLiteral(src, first);
     const colon = src.slice(after).match(/^\s*:/);
-    if (colon) argumentLeads(src, after + colon[0].length, out);
+    if (colon) argumentLeads(src, after + colon[0].length, out, head);
     return;
   }
   if (/^\s*JSON\.stringify\(/.test(rest)) return;
@@ -459,18 +466,35 @@ function argumentLeads(src, at, out) {
   out.unknown.push(rest.slice(0, 60).split('\n')[0]);
 }
 
-// Every literal lead cmdDoctor (and the floor helper) can print, and every
-// writer shape this reader cannot read.
-function outputLeads(body, helperBody) {
+const BODIES = {
+  doctor: functionBody('cmdDoctor'),
+  floor: functionBody('gitHookFloorLines'),
+  targets: functionBody('targetLines'),
+  release: functionBody('latestReleaseStatus'),
+  fork: functionBody('deepResearchForkStatus'),
+  suffix: functionBody('unseenVendoredSuffix'),
+};
+
+// Every literal lead the output sites can print, and every shape this reader
+// cannot read.
+function outputLeads(bodies) {
   const out = { leads: [], unknown: [] };
-  for (const m of body.matchAll(/(?:console\.\w+|process\.(?:stdout|stderr)\.write)\(/g)) argumentLeads(body, m.index + m[0].length, out);
+  const each = (body, re, head) => { for (const m of body.matchAll(re)) argumentLeads(body, m.index + m[0].length, out, head); };
+  each(bodies.doctor, /(?:console\.\w+|process\.(?:stdout|stderr)\.write)\(/g);
+  // Lines cmdDoctor builds in a variable before printing it.
+  each(bodies.doctor, /\bguard\s*=(?!=)/g, /^effective branch guard: /);
+  each(bodies.doctor, /\bpinStatus\s*=(?!=)/g);
+  each(bodies.release, /\bline:/g);
+  each(bodies.targets, /\bline:/g, /^target [\w-]+: /);
+  each(bodies.fork, /\bstatus\(\s*'[\w-]+',\s*(?:'[^']*'|[\w.]+),/g, /^deep-research fork: /);
+  each(bodies.suffix, /\breturn(?=\s*`)/g, /^rule-load positive control: plugin hook; log .*vendored rules seen/);
   // The floor helper builds its lines in arrays, so every literal that opens as
   // a floor line or an indented follow-on is read, wherever it sits.
-  for (const m of helperBody.matchAll(/([`'"])(git-hook floor: |  [a-z])/g)) out.leads.push(literalLead(helperBody, m.index));
+  for (const m of bodies.floor.matchAll(/([`'"])(git-hook floor: |  [a-z])/g)) out.leads.push({ text: literalLead(bodies.floor, m.index), head: START });
   // A lead that starts with an interpolation has no label to look up, and an
-  // empty one would be a prefix of every line, so it is reported, never read.
-  const blank = out.leads.filter((l) => !l.trim());
-  out.leads = out.leads.filter((l) => l.trim());
+  // empty one would continue every line, so it is reported, never read.
+  const blank = out.leads.filter((l) => !l.text.trim());
+  out.leads = out.leads.filter((l) => l.text.trim());
   out.unknown.push(...blank.map(() => 'a line with no text before its first interpolation'));
   return out;
 }
@@ -480,16 +504,17 @@ function unmatchedLines(lines) {
   return lines.filter((l) => !CATALOGUE.some((e) => e.re && e.re.test(l.text)));
 }
 
-/** Leads that are neither the start of a captured line nor a static-only entry. */
+/** The text of leads that no captured line continues, and no static-only entry names. */
 function undrivenLeads(leads, lines) {
-  return leads.filter((lead) => {
-    const t = lead.trim();
-    return !lines.some((l) => l.text.trim().startsWith(t)) && !CATALOGUE.some((e) => e.lead && e.lead.startsWith(t));
-  });
+  return leads.filter(({ text, head }) => {
+    const t = text.trim();
+    const driven = lines.some((l) => {
+      const m = head.exec(l.text);
+      return m && l.text.slice(m[0].length).trimStart().startsWith(t);
+    });
+    return !driven && !CATALOGUE.some((e) => e.lead && e.lead.startsWith(t));
+  }).map((l) => l.text);
 }
-
-const doctorBody = functionBody('cmdDoctor');
-const floorBody = functionBody('gitHookFloorLines');
 
 test('#465: every line doctor prints over the fixtures matches a catalogue entry', () => {
   assert.ok(captured().length > 100, `read only ${captured().length} lines`);
@@ -502,23 +527,26 @@ test('#465: every catalogue entry that a fixture can reach is reached', () => {
   assert.deepEqual(idle, [], 'no fixture prints these; drive them or drop the entry');
 });
 
-test('#465: every catalogue entry is documented under a SKILL.md bullet, in a code span, and a gap is still a gap', () => {
-  const missing = CATALOGUE.filter((e) => !e.gap && !documented(e.under, e.doc)).map((e) => `${e.under} / ${e.doc}`);
+test('#465: every catalogue entry is documented under a SKILL.md bullet, in a code span', () => {
+  const missing = CATALOGUE.filter((e) => !documented(e.under, e.doc)).map((e) => `${e.under} / ${e.doc}`);
   assert.deepEqual(missing, [], 'plugins/house/skills/doctor/SKILL.md has no bullet naming these in a code span');
-  const closed = CATALOGUE.filter((e) => e.gap && documented(e.under, e.doc)).map((e) => e.doc);
-  assert.deepEqual(closed, [], 'SKILL.md now documents these; take `gap: true` off their entries');
 });
 
-test('#462, #465: every output site in cmdDoctor and the floor helper prints a line a fixture drives', () => {
-  const { leads, unknown } = outputLeads(doctorBody, floorBody);
+test('#462, #465: every output site, and every literal that builds a line, is continued by a line a fixture printed', () => {
+  const { leads, unknown } = outputLeads(BODIES);
   assert.deepEqual(unknown, [], 'an output shape this reader cannot read; teach it, or name the producer in PRODUCERS');
-  assert.ok(leads.length >= 25, `read only ${leads.length} output sites`);
+  assert.ok(leads.length >= 45, `read only ${leads.length} output sites`);
   assert.deepEqual(undrivenLeads(leads, captured()), [], 'no fixture prints a line starting like these output sites; drive them, or list them as `lead` entries in CATALOGUE');
 });
 
 // ── controls: each of the four shapes in #465 is caught ──────────────────
 
-const plantedLeads = (planted) => outputLeads(doctorBody.replace('console.log(`jq on PATH:', `${planted}\n    console.log(\`jq on PATH:`), floorBody);
+const plantedLeads = (planted) => outputLeads({ ...BODIES, doctor: BODIES.doctor.replace('console.log(`jq on PATH:', `${planted}\n    console.log(\`jq on PATH:`) });
+// The same, planting into the body of one function by replacing text in it.
+function plantedIn(key, from, to) {
+  assert.ok(BODIES[key].includes(from), `${key} no longer holds: ${from}`);
+  return outputLeads({ ...BODIES, [key]: BODIES[key].replace(from, to) });
+}
 
 test('#465: a prose-only match does not document a line (negative control)', () => {
   // Words that appear in SKILL.md prose, in no bullet heading.
@@ -531,7 +559,7 @@ test('#465: a prose-only match does not document a line (negative control)', () 
 
 test('#465: the second branch of a ternary is read (positive control)', () => {
   const { leads } = plantedLeads("console.log(jqOnPath ? 'jq on PATH: yes' : 'brand new line');");
-  assert.ok(leads.includes('brand new line'), leads.join(' | '));
+  assert.ok(leads.some((l) => l.text === 'brand new line'), leads.map((l) => l.text).join(' | '));
   assert.deepEqual(undrivenLeads(leads, captured()), ['brand new line']);
 });
 
@@ -558,6 +586,22 @@ test('#462: the output reader reports a line with no text before its first inter
   for (const planted of ['console.log(`${x}: brand new`);', 'console.log(`  ${x}: brand new`);']) {
     const { leads, unknown } = plantedLeads(planted);
     assert.equal(unknown.length, 1, planted);
-    assert.ok(!leads.includes(''), 'an empty lead would be the start of every line');
+    assert.ok(!leads.some((l) => l.text === ''), 'an empty lead would continue every line');
   }
+});
+
+// A state built in a variable, or in a producer function, and printed later.
+test('#465: a new literal state of pinStatus, guard, or a producer line, driven by no fixture, is caught (positive control)', () => {
+  const cases = [
+    ['pinStatus', plantedIn('doctor', 'else pinStatus = `pin v', "else if (pin === 'never-used') pinStatus = 'pin is mysterious';\n    else pinStatus = `pin v"), 'pin is mysterious'],
+    ['guard', plantedIn('doctor', "} else if (houseData && houseData.branchPolicy === 'direct') {", "} else if (houseData && houseData.branchPolicy === 'trunk') {\n    guard = 'TRUNK (new state)';\n  } else if (houseData && houseData.branchPolicy === 'direct') {"), 'TRUNK (new state)'],
+    ['latest release line', plantedIn('release', '  if (!versions.length) return', "  if (list.length > 99) return { checked: false, line: 'latest release: weird list' };\n  if (!versions.length) return"), 'latest release: weird list'],
+    ['fork line', plantedIn('fork', "  if (!existsSync(forkPath)) return", "  if (!script) return status('odd', 'x', 'odd fork state');\n  if (!existsSync(forkPath)) return"), 'odd fork state'],
+    ['target line', plantedIn('targets', "    return { target: t, verified: false, line: `unverified:", "    if (!t) return { target: t, verified: false, line: 'odd target state' };\n    return { target: t, verified: false, line: `unverified:"), 'odd target state'],
+  ];
+  for (const [name, { leads, unknown }, want] of cases) {
+    assert.deepEqual(unknown, [], name);
+    assert.deepEqual(undrivenLeads(leads, captured()), [want], name);
+  }
+  assert.deepEqual(undrivenLeads(outputLeads(BODIES).leads, captured()), [], 'the unplanted bodies drive every lead');
 });
