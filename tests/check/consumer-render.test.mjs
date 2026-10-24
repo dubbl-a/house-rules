@@ -1038,3 +1038,21 @@ test('targets: an adopter token below a render-created AGENTS.md block is a drif
   assert.ok(!(j.warnings || []).some((w) => /src\/nope\.js/.test(w.message)), 'not demoted to a warning');
   assert.ok(!(j.findings || []).some((f) => f.path === 'AGENTS.md' && /forged/.test(f.kind)), 'the begin marker is not a forged header');
 });
+
+// ADR 0019 Confirmation / #479: the vendored arming script is an ordinary
+// managed file, so editing it by hand is a tamper finding like any other.
+test('#479: editing the vendored scripts/house/arm-git-hooks.sh makes .house/check.mjs report [tamper] (untouched copy is clean)', () => {
+  const repo = fixtureRepo({ 'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'src/index.mjs': 'export default 1;\n' });
+  house(repo, 'init', '--apply');
+  house(repo, 'render', '--apply');
+  git(repo, 'add', '-A');
+  const script = join(repo, 'scripts/house/arm-git-hooks.sh');
+  assert.ok(existsSync(script), 'render vendored the arming script');
+  const clean = spawnSync('node', [join(repo, '.house/check.mjs'), '--repo', repo, '--only=tamper'], { encoding: 'utf8' });
+  assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+  assert.doesNotMatch(clean.stdout, /\[tamper\]/);
+  writeFileSync(script, `${readFileSync(script, 'utf8')}\n# edited by hand\n`);
+  const tampered = spawnSync('node', [join(repo, '.house/check.mjs'), '--repo', repo, '--only=tamper'], { encoding: 'utf8' });
+  assert.notEqual(tampered.status, 0, tampered.stdout + tampered.stderr);
+  assert.match(tampered.stdout, /\[tamper\] scripts\/house\/arm-git-hooks\.sh/);
+});
