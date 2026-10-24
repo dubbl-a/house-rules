@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.11] - 2026-10-24
+
+A patch release under ADR 0012: no heading renamed, no rule file changed, and no change to what the guard denies. It fixes five edge cases in how render and uninstall edit the cloud arming entry in an adopter's committed `.claude/settings.json` (#479), and adds handbook links and a documented cloud limit. Upgrading from 0.22.10: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. An adopter whose settings file is not in 2-space JSON keeps its file untouched and gets a warning with the exact group to append by hand.
+
 ### Changed
 
 - The handbook now links the decision record (`docs/decisions/`) behind a rule from the section that explains it (ADR 0003, 0006, 0007, 0008, 0013, 0019), so an adopter reaches the reason through the handbook link with no new file in the adopting repo and no change to any rule file (#419).
