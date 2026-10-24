@@ -5971,9 +5971,48 @@ test('#479 render: a settings file not in the 2-space form is left untouched, wi
     const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
     assert.equal(r.code, 0, `${name}: ${r.out}${r.err}`);
     assert.equal(readFileSync(settingsPath(repo), 'utf8'), body, `${name}: the file is untouched`);
-    assert.match(r.out, /^warning: \.claude\/settings\.json is not in the 2-space JSON form.*add this hook to "hooks"\."SessionStart" by hand: .*arm-git-hooks\.sh/m, name);
+    assert.match(r.out, /^warning: \.claude\/settings\.json is not in the 2-space JSON form.*append this group to the "hooks"\."SessionStart" array by hand.*arm-git-hooks\.sh/m, name);
     assert.doesNotMatch(r.out, /keys and values stay/, name);
   }
+});
+
+test('#479 render: the by-hand add instruction, followed literally, arms the file (render then finds the entry and warns of nothing)', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const bases = [
+    { env: { FOO: '1' } },
+    { hooks: { SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'echo hi' }] }] } },
+  ];
+  for (const base of bases) {
+    const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': `${JSON.stringify(base, null, 4)}\n` });
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, r.out + r.err);
+    const line = r.out.split('\n').find((l) => /^warning: \.claude\/settings\.json is not in the 2-space/.test(l));
+    assert.ok(line, r.out);
+    assert.match(line, /append this group to the "hooks"\."SessionStart" array/);
+    const group = JSON.parse(line.slice(line.lastIndexOf(': ') + 2));
+    const edited = JSON.parse(JSON.stringify(base));
+    edited.hooks = edited.hooks || {};
+    edited.hooks.SessionStart = [...(edited.hooks.SessionStart || []), group];
+    writeFileSync(settingsPath(repo), stringifyJson(edited));
+    const after = runCli(cliPath, ['render', '--repo', repo, '--json']);
+    assert.equal(JSON.parse(after.out).settingsEntry, null, JSON.stringify(base));
+    const text = runCli(cliPath, ['render', '--repo', repo]);
+    assert.doesNotMatch(text.out, /warning: \.claude\/settings\.json/, JSON.stringify(base));
+  }
+});
+
+test('#479 render: a refused scripts/house/arm-git-hooks.sh leaves a settings file holding the entry alone, while cloudArming false still removes it', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const body = stringifyJson({ hooks: { SessionStart: [{ hooks: [ARM_HOOK] }] } });
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', 'scripts/house/arm-git-hooks.sh': '#!/bin/sh\necho mine\n', '.claude/settings.json': body });
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.doesNotMatch(dry.out, /-hook\s+\.claude\/settings\.json/, dry.out);
+  assert.doesNotMatch(dry.out, /by hand: /, dry.out);
+  assert.match(dry.out, /^warning: scripts\/house\/arm-git-hooks\.sh is not a file house manages.*see its REFUSE line/m, dry.out);
+  assert.equal(JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out).settingsEntry, null);
+  setGithubConfig(repo, { cloudArming: false });
+  const off = runCli(cliPath, ['render', '--repo', repo]);
+  assert.match(off.out, /^remove-hook\s+\.claude\/settings\.json/m, 'the adopter\'s explicit off still plans the removal');
 });
 
 test('#479 render: a canonical file still gains the entry, and a 4-space file with no entry to remove is left alone silently', () => {

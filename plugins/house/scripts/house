@@ -1254,8 +1254,12 @@ function wantsArmEntry(houseData, modules, plan, moduleWarnings) {
   if (!gh || !arr(gh.json.files).some((f) => isPlainObject(f) && f.dest === ARM_DEST)) return false;
   const vendored = plan.find((p) => p.target.path === ARM_DEST);
   if (vendored && ARM_MANAGED.has(vendored.status)) return true;
-  moduleWarnings.push(`${ARM_DEST} is ${vendored ? 'not a file house manages here (render will not write it)' : 'not in this render\'s plan'}, so house's SessionStart entry in ${SETTINGS_JSON} that runs it was not written; make that file house's (see its refusal above), then \`house render --apply\``);
-  return false;
+  if (!vendored) return false;
+  // null, not false: the script is on disk and not house's, so the settings
+  // file is left as it is, entry or none; only cloudArming false or the module
+  // off plans a removal.
+  moduleWarnings.push(`${ARM_DEST} is not a file house manages here (render will not write it), so ${SETTINGS_JSON} is left as it is and house's SessionStart entry that runs it was not written; make that file house's (see its REFUSE line), then \`house render --apply\``);
+  return null;
 }
 
 function isArmHook(h) { return isPlainObject(h) && h.command === ARM_COMMAND; }
@@ -1269,8 +1273,10 @@ function isArmHook(h) { return isPlainObject(h) && h.command === ARM_COMMAND; }
 // `strict` is uninstall's: it deletes the script, so a settings file it cannot
 // read is a refusal even when no entry could be shown to be there.
 function planArmEntry(repoRoot, want, moduleWarnings, strict = false) {
+  if (want === null) return null;
   const abs = path.join(repoRoot, SETTINGS_JSON);
   const entryJson = JSON.stringify({ type: 'command', command: ARM_COMMAND, timeout: 10 });
+  const groupJson = JSON.stringify({ hooks: [JSON.parse(entryJson)] });
   const notWritten = (why, how = null) => { moduleWarnings.push(`${SETTINGS_JSON} ${why}, so house's SessionStart entry that arms the git-hook floor was not written ${want ? 'into' : 'out of'} it; ${how || 'fix the file by hand, then `house render --apply`'}`); return null; };
   const escape = writeEscapeReason(repoRoot, SETTINGS_JSON);
   if (!existsSync(abs)) {
@@ -1301,7 +1307,9 @@ function planArmEntry(repoRoot, want, moduleWarnings, strict = false) {
   // A parse and re-serialize changes more than the entry (indent, line endings,
   // duplicate keys, integer-like key order, number forms), so a file not
   // already in this form is the adopter's to edit; nothing is spliced in.
-  if (serialize(j) !== raw) return notWritten('is not in the 2-space JSON form house writes, so rewriting it would change more than the entry', `${want ? 'add' : 'remove'} this hook ${want ? 'to' : 'from'} "hooks"."SessionStart" by hand: ${entryJson}`);
+  if (serialize(j) !== raw) return notWritten('is not in the 2-space JSON form house writes, so rewriting it would change more than the entry', want
+    ? `append this group to the "hooks"."SessionStart" array by hand (create "hooks" and "SessionStart" if absent): ${groupJson}`
+    : `remove this hook from "hooks"."SessionStart" by hand: ${entryJson}`);
   if (want) {
     j.hooks = j.hooks || {};
     j.hooks.SessionStart = [...arr(groups), { hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }];
