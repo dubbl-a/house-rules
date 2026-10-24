@@ -106,7 +106,7 @@
       "relationship": "BORROW",
       "remote": "https://github.com/FlorianBruniaux/claude-code-ultimate-guide",
       "ref": { "branch": "main" },
-      "sha": "8c8fb2f4e736933bd0f875c10c3d971e2422329e",
+      "sha": "fb81a930098bf4f5e5be7257095c668549444463",
       "consulted": "2026-10-24",
       "paths": ["guide/ultimate-guide.md"],
       "recheck": "re-read the model-tier section on a Claude Code major"
