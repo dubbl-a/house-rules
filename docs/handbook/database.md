@@ -27,6 +27,8 @@ repo-b gives the same reasoning a sharper, concrete form. `docs/runbooks/recover
 
 Native floor, as of 2026-09-02: checkpointing, which does not track files modified by bash commands and is documented as session-level recovery rather than a replacement for version control (https://code.claude.com/docs/en/checkpointing).
 
+As fetched on 2026-10-26, the checkpointing page is narrower: once Claude has edited a file with its file editing tools, `/rewind` undoes changes that Bash commands make to that file afterward, while "a file that only Bash commands changed isn't tracked and stays as it is" (https://code.claude.com/docs/en/checkpointing, fetched 2026-10-26). Claude Code 2.1.311 fixed "the /rewind warning that wrongly said manual and Bash edits are never affected by a code restore" (changelog: https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-10-26), so the rule's Anchor now says checkpoints track only files and leave a Bash-only file as it is. A migration changes the database, which no checkpoint holds, so the control stays the runbook step and the diff.
+
 ## Treat provenance columns as behavior
 
 repo-c (`.claude/rules/services.md`): the domain model behind the camp's RV ledger never collapses its four roles, and a person to RV link is "stored, never inferred." `.claude/rules/database.md` extends the same discipline to sync state: provenance columns are "load-bearing, not metadata." A `manual` provenance value is never overwritten by a later sync, because a non-machine channel means "a human asserted this and the API can't see it."

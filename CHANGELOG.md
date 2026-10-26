@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.22.12] - 2026-10-26
+
+A patch release under ADR 0012: no heading renamed, one rule's Anchor reworded, and no change to what the guard denies. It records the Claude Code 2.1.311 survey and corrects what the database rule says `/rewind` misses. Upgrading from 0.22.11: update the plugin as before, restart Claude Code, then run `/house-rules:sync`.
+
+### Changed
+
+- The Anchor of "Back up before a destructive migration, and diff after it" in the database rule said checkpoints do not track what a Bash command changed. The checkpointing page says `/rewind` does undo a Bash command's later changes to a file Claude already edited, and leaves a file only Bash commands changed as it is, and Claude Code 2.1.311 fixed a rewind warning that said otherwise. The Anchor now says checkpoints track only files and leave a Bash-only file as it is; the rule's claim, that no checkpoint holds the database, is unchanged, and the handbook receipt quotes the page.
+
 ## [0.22.11] - 2026-10-24
 
 A patch release under ADR 0012: no heading renamed, no rule file changed, and no change to what the guard denies. It fixes five edge cases in how render and uninstall edit the cloud arming entry in an adopter's committed `.claude/settings.json` (#479), and adds handbook links and a documented cloud limit. Upgrading from 0.22.10: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. An adopter whose settings file is not in 2-space JSON keeps its file untouched and gets a warning with the exact group to append by hand.
