@@ -6,9 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
-## [0.22.12] - 2026-10-26
+## [0.22.12] - 2026-10-27
 
-A patch release under ADR 0012: no heading renamed, one rule's Anchor reworded, and no change to what the guard denies. It records the Claude Code 2.1.311 survey and corrects what the database rule says `/rewind` misses. Upgrading from 0.22.11: update the plugin as before, restart Claude Code, then run `/house-rules:sync`.
+A patch release under ADR 0012: no heading renamed, one rule's Anchor reworded, and no change to what the guard denies. It records the Claude Code 2.1.311 and 2.1.312 survey, which supersedes PR #489, and corrects what the database rule says `/rewind` misses. Upgrading from 0.22.11: update the plugin as before, restart Claude Code, then run `/house-rules:sync`.
 
 ### Changed
 
