@@ -40,7 +40,6 @@ jobs:
         # Mirrors release.yml's sync matrix (minus the protect column, which
         # only guards a push); change both together.
         include:
-          - { repo: resume-tailor, branch: main }
           - { repo: aaron-gtm, branch: master }
           - { repo: aaron-personal, branch: main }
           - { repo: torrance-watch, branch: master }

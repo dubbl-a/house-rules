@@ -204,11 +204,10 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 4
       matrix:
         # adopter-preflight.yml mirrors this matrix; change both together.
         include:
-          - { repo: resume-tailor, branch: main, protect: '' }
           - { repo: aaron-gtm, branch: master, protect: '' }
           - { repo: aaron-personal, branch: main, protect: '' }
           - { repo: torrance-watch, branch: master, protect: torrance-city-meetings-data }
