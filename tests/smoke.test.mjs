@@ -37,11 +37,13 @@ function matcherReaches(matcher, tool) {
 // #58: the PreToolUse guard now also reads Edit/Write/MultiEdit/NotebookEdit payloads, since
 // writing a floor file directly is the same disable the Bash text scan refuses.
 // A matcher that lost those tool names would leave that door open silently.
-test('#58 hooks.json: the PreToolUse matcher covers Bash, the file-writing tools and MCP tools, and not Read', () => {
+// Monitor runs a shell command too, and a CLI before 2.1.314 sends it to a
+// hook only under its own name.
+test('#58 hooks.json: the PreToolUse matcher covers Bash, Monitor, the file-writing tools and MCP tools, and not Read', () => {
   const h = JSON.parse(readFileSync(new URL('../plugins/house/hooks/hooks.json', import.meta.url), 'utf8'));
   const entry = h.hooks.PreToolUse.find((e) => (e.hooks || []).some((x) => String(x.command || '').includes('no-direct-master.sh')));
   assert.ok(entry, 'no PreToolUse entry runs no-direct-master.sh');
-  for (const tool of ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__fs__write_file']) {
+  for (const tool of ['Bash', 'Monitor', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'mcp__fs__write_file']) {
     assert.ok(matcherReaches(entry.matcher, tool), `the PreToolUse matcher does not reach ${tool}: ${entry.matcher}`);
   }
   assert.ok(!matcherReaches(entry.matcher, 'Read'), `the PreToolUse matcher reaches Read: ${entry.matcher}`);

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit, and every MCP
-# tool, of which it decides those whose name carries a write verb) for repos
-# that have adopted house and opted a policy in via house.json. ADR 0013
+# PreToolUse hook (Bash, Monitor, Edit, Write, MultiEdit, NotebookEdit, and
+# every MCP tool, of which it decides those whose name carries a write verb)
+# for repos that have adopted house and opted a policy in via house.json. ADR 0013
 # carries the reasoning; this header states the contract. MultiEdit stays in the matcher
 # for older CLIs that still offer it: a tool name the harness never sends
 # costs nothing.
@@ -107,8 +107,8 @@
 # lands on the protected branch through a PR, which is the whole point.
 #
 # Fails OPEN (allow, exit 0), as ADR 0002 requires, whenever: the tool is not
-# one of the five or an MCP tool whose name carries a write verb; a Bash
-# command names no git, hook, HUSKY or
+# one of the six or an MCP tool whose name carries a write verb; a Bash or
+# Monitor command names no git, hook, HUSKY or
 # LEFTHOOK text at all; the target is not inside a git repo; house.json is absent from HEAD and
 # from the working tree (the repo has not adopted house); it sets
 # "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); it
@@ -421,12 +421,20 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # to end in the valid-JSON allow below with the whole call unread. A Bash
 # command that is not a string is flagged (`k1`): what would run cannot be
 # read, so it is an unreadable payload, not an empty command.
+# The Monitor tool runs a shell command in the background under Bash's
+# permission rules, so its `command` is read exactly as Bash's is. Claude
+# Code 2.1.314 began sending a Monitor command to hooks matched on Bash as a
+# Bash payload; an older CLI sends it only as `Monitor`, which this hook used
+# to let through unread. A Monitor call with no `command` key is a WebSocket
+# watch (a `ws` input), which runs nothing in a shell; one whose `command`
+# is present but not a string is flagged like Bash's.
 payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
   | ((.tool_input | objects) // {}) as $in
   | "t" + $t, "w" + ((.cwd | strings) // ""),
   "f" + ((if $t == "NotebookEdit" then $in.notebook_path else $in.file_path end
           | strings) // ""),
-  "k" + (if $t == "Bash" and ($in.command | type) != "string" then "1" else "" end),
+  "k" + (if ($t == "Bash" or ($t == "Monitor" and ($in | has("command"))))
+            and ($in.command | type) != "string" then "1" else "" end),
   "c" + (($in.command | strings) // "")' \
   <<<"$payload" 2>/dev/null) || payload_fields=''
 # A payload that does not parse names neither the tool nor its cwd. Valid JSON
@@ -454,7 +462,7 @@ elif [[ "$cmd_unreadable" == 1 ]]; then
   MODE='unreadable'; payload_cwd="${payload_cwd:-$PWD}"; file_path=''; cmd=''
 else
   case "$tool_name" in
-    Bash) MODE='bash'; file_path='' ;;
+    Bash|Monitor) MODE='bash'; file_path='' ;;
     Edit|Write|MultiEdit|NotebookEdit) MODE='file'; cmd='' ;;
     # The matcher sends every MCP tool (the harness tests it unanchored, so a
     # narrower regex there is not a boundary); a write is decided here, from a

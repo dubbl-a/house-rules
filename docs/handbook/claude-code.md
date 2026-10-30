@@ -688,6 +688,22 @@ did a hook that exited 1 and one whose command did not exist. The branch guard's
 hand-written denials stay: they name a reason, and they hold on a CLI older than 2.1.295. The
 setting applies in every repo, one that never adopted house included, which ADR 0018 records.
 
+The Monitor tool runs a shell command in the background, and "when Monitor runs a command, it
+uses the same permission rules as Bash" (https://code.claude.com/docs/en/tools-reference, fetched
+2026-10-30). Claude Code 2.1.314 "fixed hooks matching Bash not running on shell commands started
+by the Monitor tool; such hooks can block or ask, but not approve or rewrite those commands"
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-10-30),
+so before that release a command guard matched on Bash alone never saw a Monitor command. Observed
+in a cloud session under `claude --version` 2.1.314, in headless runs: a PreToolUse hook matched
+on `Bash` received a Monitor call as `"tool_name": "Bash"` with the command in
+`tool_input.command`, and its deny stopped the command with "PreToolUse:Monitor hook error"; a
+hook whose matcher also names `Monitor` fired once for the same call, as `"tool_name":
+"Monitor"`, with `command`, `description`, and `timeout_ms` in its input. A WebSocket watch takes
+a `ws` input in place of `command` (same page), so it runs nothing in a shell. The branch guard
+names Monitor in its matcher and reads its command as Bash's, which covers both shapes on every
+CLI, and `tests/hooks/run.sh` pins a deny, two allows, the WebSocket watch, and an unreadable
+command.
+
 ## Run adversarial review in a fresh subagent with a named lens
 
 repo-e's `reviews/2026-07-24-writing-efficacy-review.md` states the hybrid protocol

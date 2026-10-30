@@ -1178,6 +1178,25 @@ expect_deny "core.hooksPath on the command line" \
   "$(mk_payload "git -c core.$_ph=/dev/null $_cm -m x" "$d")" "disables or moves"
 expect_deny "git config core.hooksPath (writing it)" \
   "$(mk_payload "git config core.$_ph /dev/null" "$d")" "disables or moves"
+# The Monitor tool runs a shell command in the background under Bash's
+# permission rules. A CLI before 2.1.314 sends it to the hook only as
+# `Monitor`, which the hook used to let through unread.
+mk_monitor_payload() {
+  jq -n --arg cmd "$1" --arg cwd "$2" \
+    '{tool_name: "Monitor", tool_input: {command: $cmd, description: "watch", timeout_ms: 20000}, cwd: $cwd, hook_event_name: "PreToolUse"}'
+}
+expect_deny "Monitor: git config core.hooksPath (writing it)" \
+  "$(mk_monitor_payload "git config core.$_ph /dev/null" "$d")" "disables or moves"
+expect_deny "Monitor: --no-verify on a commit" \
+  "$(mk_monitor_payload "git $_cm --no-verify -m x" "$d")" "disables or moves"
+expect_allow "Monitor: tailing a log is not a disable" \
+  "$(mk_monitor_payload "tail -f build.log | grep --line-buffered ERROR" "$d")"
+expect_allow "Monitor: polling git status is not a disable" \
+  "$(mk_monitor_payload "while true; do git status --short; sleep 30; done" "$d")"
+expect_allow "Monitor: a WebSocket watch runs no shell command" \
+  "$(jq -n --arg cwd "$d" '{tool_name: "Monitor", tool_input: {ws: {url: "wss://example.com/feed"}, description: "feed"}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
+expect_deny "Monitor: a command that is not a string is an unreadable payload" \
+  "$(jq -n --arg cwd "$d" '{tool_name: "Monitor", tool_input: {command: {argv: ["git", "push"]}}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
 # #69: a bare `git config --get`/`--get-all`/`--get-regexp` only READS the
 # key, so it is allowed; every other git-clause spelling still is not.
 expect_allow "git config --get core.hooksPath is readable" \
