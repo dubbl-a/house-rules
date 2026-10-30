@@ -208,6 +208,13 @@ mk_payload() {
     '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd}'
 }
 
+# mk_monitor_payload <command> <cwd> -> real Monitor PreToolUse JSON on stdout,
+# in the shape a hook matched on Monitor receives under Claude Code 2.1.314
+mk_monitor_payload() {
+  jq -n --arg cmd "$1" --arg cwd "$2" \
+    '{tool_name: "Monitor", tool_input: {command: $cmd, description: "watch", timeout_ms: 20000}, cwd: $cwd, hook_event_name: "PreToolUse"}'
+}
+
 # mk_file_payload <tool> <file_path> <cwd> -> real PreToolUse JSON on stdout
 mk_file_payload() {
   jq -n --arg tool "$1" --arg fp "$2" --arg cwd "$3" \
@@ -1093,6 +1100,16 @@ done
 echo '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"x"}]}]}}' >"$repo_d/.claude/settings.json"
 expect_allow "a PreToolUse entry with no matcher at all covers every tool and defers" \
   "$(mk_payload "$_gc -m x" "$repo_d")"
+# A CLI before 2.1.314 runs no Bash-matched hook for a Monitor command, so an
+# entry matched on Bash alone may never see one and is not deferred to for it.
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}]}}' >"$repo_d/.claude/settings.json"
+expect_deny "a Bash-only entry does not disarm the guard for a Monitor call" \
+  "$(mk_monitor_payload "$_gc -m x" "$repo_d")"
+expect_allow "a Bash-only entry still defers for a Bash call" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash|Monitor","hooks":[{"type":"command","command":"x"}]}]}}' >"$repo_d/.claude/settings.json"
+expect_allow "an entry that names Monitor defers for a Monitor call" \
+  "$(mk_monitor_payload "$_gc -m x" "$repo_d")"
 rm -f "$repo_d/.claude/settings.json"
 
 # ADR 0009: house.json's guard record is a CHECKER signal only; the hook never
@@ -1179,12 +1196,8 @@ expect_deny "core.hooksPath on the command line" \
 expect_deny "git config core.hooksPath (writing it)" \
   "$(mk_payload "git config core.$_ph /dev/null" "$d")" "disables or moves"
 # The Monitor tool runs a shell command in the background under Bash's
-# permission rules. A CLI before 2.1.314 sends it to the hook only as
-# `Monitor`, which the hook used to let through unread.
-mk_monitor_payload() {
-  jq -n --arg cmd "$1" --arg cwd "$2" \
-    '{tool_name: "Monitor", tool_input: {command: $cmd, description: "watch", timeout_ms: 20000}, cwd: $cwd, hook_event_name: "PreToolUse"}'
-}
+# permission rules. A hook matched on Monitor gets it as `Monitor`, which the
+# hook used to let through unread.
 expect_deny "Monitor: git config core.hooksPath (writing it)" \
   "$(mk_monitor_payload "git config core.$_ph /dev/null" "$d")" "disables or moves"
 expect_deny "Monitor: --no-verify on a commit" \
@@ -1197,6 +1210,8 @@ expect_allow "Monitor: a WebSocket watch runs no shell command" \
   "$(jq -n --arg cwd "$d" '{tool_name: "Monitor", tool_input: {ws: {url: "wss://example.com/feed"}, description: "feed"}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
 expect_deny "Monitor: a command that is not a string is an unreadable payload" \
   "$(jq -n --arg cwd "$d" '{tool_name: "Monitor", tool_input: {command: {argv: ["git", "push"]}}, cwd: $cwd, hook_event_name: "PreToolUse"}')"
+expect_deny "Monitor: a tool_input that is not an object is an unreadable payload" \
+  "$(jq -n --arg cwd "$d" '{tool_name: "Monitor", tool_input: "git commit --no-verify -m x", cwd: $cwd, hook_event_name: "PreToolUse"}')"
 # #69: a bare `git config --get`/`--get-all`/`--get-regexp` only READS the
 # key, so it is allowed; every other git-clause spelling still is not.
 expect_allow "git config --get core.hooksPath is readable" \

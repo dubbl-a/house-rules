@@ -699,10 +699,14 @@ on `Bash` received a Monitor call as `"tool_name": "Bash"` with the command in
 `tool_input.command`, and its deny stopped the command with "PreToolUse:Monitor hook error"; a
 hook whose matcher also names `Monitor` fired once for the same call, as `"tool_name":
 "Monitor"`, with `command`, `description`, and `timeout_ms` in its input. A WebSocket watch takes
-a `ws` input in place of `command` (same page), so it runs nothing in a shell. The branch guard
-names Monitor in its matcher and reads its command as Bash's, which covers both shapes on every
-CLI, and `tests/hooks/run.sh` pins a deny, two allows, the WebSocket watch, and an unreadable
-command.
+a `ws` input in place of `command` (same page), so it runs nothing in a shell. That a CLI before
+2.1.314 sends a Monitor call only under its own name is inferred from the changelog line and the
+second observation, not observed on an older CLI. The branch guard names Monitor in its matcher
+and reads its command as Bash's, so it reads both observed shapes, and it defers to a repo-local
+guard for a Monitor call only when that guard's matcher reaches Monitor. `tests/hooks/run.sh` pins
+two denies, two allows, the WebSocket watch, two unreadable payloads, and that deference. A plugin
+monitor, which a plugin starts on its own, is not a tool call, so no PreToolUse hook is expected
+to see it; that is not verified.
 
 ## Run adversarial review in a fresh subagent with a named lens
 
