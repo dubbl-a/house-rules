@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash, Edit, Write, MultiEdit, NotebookEdit, and every MCP
-# tool, of which it decides those whose name carries a write verb) for repos
-# that have adopted house and opted a policy in via house.json. ADR 0013
+# PreToolUse hook (Bash, Monitor, Edit, Write, MultiEdit, NotebookEdit, and
+# every MCP tool, of which it decides those whose name carries a write verb)
+# for repos that have adopted house and opted a policy in via house.json. ADR 0013
 # carries the reasoning; this header states the contract. MultiEdit stays in the matcher
 # for older CLIs that still offer it: a tool name the harness never sends
 # costs nothing.
@@ -107,8 +107,8 @@
 # lands on the protected branch through a PR, which is the whole point.
 #
 # Fails OPEN (allow, exit 0), as ADR 0002 requires, whenever: the tool is not
-# one of the five or an MCP tool whose name carries a write verb; a Bash
-# command names no git, hook, HUSKY or
+# one of the six or an MCP tool whose name carries a write verb; a Bash or
+# Monitor command names no git, hook, HUSKY or
 # LEFTHOOK text at all; the target is not inside a git repo; house.json is absent from HEAD and
 # from the working tree (the repo has not adopted house); it sets
 # "branchPolicy": "direct" (for the BRANCH refusals only, see A/B/D above); it
@@ -421,12 +421,22 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # to end in the valid-JSON allow below with the whole call unread. A Bash
 # command that is not a string is flagged (`k1`): what would run cannot be
 # read, so it is an unreadable payload, not an empty command.
+# The Monitor tool runs a shell command in the background under Bash's
+# permission rules, so its `command` is read exactly as Bash's is. Claude
+# Code 2.1.314 began sending a Monitor command to hooks matched on Bash as a
+# Bash payload (observed); before it, a hook matched on Bash alone never ran
+# for one, and this hook let a call named `Monitor` through unread. A Monitor
+# call with no `command` key is a WebSocket watch (a `ws` input), which runs
+# nothing in a shell; one whose `command` is present but not a string, or
+# whose tool_input is not an object, is flagged like Bash's.
 payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
   | ((.tool_input | objects) // {}) as $in
   | "t" + $t, "w" + ((.cwd | strings) // ""),
   "f" + ((if $t == "NotebookEdit" then $in.notebook_path else $in.file_path end
           | strings) // ""),
-  "k" + (if $t == "Bash" and ($in.command | type) != "string" then "1" else "" end),
+  "k" + (if ($t == "Bash" or ($t == "Monitor"
+              and (((.tool_input | type) != "object") or ($in | has("command")))))
+            and ($in.command | type) != "string" then "1" else "" end),
   "c" + (($in.command | strings) // "")' \
   <<<"$payload" 2>/dev/null) || payload_fields=''
 # A payload that does not parse names neither the tool nor its cwd. Valid JSON
@@ -454,7 +464,7 @@ elif [[ "$cmd_unreadable" == 1 ]]; then
   MODE='unreadable'; payload_cwd="${payload_cwd:-$PWD}"; file_path=''; cmd=''
 else
   case "$tool_name" in
-    Bash) MODE='bash'; file_path='' ;;
+    Bash|Monitor) MODE='bash'; file_path='' ;;
     Edit|Write|MultiEdit|NotebookEdit) MODE='file'; cmd='' ;;
     # The matcher sends every MCP tool (the harness tests it unanchored, so a
     # narrower regex there is not a boundary); a write is decided here, from a
@@ -1847,7 +1857,7 @@ decide_file_mode() {
     deny "Refusing this $tool_name call: its input is too large to check in time: it holds too many path-like strings (the scan stopped at its ${SCAN_BUDGET_MS} ms budget, under this hook's timeout, which would end the check with no decision), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Split the call into smaller ones."
   fi
   if [[ "$MODE" == unreadable ]]; then
-    deny "Refusing this tool call: its payload could not be parsed as a tool call (empty or malformed JSON, or a Bash command that is not a string), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
+    deny "Refusing this tool call: its payload could not be parsed as a tool call (empty or malformed JSON, or a Bash or Monitor command that is not a string), so this hook cannot tell which tool it is or whether it disables the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry the call; if it keeps failing, report the payload the harness sent."
   fi
   if [[ -z "$file_path" ]]; then
     deny "Refusing this $tool_name call: its payload names no path (file_path, or notebook_path for NotebookEdit, is missing, empty, or not a string), so this hook cannot tell whether it writes into the git-hook floor that enforces this repo's branch policy (house.json at $toplevel). Retry with the target given as a path string."
@@ -2049,11 +2059,14 @@ decide_for_target() {
     # satisfied by any non-empty value (a malformed file Claude Code itself
     # ignores), and an entry whose matcher names other tools guards something
     # else. So an entry counts only when its own hooks array is non-empty and
-    # its matcher is absent, empty, `*`, or a regex matching `Bash`. A matcher
-    # jq cannot read fails the test, leaving THIS hook armed: the safe way.
-    if jq -e '[.hooks.PreToolUse[]? | objects
+    # its matcher is absent, empty, `*`, or a regex matching this call's tool
+    # name, Bash or Monitor: a CLI before 2.1.314 runs no Bash-matched hook
+    # for a Monitor command, so an entry matched on Bash alone may never see
+    # it. A matcher jq cannot read fails the test, leaving THIS hook armed:
+    # the safe way.
+    if jq -e --arg tn "$tool_name" '[.hooks.PreToolUse[]? | objects
                | select((.hooks | type) == "array" and (.hooks | length) > 0)
-               | . as $e | select(($e.matcher // "") == "" or $e.matcher == "*" or ("Bash" | test($e.matcher)))]
+               | . as $e | select(($e.matcher // "") == "" or $e.matcher == "*" or ($tn | test($e.matcher)))]
               | length > 0' "$toplevel/.claude/settings.json" >/dev/null 2>&1; then
       return 0
     fi

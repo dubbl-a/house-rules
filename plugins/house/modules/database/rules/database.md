@@ -13,7 +13,7 @@ Receipts: `docs/handbook/database.md#write-forward-only-numbered-idempotent-migr
 
 Take a full backup immediately before any migration that drops or rewrites data, and keep a rollback path you have actually executed, because a rollback plan you have never run is a hypothesis.
 Diff the schema and the row counts before and after, because a migration that misses rows or lands the wrong column type still exits zero. A clean exit code is a claim about the process, not about the data.
-Anchor: none (because the backup lands outside the repo and the session cannot restore it either: checkpoints do not track what a Bash command changed and are not a substitute for version control, so the runbook step and the pasted post-migration diff are the control).
+Anchor: none (because the backup lands outside the repo and the session cannot restore it either: checkpoints track only files, leave a file that only a Bash command changed as it is, and are not a substitute for version control, so the runbook step and the pasted post-migration diff are the control).
 Receipts: `docs/handbook/database.md#back-up-before-a-destructive-migration-and-diff-after-it`
 
 ## Treat provenance columns as behavior

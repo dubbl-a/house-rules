@@ -6,6 +6,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-30
+
+A minor release under ADR 0012, because the branch guard can now deny more than before, the breaking class under ADR 0011: it reads the commands the Monitor tool runs. It also records the Claude Code 2.1.311, 2.1.312, and 2.1.314 survey, which supersedes PRs #489 and #490, and carries their correction of what the database rule says `/rewind` misses. Upgrading from 0.22.11: update the plugin as before, restart Claude Code so the new matcher loads, then run `/house-rules:sync`.
+
+### Changed
+
+- The branch guard now names the Monitor tool in its matcher and reads a Monitor call's `command` exactly as a Bash command, so a disable literal such as a `core.hooksPath` write is refused when it arrives through Monitor too. Monitor runs a shell command in the background under Bash's permission rules; Claude Code 2.1.314 began running hooks matched on Bash for such a command; before it, a hook matched on Bash alone never ran for one, and the guard let a call named Monitor through unread. A Monitor call with no `command` (a WebSocket watch) runs no shell and passes. The guard also defers to a repo-local guard for a Monitor call only when that guard's matcher reaches Monitor. `tests/hooks/run.sh` adds ten cases and `tests/smoke.test.mjs` pins Monitor in the matcher.
+- "Make a must-hold rule a hook, fail it closed, and test it with real payloads" in the claude-code rule gains one sentence: an adopter's own command guard names Monitor beside Bash in its matcher. PowerShell, which the guard's matcher also leaves out, is a separate gap this release does not change. The handbook receipt records the payload shapes observed under 2.1.314.
+- The Anchor of "Back up before a destructive migration, and diff after it" in the database rule said checkpoints do not track what a Bash command changed. The checkpointing page says `/rewind` does undo a Bash command's later changes to a file Claude already edited, and leaves a file only Bash commands changed as it is, and Claude Code 2.1.311 fixed a rewind warning that said otherwise. The Anchor now says checkpoints track only files and leave a Bash-only file as it is; the rule's claim, that no checkpoint holds the database, is unchanged, and the handbook receipt quotes the page.
+
 ## [0.22.11] - 2026-10-24
 
 A patch release under ADR 0012: no heading renamed, no rule file changed, and no change to what the guard denies. It fixes five edge cases in how render and uninstall edit the cloud arming entry in an adopter's committed `.claude/settings.json` (#479), and adds handbook links and a documented cloud limit. Upgrading from 0.22.10: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. An adopter whose settings file is not in 2-space JSON keeps its file untouched and gets a warning with the exact group to append by hand.

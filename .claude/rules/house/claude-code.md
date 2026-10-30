@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.22.11 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=665b2237e0008a332ed7215006f6da2329d2eaeb7a89f1723dea8e15cb72b770 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.0 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=7191423f56071c349928172b451b31b5ec2e90b46f58a5eac181270660481759 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -91,6 +91,7 @@ Fail it closed: a crash, a missing helper, or an unreadable payload denies rathe
 Know where that exit stops binding: of the events around a tool call, only the pre-tool event blocks the call on a failing exit, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, since text left in only adds denials while text wrongly removed hides the verb and bypasses. Pin both directions in the tests.
 Keep the decision in the script rather than a hook's fine-grained filter, which the harness itself documents as best-effort, unfit for a hard allow or deny.
+Name Monitor beside Bash in a command guard's matcher: Monitor runs a shell command under Bash's permission rules, and a CLI before 2.1.314 runs no Bash-matched hook for it.
 Escalate as autonomy rises, from a prompt, to a check the agent runs before you walk away, to a hook, to a verification subagent.
 Read a permission block as evidence of a wrong step earlier, not as an obstacle to route around.
 Anchor: `bash tests/hooks/run.sh` pipes real payloads straight into this package's own hook script, with a denied case, an allowed case, and a planted internal failure; it runs only in this package, so an adopter writes the equivalent for their own hook, and the pr-checks template at `plugins/house/templates/pr-checks.yml` runs a hooks test only if the adopter defines one.
