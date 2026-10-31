@@ -809,7 +809,7 @@ depends on the model's price and the work.
 The hooks reference (code.claude.com/docs/en/hooks) adds, from Claude Code 2.1.251, four fields to
 the SessionStart input on `resume` and `fork`: `seconds_since_last_response`, `context_tokens`,
 `prompt_cache_likely_expired` and `estimated_cache_write_usd`. The hook warns when the cache is
-expired and the estimate reaches a threshold (default $0.25), and fails open on missing fields.
+expired and the estimate reaches a threshold (default $5), and fails open on missing fields.
 The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
 magnitude.
 

@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-10-30
+
+A patch release under ADR 0012: no heading renamed, no rule file changed, and no change to what the guard denies. The two cost hooks now speak up only for a very expensive rewrite, and the idle-cache hold no longer holds prompts nobody typed (#493). Upgrading from 0.23.0: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. A user who wants the old $0.25 line sets `HOUSE_RESUME_COST_WARN_USD` and `HOUSE_IDLE_CACHE_HOLD_USD` to `0.25`.
+
+### Changed
+
+- The default dollar threshold of both cost hooks rises from $0.25 to $5: `resume-cost.mjs` (`HOUSE_RESUME_COST_WARN_USD`) and `idle-cache-hold.mjs` (`HOUSE_IDLE_CACHE_HOLD_USD`). A $0.25 line fired on nearly every idle return, because about 31k tokens of context on Opus 5.5 at the 1 h write price already cost that much. Both overrides work as before, and `=off` and `=warn` are unchanged. The handbook (`docs/handbook/claude-code.md`) states the new default.
+
 ### Fixed
 
 - The idle-cache hold (`idle-cache-hold.mjs`) held prompts nobody typed (#493): a Plannotator "Ask AI" prompt opening `[Plannotator Ask AI]`, and a cross-session message opening `<cross-session-message`. Both now pass silently, beside the task-report and agent-message prefixes. Any other prompt whose first text is a tag (`<` and a letter) or a bracketed label (`[`, a letter, text, `]`) now gets the cost warning as a systemMessage and is never held; `<3 thanks`, `[ ]` and `[1] item` are not letter-led and are held like typed text. Setting `HOUSE_IDLE_CACHE_HOLD_DEBUG=1` appends one line per hold, and per warning given in place of a hold for that reason, to `debug.log` in the hook's state directory (time, decision, the first 80 characters of the prompt); a log that cannot be written changes nothing.

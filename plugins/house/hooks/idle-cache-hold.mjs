@@ -35,7 +35,7 @@
 // Defaults a user can override from settings env or the shell:
 // HOUSE_IDLE_CACHE_HOLD=off disables the hook, HOUSE_IDLE_CACHE_HOLD=warn
 // warns without holding, HOUSE_IDLE_CACHE_HOLD_USD sets the dollar threshold
-// (default 0.25, as resume-cost.mjs). HOUSE_IDLE_CACHE_HOLD_DEBUG=1 appends
+// (default 5, as resume-cost.mjs). HOUSE_IDLE_CACHE_HOLD_DEBUG=1 appends
 // one line per hold, and per warning given in place of a hold because the
 // prompt looked machine-written, to debug.log in the state dir (ISO time, the
 // decision, the first 80 characters of the prompt); a log that cannot be
@@ -46,7 +46,7 @@ import { readFileSync, writeFileSync, appendFileSync, mkdirSync, openSync, readS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const DEFAULT_THRESHOLD_USD = 0.25;
+const DEFAULT_THRESHOLD_USD = 5;
 // Cache write list prices in USD per million tokens, [5 min, 1 h], from the
 // platform.claude.com pricing page on 2026-10-20 (the same figures as
 // research/token-cost/scripts/cost.py). A model matching no row gets no
@@ -207,7 +207,7 @@ try {
               const why = `the prompt cache has likely expired (last response ${idle(gap)} ago, cache lifetime ${ttl === 3600 ? '1 h' : '5 min'}). ` +
                 `Sending this prompt rewrites about ${context.toLocaleString('en-US')} tokens of context into the cache, an estimated $${usd.toFixed(2)} at list price. ` +
                 'If you do not need this history, /clear and start fresh from a handoff note in the repo; a /compact now would pay the same rewrite first. ';
-              const tune = 'To change this, set HOUSE_IDLE_CACHE_HOLD=off or =warn, or raise HOUSE_IDLE_CACHE_HOLD_USD (default 0.25), in your shell or the env block of your settings.';
+              const tune = 'To change this, set HOUSE_IDLE_CACHE_HOLD=off or =warn, or raise HOUSE_IDLE_CACHE_HOLD_USD (default 5), in your shell or the env block of your settings.';
               const interactive = (process.env.CLAUDE_CODE_ENTRYPOINT || entry.entrypoint) === 'cli';
               let hold = mode !== 'warn' && interactive && !hasScheduledWork(path, process.env.CLAUDE_PROJECT_DIR || cwd);
               const looksMachine = hold && machineLooking(prompt);

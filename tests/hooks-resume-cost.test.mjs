@@ -32,8 +32,10 @@ const DOCS_PAYLOAD = {
 function run(stdin, env = {}) {
   const childEnv = { ...process.env };
   delete childEnv.HOUSE_RESUME_COST_WARN;
-  delete childEnv.HOUSE_RESUME_COST_WARN_USD;
+  // The fixture is tuned for a $0.25 line; a test of the default passes WARN_USD: undefined.
+  childEnv.HOUSE_RESUME_COST_WARN_USD = '0.25';
   Object.assign(childEnv, env);
+  for (const k of Object.keys(childEnv)) if (childEnv[k] === undefined) delete childEnv[k];
   const res = spawnSync(process.execPath, [HOOK_PATH], { input: stdin, encoding: 'utf8', env: childEnv });
   return { status: res.status, stdout: res.stdout };
 }
@@ -67,13 +69,13 @@ test('stays silent when the fields are absent', () => {
 });
 
 test('stays silent below the default threshold', () => {
-  const r = runPayload({ estimated_cache_write_usd: 0.2 });
+  const r = runPayload({ estimated_cache_write_usd: 4.99 }, { HOUSE_RESUME_COST_WARN_USD: undefined });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, '');
 });
 
 test('warns at exactly the default threshold', () => {
-  const r = runPayload({ estimated_cache_write_usd: 0.25 });
+  const r = runPayload({ estimated_cache_write_usd: 5 }, { HOUSE_RESUME_COST_WARN_USD: undefined });
   assert.equal(r.status, 0);
   assert.ok(JSON.parse(r.stdout).systemMessage);
 });
@@ -97,9 +99,10 @@ test('HOUSE_RESUME_COST_WARN_USD lowers the threshold', () => {
 });
 
 test('an unparseable threshold falls back to the default', () => {
-  const r = runPayload({}, { HOUSE_RESUME_COST_WARN_USD: 'lots' });
+  const r = runPayload({ estimated_cache_write_usd: 5 }, { HOUSE_RESUME_COST_WARN_USD: 'lots' });
   assert.equal(r.status, 0);
   assert.ok(JSON.parse(r.stdout).systemMessage);
+  assert.equal(runPayload({ estimated_cache_write_usd: 4.99 }, { HOUSE_RESUME_COST_WARN_USD: 'lots' }).stdout, '');
 });
 
 test('wrongly typed fields stay silent', () => {
