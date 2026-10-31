@@ -495,8 +495,9 @@ Opus). Model resolution order for a subagent, plugin agent, or workflow agent is
 per-call `model`, then the agent frontmatter `model`, then `CLAUDE_CODE_SUBAGENT_MODEL`, then the
 session model, with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overriding all of them
 (https://code.claude.com/docs/en/sub-agents). A subagent without frontmatter `effort` inherits
-the session's effort, and a newly released model starts at its own default effort until
-`modelSettings["<full model id>"].effortLevel` is set for it
+the session's effort (since 2.1.316, unless `CLAUDE_CODE_SUBAGENT_EFFORT` names a level; see
+"The subagent effort variable" below), and a newly released model starts at its own default
+effort until `modelSettings["<full model id>"].effortLevel` is set for it
 (https://code.claude.com/docs/en/model-config; changelog at
 https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md), which is why an
 off-roster call now names its effort explicitly rather than assuming the new model's default
@@ -513,6 +514,19 @@ launched with `effort: "high"` sent `output_config.effort: "high"` on all 3 of i
 control launch with no `effort` sent `medium`, the builder's pin, on all 3. Both ran on
 `claude-sonnet-5-5`; the method was reading `output_config.effort` in the subagent transcript
 (issue #344).
+
+The subagent effort variable, 2026-10-31: Claude Code 2.1.316 "Added `CLAUDE_CODE_SUBAGENT_EFFORT`
+to set the effort level subagents run at when nothing else names one, instead of inheriting the
+session's" (changelog at https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md,
+fetched 2026-10-31). The sub-agents and model-config pages as fetched on 2026-10-31
+(https://code.claude.com/docs/en/sub-agents, https://code.claude.com/docs/en/model-config) do not
+yet name it. Read from the 2.1.316 binary, not observed in a run: the variable applies only when
+the agent definition carries no `effort`, no turn-level effort is inherited from the caller, and the
+call is not a fork; a workflow `agent()` call's own `effort` comes first. So the rule's effort
+line now says an unnamed call inherits the session's effort unless the variable names a level, and
+that a pinned or per-call effort still beats it. `CLAUDE_CODE_EFFORT_LEVEL` still beats both
+(https://code.claude.com/docs/en/sub-agents), and the roster's pinned efforts and the
+`/deep-research` fork's per-stage efforts are unaffected.
 
 Choosing a build's tier, 2026-10-21: the rule follows Anthropic's published split, and the local
 evidence neither overturns it nor tests its effort half. Anthropic's effort page says of Sonnet 5.5
@@ -564,8 +578,9 @@ subagent model variable runs at Sonnet 5.5's default of high until
 case the effort line in the rule exists for. Correction, 2026-10-07: the model-config page
 gives Sonnet 5.5 a Claude Code default of medium, below its API default of high
 (https://code.claude.com/docs/en/model-config, fetched 2026-10-07). As with Haiku 5.5 below,
-such a call that names no `effort` inherits the session's effort, as the rule's effort line
-says, and Sonnet 5.5 starts at that Claude Code default of medium, not the API's high, until
+such a call that names no `effort` inherits the session's effort, unless (since 2.1.316)
+`CLAUDE_CODE_SUBAGENT_EFFORT` names a level, as the rule's effort line says, and Sonnet 5.5
+starts at that Claude Code default of medium, not the API's high, until
 an effort level applies to it; the case the effort line exists for is unchanged.
 
 Haiku 5.5 as the default Haiku, 2026-10-07: Claude Code 2.1.293 added Claude Haiku 5.5
@@ -582,7 +597,8 @@ v2.1.293 or later to use it (https://code.claude.com/docs/en/model-config, fetch
 Haiku stays the cheapest and fastest rung, so the ladder stands. The roster's scout pins the
 `haiku` alias and `effort: low`, so on the Anthropic API its effort pin now has a level to set,
 where on Haiku 4.5 it set none. An off-roster call that lands on Haiku and names no `effort`
-inherits the session's effort, as the rule's effort line says, and Haiku 5.5 starts at its own
+inherits the session's effort, unless (since 2.1.316) `CLAUDE_CODE_SUBAGENT_EFFORT` names a
+level, as the rule's effort line says, and Haiku 5.5 starts at its own
 default of medium until an effort level applies to it, such as
 `modelSettings["claude-haiku-5-5"].effortLevel` in user settings.
 

@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-10-31
+
+A patch release under ADR 0012: rule prose only, no heading renamed, and no change to what the guard denies. It records the Claude Code 2.1.316 survey and corrects what the model rule says a subagent's effort defaults to. Upgrading from 0.23.0: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- The effort line of "Set the model explicitly on every subagent and workflow agent" in the claude-code rule said a subagent with no effort named inherits the session's. Claude Code 2.1.316 added a subagent effort variable that sets the level for such a call instead, so the line now says the session's effort applies unless that variable names a level, and that a pinned or per-call effort still beats it. The plugin's own agents pin an effort and the `/deep-research` fork names one per stage, so neither changes. The handbook receipt records the changelog line and how the 2.1.316 binary applies the variable.
+
 ## [0.23.0] - 2026-10-30
 
 A minor release under ADR 0012, because the branch guard can now deny more than before, the breaking class under ADR 0011: it reads the commands the Monitor tool runs. It also records the Claude Code 2.1.311, 2.1.312, and 2.1.314 survey, which supersedes PRs #489 and #490, and carries their correction of what the database rule says `/rewind` misses. Upgrading from 0.22.11: update the plugin as before, restart Claude Code so the new matcher loads, then run `/house-rules:sync`.
