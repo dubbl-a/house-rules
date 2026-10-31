@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,7 @@ const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 // A main-conversation response on the 1 h cache: 400,000 tokens of context
 // (2,000 + 1,000 + 395,000 + 2,000), so a 1 h rewrite on Opus 5.5 at $8 per
 // million is $3.20, and on the 5 min cache at $5 it is $2.00.
-function assistant({ minutesAgo = 120, ttl = '1h', model = 'claude-opus-5-5', uuid = 'a-1', entrypoint = 'cli', extra = {} } = {}) {
+function assistant({ minutesAgo = 120, ttl = '1h', model = 'claude-opus-5-5', uuid = 'a-1', entrypoint = 'cli', read = 395000, extra = {} } = {}) {
   const write = 1000;
   return {
     type: 'assistant',
@@ -39,7 +39,7 @@ function assistant({ minutesAgo = 120, ttl = '1h', model = 'claude-opus-5-5', uu
       usage: {
         input_tokens: 2000,
         cache_creation_input_tokens: write,
-        cache_read_input_tokens: 395000,
+        cache_read_input_tokens: read,
         output_tokens: 2000,
         cache_creation: { ephemeral_1h_input_tokens: ttl === '1h' ? write : 0, ephemeral_5m_input_tokens: ttl === '5m' ? write : 0 },
       },
@@ -63,10 +63,13 @@ function sandbox(entries) {
 function run(box, { prompt = 'carry on with the refactor', env = {}, raw } = {}) {
   const childEnv = { ...process.env, TMPDIR: box.tmp };
   delete childEnv.HOUSE_IDLE_CACHE_HOLD;
-  delete childEnv.HOUSE_IDLE_CACHE_HOLD_USD;
+  // The fixture is tuned for a $0.25 line; a test of the default passes HOUSE_IDLE_CACHE_HOLD_USD: undefined.
+  childEnv.HOUSE_IDLE_CACHE_HOLD_USD = '0.25';
+  delete childEnv.HOUSE_IDLE_CACHE_HOLD_DEBUG;
   delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   delete childEnv.CLAUDE_PROJECT_DIR;
   Object.assign(childEnv, env);
+  for (const k of Object.keys(childEnv)) if (childEnv[k] === undefined) delete childEnv[k];
   const payload = raw ?? JSON.stringify({
     session_id: 'abc123',
     transcript_path: box.transcript,
@@ -165,7 +168,18 @@ test('stays silent below the threshold, and HOUSE_IDLE_CACHE_HOLD_USD moves it',
   const box = sandbox([assistant()]);
   assert.equal(run(box, { env: { HOUSE_IDLE_CACHE_HOLD_USD: '5' } }).stdout, '');
   const box2 = sandbox([assistant()]);
-  assert.equal(parsed(run(box2, { env: { HOUSE_IDLE_CACHE_HOLD_USD: 'lots' } })).decision, 'block');
+  assert.equal(parsed(run(box2, { env: { HOUSE_IDLE_CACHE_HOLD_USD: '3' } })).decision, 'block');
+});
+
+test('the default threshold is $5: a $3.20 rewrite passes, a $8.00 one is held', () => {
+  const env = { HOUSE_IDLE_CACHE_HOLD_USD: undefined };
+  assert.equal(run(sandbox([assistant()]), { env }).stdout, '');
+  const out = parsed(run(sandbox([assistant({ read: 995000 })]), { env }));
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /\$8\.00/);
+  assert.match(out.reason, /\(default 5\)/);
+  // An unparseable override falls back to the same default.
+  assert.equal(run(sandbox([assistant()]), { env: { HOUSE_IDLE_CACHE_HOLD_USD: 'lots' } }).stdout, '');
 });
 
 test('HOUSE_IDLE_CACHE_HOLD=off silences the hook', () => {
@@ -187,6 +201,53 @@ test('never holds a turn nobody typed: task reports and peer messages pass silen
     assert.equal(r.status, 0);
     assert.equal(r.stdout, '', prompt);
   }
+});
+
+test('a plugin prompt and a cross-session message pass silently', () => {
+  for (const prompt of ['[Plannotator Ask AI] A question from the reviewer in Plannotator.\n\nWhy?', '<cross-session-message from="x">hello</cross-session-message>']) {
+    const r = run(sandbox([assistant()]), { prompt });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, '', prompt);
+  }
+});
+
+test('an unknown tag or bracketed-label prompt warns but is not held', () => {
+  for (const prompt of ['<some-tag>payload</some-tag>', '  [Some Plugin] do the thing']) {
+    const out = parsed(run(sandbox([assistant()]), { prompt }));
+    assert.equal(out.decision, undefined, prompt);
+    assert.match(out.systemMessage, /expired/, prompt);
+  }
+});
+
+test('an ordinary typed prompt is still held, including ones that only resemble a tag or label', () => {
+  for (const prompt of ['carry on', '[ ]', '<3 thanks', '[1] item', '[ x ] done']) {
+    assert.equal(parsed(run(sandbox([assistant()]), { prompt })).decision, 'block', prompt);
+  }
+});
+
+test('HOUSE_IDLE_CACHE_HOLD_DEBUG=1 logs holds and machine-looking warnings; unset logs nothing', () => {
+  const logOf = (box) => join(box.tmp, 'house-idle-cache-hold', 'debug.log');
+  const quiet = sandbox([assistant()]);
+  run(quiet);
+  assert.throws(() => readFileSync(logOf(quiet)));
+
+  const held = sandbox([assistant()]);
+  run(held, { prompt: 'line one\nline two ' + 'x'.repeat(100), env: { HOUSE_IDLE_CACHE_HOLD_DEBUG: '1' } });
+  const [line, ...rest] = readFileSync(logOf(held), 'utf8').trimEnd().split('\n');
+  assert.deepEqual(rest, []);
+  assert.match(line, /^\d{4}-\d\d-\d\dT[\d:.]+Z hold line one\\nline two x{62}$/);
+
+  const warned = sandbox([assistant()]);
+  const r = run(warned, { prompt: '<some-tag>payload', env: { HOUSE_IDLE_CACHE_HOLD_DEBUG: '1' } });
+  assert.equal(parsed(r).decision, undefined);
+  assert.match(readFileSync(logOf(warned), 'utf8'), /Z warn-machine-looking <some-tag>payload\n$/);
+});
+
+test('an unwritable debug log does not change the decision', () => {
+  const box = sandbox([assistant()]);
+  mkdirSync(join(box.tmp, 'house-idle-cache-hold', 'debug.log'), { recursive: true });
+  const out = parsed(run(box, { env: { HOUSE_IDLE_CACHE_HOLD_DEBUG: '1' } }));
+  assert.equal(out.decision, 'block');
 });
 
 test('warns instead of holding in a session with scheduled work', () => {

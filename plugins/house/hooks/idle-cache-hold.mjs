@@ -17,9 +17,13 @@
 // records the assistant entry already held on. If that file cannot be
 // written, the hook never blocks.
 //
-// It never holds a turn nobody typed. A background task's report or a
-// message from another session passes silently. A scheduled or /loop prompt
-// gets the text as a systemMessage instead of a hold: the session counts as
+// It never holds a turn nobody typed. A background task's report, a message
+// from another session or a plugin's injected prompt (<task-notification,
+// <agent-message, <cross-session-message, "Another Claude session sent a
+// message:", "[Plannotator") passes silently. Any other prompt that opens with
+// a tag (`<` and a letter) or a bracketed label (`[`, a letter, text, `]`)
+// looks machine-written and gets the text as a systemMessage instead of a
+// hold. So does a scheduled or /loop prompt: the session counts as
 // having scheduled work if its transcript has a scheduled_task_fire entry or
 // a CronCreate or ScheduleWakeup call, or the project has a non-empty
 // .claude/scheduled_tasks.json (durable tasks). Only the terminal client
@@ -31,14 +35,18 @@
 // Defaults a user can override from settings env or the shell:
 // HOUSE_IDLE_CACHE_HOLD=off disables the hook, HOUSE_IDLE_CACHE_HOLD=warn
 // warns without holding, HOUSE_IDLE_CACHE_HOLD_USD sets the dollar threshold
-// (default 0.25, as resume-cost.mjs).
+// (default 5, as resume-cost.mjs). HOUSE_IDLE_CACHE_HOLD_DEBUG=1 appends
+// one line per hold, and per warning given in place of a hold because the
+// prompt looked machine-written, to debug.log in the state dir (ISO time, the
+// decision, the first 80 characters of the prompt); a log that cannot be
+// written changes nothing.
 //
 // Any error emits nothing and exits 0, so the prompt goes through.
-import { readFileSync, writeFileSync, mkdirSync, openSync, readSync, closeSync, fstatSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, openSync, readSync, closeSync, fstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const DEFAULT_THRESHOLD_USD = 0.25;
+const DEFAULT_THRESHOLD_USD = 5;
 // Cache write list prices in USD per million tokens, [5 min, 1 h], from the
 // platform.claude.com pricing page on 2026-10-20 (the same figures as
 // research/token-cost/scripts/cost.py). A model matching no row gets no
@@ -150,9 +158,27 @@ function hasScheduledWork(path, projectDir) {
   return false;
 }
 
+const MACHINE_PREFIXES = ['<task-notification', 'Another Claude session sent a message:', '<agent-message', '<cross-session-message', '[Plannotator'];
 function machinePrompt(prompt) {
   const p = prompt.trimStart();
-  return p.startsWith('<task-notification') || p.startsWith('Another Claude session sent a message:') || p.startsWith('<agent-message');
+  return MACHINE_PREFIXES.some((prefix) => p.startsWith(prefix));
+}
+
+// An unrecognised prompt that opens with a tag or a bracketed label is
+// probably injected by a plugin or another session, not typed. `<3 thanks`,
+// `[ ]` and `[1] item` are not letter-led and stay ordinary text.
+function machineLooking(prompt) {
+  const p = prompt.trimStart();
+  return /^<[A-Za-z]/.test(p) || /^\[[A-Za-z][^\]]*\]/.test(p);
+}
+
+function debugLog(decision, prompt) {
+  if (process.env.HOUSE_IDLE_CACHE_HOLD_DEBUG !== '1') return;
+  try {
+    const head = prompt.slice(0, 80).replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+    mkdirSync(STATE_DIR, { recursive: true });
+    appendFileSync(join(STATE_DIR, 'debug.log'), `${new Date().toISOString()} ${decision} ${head}\n`);
+  } catch {}
 }
 
 try {
@@ -181,9 +207,11 @@ try {
               const why = `the prompt cache has likely expired (last response ${idle(gap)} ago, cache lifetime ${ttl === 3600 ? '1 h' : '5 min'}). ` +
                 `Sending this prompt rewrites about ${context.toLocaleString('en-US')} tokens of context into the cache, an estimated $${usd.toFixed(2)} at list price. ` +
                 'If you do not need this history, /clear and start fresh from a handoff note in the repo; a /compact now would pay the same rewrite first. ';
-              const tune = 'To change this, set HOUSE_IDLE_CACHE_HOLD=off or =warn, or raise HOUSE_IDLE_CACHE_HOLD_USD (default 0.25), in your shell or the env block of your settings.';
+              const tune = 'To change this, set HOUSE_IDLE_CACHE_HOLD=off or =warn, or raise HOUSE_IDLE_CACHE_HOLD_USD (default 5), in your shell or the env block of your settings.';
               const interactive = (process.env.CLAUDE_CODE_ENTRYPOINT || entry.entrypoint) === 'cli';
               let hold = mode !== 'warn' && interactive && !hasScheduledWork(path, process.env.CLAUDE_PROJECT_DIR || cwd);
+              const looksMachine = hold && machineLooking(prompt);
+              if (looksMachine) hold = false;
               if (hold) {
                 try {
                   mkdirSync(STATE_DIR, { recursive: true });
@@ -193,10 +221,12 @@ try {
                 }
               }
               if (hold) {
+                debugLog('hold', prompt);
                 const reason = `house: held this prompt once, because ${why}` +
                   'To send it anyway, submit it again (its text is below); it goes through. ' + tune;
                 process.stdout.write(JSON.stringify({ decision: 'block', reason }) + '\n');
               } else {
+                if (looksMachine) debugLog('warn-machine-looking', prompt);
                 process.stdout.write(JSON.stringify({ systemMessage: `house: ${why}${tune}` }) + '\n');
               }
             }

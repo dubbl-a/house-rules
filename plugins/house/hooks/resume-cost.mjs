@@ -12,7 +12,7 @@
 //
 // The warning is advice, never a gate. Defaults a user can override from
 // settings env or the shell: HOUSE_RESUME_COST_WARN=off disables the hook,
-// HOUSE_RESUME_COST_WARN_USD sets the dollar threshold (default 0.25).
+// HOUSE_RESUME_COST_WARN_USD sets the dollar threshold (default 5).
 //
 // A warning hook must never cost a session anything: bad JSON, missing or
 // mistyped fields, or any error emits nothing and exits 0. Stdout is the
@@ -20,7 +20,7 @@
 // systemMessage is shown to the user.
 import { readFileSync } from 'node:fs';
 
-const DEFAULT_THRESHOLD_USD = 0.25;
+const DEFAULT_THRESHOLD_USD = 5;
 
 function idle(seconds) {
   const minutes = Math.round(seconds / 60);
@@ -38,7 +38,7 @@ try {
       const systemMessage = `house: this session's prompt cache has likely expired (last response ${idle(secs)} ago, or a later compaction replaced it). ` +
         `Your first message will rewrite about ${tokens.toLocaleString('en-US')} tokens of context into the cache, an estimated $${usd.toFixed(2)} at list price. ` +
         'If you do not need this history, /clear and start fresh from a handoff note in the repo; a /compact now would pay the same rewrite first. ' +
-        'To silence this, set HOUSE_RESUME_COST_WARN=off, or raise HOUSE_RESUME_COST_WARN_USD (default 0.25), in your shell or the env block of your settings.';
+        'To silence this, set HOUSE_RESUME_COST_WARN=off, or raise HOUSE_RESUME_COST_WARN_USD (default 5), in your shell or the env block of your settings.';
       process.stdout.write(JSON.stringify({ systemMessage }) + '\n');
     }
   }

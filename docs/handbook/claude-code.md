@@ -809,7 +809,7 @@ depends on the model's price and the work.
 The hooks reference (code.claude.com/docs/en/hooks) adds, from Claude Code 2.1.251, four fields to
 the SessionStart input on `resume` and `fork`: `seconds_since_last_response`, `context_tokens`,
 `prompt_cache_likely_expired` and `estimated_cache_write_usd`. The hook warns when the cache is
-expired and the estimate reaches a threshold (default $0.25), and fails open on missing fields.
+expired and the estimate reaches a threshold (default $5), and fails open on missing fields.
 The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
 magnitude.
 
@@ -834,7 +834,11 @@ lifetime. It blocks the prompt once per gap, which the hooks reference says leav
 text in the block message and the transcript ("What a blocked prompt leaves behind"), so
 submitting again costs a retype at most. UserPromptSubmit also fires on turns nobody typed:
 background task reports, messages from other sessions, and scheduled or `/loop` prompts. The hook
-lets the first two through silently, recognised by their opening text, and only warns on the
+lets the first two through silently, recognised by their opening text (including a plugin's
+`[Plannotator` prompt and a `<cross-session-message`), and warns without holding on any other
+prompt that opens with a tag or a bracketed label, since an unknown plugin prompt looks like
+those (#493; `HOUSE_IDLE_CACHE_HOLD_DEBUG=1` logs each hold and such warning to a `debug.log`
+in the hook's temp state directory). It also only warns on the
 third, recognised by a `scheduled_task_fire` entry or a `CronCreate` or `ScheduleWakeup` call in
 the transcript or a durable task saved in the project's scheduled-tasks file, because a held scheduled prompt
 is not resubmitted and a loop would lose its run. Only the terminal client (entrypoint `cli`) is held; a
