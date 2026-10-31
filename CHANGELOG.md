@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Fixed
+
+- The idle-cache hold (`idle-cache-hold.mjs`) held prompts nobody typed (#493): a Plannotator "Ask AI" prompt opening `[Plannotator Ask AI]`, and a cross-session message opening `<cross-session-message`. Both now pass silently, beside the task-report and agent-message prefixes. Any other prompt whose first text is a tag (`<` and a letter) or a bracketed label (`[`, a letter, text, `]`) now gets the cost warning as a systemMessage and is never held; `<3 thanks`, `[ ]` and `[1] item` are not letter-led and are held like typed text. Setting `HOUSE_IDLE_CACHE_HOLD_DEBUG=1` appends one line per hold, and per warning given in place of a hold for that reason, to `debug.log` in the hook's state directory (time, decision, the first 80 characters of the prompt); a log that cannot be written changes nothing.
+
 ## [0.23.0] - 2026-10-30
 
 A minor release under ADR 0012, because the branch guard can now deny more than before, the breaking class under ADR 0011: it reads the commands the Monitor tool runs. It also records the Claude Code 2.1.311, 2.1.312, and 2.1.314 survey, which supersedes PRs #489 and #490, and carries their correction of what the database rule says `/rewind` misses. Upgrading from 0.22.11: update the plugin as before, restart Claude Code so the new matcher loads, then run `/house-rules:sync`.

@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +64,7 @@ function run(box, { prompt = 'carry on with the refactor', env = {}, raw } = {})
   const childEnv = { ...process.env, TMPDIR: box.tmp };
   delete childEnv.HOUSE_IDLE_CACHE_HOLD;
   delete childEnv.HOUSE_IDLE_CACHE_HOLD_USD;
+  delete childEnv.HOUSE_IDLE_CACHE_HOLD_DEBUG;
   delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   delete childEnv.CLAUDE_PROJECT_DIR;
   Object.assign(childEnv, env);
@@ -187,6 +188,53 @@ test('never holds a turn nobody typed: task reports and peer messages pass silen
     assert.equal(r.status, 0);
     assert.equal(r.stdout, '', prompt);
   }
+});
+
+test('a plugin prompt and a cross-session message pass silently', () => {
+  for (const prompt of ['[Plannotator Ask AI] A question from the reviewer in Plannotator.\n\nWhy?', '<cross-session-message from="x">hello</cross-session-message>']) {
+    const r = run(sandbox([assistant()]), { prompt });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, '', prompt);
+  }
+});
+
+test('an unknown tag or bracketed-label prompt warns but is not held', () => {
+  for (const prompt of ['<some-tag>payload</some-tag>', '  [Some Plugin] do the thing']) {
+    const out = parsed(run(sandbox([assistant()]), { prompt }));
+    assert.equal(out.decision, undefined, prompt);
+    assert.match(out.systemMessage, /expired/, prompt);
+  }
+});
+
+test('an ordinary typed prompt is still held, including ones that only resemble a tag or label', () => {
+  for (const prompt of ['carry on', '[ ]', '<3 thanks', '[1] item', '[ x ] done']) {
+    assert.equal(parsed(run(sandbox([assistant()]), { prompt })).decision, 'block', prompt);
+  }
+});
+
+test('HOUSE_IDLE_CACHE_HOLD_DEBUG=1 logs holds and machine-looking warnings; unset logs nothing', () => {
+  const logOf = (box) => join(box.tmp, 'house-idle-cache-hold', 'debug.log');
+  const quiet = sandbox([assistant()]);
+  run(quiet);
+  assert.throws(() => readFileSync(logOf(quiet)));
+
+  const held = sandbox([assistant()]);
+  run(held, { prompt: 'line one\nline two ' + 'x'.repeat(100), env: { HOUSE_IDLE_CACHE_HOLD_DEBUG: '1' } });
+  const [line, ...rest] = readFileSync(logOf(held), 'utf8').trimEnd().split('\n');
+  assert.deepEqual(rest, []);
+  assert.match(line, /^\d{4}-\d\d-\d\dT[\d:.]+Z hold line one\\nline two x{62}$/);
+
+  const warned = sandbox([assistant()]);
+  const r = run(warned, { prompt: '<some-tag>payload', env: { HOUSE_IDLE_CACHE_HOLD_DEBUG: '1' } });
+  assert.equal(parsed(r).decision, undefined);
+  assert.match(readFileSync(logOf(warned), 'utf8'), /Z warn-machine-looking <some-tag>payload\n$/);
+});
+
+test('an unwritable debug log does not change the decision', () => {
+  const box = sandbox([assistant()]);
+  mkdirSync(join(box.tmp, 'house-idle-cache-hold', 'debug.log'), { recursive: true });
+  const out = parsed(run(box, { env: { HOUSE_IDLE_CACHE_HOLD_DEBUG: '1' } }));
+  assert.equal(out.decision, 'block');
 });
 
 test('warns instead of holding in a session with scheduled work', () => {
