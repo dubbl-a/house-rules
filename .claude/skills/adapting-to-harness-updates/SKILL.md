@@ -108,8 +108,9 @@ addendum is not enough:
 - the delta touches several areas at once;
 - a new model family or default arrives;
 - the prompt audit flags patterns across many files;
-- an addendum turns up a conflict in an area whose banked facts predate the change;
-- the last re-survey's critic listed areas nobody has researched since.
+- an addendum turns up a conflict it cannot resolve in its own PR, or conflicts in two or more areas whose banked facts predate the change; one conflict the addendum resolves is not a signal;
+- the last re-survey's critic listed areas nobody has researched since;
+- a month has passed since the last full re-survey, since docs drift without a changelog line.
 
 The scripts are `scripts/house-vs-harness-audit.js` (main) and `scripts/house-vs-harness-gap-audit.js`
 (gap). Each takes `args.repo` (an absolute path to the clean worktree) and `args.date`. The gap run

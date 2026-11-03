@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.3 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=71efe4457de1d448777741a8d6c6d17ee740d84777446a5b4171f93989ef1415 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.3 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=e02df9f64aaefdd41cdc475c438b3c944d4a5134b6946436251836c50b3ef602 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -71,7 +71,7 @@ Receipts: `docs/handbook/claude-code.md#disable-model-invocation-on-a-skill-with
 
 Name the model on every agent call, because the harness resolves an omitted one through the subagent model variable and then to the session's model, so a wide fan-out otherwise runs at whatever tier you happened to be in.
 Match the tier to the task: mechanical joins and receipt checks on Haiku, code and prose on Sonnet, judgment and adjudication on Opus, even when the session itself is on Opus, because the verdict is the product and Opus is moderately priced.
-Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor, knowing the built-in Explore agent keeps its own model while Plan follows the variable; an explicit call-level model still wins, except that the subagent force variable, once set, discards every call-level and definition model, and the workflow model variable replaces every workflow agent's model, the `/deep-research` fork's per-stage models included, so leave both unset where a tiered run matters, and Fable never runs on a subagent unless the user asks for it.
+Keep a subagent, a teammate, or a workflow agent below the session by default, so set the subagent model variable in user settings to the tier below the session's as the floor, knowing it leaves the built-in Explore and Plan agents on their own models; an explicit call-level model still wins, except that the subagent force variable, once set, discards every call-level and definition model, and the workflow model variable replaces every workflow agent's model, the `/deep-research` fork's per-stage models included, so leave both unset where a tiered run matters, and Fable never runs on a subagent unless the user asks for it.
 Reach for the plugin's pinned roster before a bare agent call (scout on Haiku, researcher and builder on Sonnet, refuter and debugger on Opus), since each pins its model, effort, and tools in a file the harness enforces.
 Name the effort on an off-roster call too, through the Agent tool's `effort` parameter, which a fork ignores: a subagent with no call, pinned, or turn effort, such as a skill's, runs at the subagent effort variable's level when it names one, else at the session's effort when it shares the main conversation's model, and otherwise at its own model's saved level or, with none saved, that model's default, so also set one per model in user settings as the floor, never the effort environment variable, which beats every pinned and per-call effort.
 Expect a managed model list to apply as given, not merged with yours, so a named tier can be unavailable.

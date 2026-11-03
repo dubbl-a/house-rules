@@ -3635,8 +3635,9 @@ function checkWorkflows(ctx) {
 // every project server, or skips the permission prompt, add it here.
 //
 // Native floor: current clients ignore bypassPermissions from project settings
-// and hold committed env values until the folder is trusted; this check keeps
-// those entries on purpose, for older clients and as a review-time gate before
+// and, in an interactive session, hold committed env values until the folder is
+// trusted (a print-mode run uses the env block in a folder never trusted); this
+// check keeps those entries on purpose, for older clients and as a review-time gate before
 // any teammate trusts the folder.
 const RISKY_AGENT_SETTINGS = [
   { keys: ['env', 'ANTHROPIC_BASE_URL'], hit: (v) => isNonEmptyString(v), why: 'sends every request, with its credential, to an endpoint this repo chose' },

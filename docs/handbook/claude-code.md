@@ -554,12 +554,6 @@ changelog names it and whether it is on by default was not verified, which is on
 rule asks every off-roster call to name its effort. The roster's pinned efforts and the
 `/deep-research` fork's per-stage efforts are unaffected.
 
-The built-in agents and the variable, 2026-11-03: the sub-agents page says the built-in Plan agent
-inherits the main model unless `CLAUDE_CODE_SUBAGENT_MODEL` is set, and that only Explore keeps
-its own listed model, so the rule no longer says the variable leaves both on their own models
-(https://code.claude.com/docs/en/sub-agents, Built-in subagents; the variable's behavior is on
-https://code.claude.com/docs/en/model-config, both fetched 2026-11-03).
-
 Choosing a build's tier, 2026-10-21: the rule follows Anthropic's published split, and the local
 evidence neither overturns it nor tests its effort half. Anthropic's effort page says of Sonnet 5.5
 "For agentic coding and multistep tool use, start with `medium` for well-specified tasks and move to

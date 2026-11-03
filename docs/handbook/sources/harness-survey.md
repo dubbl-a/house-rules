@@ -1412,7 +1412,6 @@ Two proposals shipped with a clause dropped. "Stage explicit paths" kept the cla
 ### Corrected citations
 
 - Auto memory reaches a fork: the docs load it into no subagent but a fork (`claude-code.md`, "Hand off through the repo").
-- The built-in Plan agent follows `CLAUDE_CODE_SUBAGENT_MODEL`; only Explore keeps its own model (https://code.claude.com/docs/en/sub-agents.md, Built-in subagents). The receipt is in `docs/handbook/claude-code.md`.
 - The native resume dialog shows on Pro, Max and Ultra and estimates a share of the usage limit, not only the 5-hour one (https://code.claude.com/docs/en/sessions.md). The rule no longer pins a Claude Code version.
 - Bare mode skips hooks and CLAUDE.md and authenticates only with an API key or key helper, so `claude-code.md` no longer recommends it for keeping a worker out of the agent listing, which the docs neither confirm nor contradict.
 - In a project cloud thread none of a repo's hooks apply, and a multi-repo session reads only `enabledPlugins` and `extraKnownMarketplaces` (https://code.claude.com/docs/en/settings.md, Settings in cloud sessions); the committed `SessionStart` entry arms the floor only in a single-repo cloud session.
@@ -1420,6 +1419,14 @@ Two proposals shipped with a clause dropped. "Stage explicit paths" kept the cla
 - `--max-turns` and `--max-budget-usd` exist only in print mode and bound neither wall time nor, for the budget, the bill; a print-mode run also waits on background work after its last turn (https://code.claude.com/docs/en/headless.md#background-tasks-at-exit).
 - The pre-commit verify nudge does not count a skill a plugin supplies (https://code.claude.com/docs/en/skills.md), and `/verify` records a project skill that does count.
 - WebFetch hands back a separate model's answer about the page (https://code.claude.com/docs/en/tools-reference.md#webfetch-tool-behavior); `askUserQuestionTimeout` can close a question and let the session proceed.
+
+### Reverted in review
+
+The bank's "Built-in subagents" fact dropped the force-variable condition, so the reword that had the built-in Plan agent follow `CLAUDE_CODE_SUBAGENT_MODEL` was reverted in review: the sub-agents page says setting that variable by itself does not change the model the built-in Explore and Plan subagents run on.
+
+### What triggered this run
+
+This run was triggered by a single conflict PR #496 had already resolved, found no duplicate or conflict, and 8 of its 62 proposed rewords repeated wording the 2026-10-21 adjudications had settled, so the conflict signal was narrowed and a monthly cadence added.
 
 ### The subagent effort variable
 
