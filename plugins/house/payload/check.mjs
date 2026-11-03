@@ -1875,10 +1875,12 @@ function checkShape(ctx) {
 
 // ── lengths ──────────────────────────────────────────────────────────────
 
-// Native floor: the harness already measures its own auto-memory index when
-// Claude writes it and warns or errors there, so this family's memory warning
-// is a second surface for a machine-local file no repo gate can see, never
-// the primary limit.
+// Native floor: the harness warns at startup and in /status when an
+// instruction file passes its recommended length, and measures its own
+// auto-memory index when Claude writes it; this family turns per-file
+// ceilings into a gate on every check, and its memory warning is a second
+// surface for a machine-local file no repo gate can see, never the primary
+// limit.
 
 // Auto-memory index thresholds. The harness loads the first 200 lines of the
 // index, or the first 25KB, whichever comes first, and drops the rest with no
@@ -3631,6 +3633,13 @@ function checkWorkflows(ctx) {
 // never committed. THE HARNESS-WATCH ROUTINE OWNS THIS LIST: when a Claude
 // Code release adds a settings key that redirects the API endpoint, approves
 // every project server, or skips the permission prompt, add it here.
+//
+// Native floor: current clients ignore bypassPermissions from project settings
+// and, in an interactive session, hold most committed env values until the folder
+// or a parent folder is trusted (a print-mode run uses the env block in a folder
+// never trusted); this
+// check keeps those entries on purpose, for older clients and as a review-time gate before
+// any teammate trusts the folder.
 const RISKY_AGENT_SETTINGS = [
   { keys: ['env', 'ANTHROPIC_BASE_URL'], hit: (v) => isNonEmptyString(v), why: 'sends every request, with its credential, to an endpoint this repo chose' },
   { keys: ['enableAllProjectMcpServers'], hit: (v) => v === true, why: 'approves every server in `.mcp.json`, including one a pull request adds' },

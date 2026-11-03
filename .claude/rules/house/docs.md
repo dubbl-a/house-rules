@@ -8,7 +8,7 @@ paths:
   - ".claude/commands/**"
   - "docs/**"
 ---
-<!-- house-managed v0.23.2 module=docs source=modules/docs/rules/docs.md body-sha256=5f8dcaac2c794a1d55009ce85b94bdeeea42ffbd2a4b6b54afd97156f7028bdf DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.3 module=docs source=modules/docs/rules/docs.md body-sha256=12ee212fb4bd7c46b1d6a0d96c15e501c37866507b7518cd8c618b0955da3b34 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Maintaining the docs
 
@@ -26,7 +26,7 @@ Receipts: `docs/handbook/docs.md#anchor-every-claim-to-a-grep-able-token`
 
 Run the docs gate locally before pushing any branch that touches documents, and wire it into the build and the pull-request check: local is the loop, the build and the check are the net.
 A gate you only meet through a red badge after review costs a round trip per typo, and that round trip is what makes people stop running it.
-Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold. Nothing checks that either still runs the gate.
+Anchor: `npm run check:docs`, which the adopter wires into the build's pre-build step; the github module's pr-checks scaffold runs the full checker, drift included, and `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold. Nothing checks that either still runs the gate. The harness's pre-commit verify skill skips docs-only changes, so nothing native runs this gate, and a PreToolUse hook is the harness's own way to make the local run hold.
 Receipts: `docs/handbook/docs.md#run-the-docs-gate-before-pushing-and-in-the-build`
 
 ## Give every rule file a paths list whose first segment resolves

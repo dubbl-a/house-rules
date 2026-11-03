@@ -1,0 +1,1163 @@
+[
+ {
+  "area": "permissions, permission modes, auto mode classifier, sandbox, server-managed/managed settings (as of 2026-11-03)",
+  "facts": [
+   {
+    "feature": "Rule evaluation order",
+    "behavior": "Rules are evaluated in order: deny, then ask, then allow. The first match determines the outcome and specificity does not change the order. A broad deny like Bash(aws *) blocks calls that also match a narrower allow. A matching ask rule prompts even when a more specific allow matches.",
+    "limits": "An allow rule cannot carve an exception out of a deny. Deny at any scope beats allow at any other scope, and a managed deny cannot be overridden by --allowedTools; --disallowedTools can add restrictions.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#manage-permissions ; #settings-precedence"
+   },
+   {
+    "feature": "Rules are enforced by Claude Code, not the model",
+    "behavior": "\"Instructions in your prompt or CLAUDE.md shape what Claude tries to do, but they don't change what Claude Code allows.\"",
+    "limits": "CLAUDE.md guidance is advisory and does not enforce a boundary. A conversational boundary (e.g. 'don't push') in auto mode is not stored as a rule and context compaction can drop it; use a deny rule for a hard guarantee.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/permissions.md ; https://code.claude.com/docs/en/permission-modes.md"
+   },
+   {
+    "feature": "Bare tool-name deny removes the tool",
+    "behavior": "A bare tool name (Bash, Bash(*), or a glob like mcp__*) in deny removes the tool from Claude's context entirely. A scoped deny like Bash(rm *) leaves the tool and blocks matching calls. Tool-name globs work in deny/ask rules; allow globs only after a literal mcp__<server>__ prefix.",
+    "limits": "EndConversation cannot be removed or prompted while any other tool remains. Unanchored allow globs ('*', 'B*', 'mcp__*') are skipped and approve nothing. Deny/ask rules naming no known tool give a startup warning.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#manage-permissions ; #tool-name-wildcards"
+   },
+   {
+    "feature": "Rule syntax Tool or Tool(specifier)",
+    "behavior": "Format is Tool or Tool(specifier); parentheses inside the specifier are literal. Canonical tool names are required; labels shown in the transcript (e.g. 'Stop Task' vs TaskStop) do not match.",
+    "limits": "Write(path), NotebookEdit(path), Glob(path), MultiEdit(path) rules are accepted but never match; use Edit(path) and Read(path).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#permission-rule-syntax"
+   },
+   {
+    "feature": "Tool(param:value) input-parameter matching",
+    "behavior": "Deny and ask rules can match a top-level scalar input parameter on any built-in tool, e.g. Agent(model:opus), Agent(isolation:worktree), Bash(run_in_background:true). * wildcard supported; exact literal match before normalization; omitted params never match.",
+    "limits": "Cannot match primary content fields (command, file_path, path, notebook_path, url); Bash(command:rm *) is ignored with startup warning. Not usable in allow rules. Nested fields not matchable. For MCP tools, settings-file rules with parentheses (mcp__...(...)) are skipped; use --disallowedTools for parameter rules on MCP tools.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#match-by-input-parameter"
+   },
+   {
+    "feature": "MCP tool rules",
+    "behavior": "mcp__<server> or mcp__<server>__* matches all tools of a server; mcp__<server>__<tool> matches one tool. Special characters in server names become _. Plugin servers use mcp__plugin_<plugin>_<server>__*. Deny mcp__* denies every MCP tool.",
+    "limits": "Rules match tool names only; a settings-file MCP rule with parentheses (argument/parameter constraint) is skipped, so permission rules cannot see inside MCP tool arguments from settings files (only --disallowedTools param rules). Org 'ask' connector tools prompt on every call even in auto and bypassPermissions, and are denied in dontAsk; allow rules don't take effect for them. MCP tools marked requiresUserInteraction still prompt even if a hook returns allow. In Cowork, Bash/WebFetch deny rules also apply to mcp__workspace__bash/web_fetch but Bash allow rules never carry over.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#mcp ; #match-by-input-parameter"
+   },
+   {
+    "feature": "Bash wildcard matching",
+    "behavior": "* in a Bash rule matches any text including spaces. Rule with no * is an exact command. Trailing ' *' also matches the bare command (Bash(ls *) matches ls but not lsof; Bash(ls*) matches lsof). :* suffix is equivalent to trailing ' *' and only recognized at pattern end.",
+    "limits": "Put * after the subcommand; Bash(git * main) matches any git subcommand incl. -c. Startup warning for allow rule with * before subcommand.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#wildcard-patterns"
+   },
+   {
+    "feature": "Compound commands in Bash rules",
+    "behavior": "Recognized separators: &&, ||, ;, |, |&, &, newlines. Every subcommand must be allowed for a compound command to run without prompt. Deny and ask rules apply if any subcommand matches, including inside subshells, command substitution, and control-flow bodies (e.g. ask Bash(git clean *) prompts for echo \"$(git clean -f)\" even in auto mode). 'Yes, don't ask again' saves a rule per subcommand, up to 5.",
+    "limits": "A trailing && or || makes the command unparseable and allow rules don't approve it.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#compound-commands"
+   },
+   {
+    "feature": "Wrapper stripping before Bash rule match",
+    "behavior": "Fixed set stripped: timeout, time, nice, nohup, stdbuf, command, builtin, noglob, flagless xargs, and leading known-safe env var assignments. A deny/ask rule matches past any leading env assignment; an allow rule only past known-safe ones.",
+    "limits": "List not configurable. direnv exec, devbox run, mise exec, npx, docker exec are NOT stripped, so Bash(devbox run *) matches any inner command. xargs with flags is matched as xargs. Exec wrappers (watch, setsid, ionice, flock) and find with -exec/-delete/-rm/-fprint/-files0-from cannot be auto-approved by a prefix rule.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#wrappers"
+   },
+   {
+    "feature": "What a Bash deny/ask rule does not match",
+    "behavior": "Rules match the command text as Claude writes it. Bash(curl *) stops 'curl ...' but not /usr/bin/curl or sh -c 'curl ...'; Bash(rm *) not /bin/rm or bash -c; Bash(git push *) not git -C . push, git -c ... push, git 'push'.",
+    "limits": "\"a deny or ask rule covers the invocation Claude usually produces and isn't a security boundary around the program.\" Argument-constraining patterns (e.g. curl URL) are fragile (options, redirects, variables). Use sandbox for enforcement independent of command text, or a PreToolUse hook.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/permissions.md#what-a-bash-rule-doesnt-match"
+   },
+   {
+    "feature": "Built-in read-only Bash command set",
+    "behavior": "Built-in set (ls, cat, echo, pwd, head, tail, grep, find, wc, which, diff, stat, du, cd, read-only git forms, etc.) runs without prompt in every mode. Unquoted globs permitted when every flag is read-only.",
+    "limits": "Not configurable; add ask/deny to require prompt. Still prompts for: unquoted globs with write-capable flags, docker pointed at another daemon, file -m/-f, ps with e option, UNC paths on Windows, writes to PATH/IFS, unparseable commands, commands over 10,000 chars, cd+git into different directory, cd+redirect.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/permissions.md#read-only-commands"
+   },
+   {
+    "feature": "Bash redirection and tee checks",
+    "behavior": "Output redirect targets (>, >>, 2>) are checked against Edit allow/deny rules, protected paths and working directories; input redirects (<) against Read rules (v2.1.257+); tee targets checked (v2.1.269+). Targets starting with ~ or containing glob need approval.",
+    "limits": "/dev/null, fd forms (2>&1), here-docs/strings not checked. Bash(git commit *) allows the command, not the redirect target.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#redirections"
+   },
+   {
+    "feature": "Read/Edit path rules scope",
+    "behavior": "Edit rules apply to all built-in tools that edit files. Read rules are applied on a 'best-effort' basis to Grep, Glob, @file mentions, IDE selection/open-file context, pasted image paths, directory listings. Read/Edit deny also applies to recognized Bash file commands (cat, head, tail, sed, tee) and redirect targets. A Read deny also blocks Edit/Write on the same path (Write check v2.1.228+).",
+    "limits": "Do not apply to commands that read without naming files (grep -r pattern .) or arbitrary subprocesses (a Python/Node script opening files). NotebookEdit not covered by Read deny; add Edit deny. .claudeignore has no effect. For OS-level enforcement use the sandbox.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#read-and-edit"
+   },
+   {
+    "feature": "Path pattern syntax and anchoring",
+    "behavior": "gitignore syntax. //path = absolute; ~/path = home; /path = relative to settings source (project/local: primary working dir; user: ~/.claude; --settings file: file's dir; CLI: primary working dir); path or ./path = cwd. Allow Edit(src/**) matches only <cwd>/src; deny/ask Read(secrets/**) matches a secrets dir at any depth. Bare filenames match at any depth. ! negation carves out earlier rules from the same source.",
+    "limits": "/Users/alice/file is NOT absolute (use //). A user-settings Read(/secrets/**) blocks ~/.claude/secrets, not project secrets. ! carve-outs only reach same-source rules, cannot reach //,~/,/ anchored rules, and cannot reopen a file inside a wholly blocked directory. Windows paths normalized to POSIX form.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#how-path-patterns-match"
+   },
+   {
+    "feature": "Symlink handling in file permissions",
+    "behavior": "Permission check covers both the requested path and the resolved target. Allow rules need both to match; deny rules apply if either matches. On macOS/Linux a deny/ask rule via a symlinked dir also applies at the real location (v2.1.268+). Edit/Write refuse writes where the path itself is a symlink and direct Claude to the target; unresolvable/looping paths are refused; tools re-confirm path before opening.",
+    "limits": "Writes can still pass through a symlinked intermediate directory or a Bash/PowerShell command; those resolving outside working dirs aren't auto-approved in acceptEdits, and in auto mode prompt the user unless an allow rule approves; those resolving to a protected path prompt.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#symlinks"
+   },
+   {
+    "feature": "Network path reads",
+    "behavior": "Reads via Read/Grep/Glob of UNC paths (Windows) or /net automount paths get their own prompt. From v2.1.292 allow rules (even bare Read), PreToolUse allow hooks, and the auto-mode classifier do not skip the prompt.",
+    "limits": "dontAsk denies; bypassPermissions (and interactive plan with bypass available) runs without the prompt. Network paths cannot be added as working dirs.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/permissions.md#network-paths"
+   },
+   {
+    "feature": "WebFetch domain rules",
+    "behavior": "WebFetch(domain:example.com) matches hostname, case-insensitive; *.example.com matches subdomains at any depth but not apex; domain:* matches every domain. Mid-pattern wildcards match only text between dots (needs v2.1.172+). Bare WebFetch allow = fetch without prompt; bare WebFetch deny removes the tool. WebFetch(domain:*) in allow/deny also adds/denies the domain for sandboxed commands.",
+    "limits": "Bare WebFetch does not change sandbox allowed hosts. Bare WebFetch deny/ask does not apply to artifact reads; a domain: rule covering claude.ai or *.claudeusercontent.com does. \"using WebFetch alone doesn't prevent network access\" if Bash is allowed.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#webfetch"
+   },
+   {
+    "feature": "Agent(subagent) and Cd rules",
+    "behavior": "Agent(Explore)/Agent(Plan)/Agent(custom) in deny disables specific subagents. Cd(path) rules control only the user-typed /cd command: bare Cd deny disables /cd; any Cd allow switches to allowlist mode.",
+    "limits": "Cd is not model-invocable; rules apply only when the user runs /cd.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#agent-subagents ; #cd"
+   },
+   {
+    "feature": "PreToolUse hooks vs permission rules",
+    "behavior": "PreToolUse hooks run before the permission prompt for every tool except EndConversation. A hook returning allow does NOT bypass deny or ask rules (deny still blocks, ask still prompts). A hook exiting with code 2 blocks the call before permission rules are evaluated, even if an allow rule matches.",
+    "limits": "In plan mode a hook allow has no effect on non-read-only calls (except ExitPlanMode). Hook allow does not skip prompts for requiresUserInteraction MCP tools, network-path reads, org-ask connector tools, or critical-path rm. Hooks run commands outside the sandbox. Installed mods' tool.check can approve calls a deny rule refused unless managed settings or a Team/Enterprise /login are present.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#extend-permissions-with-hooks"
+   },
+   {
+    "feature": "Working directories and additionalDirectories",
+    "behavior": "Default access is the launch directory; extend with --add-dir, /add-dir, or permissions.additionalDirectories. Files there follow the same rules as the original working directory; reads need no prompt there.",
+    "limits": "Project-settings allow rules and additionalDirectories apply only after the workspace trust dialog is accepted (deny/ask are not gated). Trust dialog is interactive only; claude -p / SDK skip project allow rules with a stderr warning. Hooks, env, apiKeyHelper and .mcp.json in the repo are used in -p/SDK without trust.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#working-directories ; #project-allow-rules-and-workspace-trust"
+   },
+   {
+    "feature": "permissions.blockReadsOutsideWorkingDirectories / blockWritesOutsideWorkingDirectories",
+    "behavior": "When true, file tools refuse reads (or Write/Edit/NotebookEdit writes, v2.1.314+) outside working directories in every permission mode, including bypassPermissions.",
+    "limits": "Writes key covers only Write, Edit, NotebookEdit; it does not limit shell commands, MCP tools, or hook programs (use sandboxing). Exempts files Claude Code itself needs (e.g. plan files). Reads key also makes sandboxed commands denied read access to home and mounted volumes.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#block-file-tool-reads-and-writes-outside-the-working-directories ; https://code.claude.com/docs/en/permission-modes.md"
+   },
+   {
+    "feature": "Permission modes list",
+    "behavior": "default (Manual; reads only), acceptEdits (edits + mkdir/touch/rm/rmdir/mv/cp/sed in working dirs and additionalDirectories), plan (read/explore; edits blocked until plan approved), auto (classifier reviews actions), dontAsk (auto-denies anything that would prompt; allow rules and PreToolUse approvals still run), bypassPermissions (skips prompts and safety checks).",
+    "limits": "Deny rules block in every mode including bypassPermissions; allow rules have no effect in bypassPermissions. dontAsk is not in Shift+Tab cycle and cloud sessions ignore defaultMode dontAsk from settings. dontAsk still denies AskUserQuestion, explicit ask-rule matches, org-ask connector tools, requiresUserInteraction MCP tools, network-path reads, critical-path rm even if allowed.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md"
+   },
+   {
+    "feature": "bypassPermissions mode",
+    "behavior": "\"Disables prompts and safety checks, including writes to protected paths.\" Enter via --permission-mode bypassPermissions, --dangerously-skip-permissions, or permissions.defaultMode in user/--settings/managed settings. First launch shows a warning dialog.",
+    "limits": "Still prompts/denies: explicit ask rules, org-ask connector tools, AskUserQuestion/requiresUserInteraction MCP tools, critical-path rm/rmdir, 'Dangerous rm operation not ruled out' commands, cross-session messaging safeguards, and outside-working-dir reads/writes when the block settings are on. Refused as root/sudo on Linux/macOS unless in a sandbox, and with --restricted. 'bypassPermissions' in project or local settings is ignored. No protection against prompt injection. Admins block with permissions.disableBypassPermissionsMode: \"disable\" (works from any scope).",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#section-bypasspermissions ; https://code.claude.com/docs/en/permissions.md#permission-modes"
+   },
+   {
+    "feature": "Protected paths",
+    "behavior": "Writes to protected directories (.git, .config/git, .vscode, .idea, .husky, .cargo, .devcontainer, .yarn, .mvn, .claude with exceptions, --plugin-dir dirs, ~/.claude/dev-mods/) and files (.gitconfig, .gitmodules, shell rc files, .npmrc/.yarnrc.yml etc., .bazelrc, .pre-commit-config.yaml, lefthook.yml, .devcontainer.json, .ripgreprc, pyrightconfig.json, .mcp.json, .claude.json, managed settings files, files passed via --settings/--mcp-config/--agents) are never auto-approved. default/acceptEdits prompt; plan allowed only in interactive plan with bypass available else classifier/prompt; auto routes to classifier; dontAsk denies; bypassPermissions allows.",
+    "limits": "permissions.allow rules do not pre-approve protected-path writes. In --restricted sessions the classifier cannot approve them. Not an OS control (sandbox separately denies writes to many of these).",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#protected-paths"
+   },
+   {
+    "feature": "Critical-path rm/rmdir check",
+    "behavior": "rm/rmdir on filesystem root, top-level dirs, home, working directory and parents, Windows drive roots, variable-derived targets (\"$VAR\"/*), command-substitution forms, nested sh -c, etc. prompt or are denied per mode: default/acceptEdits/plan ask; auto asks in terminal with a two-minute countdown (denies elsewhere); dontAsk denies; bypassPermissions asks in terminal. Mounted-drive paths (/Volumes, /mnt, /media) have a separate prompt.",
+    "limits": "No allow rule, sandbox auto-allow, or PreToolUse allow approves it. \"the check can miss commands, so it isn't an OS control\"; sandbox limits writes but doesn't stop deleting the working directory. Disable only via launch-environment env vars (not settings env): CLAUDE_CODE_DISABLE_SUBSTITUTION_RM_PROMPT, CLAUDE_CODE_DISABLE_INLINE_SHELL_RM_PROMPT, CLAUDE_CODE_DISABLE_MOUNTED_DRIVE_RM_PROMPT, CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS=1 (v2.1.311+, bypass only). Headless -p/SDK auto mode denies; bypass defers to --permission-prompt-tool/canUseTool. PowerShell Remove-Item on system paths/wildcards is denied in every mode.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#critical-paths ; #critical-path-removals-in-each-permission-mode"
+   },
+   {
+    "feature": "acceptEdits scope",
+    "behavior": "Auto-approves file edits and mkdir, touch, rm, rmdir, mv, cp, sed (with safe env prefixes/wrappers) in working directory and additionalDirectories only.",
+    "limits": "Still prompts for out-of-scope paths, symlinks resolving outside scope, protected paths, critical-path removals, touch with options/globs, and other Bash commands beyond read-only set.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md"
+   },
+   {
+    "feature": "plan mode",
+    "behavior": "Claude researches and proposes; edits blocked until plan approved. Shell commands: in interactive terminal with bypass available no prompt; with auto available and useAutoModeDuringPlan (default on) the classifier reviews; otherwise commands outside read-only set prompt even with sandbox auto-allow.",
+    "limits": "PreToolUse hook allow and mod approvals cannot approve non-read-only calls in plan mode (except ExitPlanMode); sandbox auto-allow substitution for a bare Bash ask rule is skipped.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md ; https://code.claude.com/docs/en/permissions.md#how-permissions-interact-with-sandboxing"
+   },
+   {
+    "feature": "Auto mode availability and starting mode",
+    "behavior": "Available on all plans; on Team/Enterprise on by default; admins disable with permissions.disableAutoMode: \"disable\" (any settings file). Requires supported model (Anthropic API: Opus 4.6+, Sonnet 4.6+, Haiku 5.5 or Fable; Bedrock/Vertex/Foundry: Sonnet 5+, Opus 4.7+, Haiku 5.5 or Fable). Built-in default is auto for interactive terminal and VS Code on v2.1.283+, but Manual for claude -p / Agent SDK (v2.1.302+) and HIPAA configurations. Precedence: --permission-mode flag, then permissions.defaultMode, then built-in default.",
+    "limits": "\"auto\" in .claude/settings.json or settings.local.json is ignored (put in ~/.claude/settings.json). If selected but unavailable the session starts in Manual. Anthropic may disable it server-side for the session.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#auto-mode"
+   },
+   {
+    "feature": "Auto mode classifier decision order",
+    "behavior": "First match wins: (1) allow/ask/deny rules resolve immediately (exceptions: protected-path writes still go to classifier; critical-path rm ignores allow; requiresUserInteraction MCP and org-ask tools prompt; ask rules matching command content prompt; network-path reads prompt); (2) read-only actions and in-working-dir edits auto-approved; (3) everything else goes to the classifier. On block Claude receives the reason (often naming a rule like [Data Exfiltration]).",
+    "limits": "Classifier inputs are user messages, non-read-only tool calls, and CLAUDE.md; tool results are stripped. A PostToolUse hook's classifierContext can annotate results (v2.1.236+). Classifier failure (refusal/unparseable) = blocked without notification. Reduces prompts but 'doesn't guarantee safety'.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#how-the-classifier-evaluates-actions"
+   },
+   {
+    "feature": "Broad allow rules dropped in auto mode",
+    "behavior": "On entering auto mode, Bash(*), PowerShell(*), wildcarded interpreters (Bash(python*)), package-manager run commands, Agent allow rules and Monitor allow rules are dropped; narrow rules like Bash(npm test) stay. Restored on leaving auto.",
+    "limits": "Deny and ask rules are unaffected; autoMode.classifyAllShell (user or managed) sends every shell command through the classifier even if a narrow allow matches.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md ; https://code.claude.com/docs/en/settings-reference.md"
+   },
+   {
+    "feature": "Auto mode default block/allow lists and customization",
+    "behavior": "Blocks by default: curl|bash, sending sensitive data externally, production deploys, IAM grants, force push, git reset --hard/clean -fd/stash drop, amend of pushed commits, terraform destroy, DNS/TLS changes, merging unapproved PRs, disabling CI, credential printing, --dangerously-skip-permissions loops, etc. Allows by default: local working-dir file ops, installing declared deps, reading .env and sending creds to matching API, read-only HTTP, pushing to current repo branches (except deploy-like names). `claude auto-mode defaults` prints the lists. autoMode.environment extends trusted infra, autoMode.allow overrides blocks (user or managed scope).",
+    "limits": "Project settings cannot set autoMode (User or managed only). Classifier can produce false positives (/feedback). For a human checkpoint add permissions.ask rules. Approvals must name the specific action and dangerous detail; they cover that action only. Full autoMode field semantics (environment/allow/soft_deny/hard_deny) are on auto-mode-config.md, not read.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md ; https://code.claude.com/docs/en/auto-mode-config.md (referenced, not fetched)"
+   },
+   {
+    "feature": "Auto mode fallback and headless behavior",
+    "behavior": "Blocked action gives notification and /permissions > Recently blocked entry. 3 consecutive or 20 total blocks pauses auto mode and resumes prompting (fixed thresholds). Headless -p without --permission-prompt-tool: blocked action doesn't run and the run continues. Server-side review may replace classifier calls; no verdict = denied; ten consecutive no-verdict responses stop the turn. Subagents are checked at spawn, per action (subagent permissionMode frontmatter ignored), and on return report.",
+    "limits": "Classifier model default Sonnet 5; override via CLAUDE_CODE_AUTO_MODE_MODEL (v2.1.302+); unsupported override fails checks and denies. Classifier calls count toward tokens on Enterprise/API/cloud providers and add latency. Reading outside working dirs: first read prompts when blockReadsOutsideWorkingDirectories off; no prompt in -p/background.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#fallback-behavior"
+   },
+   {
+    "feature": "permissions.defaultMode and related settings keys",
+    "behavior": "permissions.allow/ask/deny/additionalDirectories/defaultMode/disableBypassPermissionsMode/disableAutoMode/blockReads...OutsideWorkingDirectories/blockWrites... are 'Any file' scope. autoMode, skipAutoPermissionPrompt are user or managed; skipDangerousModePermissionPrompt user/local/managed; useAutoModeDuringPlan user/local/managed; allowManagedPermissionRulesOnly managed only.",
+    "limits": "Only the index table of settings-reference was readable; per-key full entries beyond allowManagedPermissionRulesOnly were not visible.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/settings-reference.md#permission-settings"
+   },
+   {
+    "feature": "allowManagedPermissionRulesOnly",
+    "behavior": "\"Make managed settings the only settings source of permission rules. Claude Code then ignores allow, ask, and deny rules in user, project, local, and --settings files, ignores --allowedTools, hides the always-allow choices in permission prompts, and stops saving new rules.\" Also ignores allowed-tools frontmatter in skills/commands from repo, ~/.claude, --add-dir and inline plugins (v2.1.282+).",
+    "limits": "--disallowedTools and the current session's deny/ask rules still apply (only restrict). Embedding-host parent settings: allow rules and additionalDirectories dropped, deny/ask kept. Managed scope only.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/settings-reference.md#allowmanagedpermissionrulesonly"
+   },
+   {
+    "feature": "Settings precedence for permissions",
+    "behavior": "Managed settings are highest; \"no other level, including command line arguments, can override a managed permission rule.\" Deny at any level cannot be allowed by another. Managed-only keys (e.g. allowManagedHooksOnly, allowManagedMcpServersOnly, forceRemoteSettingsRefresh, managedSourcesBehavior, policyHelper, strictPluginOnlyCustomization, requiredMinimumVersion) are read only from managed settings.",
+    "limits": "A few security-sensitive keys are exceptions to managed precedence (see settings.md#exceptions-to-managed-settings-precedence, not fetched). Embedding hosts may supply extra managed policy via SDK managedSettings unless allowManaged*Only locks are set.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#settings-precedence ; https://code.claude.com/docs/en/settings-reference.md"
+   },
+   {
+    "feature": "Sandbox: what it covers",
+    "behavior": "\"A boundary that the operating system enforces around the shell commands Claude runs\": Bash, PowerShell and Monitor commands and the processes they start (subagent Bash is sandboxed with the parent's config; background sessions if their settings enable it). Built on @anthropic-ai/sandbox-runtime. Off by default; enable with /sandbox or sandbox.enabled: true.",
+    "limits": "\"Claude's file tools, MCP servers, and hooks run outside it.\" Read/Edit/Write/WebFetch/WebSearch follow permission rules instead. Command hooks, local MCP servers, plugin monitors, LSP servers, status line command, apiKeyHelper, mod-started processes run with full access. The ! shell-mode prompt, excludedCommands and unsandboxed retries are unsandboxed. Computer use runs on the real desktop. Not a complete isolation boundary.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md ; #limitations"
+   },
+   {
+    "feature": "Sandbox OS support",
+    "behavior": "macOS (Seatbelt), Linux and WSL2 (bubblewrap; needs bubblewrap and socat). ",
+    "limits": "\"On native Windows, Claude Code runs commands unsandboxed.\" WSL1 unsupported.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md"
+   },
+   {
+    "feature": "Sandbox failure behavior when it cannot start",
+    "behavior": "Default: if the sandbox can't start (missing dependency, unsupported platform) Claude Code runs commands without sandboxing. sandbox.failIfUnavailable: true makes Claude Code exit at startup; mid-session failures refuse commands ('Sandbox is required...') and the refused command does not run unsandboxed.",
+    "limits": "Default is fail-open. On native Windows failIfUnavailable makes Claude Code exit.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#failure-behavior-when-the-sandbox-cant-start"
+   },
+   {
+    "feature": "Sandbox filesystem scope",
+    "behavior": "Writes default to working directory, per-user temp dir and added dirs; protected paths (.claude settings, .mcp.json, shell rc, .gitconfig, .vscode/.idea, .git/hooks, .git/config, ~/.claude) stay write-denied. Reads default to \"most of the machine, including credential files such as ~/.ssh and ~/.aws/credentials\". Keys: filesystem.allowWrite/denyWrite/denyRead/allowRead; sandbox paths use /abs and ~/ (not // as in permission rules). permissions.blockReadsOutsideWorkingDirectories denies reads of home and mounted volumes. credentials.files/envVars with mode deny or mask.",
+    "limits": "Reads are broad by default unless denyRead is configured. filesystem.disabled turns off filesystem isolation (user/managed/--settings only). Protected-path protection is lost if allowNestedUserNamespaces is enabled.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#filesystem-isolation"
+   },
+   {
+    "feature": "Sandbox network scope",
+    "behavior": "No direct route out: Linux uses a separate network namespace, macOS Seatbelt blocks all but a local proxy. Proxy checks hostname against network.allowedDomains (start empty) and deniedDomains; unlisted hosts prompt unless network.strictAllowlist (v2.1.219+). WebFetch(domain:*) rules merge into the sandbox allowlist. Loopback/link-local-only hostnames (169.254.169.254) refused; localhost allowed. Per-command allowed domains in auto mode (v2.1.271+) go to the classifier.",
+    "limits": "Proxy \"does not terminate or inspect TLS\"; hostname-based, so domain fronting is possible and broad domains like github.com allow exfiltration paths. Tools ignoring proxy vars (plain ssh, DB drivers) can't connect; UDP/QUIC/ICMP blocked. Custom httpProxyPort/socksProxyPort bypasses Claude Code's domain controls. allowUnixSockets (e.g. docker.sock) can enable bypass.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#network-isolation ; #limitations"
+   },
+   {
+    "feature": "Sandbox escape hatch: dangerouslyDisableSandbox / allowUnsandboxedCommands",
+    "behavior": "When a command fails in the sandbox Claude may retry with dangerouslyDisableSandbox. Approval: bypassPermissions none; Manual/acceptEdits prompt 'Bash command (unsandboxed)'; auto classifier; dontAsk denied. A matching allow rule (e.g. Bash(curl *)) approves with no prompt; an ask rule on Bash(dangerouslyDisableSandbox:true) forces a prompt. sandbox.allowUnsandboxedCommands: false = strict mode, retry ignored.",
+    "limits": "Default allows the retry. Strict mode must be set to be effective; managed allowUnsandboxedCommands: false makes sandbox admin-required so repo settings cannot loosen it.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#escape-hatch"
+   },
+   {
+    "feature": "sandbox.autoAllowBashIfSandboxed (auto-allow mode)",
+    "behavior": "Defaults true: sandboxed Bash commands run without prompting, independent of permission mode, even with a bare Bash ask rule (sandbox boundary substitutes). false = regular permissions mode with prompts.",
+    "limits": "Still applies: Bash deny rules, content-scoped ask rules (Bash(git push *)), critical-path rm prompts; skipped in plan mode; Monitor not auto-approved; forms like FOO=bar npm test and eval go through normal flow. Excluded commands respect the bare Bash ask rule.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#auto-allow-mode ; https://code.claude.com/docs/en/permissions.md#how-permissions-interact-with-sandboxing"
+   },
+   {
+    "feature": "sandbox.excludedCommands",
+    "behavior": "Matching commands (Bash rule syntax, e.g. 'docker compose *') run with \"no filesystem restrictions and no network proxy\" and go through the regular permission flow.",
+    "limits": "Every command in a chain must match; textual match (a script/make target calling docker internally doesn't match); \"An excluded command runs with your full access.\" Broad patterns on interpreters let Claude write a file then run it unsandboxed. Repo settings cannot add excludedCommands in admin-required sandbox.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#excluded-commands"
+   },
+   {
+    "feature": "Sandbox managed-settings enforcement keys",
+    "behavior": "Managed sandbox block can set enabled, failIfUnavailable, allowUnsandboxedCommands: false, allowManagedDomainsOnly, allowManagedReadPathsOnly, and false for weakening keys (enableWeakerNestedSandbox, enableWeakerNetworkIsolation, allowLocalBinding, allowAllUnixSockets, allowAppleEvents, allowNestedUserNamespaces). Admin-required sandbox is triggered by allowUnsandboxedCommands:false or allowManagedDomainsOnly:true; repo .claude/settings*.json then can't loosen it. Server-managed delivery of sandbox.bwrapPath/socatPath/ripgrep, tlsTerminate, proxy ports, credentials, allowApple Events etc. requires user approval dialog.",
+    "limits": "Managed settings can't stop a developer typing commands at the ! prompt (unsandboxed in most sessions). Sandbox doesn't run on native Windows, so failIfUnavailable exits there.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/sandboxing.md#configure-the-sandbox-for-your-organization ; https://code.claude.com/docs/en/server-managed-settings.md#security-approval-dialogs"
+   },
+   {
+    "feature": "Server-managed settings delivery",
+    "behavior": "Org Owners/Primary Owners configure JSON in claude.ai Admin Settings > Claude Code > Managed settings (Teams/Enterprise). Clients fetch at startup and poll hourly; all settings.json keys supported (hooks, env, managed-only keys like allowManagedPermissionRulesOnly) except OS-policy-only keys (policyHelper, wslInheritsWindowsSettings). Highest settings tier; first source delivering a policy key wins within managed tier (server first, then endpoint), with per-key exceptions (cross-source lock keys, env merging, allowedProviders, login keys).",
+    "limits": "Applies uniformly to all users (no per-group). No managed-mcp.json via server (use allowedMcpServers/deniedMcpServers/managedMcpServers v2.1.259+). Needs direct api.anthropic.com and a Team/Enterprise OAuth login, CLAUDE_CODE_OAUTH_TOKEN, or direct API key; Console API keys belong to a different org so don't receive it; skipped when CLAUDE_CODE_USE_* provider vars or non-default ANTHROPIC_BASE_URL are set; not fetched in Cowork. apiKeyHelper/WIF credentials don't trigger fetch.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/server-managed-settings.md"
+   },
+   {
+    "feature": "Server-managed settings fail-open default and forceRemoteSettingsRefresh",
+    "behavior": "If the startup fetch fails Claude Code continues with cached settings, or without server-managed settings if none cached (warns interactively); endpoint-managed settings still apply. First launch waits up to 5 s for the fetch when signing in. forceRemoteSettingsRefresh: true makes the CLI block at startup until a fresh fetch and exit if it fails (claude auth subcommands exempt); self-perpetuating via cache.",
+    "limits": "Without it there is a window at startup with no restrictions; hourly background refresh is fail-open. Honored from any admin-controlled managed source (MDM/file) too, which covers first launch. Gateway-signed-in clients exit on failed fetch regardless.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/server-managed-settings.md#fetch-and-caching-behavior ; #enforce-fail-closed-startup"
+   },
+   {
+    "feature": "Server-managed security approval dialogs",
+    "behavior": "Settings that execute commands or weaken isolation (apiKeyHelper, statusLine, otelHeadersHelper, sandbox binary/network/isolation settings, risky env vars like proxy/base-URL, any hook definition) require explicit user approval in interactive sessions; rejection makes Claude Code exit. claudeMd delivery needs no approval (v2.1.260+).",
+    "limits": "Non-interactive runs (claude -p, SDK, VS Code chat panel, desktop Code tab) cannot show the dialog: delivered settings apply for that run only and are not recorded or cached. An interactive session that can't show the dialog keeps last-approved settings.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/server-managed-settings.md#security-approval-dialogs"
+   },
+   {
+    "feature": "Server-managed settings are not a security boundary",
+    "behavior": "\"Server-managed settings provide centralized policy enforcement, but they operate as a client-side control, not a security boundary.\" Cached file at ~/.claude/remote-settings.json can be edited (tampered file applies until next fetch, except withheld env categories); older versions or modified binaries bypass; third-party provider config bypasses; deleting the cache returns to first-launch behavior.",
+    "limits": "Endpoint-managed (MDM/managed-settings.json) gives stronger guarantees because the file can be OS-protected, but doesn't reach cloud sessions. ConfigChange hooks do not fire when server-managed settings arrive/refresh or MDM changes, and a hook can't block a policy_settings change. Bash(curl *) deny in managed settings matches only 'curl' as written; pair with sandbox allowManagedDomainsOnly.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/server-managed-settings.md#security-considerations"
+   },
+   {
+    "feature": "Invalid entries in delivered settings",
+    "behavior": "On partial schema failure Claude Code surfaces an error and applies remaining valid settings (v2.1.169+); fail-closed keys keep stricter values; cache keeps dropped entries dropped. If every setting fails and none falls back stricter, nothing is applied and cache unchanged (reported by claude doctor, /status).",
+    "limits": "Admin console schema can lag releases and 'Update with errors' still saves. Verify with claude doctor 'Managed settings (remote)' line (v2.1.248+) and /permissions.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/server-managed-settings.md#invalid-entries-in-delivered-settings"
+   },
+   {
+    "feature": "Nested-output and subagent/session interactions with modes",
+    "behavior": "Shift+Tab cycles default, acceptEdits, plan, then bypassPermissions (if enabled) and auto; dontAsk never in cycle. Cloud sessions offer Accept edits, Plan, Auto (no Bypass). VS Code never reads project settings for starting mode.",
+    "limits": "Cloud sessions don't honor bypassPermissions or dontAsk from settings files; endpoint-managed settings don't reach cloud sessions.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/permission-modes.md#switching-modes-by-interface"
+   }
+  ],
+  "unreachable": [
+   "https://code.claude.com/docs/en/settings-reference.md: only first 100,000 of 448,035 characters read; permission and sandbox entries were seen only as an index table (full text only for allowManagedPermissionRulesOnly, availableModelsMatch, deniedModels, modelPricing, maxEffortLevel). Per-key limits for sandbox.* and permissions.* keys beyond those are not confirmed from this page.",
+   "https://code.claude.com/docs/en/permission-modes.md: first 100,000 of 118,952 characters read via a summary, and the tail (critical-path and mounted-drive sections) read in a second call; the middle sections were summarized by the fetch model, not read verbatim.",
+   "https://code.claude.com/docs/en/sandboxing.md: first 100,000 of 107,872 characters read as a summary; the tail (limitations, scope) read in a second call. Troubleshooting section mostly not captured.",
+   "https://code.claude.com/docs/en/permissions.md: sections from 'Move the session to another directory' onward were read; the middle portion between the path-matching tables and symlinks was partly read from a saved file. The 'Add a comment when you answer a permission prompt' subsection was not read.",
+   "Not fetched (outside assigned list, referenced by the pages): https://code.claude.com/docs/en/managed-settings.md (managed-only settings list, precedence within managed tier, keys that fail closed), https://code.claude.com/docs/en/auto-mode-config.md (autoMode environment/allow/soft_deny/hard_deny semantics), https://code.claude.com/docs/en/settings.md#exceptions-to-managed-settings-precedence, https://code.claude.com/docs/en/hooks.md (whether hooks fire headless)."
+  ]
+ },
+ {
+  "area": "Model configuration (aliases, opusplan, effort, subagent model), output styles, status line",
+  "facts": [
+   {
+    "feature": "Model selection precedence",
+    "behavior": "Priority order: 1 /model during session; 2 claude --model at startup; 3 ANTHROPIC_MODEL; 4 'model' field in settings; 5 ANTHROPIC_DEFAULT_MODEL (v2.1.236+). 'If you switch models with /model, the switch also reaches subagents that inherit the main conversation's model.'",
+    "limits": "ANTHROPIC_DEFAULT_MODEL applies only when none of --model, ANTHROPIC_MODEL, a settings 'model' value, or an org default selects a model; ignored if set to default, inherit, opusplan or haiku, if enforceAvailableModels is on, or if org restrictions exclude it.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Setting your model; Set a default model for new sessions)"
+   },
+   {
+    "feature": "Model aliases",
+    "behavior": "default (clears override, not itself an alias), best (what fable resolves to where available, else opus), fable, sonnet, opus, haiku, sonnet[1m]/opus[1m]. On Anthropic API opus=Opus 5.5, sonnet=Sonnet 5.5, haiku=Haiku 5.5; other providers resolve to earlier versions. Pin with a full name (claude-opus-5-5) or ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL.",
+    "limits": "Aliases float to the latest model per provider; they can lag on third-party providers (Bedrock, Vertex/Agent Platform, Foundry), where docs say to pin versions before rollout. ANTHROPIC_BASE_URL changes where requests go, not which model answers. ANTHROPIC_SMALL_FAST_MODEL deprecated for ANTHROPIC_DEFAULT_HAIKU_MODEL (also used for background functionality).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Model aliases; Environment variables; Version history)"
+   },
+   {
+    "feature": "opusplan",
+    "behavior": "'Special mode that uses opus during plan mode, then switches to sonnet for execution.' Plan mode: opus for reasoning/architecture; execution mode: automatically sonnet. ANTHROPIC_DEFAULT_OPUS_MODEL governs the plan phase, ANTHROPIC_DEFAULT_SONNET_MODEL the execution phase. /model opusplan[1m] gives 1M context to both phases (v2.1.265+).",
+    "limits": "Switching is tied to plan mode only; not a general per-task router. Not accepted as ANTHROPIC_DEFAULT_MODEL value.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (opusplan)"
+   },
+   {
+    "feature": "Effort levels and per-model support",
+    "behavior": "Levels low, medium, high, xhigh, max. Fable 5.1/5, Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7 support all five; Opus 4.6 and Sonnet 4.6 support low/medium/high/max. 'If you set a level the active model does not support, Claude Code falls back to the highest supported level at or below the one you set' (xhigh runs as high on Opus 4.6). --effort <level> flag takes low|medium|high|xhigh|max.",
+    "limits": "'max may show diminishing returns and is prone to overthinking.' max is not accepted in the persisted effortLevel / modelSettings keys (session-only unless set via CLAUDE_CODE_EFFORT_LEVEL). Pinned third-party model IDs may not match detection patterns; set ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES (effort, xhigh_effort, max_effort, thinking, adaptive_thinking, interleaved_thinking).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Adjust effort level); claude --help (--effort)"
+   },
+   {
+    "feature": "Effort resolution order",
+    "behavior": "First match wins: 1 CLAUDE_CODE_EFFORT_LEVEL env var; 2 a level picked in the session (/effort, /model picker, applyFlagSettings()); 3 --effort flag at launch; 4 settings: per-model saved level or effortLevel key; 5 model default: high on every effort-supporting model except Opus 5.5, Sonnet 5.5, Haiku 5.5 (medium) and Opus 4.7 (xhigh). CLAUDE_CODE_EFFORT_LEVEL=auto or unset sends no effort level.",
+    "limits": "Env var beats an in-session /effort pick (so a set env var makes /effort ineffective for that session). A maxEffortLevel setting or organization effort cap still limits the result. Persisted effortLevel and the env var do not accept ultracode.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Adjust effort level)"
+   },
+   {
+    "feature": "Per-model saved effort (modelSettings)",
+    "behavior": "Claude Code stores the level per model under modelSettings in user settings. Pressing Enter in /effort or the /model picker saves it as your default for that model; pressing s applies to the current session only (v2.1.257+). Settings precedence between modelSettings and effortLevel is documented at settings-reference#modelsettings.",
+    "limits": "max cannot be saved; ultracode has its own 'ultracode' key. Resolves below env var, in-session pick and --effort. Precedence detail between the two settings keys was not read from the settings-reference page.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Adjust effort level)"
+   },
+   {
+    "feature": "Effort override in skill/subagent frontmatter",
+    "behavior": "'set effort in a skill or subagent markdown file to override the effort level when that skill or subagent runs.' Status line docs add that subagent effort may be a level or numeric token budget set in definition frontmatter or per invocation.",
+    "limits": "maxEffortLevel or an organization cap still limits it. Status line effort.level reports the session level, not one a skill, subagent or ultrathink set.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Adjust effort level); https://code.claude.com/docs/en/statusline.md (available data, Task fields)"
+   },
+   {
+    "feature": "Subagent effort environment variable",
+    "behavior": "None found. The model-config page documents no subagent-specific effort variable (no CLAUDE_CODE_SUBAGENT_EFFORT). Only CLAUDE_CODE_EFFORT_LEVEL (session-wide, top of resolution order) and frontmatter effort are documented.",
+    "limits": "Last ~29.7K characters of the 129.7K-char model-config page were not read in the second fetch window beyond offset 100000 returning only partial content; absence is for the portions read. Not verified against env-vars page.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/model-config.md"
+   },
+   {
+    "feature": "CLAUDE_CODE_SUBAGENT_MODEL",
+    "behavior": "'The default model for subagents, agent team teammates, and workflow agents that aren't assigned a model another way. Accepts an alias such as haiku or a full model name. A per-invocation model or a definition's model field, including inherit, takes precedence.' To override those, set CLAUDE_CODE_SUBAGENT_MODEL_FORCE.",
+    "limits": "It is a default, not a force: per-invocation model and definition 'model' frontmatter win. The _FORCE variable is described on the sub-agents page (run-every-subagent-on-one-model), not read here.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Environment variables table)"
+   },
+   {
+    "feature": "availableModels / restrictions",
+    "behavior": "Managed settings availableModels limits selectable models (family alias, version prefix, or full ID). 'When availableModels is set, the allowlist applies everywhere a user can specify a model.' Blocked family alias on Anthropic API gets the newest permitted version of the family with a notice; blocked /model is rejected with an error; blocked --model/ANTHROPIC_MODEL/model setting is replaced at startup with a warning. enforceAvailableModels: true extends it to Default (v2.1.175+). deniedModels and availableModelsMatch: \"exact\" (v2.1.283+) block specific versions.",
+    "limits": "If managed settings define availableModels it alone applies; user/project/local entries cannot extend it. Otherwise lists from user/project/local concatenate and dedupe. A specific-version entry disables that family's wildcard. Fallback models are also checked against availableModels (blocked means no fallback). Haiku cannot be disabled in the admin console. Via MDM/managed file it applies on third-party providers; server-managed settings are not delivered there.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Restrict model selection)"
+   },
+   {
+    "feature": "modelOverrides",
+    "behavior": "Setting that maps Anthropic model IDs to provider-specific strings (Bedrock ARNs, Vertex names, Foundry deployments). Applies to /model picks and to IDs passed via --model, ANTHROPIC_MODEL, ANTHROPIC_DEFAULT_*_MODEL (v2.1.200+).",
+    "limits": "When availableModels is set in managed settings, only managed modelOverrides apply to directly passed IDs; unknown keys ignored.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Override model IDs per version)"
+   },
+   {
+    "feature": "Fallback models",
+    "behavior": "Availability fallback: fallbackModel setting or --fallback-model a,b tries each in order when primary is overloaded/unavailable/non-retryable server error. claude --help: re-tries the primary at the start of each user turn. Content (safety-classifier) fallback: Fable 5.1/5 and Opus 5.5 re-run biology-flagged requests on Opus 5 and cybersecurity-flagged on Opus 4.8; Sonnet 5.5 re-runs cybersecurity on Sonnet 5 and refuses biology; Opus 5 re-runs cybersecurity on Opus 4.8, refuses biology. switchModelsOnFlag: false asks first.",
+    "limits": "Switch lasts only the current turn; chain capped at three models after dedupe; if fallback blocked by availableModels, no fallback and normal error is shown.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Fallback); claude --help (--fallback-model)"
+   },
+   {
+    "feature": "1M context and auto-compact window",
+    "behavior": "Fable 5.1/5, Sonnet 5 and later, Haiku 5.5, Opus 4.7 and later run 1M by default; Opus 4.6/Sonnet 4.6 need [1m]. CLAUDE_CODE_DISABLE_1M_CONTEXT=1 removes [1m] variants. CLAUDE_CODE_AUTO_COMPACT_WINDOW (100k to 1M tokens, k/M suffix v2.1.304+) beats /autocompact, --autocompact, autoCompactWindow. Native-1M models compact at about 967K by default.",
+    "limits": "Plan-dependent access; Sonnet 4.6 1M needs usage credits. Unrecognized model IDs assume 200K unless CLAUDE_CODE_MAX_CONTEXT_TOKENS or [1m] used.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md; claude --help (--autocompact)"
+   },
+   {
+    "feature": "Extended thinking / ultrathink / ultracode",
+    "behavior": "Thinking collapsed by default, Ctrl+O toggles verbose. 'ultrathink' anywhere in a prompt requests deeper reasoning for that turn without changing session effort (terminal prompt may raise that turn to xhigh; v2.1.311+). Ultracode is a setting, not a level: /effort ultracode, --effort ultracode, or \"ultracode\": true; also sets xhigh; orchestrates dynamic workflows.",
+    "limits": "Thinking cannot be turned off on Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable models (alwaysThinkingEnabled:false and MAX_THINKING_TOKENS=0 have no effect). Ultracode unavailable when workflows are off or model lacks xhigh. Thinking tokens are billed even when collapsed.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/model-config.md (Extended thinking; Ultrathink; Ultracode)"
+   },
+   {
+    "feature": "Output style: what it is and how it applies to the system prompt",
+    "behavior": "'An output style is a set of instructions that sets Claude's role, tone, and response format for every response in a session.' Default = no style instructions. Each non-default built-in keeps Claude Code's software-engineering instructions and adds its own. Claude Code 'sends the active style's instructions with every request'. Custom styles on the full system prompt omit Claude Code's built-in software engineering section unless keep-coding-instructions: true. So a custom style replaces part of the system prompt; built-ins add to it.",
+    "limits": "'It doesn't guarantee that something always happens or never happens.' / 'it's an instruction Claude follows, so nothing enforces it.' Docs point to CLAUDE.md for project knowledge and hooks for guaranteed behavior. keep-coding-instructions has no effect on the shorter system prompt; set CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT=0 to get the full prompt. Style instructions add input tokens (cache-reduced).",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles.md (intro, How output styles work)"
+   },
+   {
+    "feature": "Built-in output styles",
+    "behavior": "Four besides Default: Proactive (starts work, assumes on routine decisions, no plan mode unless asked, asks in conversation before destructive/shared/prod actions), Concise (v2.1.237+; leads with result, no preamble/recap, 1-3 sentences for simple questions), Explanatory (Insight blocks in conversation, not in files), Learning (Insight blocks plus TODO(human) code for the user to write).",
+    "limits": "Proactive does not change permission mode; its check-before-destructive step is an instruction, separate from permission prompts. Concise still gives full detail on request and for safety-relevant output.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles.md (Built-in output styles)"
+   },
+   {
+    "feature": "Selecting an output style",
+    "behavior": "/output-style <style> (ignores case; lists styles with no argument; works in non-interactive mode and Agent SDK, v2.1.269+; via Remote Control only built-ins); /config > Output style; VS Code menu (v2.1.257+). Saved to .claude/settings.local.json. Setting key outputStyle (case-sensitive: Proactive, Concise, Explanatory, Learning; a non-matching value gives Default). Set in ~/.claude/settings.json for a cross-project default; project settings take precedence. Mid-session switch applies from the next message (v2.1.251+), with a prompt-cache cost.",
+    "limits": "Case mismatch in settings silently yields Default. Terminal reads style files at startup; edits during a session need a restart. --safe-mode disables output styles.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/output-styles.md (Change your output style); claude --help (--safe-mode)"
+   },
+   {
+    "feature": "Custom output styles",
+    "behavior": "Markdown file with frontmatter plus instructions, in ~/.claude/output-styles (user), .claude/output-styles (project, every dir from cwd to repo root, closest wins on name clash) or managed policy dir. Frontmatter fields (all optional): name, description, keep-coding-instructions (default false), force-for-plugin (plugin styles only; overrides user's outputStyle; first loaded wins). Plugins can ship styles in output-styles/.",
+    "limits": "Misspelled fields ignored without error; unparseable YAML loads style by file name with no fields (use claude --debug).",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles.md (Create a custom output style; Frontmatter reference)"
+   },
+   {
+    "feature": "Output style scope across agents",
+    "behavior": "'Output styles apply to the main conversation and to a fork, which inherits the parent's whole conversation and system prompt. Other subagents run their own system prompt, so styles don't change how they respond.'",
+    "limits": "Does not reach non-fork subagents.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/output-styles.md (How output styles work)"
+   },
+   {
+    "feature": "Output style vs other mechanisms",
+    "behavior": "Docs' table: output style for voice/length/format/role; CLAUDE.md for project knowledge; skill for task-specific instructions; hook for 'something to happen every time without exception'; subagent for focused helper; --append-system-prompt to 'append to the system prompt without removing anything'.",
+    "limits": "Only hooks are described as run by Claude Code itself rather than depending on Claude following an instruction.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/output-styles.md (Choose between an output style and other features)"
+   },
+   {
+    "feature": "Status line (statusLine setting)",
+    "behavior": "Bottom bar running a configured shell command; JSON session data on stdin, stdout displayed. Config: \"statusLine\": {\"type\":\"command\",\"command\":\"...\",\"padding\":N} in user or project settings. Optional refreshInterval (seconds, min 1) re-runs on a timer; hideVimModeIndicator hides built-in -- INSERT --. Renders in its own row above the footer badges; with it configured, most footer keyboard hints (esc to interrupt, ? for shortcuts) stop showing. Runs locally, consumes no API tokens; temporarily hides during help menu and permission prompts.",
+    "limits": "Display only; cannot block or alter anything. Fields may be null before first API response. Not documented as running headless; page does not say (unreached/unstated).",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/statusline.md (Manually configure a status line)"
+   },
+   {
+    "feature": "Status line update triggers",
+    "behavior": "Runs at session start/resume, then on new assistant message, /compact finishing, permission mode change, vim mode toggle, command change, refreshInterval timer, rate-limit resets_at, warm prompt-cache expires_at. Debounced at 300ms; a command change skips debounce; an in-flight script is cancelled when a new update triggers.",
+    "limits": "Event triggers can go quiet when the session is idle (e.g. waiting on background subagents); use refreshInterval.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/statusline.md (When the status line updates)"
+   },
+   {
+    "feature": "Status line input data and output formats",
+    "behavior": "stdin JSON includes cwd, workspace.current_dir/project_dir/added_dirs/git_worktree/repo.*, model, context_window.used_percentage, cost/duration, rate limits, prompt cache, vim.mode, session_id, effort.level (only when model supports effort; session level, not skill/subagent/ultrathink; shows the level actually run). Output: multiple lines = rows, ANSI colors, OSC 8 links (iTerm2, Kitty, WezTerm; not Terminal.app; FORCE_HYPERLINK=1 overrides detection). COLUMNS and LINES env vars set for the script.",
+    "limits": "tput cols cannot read size since output is captured. Context % reflects last API response; /context adds estimates.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/statusline.md (Available data; What your script can output; Size output)"
+   },
+   {
+    "feature": "Status line gates (trust, hooks policy)",
+    "behavior": "Blank status line causes: untrusted workspace folder (Workspace trust required), failing script, disableAllHooks true outside managed settings (then only a managed statusLine runs, else disabled), and allowManagedHooksOnly in managed settings (custom status line disappears without warning; only a managed statusLine value works). claude --debug logs script stderr each invocation and exit code on first.",
+    "limits": "The statusLine is treated like a hook under disableAllHooks / allowManagedHooksOnly. The Workspace trust section text was not read in detail.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/statusline.md (Troubleshooting)"
+   },
+   {
+    "feature": "subagentStatusLine",
+    "behavior": "Setting that renders a custom row body per subagent in the agent panel. Command runs once per refresh tick, receives all visible rows as one JSON object (base hook fields, columns, tasks array with fields including id and effort) and writes one JSON line per row {\"id\":..., \"content\":...}; ANSI and OSC 8 allowed; omit id to keep default; empty content hides the row.",
+    "limits": "Same trust, disableAllHooks, allowManagedHooksOnly gates as statusLine; plugin-shipped default subagentStatusLine does not run under allowManagedHooksOnly even if the plugin is force-enabled.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/statusline.md (Subagent status lines)"
+   },
+   {
+    "feature": "claude --help flags relevant to this area",
+    "behavior": "--model <model> (alias like fable/opus/sonnet or full name); --effort <level> (low, medium, high, xhigh, max); --fallback-model <model> (comma list; retries primary each user turn); --autocompact <auto|tokens> (100k-1M); --append-system-prompt; --system-prompt; --system-prompt-snapshot on|off (records the rendered system prompt, including appended text, once per conversation and reuses it verbatim on every request and resume until compaction; default on); --safe-mode (disables CLAUDE.md, skills, plugins, hooks, MCP, output styles, etc.; managed settings still apply); --settings; --setting-sources; --bare (skips hooks, CLAUDE.md discovery).",
+    "limits": "help shows --effort choices without ultracode. No flag for output style or status line appears in help. System-prompt snapshot means a changed --append-system-prompt on a resumed conversation is ignored until compaction unless snapshot is off.",
+    "enforcement": "automatic",
+    "citation": "claude --help (run locally 2026-11-03)"
+   }
+  ],
+  "unreachable": [
+   "Tail of https://code.claude.com/docs/en/model-config.md beyond ~char 100000 was read (offset 100000 fetch returned the compaction/gateway/env-var/version-history tail), but the WebFetch summarizer returned partial content for the middle effort/subagent sections; no CLAUDE_CODE_SUBAGENT_EFFORT variable was seen anywhere.",
+   "https://code.claude.com/docs/en/sub-agents.md (CLAUDE_CODE_SUBAGENT_MODEL_FORCE, frontmatter model/effort) not fetched, out of assigned sources",
+   "https://code.claude.com/docs/en/settings-reference (modelSettings precedence, maxEffortLevel, effortLevel) not fetched",
+   "Statusline page 'Workspace trust required' and 'Script errors or hangs' subsections not read in full; headless/-p behavior of statusLine not stated in the parts read",
+   "All three assigned URLs loaded; none 404ed"
+  ]
+ },
+ {
+  "area": "memory, slash commands, .claude directory, context window (Claude Code docs as of 2026-11-03)",
+  "facts": [
+   {
+    "feature": "CLAUDE.md is context, not enforcement",
+    "behavior": "\"Claude treats them as context, not enforced configuration. To block an action regardless of what Claude decides, use a PreToolUse hook instead.\" CLAUDE.md content is delivered as a user message after the system prompt, not as part of the system prompt; \"there's no guarantee of strict compliance, especially for vague or conflicting instructions.\" Hooks \"execute as shell commands at fixed lifecycle events and apply regardless of what Claude decides to do.\" Settings rules are \"enforced by the client regardless of what Claude decides\"; CLAUDE.md is \"not a hard enforcement layer.\"",
+    "limits": "Cannot guarantee compliance. A managed CLAUDE.md is guidance only; use managed settings permissions.deny, sandbox.enabled, env for enforcement. For system-prompt-level instructions use --append-system-prompt (set at launch; better for scripts).",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/memory.md (CLAUDE.md vs auto memory; Troubleshoot; Manage CLAUDE.md for large teams)"
+   },
+   {
+    "feature": "CLAUDE.md locations and load order",
+    "behavior": "Listed broadest to most specific: Managed policy (macOS /Library/Application Support/ClaudeCode/CLAUDE.md; Linux/WSL /etc/claude-code/CLAUDE.md; Windows C:\\Program Files\\ClaudeCode\\CLAUDE.md), user ~/.claude/CLAUDE.md, project ./CLAUDE.md or ./.claude/CLAUDE.md, local ./CLAUDE.local.md. Files are concatenated, not overriding: ordered from filesystem root down to the working directory, so closer files are read last; within a directory CLAUDE.local.md is appended after CLAUDE.md. CLAUDE.md and CLAUDE.local.md in the working directory and every directory above it load at launch. Those in subdirectories load on demand once Claude reads, writes or edits a file there (including single-file cat/head Bash reads).",
+    "limits": "Subdirectory CLAUDE.md files do not appear under Memory files in /context at launch. Contradicting instructions: \"Claude may pick one arbitrarily.\" Whole file loads if <=4 MiB; a file over 4 MiB is skipped entirely (loads none of it).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Choose where to put CLAUDE.md files; How CLAUDE.md files load)"
+   },
+   {
+    "feature": "CLAUDE.md size guidance and warning",
+    "behavior": "\"target under 200 lines per CLAUDE.md file. Longer files consume more context and reduce adherence.\" If an instruction file is over the recommended length you see a warning at startup and in /status; a warning also appears when files each within length add up past a combined limit at session start. Each CLAUDE.md, rules file, and @path import counts as a separate file.",
+    "limits": "The 200 lines is a recommendation, not a truncation; the only hard cap for launch-loaded CLAUDE.md is 4 MiB (skipped, not truncated). The exact combined limit number is not stated on the page.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/memory.md (Write effective instructions; My CLAUDE.md is too large)"
+   },
+   {
+    "feature": "Per-file limit for on-demand files (subdirectory CLAUDE.md, path-scoped rules)",
+    "behavior": "When a subdirectory CLAUDE.md/CLAUDE.local.md (and their @imports), rules in a subdirectory's .claude/rules/, or path-scoped rules (project or ~/.claude/rules) exceed a per-file limit, \"Claude receives only the start of it,\" followed by a note to read the rest with the Read tool. Limit: 40,000 characters on a 200K context window; on 1M window 200,000 characters on Opus 4.6 and Sonnet 4.6, 150,000 on later models. Applies from v2.1.309.",
+    "limits": "Applies only to files that load on demand, not launch-loaded CLAUDE.md or unscoped rules. Later instructions are absent from context until Claude chooses to Read.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Claude ignores the end of my subdirectory CLAUDE.md)"
+   },
+   {
+    "feature": "CLAUDE.local.md",
+    "behavior": "\"Your private preferences for this project, loaded alongside CLAUDE.md\" and \"treated the same way\"; located at project root; create manually and add to .gitignore. Loaded at launch from working directory and above; subdirectory ones load on demand. Appended after CLAUDE.md in each directory. A gitignored CLAUDE.local.md exists only in the worktree where created; to share across worktrees import a file from home (@~/.claude/my-project-instructions.md). With CLAUDE_CODE_NEW_INIT=1, /init's personal option creates and gitignores it.",
+    "limits": "Not auto-gitignored by Claude Code on creation (manual). Skipped if 'local' excluded from --setting-sources. Its presence counts as a CLAUDE.md for the AGENTS.md check, so AGENTS.md is then not read by default. Docs list it as 'Not shown' in the .claude explorer; sits at project root, not inside .claude/.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/memory.md (Import additional files; Choose where to put); https://code.claude.com/docs/en/claude-directory.md (What's not shown)"
+   },
+   {
+    "feature": "@path imports in CLAUDE.md",
+    "behavior": "\"CLAUDE.md files can import additional files using @path/to/import syntax. Imported files are expanded and loaded into context alongside the CLAUDE.md that references them.\" Relative or absolute paths; relative resolve against the importing file. Recursive, \"maximum depth of four hops.\" Spaces in paths need a backslash; quoted paths are not imported. Import parsing skips code spans and fenced code blocks (wrap in backticks to keep literal).",
+    "limits": "Imports organize but do not reduce context cost (\"imported files load together with the CLAUDE.md\"). External imports (resolving outside working directory) in project-level memory files trigger a one-time approval dialog per project; if declined they stay disabled. User-scope files (~/.claude/CLAUDE.md, ~/.claude/rules/) load imports without the dialog, except in Cowork desktop sessions where out-of-directory imports are skipped.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Import additional files)"
+   },
+   {
+    "feature": "HTML comments in CLAUDE.md",
+    "behavior": "Block-level HTML comments (<!-- ... -->) are stripped before injection into Claude's context, so they cost no context tokens. Comments inside code blocks are preserved; they remain visible when the file is opened with the Read tool.",
+    "limits": "Only block-level comments; not stripped in code blocks.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (How CLAUDE.md files load)"
+   },
+   {
+    "feature": ".claude/rules/ (unscoped rules)",
+    "behavior": "Markdown files in .claude/rules/ discovered recursively (subdirectories allowed). Rules without paths frontmatter \"are loaded at launch with the same priority as .claude/CLAUDE.md.\" User-level rules in ~/.claude/rules/ apply to all projects and load before project rules. Supports symlinks (circular detected); a symlink target outside the working directory is treated like an external import needing approval, and only rules without paths load after approval. Network-path symlinks (UNC, /net, /Network) are not followed.",
+    "limits": "\"Neither set overrides the other: if a user rule and a project rule conflict, Claude may follow either.\" Rules are advisory context like CLAUDE.md. Excluded if 'project' excluded from --setting-sources.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/memory.md (Organize rules with .claude/rules/; Share rules with symlinks; User-level rules)"
+   },
+   {
+    "feature": "Path-scoped rules (paths: frontmatter)",
+    "behavior": "A rule with YAML paths: globs loads \"when Claude uses the Read, Write, or Edit tool on a matching file\" or views it via a single-file Bash read like cat/head. Patterns relative to the rule's base directory (project root for project rules; primary working directory for user rules). Brace expansion supported; budget of 1,000 expanded patterns and 4 MiB per rule's paths list. paths is the only frontmatter field Claude Code reads from a rule; others ignored without error; frontmatter is stripped before loading. Unparseable YAML: rule loads as if no paths.",
+    "limits": "Not loaded at launch; load only on a file Read/Write/Edit/cat/head (not on merely listing or Grep, per docs wording). Do not persist across compaction: they load into message history and are summarized away, reloaded only when a matching file is touched again. \"If a rule must persist across compaction, drop the paths: frontmatter or move it to the project-root CLAUDE.md.\" Sibling-worktree files need session started in that worktree or /cd. Subject to per-file on-demand size limit.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Path-specific rules; Rule frontmatter reference); https://code.claude.com/docs/en/context-window.md (What survives compaction)"
+   },
+   {
+    "feature": "claudeMdExcludes setting",
+    "behavior": "Skips specific CLAUDE.md/rules files by absolute-path glob; configurable at user, project, local or managed layers; arrays merge across layers. Rules reached by symlink can be matched by either link path or target (since v2.1.239).",
+    "limits": "Cannot exclude a managed-policy CLAUDE.md. If CLAUDE.md loading is turned off entirely, managed content also does not load.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Exclude specific CLAUDE.md files)"
+   },
+   {
+    "feature": "Managed CLAUDE.md and claudeMd key",
+    "behavior": "IT-deployed CLAUDE.md at the managed-policy path applies to all users on the machine in any repo and loads before user and project CLAUDE.md. The claudeMd key in managed-settings.json embeds the content directly.",
+    "limits": "claudeMd in user, project or local settings \"has no effect\"; honored only in managed/policy settings. Guidance only: \"Use the file for guidance, and enforce rules with managed settings such as permissions.deny.\"",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/memory.md (Deploy organization-wide CLAUDE.md)"
+   },
+   {
+    "feature": "AGENTS.md support",
+    "behavior": "From v2.1.277 Claude reads AGENTS.md as project instructions only when there is no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md in the working directory or above (default setting 'Project instructions' = claude-md-or-agents-md). Other values via /config: claude-md-and-agents-md (both), claude-md (CLAUDE.md only), managed-only (only managed CLAUDE.md and auto memory at launch; user/project/local CLAUDE.md, .claude/rules and AGENTS.md left out, though subdirectory CLAUDE.md, rules and path-scoped rules still load on demand). Setting stored under pluginConfigs cc-plugin-agents-md@builtin, read only from ~/.claude/settings.json, --settings file or managed settings (ignored in project/local settings). @AGENTS.md import inside CLAUDE.md works and is not read twice.",
+    "limits": "Not read: AGENTS.local.md, AGENTS.override.md, anything under .agents/. ~/.claude/CLAUDE.md, managed CLAUDE.md and .claude/rules do not count as a CLAUDE.md for the check. AGENTS.md read via the setting does not fire InstructionsLoaded hooks, is not loaded from --add-dir directories, and external @imports load only if already approved. Unavailable on versions before v2.1.277, when the built-in plugin is disabled, or sometimes first session after upgrade.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (AGENTS.md sections)"
+   },
+   {
+    "feature": "Additional directories (--add-dir) and CLAUDE.md",
+    "behavior": "--add-dir grants file access; \"By default, CLAUDE.md files from these directories are not loaded.\" Setting CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 loads CLAUDE.md, .claude/CLAUDE.md, .claude/rules/*.md and CLAUDE.local.md from them (CLAUDE.local.md skipped if local excluded from --setting-sources).",
+    "limits": "/add-dir: \"Most .claude/ configuration isn't discovered from the added directory.\" AGENTS.md in added dirs does not load.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Load from additional directories); https://code.claude.com/docs/en/commands.md (/add-dir)"
+   },
+   {
+    "feature": "Auto memory: what and when",
+    "behavior": "Notes Claude writes itself; four types recorded in frontmatter type: user, feedback, project, reference. Claude skips what it can derive from the codebase or what CLAUDE.md already says, and \"doesn't save something every session\" (its own judgment). On by default in local sessions; self-hosted environment sessions default off outside Claude Tag. Toggle in /memory saves autoMemoryEnabled to ~/.claude/settings.json; can be set per project in project settings; CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 disables via env. Claude writes a modified ISO 8601 timestamp into frontmatter of memory files it writes that start with YAML frontmatter.",
+    "limits": "Toggle cannot turn it back on in background sessions or sessions started by another Claude Code session. Machine-local; not shared across machines or cloud environments. Main conversation's auto memory is not loaded into subagents (exception: fork); a subagent's own memory (memory frontmatter field) is a separate directory. What Claude saves is discretionary, not guaranteed.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Auto memory; Enable or disable auto memory)"
+   },
+   {
+    "feature": "Auto memory storage location",
+    "behavior": "~/.claude/projects/<project>/memory/ containing MEMORY.md index plus one topic file per memory. <project> derives from the git repository, so all worktrees and subdirectories of one repo share one directory; outside git, project root is used. CLAUDE_CODE_PROJECT_DIR_NAME (v2.1.234+) overrides the directory name with CLAUDE_CONFIG_DIR. autoMemoryDirectory setting (absolute path or ~/) relocates it; read from user, project, local, policy or --settings scope.",
+    "limits": "If autoMemoryDirectory is set in project .claude/settings(.local).json it is honored only under the same workspace-trust rule as hooks; with permissions.blockReadsOutsideWorkingDirectories on, no auto memory is loaded from or saved to a directory chosen by a repository-supplied settings file.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/memory.md (Storage location)"
+   },
+   {
+    "feature": "MEMORY.md index load limit and reminder",
+    "behavior": "\"The first 200 lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the start of every conversation. Content beyond that threshold is not loaded at session start.\" After Claude writes to MEMORY.md, Claude Code measures it against the 200-line and 25KB limits; if near a limit it reminds Claude to shorten it (one line per entry, move detail to topic files, merge or drop stale entries). If over a limit the write still succeeds but Claude Code returns an error telling Claude to rewrite the index, \"because everything past the limit is dropped on the next load.\"",
+    "limits": "Limit applies only to MEMORY.md, not CLAUDE.md. Topic files are not loaded at startup; Claude reads them on demand with file tools. Does not block the write. The shortening is done by Claude acting on the reminder, not by Claude Code itself.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/memory.md (How it works)"
+   },
+   {
+    "feature": "Auto memory retention",
+    "behavior": "The cleanupPeriodDays sweep does not delete memory files in projects/<project>/memory/; \"MEMORY.md and topic files stay until you or Claude edits or deletes them.\" Claude Code removes the directory only if it has been empty for the whole retention period. Before v2.1.228 the sweep could delete old files beneath it.",
+    "limits": "Deleted by claude purge (transcripts and auto memory for a project) or by deleting ~/.claude/projects/ (\"auto memory for every project\").",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/claude-directory.md (Cleaned up automatically); https://code.claude.com/docs/en/memory.md (Storage location)"
+   },
+   {
+    "feature": "/memory command",
+    "behavior": "\"Edit CLAUDE.md files, enable or disable auto memory, and view auto memory entries.\" Lists CLAUDE.md, CLAUDE.local.md and other memory file locations across user and project scopes (including entries for files that do not exist yet; selecting one creates it), provides an auto memory toggle and an option to open the auto memory folder; opens selected file in editor. Can show AGENTS.md path if read directly (v2.1.280+).",
+    "limits": "Docs say to use /context (not /memory) to check which CLAUDE.md and rules files loaded at launch. Asking Claude to 'remember' something saves to auto memory, not CLAUDE.md; say 'add this to CLAUDE.md' to write CLAUDE.md.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/commands.md (/memory); https://code.claude.com/docs/en/memory.md (View and edit with /memory)"
+   },
+   {
+    "feature": "/init",
+    "behavior": "\"Initialize project with a CLAUDE.md guide.\" Analyzes the codebase and generates a starting CLAUDE.md (build commands, test instructions, conventions). If a CLAUDE.md exists it suggests improvements rather than overwriting. With CLAUDE_CODE_NEW_INIT=1 it is an interactive multi-phase flow asking which artifacts to set up (CLAUDE.md files, skills, hooks, personal memory file), explores with a subagent and presents a reviewable proposal before writing. If it finds OpenAI Codex or Google Gemini CLI config it offers to carry it over with /import.",
+    "limits": "Generates starting content only; does not enforce anything. Default (non-interactive) flow is not the multi-phase one.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/commands.md (/init); https://code.claude.com/docs/en/memory.md (Set up a project CLAUDE.md)"
+   },
+   {
+    "feature": "/doctor (setup checkup)",
+    "behavior": "Bundled skill: \"Run a setup checkup that diagnoses installation, settings, extension, and CLAUDE.md problems and proposes fixes that Claude applies after you confirm.\" Alias /checkup. Covers installation health, extensions (unused skills, MCP servers, plugins vs context cost; slow hooks), CLAUDE.md files (local duplicating checked-in, derivable checked-in content such as directory layouts, dependency lists, architecture overviews, and offers to migrate always-loaded guidance into skills and on-demand nested CLAUDE.md), permissions (offer to make auto mode default, pre-approve read-only commands), and usage (v2.1.305+, last 7 days, omitted while Remote Control connected). 'Claude reports its findings first and asks for confirmation before changing anything.' `claude doctor` in a terminal is read-only installation diagnostics without a session.",
+    "limits": "It is a prompt handed to Claude, run on demand, not a continuous check or gate. Changes only after confirmation.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/commands.md (/doctor); https://code.claude.com/docs/en/skills.md (Check your setup with /doctor); https://code.claude.com/docs/en/memory.md (My CLAUDE.md is too large)"
+   },
+   {
+    "feature": "/doctor prompt-audit",
+    "behavior": "\"Claude looks for problems such as instructions written for older models, references to files or commands that don't exist, and files that contradict each other. You get a report of findings with proposed edits, and nothing in your files changes until you ask Claude to apply them.\" Default scope: CLAUDE.md, CLAUDE.local.md, AGENTS.md plus rules, skills, commands, subagents and output styles under .claude/ and ~/.claude/. Optional path argument narrows scope (e.g. /doctor prompt-audit .claude/skills/deploy). Requires v2.1.283+. Runs through the bundled /claude-api skill.",
+    "limits": "Unavailable when /claude-api is turned off via skillOverrides or disableBundledSkills. Read-only report; model judgment, not a deterministic linter. Manual invocation only.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/memory.md (Audit your instruction files); https://code.claude.com/docs/en/commands.md (/doctor, /claude-api)"
+   },
+   {
+    "feature": "/context",
+    "behavior": "\"Visualize current context usage as a colored grid. Shows optimization suggestions for context-heavy tools, memory bloat, and capacity warnings.\" Lists loaded CLAUDE.md, CLAUDE.local.md and auto memory files under Memory files; warns when conversation exceeds the context window. In fullscreen mode per-item breakdown collapses; /context all expands.",
+    "limits": "Subdirectory CLAUDE.md files (loaded on demand) are not listed at launch; a 'Loaded' line appears in the terminal when they load. Diagnostic only; changes nothing.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/commands.md (/context); https://code.claude.com/docs/en/context-window.md (Check your own session)"
+   },
+   {
+    "feature": "Startup context contents",
+    "behavior": "Before you type: CLAUDE.md (or AGENTS.md), auto memory, MCP tool names, and skill descriptions load into context. Output style and --append-system-prompt text may add more. Path-scoped rules load when matching files are touched; subagents run in their own context window and return only a summary plus metadata trailer.",
+    "limits": "Skill bodies load only when invoked (or judged relevant); only descriptions are always present. Docs say rules without paths load every session.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/context-window.md (What the timeline shows)"
+   },
+   {
+    "feature": "What survives compaction",
+    "behavior": "Re-injected from disk: project-root CLAUDE.md and unscoped rules; auto memory; plan-mode plan; skill descriptions (v2.1.304+). System prompt and output style still apply. Invoked skill bodies re-injected capped at 5,000 tokens per skill and 25,000 total, oldest dropped first (truncation keeps start of file). Up to five most recently modified files re-read; files over 5,000 tokens return as path reference only. Git status snapshot refreshed. SessionStart hooks matching the compact source run and add output. Background commands and subagents keep running.",
+    "limits": "Rules with paths: and nested subdirectory CLAUDE.md are summarized away and reload only on demand. Context hooks added earlier is summarized. Conversation-only instructions are lost; \"Add conversation-only instructions to CLAUDE.md to make them persist.\"",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/context-window.md (What survives compaction); https://code.claude.com/docs/en/memory.md (Instructions seem lost after /compact)"
+   },
+   {
+    "feature": "/compact, /autocompact, automatic compaction",
+    "behavior": "/compact [instructions] summarizes the conversation to free context, optional focus instructions. Claude Code compacts automatically as context nears the limit. /autocompact [auto|<tokens>] (v2.1.221+) sets how full the window gets before auto-compaction, saved to user settings. /rewind then 'Summarize from here/up to here' compacts part of the conversation. Idle conversations may also compact (idleCompaction setting). 1M-token window supported on Fable models, Sonnet 5 and later, Haiku 5.5, Opus 4.6 and later, Sonnet 4.6. Summarization inherits session extended-thinking config (v2.1.198+).",
+    "limits": "Per-model default thresholds are in model-config.md (not fetched). Automatic summary is Claude's guess of what matters.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/context-window.md (When your context fills up); https://code.claude.com/docs/en/commands.md (/compact, /autocompact)"
+   },
+   {
+    "feature": "/clear",
+    "behavior": "\"Start a new conversation with empty context.\" Optional name labels the previous conversation in /resume picker. Aliases /reset, /new. Previous conversation resumable via /resume.",
+    "limits": "Does not continue the same conversation (use /compact for that). CLAUDE.md and memory reload as in any new session.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/commands.md (/clear)"
+   },
+   {
+    "feature": "Custom commands vs skills",
+    "behavior": "\"Custom commands have been merged into skills. A file at .claude/commands/deploy.md and a skill at .claude/skills/deploy/SKILL.md both create /deploy and work the same way. Your existing .claude/commands/ files keep working.\" commands/*.md is described as the older, single-file format; prefer a skill for new work (supporting files). Command files accept the skill frontmatter fields except name and paths. Command files in subfolders namespace (frontend/component.md -> /frontend:component). When a skill and a .claude/commands/ file share a name, the skill wins. Both live at project and global scope and are committed.",
+    "limits": "Commands cannot set name or paths and have no supporting-file directory. The skills.md page was read only to ~100,000 of ~118,821 characters.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/skills.md; https://code.claude.com/docs/en/claude-directory.md (File reference, Frontmatter fields by file)"
+   },
+   {
+    "feature": "Bundled skills and workflows in the command list",
+    "behavior": "commands.md marks entries as built-in (behavior coded in the CLI), Skill (a bundled skill: 'a prompt handed to Claude', works like skills you write) or Workflow (bundled dynamic workflow fanning out across subagents in background). Marked Skills include /batch, /claude-api, /debug, /doctor, /loop, /simplify; /deep-research is a Workflow; /verify runs only when invoked. Commands are recognized only at the start of a message; up to six skills can be chained in one message. Commands sent mid-response queue until the turn ends, except some (e.g. /status, /tasks, /usage) run immediately. MCP servers can expose prompts that appear as commands. Commands unavailable to you are hidden; a few (e.g. /heapdump) hidden by design until full name typed.",
+    "limits": "Skill-type commands are model prompts, not deterministic code. /agents on v2.1.198+ only prints a reminder (interactive UI removed after v2.1.197). /review is an alias of /code-review (v2.1.223+).",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/commands.md (All commands; How the command menu matches; MCP prompts)"
+   },
+   {
+    "feature": "Other built-in commands relevant to configuration",
+    "behavior": "/hooks: view hook configurations. /permissions (alias /allowed-tools): manage allow, ask, deny rules by scope, working directories, auto mode denials. /skills: list skills; toggle visibility to Claude and the / menu; cannot cycle plugin skills, disable-model-invocation skills, or skills overridden in managed settings/--settings. /config (alias /settings) [key=value]: opens Settings or sets keys directly, also in -p mode; cannot turn on settings needing panel confirmation. /status: Settings Status tab with version, model, account, connectivity, Session kind. /add-dir, /cd. /output-style [style] (v2.1.269+). /rewind (aliases /checkpoint, /undo). /usage (aliases /cost, /stats). /insights writes HTML report. /export. /security-review (needs origin remote). /sandbox toggles sandbox mode.",
+    "limits": "/hooks only views, does not edit. Behavior of output styles (append vs replace system prompt) and permission-rule visibility into MCP calls are not covered by the four assigned pages.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/commands.md (All commands)"
+   },
+   {
+    "feature": ".claude directory layout (config files)",
+    "behavior": "Project-scope under repo .claude/ (committed): CLAUDE.md or ./CLAUDE.md, rules/*.md, settings.json, skills/<name>/SKILL.md, commands/*.md, output-styles/*.md, agents/*.md, workflows/*.js (saved from /workflows; each file becomes a /<name> command), agent-memory/<name>/ (subagent persistent memory). Project-only: settings.local.json (personal overrides, \"gitignored when Claude Code saves a setting to it\"), .mcp.json and .worktreeinclude at repo root (committed). Global ~/.claude: same families plus ~/.claude.json (app state, account, UI toggles, personal MCP servers; not committed), projects/<project>/memory/ (auto memory), keybindings.json, themes/*.json. CLAUDE_CONFIG_DIR relocates ~/.claude and ~/.claude.json. Managed-settings.json is system-level and overrides user/project settings and --settings apart from narrow exceptions. Frontmatter fields per file type are tabulated (rules read only paths).",
+    "limits": "Docs say rules paths are the only rule frontmatter. Agents shipped in plugins honor only a subset of subagent fields. CLAUDE.local.md and AGENTS.md live outside the explorer. Plugins live in ~/.claude/plugins.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/claude-directory.md (File reference; Frontmatter fields by file; What's not shown)"
+   },
+   {
+    "feature": "Application data retention sweep (cleanupPeriodDays)",
+    "behavior": "\"Claude Code deletes the files in the paths below once they're older than cleanupPeriodDays\"; default 30 days, minimum 1, 0 fails validation. Swept paths under ~/.claude: projects/<project>/<session>.jsonl transcripts (and orphaned/superseded copies), subagents/, tool-results/, mcp-tasks/; file-history/ (pre-edit snapshots, 100 most recent checkpoints); plans/; debug/; paste-cache/; image-cache/; uploads/; dev-mods/; session-env/; tasks/; shell-snapshots/; backups/ (keeps five newest); feedback-bundles/; feedback/drafts/ (shorter of cleanupPeriodDays or 30 days; 10-draft queue); usage-data/; skills/.trash and plugins/.trash; legacy todos/ statsig/ logs/. Same cutoff applies to orphaned worktrees. Session scratchpad is deleted with its transcript.",
+    "limits": "Sweep skipped in bare mode (claude -p --bare) and paused if retention period cannot be safely determined (warning in /status for unreadable settings). Managed cleanupPeriodDays is honored. Claude Desktop/Cowork transcripts kept at any age unless desktopSessionCleanupPeriodDays (v2.1.248+) is set. sessions/ files removed on session exit. Does not delete auto memory.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/claude-directory.md (Cleaned up automatically)"
+   },
+   {
+    "feature": "Kept until you delete them, and plaintext storage",
+    "behavior": "Not removed by the sweep: history.jsonl (prompt history; entries older than cleanupPeriodDays removed only under HIPAA configuration), stats-cache.json, remote-settings.json (re-fetched), cache/changelog.md, policy-limits.json. State files to keep: .credentials.json, agent-memory/, jobs/ and daemon/. Transcripts and history are \"not encrypted at rest. OS file permissions are the only protection\"; a credential printed by a command or read from .env is written to the session .jsonl, which also holds system prompt, tool definitions and loaded CLAUDE.md. Mitigations: lower cleanupPeriodDays, CLAUDE_CODE_SKIP_PROMPT_HISTORY, --no-session-persistence with -p, persistSession:false (TS SDK only), permission rules denying reads of credential files.",
+    "limits": "No Python SDK equivalent for persistSession. Deleting projects/ loses resume/rewind and all auto memory.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/claude-directory.md (Kept until you delete them; Plaintext storage)"
+   },
+   {
+    "feature": "claude purge",
+    "behavior": "Deletes state for one project: transcripts and auto memory under projects/, per-session tasks/debug/file-history, matching prompt lines in history.jsonl, and the project's entry in ~/.claude.json. Prints the plan and asks confirmation; --dry-run previews, --yes skips prompt, --all purges every project (deletes history.jsonl outright), -i steps item by item. Named claude project purge before v2.1.288.",
+    "limits": "Leaves shell-snapshots/ and backups/ (not project-scoped), pasted images and scratchpads under the temp directory, and any /heapdump .heapsnapshot files. Irreversible.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/claude-directory.md (Clear local data)"
+   },
+   {
+    "feature": "Session scratchpad directory",
+    "behavior": "Per-session directory for temporary files, usable without permission prompts, at /private/tmp/claude-<uid>/<project>/<session-id>/scratchpad/ on macOS (outside ~/.claude); deleted with the session transcript by the sweep; hooks receive scratchpad_dir.",
+    "limits": "Exists only when signed in with claude.ai (not API key), using Anthropic API (not Bedrock/Vertex/Foundry), and enableArtifact not false. OS may clear it on restart; claude purge does not touch it.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/claude-directory.md (Session scratchpad directory)"
+   }
+  ],
+  "unreachable": [
+   "None of the four assigned pages 404'd (memory.md, commands.md, claude-directory.md, context-window.md all fetched). Extra: skills.md was read only to character 100,000 of 118,821. Not fetched (linked but out of scope): model-config.md default auto-compact thresholds, errors.md memory-index-is-over-its-read-limit, settings-reference.md cleanupPeriodDays, hooks InstructionsLoaded. Output styles, MCP permission-rule visibility and headless hook behavior are not covered by these four pages. The claude-directory.md explorer is interactive, so only its written tables were captured."
+  ]
+ },
+ {
+  "area": "MCP servers: scopes, .mcp.json, project approval, tool search, permission rules, managed MCP, hooks on MCP calls (as of 2026-11-03)",
+  "facts": [
+   {
+    "feature": "MCP installation scopes and storage",
+    "behavior": "Three scopes: local (default; stored in ~/.claude.json under the project path, private), project (.mcp.json in project root, shared via version control), user (~/.claude.json, all projects). Precedence when the same server is defined more than once: local, project, user, plugin-provided, claude.ai connectors; 'The entire server entry from that source is used; fields are not merged across scopes.' Managed-settings managedMcpServers (v2.1.259+) rank above all. Scopes match by name; plugins/connectors match by endpoint. CLI: claude mcp add -s/--scope <local|user|project>, default local.",
+    "limits": "No field merging across scopes. Not a policy mechanism by itself.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; claude mcp add --help"
+   },
+   {
+    "feature": ".mcp.json format and env var expansion",
+    "behavior": "File with top-level mcpServers. ${VAR} and ${VAR:-default} expand in command, args, env, url, headers. Unset var with no default: config still loads with a warning and the literal ${VAR} text. Credential variables (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, AWS_BEARER_TOKEN_BEDROCK, HTTPS_PROXY, NPM_TOKEN) are read as empty in a remote server's url/headers; a :-default on them is ignored.",
+    "limits": "Expansion is not a secret store; other names like API_KEY expand as written. Managed-settings managedMcpServers entries do NOT expand ${VAR} (entries containing it are dropped).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp.md"
+   },
+   {
+    "feature": "Approval prompt for project-scoped (.mcp.json) servers",
+    "behavior": "'Claude Code prompts for approval in interactive sessions before using project-scoped servers from .mcp.json files.' claude mcp list/get show unapproved ones as 'Pending approval' and do not connect. claude mcp reset-project-choices resets all approved and rejected project-scoped choices. Settings keys enableAllProjectMcpServers, enabledMcpjsonServers, disabledMcpjsonServers record choices (enabledMcpjsonServers/disabledMcpjsonServers are separate from enabledMcpServers/disabledMcpServers, which are the per-project /mcp toggle stored in ~/.claude.json).",
+    "limits": "No prompt in claude -p, Agent SDK sessions and cloud sessions: 'it loads project-scoped servers without asking' (permissions page: connected without asking, approved or not; SDK loads them only when settingSources includes project). Also skipped in bypassPermissions when skipDangerousModePermissionPrompt is set in user/managed settings. To keep a server out headless: disabledMcpjsonServers (blocks in every permission mode), --setting-sources/settingSources, --bare, or --strict-mcp-config.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; https://code.claude.com/docs/en/permissions.md ; claude mcp list --help ; claude mcp reset-project-choices --help"
+   },
+   {
+    "feature": "Workspace trust and self-approval of .mcp.json servers",
+    "behavior": "'A cloned repository can't approve its own servers: enableAllProjectMcpServers or enabledMcpjsonServers committed to the project's .claude/settings.json is ignored in an untrusted folder, and the server stays at Pending approval.' Approvals from user ~/.claude/settings.json, managed settings and --settings still apply in untrusted folders. 'A disabledMcpjsonServers entry in any settings file still rejects the server.'",
+    "limits": "Applies to interactive sessions; headless sessions connect without asking. headersHelper on a project .mcp.json/local server runs only after the trust dialog is accepted (headless: never run, static headers only).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; https://code.claude.com/docs/en/permissions.md"
+   },
+   {
+    "feature": "--mcp-config and --strict-mcp-config",
+    "behavior": "--strict-mcp-config: 'Claude Code then uses only the MCP servers you pass with --mcp-config.' Servers from --mcp-config are still filtered by allowedMcpServers/deniedMcpServers (except in-process type sdk). With a readable managed-mcp.json deployed, --mcp-config makes a workstation exit at startup ('You cannot dynamically configure MCP servers when an enterprise MCP config is present'); --strict-mcp-config also exits.",
+    "limits": "--strict-mcp-config limits which config files load; it does not bypass allow/deny lists. Without managed-mcp.json, a --mcp-config server with the same name replaces a managedMcpServers one for that run.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; https://code.claude.com/docs/en/managed-mcp.md"
+   },
+   {
+    "feature": "claude mcp CLI subcommands",
+    "behavior": "claude mcp: add (-t stdio|sse|http, -s local|user|project, -e, -H, --client-id, --client-secret, --callback-port), add-json, add-from-claude-desktop (Mac/WSL), get, list, login, logout, remove, reset-project-choices, serve (start Claude Code itself as a stdio MCP server).",
+    "limits": "claude mcp serve exposes Claude Code's tools only; the connecting MCP client is responsible for user confirmation of individual tool calls. add/remove are blocked by managed policy where applicable.",
+    "enforcement": "none",
+    "citation": "claude mcp --help; https://code.claude.com/docs/en/mcp.md"
+   },
+   {
+    "feature": "Tool search / deferred MCP tools",
+    "behavior": "'Tool search is enabled by default: MCP tools are deferred and discovered on demand.' Only tool names and server instructions load at session start. ENABLE_TOOL_SEARCH: unset/true = all deferred; auto = defer only when definitions reach 10% of context; auto:N = custom percent 0-100; false = load all upfront. Per-server 'alwaysLoad': true loads that server's tools upfront regardless of ENABLE_TOOL_SEARCH (makes startup wait up to 5s connect timeout); 'alwaysLoad': false keeps all its tools deferred (v2.1.287+). Server authors can set _meta['anthropic/alwaysLoad'] per tool (user config can override). Denying the ToolSearch tool (permissions.deny: [\"ToolSearch\"]) makes MCP tools load upfront. Server instructions truncated to 4,096 chars and upfront tool descriptions to 4,096; tools loaded via search keep 16,384 (CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH overrides, v2.1.280+).",
+    "limits": "Only on Opus 4 / Sonnet 4 / Haiku 4.5 and later; earlier models load everything upfront and ENABLE_TOOL_SEARCH=true does not override. Not supported on Microsoft Foundry on Azure; off under CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS (org can keep it on via managed settings, v2.1.227+) and in HIPAA configuration. Deferral concerns context loading only, not permissions. No fixed per-server tool cap. MCP tools whose full name exceeds 128 characters are omitted.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp.md#scale-with-mcp-tool-search"
+   },
+   {
+    "feature": "Permission rule syntax for MCP tools",
+    "behavior": "'To match every tool from an MCP server, write mcp__<server>__*. To match one tool, write its full name, mcp__<server>__<tool>.' mcp__puppeteer (bare) matches the whole server. Allow rules accept globs only after a literal mcp__<server>__ prefix (mcp__github__get_*); unanchored allow globs like \"*\" or \"mcp__*\" are skipped and auto-approve nothing. Deny and ask rules accept full-name globs, e.g. deny \"mcp__*\" removes every MCP tool from Claude's context. Server names with . or spaces become _ in rules; plugin servers use mcp__plugin_<plugin>_<server>__*; claude.ai connectors appear as mcp__claude_ai_<server>__<tool>.",
+    "limits": "Rules see only the tool name, not arguments: 'To match a parameter on an MCP tool, pass a deny rule with --disallowedTools. When Claude Code loads a settings file, it skips any mcp__ rule that has parentheses' (listed in invalid-settings dialog and claude doctor). Tool(param:value) works only on built-in tools. A server containing __ or ending _ needs the wildcard form.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md#mcp"
+   },
+   {
+    "feature": "Per-tool forced approval (requiresUserInteraction) and org 'ask' on connector tools",
+    "behavior": "A server author can set _meta['anthropic/requiresUserInteraction']: true (JSON boolean true only) on a tool: Claude Code prompts on every call, even in acceptEdits, auto and bypassPermissions; no 'don't ask again'; matching allow rules do not skip it; in dontAsk mode the call is denied. Org-set 'ask' on claude.ai connector tools behaves the same (reason 'Your organization requires approval for this tool').",
+    "limits": "A PreToolUse hook returning allow (with or without updatedInput) cannot skip this prompt. Org 'ask' does not reach Claude Code in desktop app local/SSH sessions (ordinary permission rules apply there instead).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; https://code.claude.com/docs/en/permissions.md"
+   },
+   {
+    "feature": "managed-mcp.json (exclusive control)",
+    "behavior": "If deployed, Claude Code loads only: servers in the file, managedMcpServers servers, in-process servers registered by the host app, and optionally built-in Claude in Chrome. Users 'can't add, modify, or use any other MCP servers, including plugin-provided servers and servers passed with --mcp-config'; claude.ai connectors it fetches are suppressed unless allowAllClaudeAiMcps: true. Paths: macOS /Library/Application Support/ClaudeCode/managed-mcp.json; Linux/WSL /etc/claude-code/managed-mcp.json; Windows C:\\Program Files\\ClaudeCode\\managed-mcp.json. Same format as .mcp.json. An empty mcpServers map disables MCP. claude mcp add then fails with 'enterprise MCP configuration is active and has exclusive control'.",
+    "limits": "Standalone file; cannot be delivered through server-managed settings. Readable by any user on the machine (no secrets in env). deniedMcpServers still applies to its servers; servers skip allowedMcpServers unless they use ${VAR} outside env. Claude in Chrome blocked unless allowClaudeInChromeWithManagedMcp (device-level managed settings only, v2.1.282+). Removed servers disappear silently.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/managed-mcp.md"
+   },
+   {
+    "feature": "managedMcpServers (managed setting)",
+    "behavior": "Provides remote (http/sse, https only) servers to every user alongside their own (v2.1.259+). Takes precedence over same-named local/project/user servers. Users cannot edit or remove them (claude mcp remove refuses) but can toggle them off for themselves in /mcp. Entries with command/args/env/headersHelper, ${VAR}, or invalid names are dropped with a /status notice.",
+    "limits": "Read only from managed sources (server-managed settings, gateway policy, MDM, HKLM, managed-settings.json); the key is dropped with a warning in user/project/local settings. Headers are readable by users. Not honored in Claude Desktop Code tab third-party deployment or Cowork. deniedMcpServers still applies; a -p run keeps a removed server until it ends.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/managed-mcp.md#provide-servers-through-managed-settings"
+   },
+   {
+    "feature": "allowedMcpServers / deniedMcpServers / allowManagedMcpServersOnly",
+    "behavior": "Entries match by serverUrl (wildcards), serverCommand (exact command+args array; env not compared) or serverName (exact, no wildcards). Evaluation order: merge lists from all scopes, then denylist ('Nothing overrides a denylist match'), then allowlist. allowedMcpServers unset = all allowed; [] = none; populated = only matches (remote servers need a serverUrl match if any serverUrl entries exist; stdio need serverCommand match if any exist; serverName counts only otherwise). Without allowManagedMcpServersOnly, allowlists from all scopes merge (user can broaden); with it true (managed sources only) user/project/local allowlists are ignored. Denylists always merge from every scope. Applies to --mcp-config servers and plugin/connector servers; re-checked on reconnect.",
+    "limits": "'A serverName entry, in either list, is not a security control' (user picks the name); use serverUrl/serverCommand to enforce. allowManagedMcpServersOnly is separate from allowManagedPermissionRulesOnly (the latter does not enforce the MCP allowlist). Exempt from allowlist: managedMcpServers, managed-mcp.json entries without ${VAR} outside env, built-in servers (ide, Claude in Chrome), in-process type sdk servers (skip all three checks). Env-var expansion in policy entries uses a pinned environment (v2.1.219+). Blocked servers vanish silently from /mcp. Allowlist reading across sources needs v2.1.273+.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/managed-mcp.md#policy-based-control-with-allowlists-and-denylists"
+   },
+   {
+    "feature": "Other managed MCP controls",
+    "behavior": "strictPluginOnlyCustomization with mcp in the list: users cannot add servers via ~/.claude.json or .mcp.json; only plugin servers (and managedMcpServers) load. disableClaudeAiConnectors / ENABLE_CLAUDEAI_MCP_SERVERS=false turn off claude.ai connectors Claude Code fetches itself (any-source-true semantics). OTEL_LOG_TOOL_DETAILS=1 records MCP server/tool names in telemetry.",
+    "limits": "Connectors delivered in desktop app local/SSH sessions arrive as in-process sdk servers; no MCP setting or managed-mcp.json reaches them (governed in claude.ai org settings). Cloud sessions are filtered by allow/deny lists delivered to the session.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/managed-mcp.md ; https://code.claude.com/docs/en/mcp.md"
+   },
+   {
+    "feature": "MCP tool matching in hooks",
+    "behavior": "MCP tools are named mcp__<server>__<tool> and appear in PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, PermissionDenied. Matcher with only letters/digits/_/-/space/,/| is exact; otherwise an unanchored JS regex. 'To match every tool from a server, append .* ... a matcher like mcp__memory or mcp__brave-search ... matches no tool.' Examples: mcp__memory__.*, mcp__.*__write.*. Plugin servers: mcp__plugin_<plugin>_<server>__<tool>; 'A matcher written against the bare server key never fires for these tools.'",
+    "limits": "Bare mcp__server matcher silently matches nothing (unlike permission rules, where bare server name matches). Plugin-bundled servers need the scoped name.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/hooks.md#match-mcp-tools"
+   },
+   {
+    "feature": "PreToolUse hooks on MCP calls: input, decisions, blocking",
+    "behavior": "PreToolUse 'runs after Claude creates tool parameters and before processing the tool call' and matches any tool name including MCP tools. Input: tool_name, tool_input, tool_use_id; for MCP tools also mcp_server {name, source} (v2.1.274+; 'Base trust decisions on source rather than on name or the mcp__<server>__ prefix'). Output hookSpecificOutput.permissionDecision: allow skips the permission prompt; deny prevents the call; ask prompts; defer ends the turn (non-interactive -p only, single tool call only). updatedInput replaces the entire input object before execution, and permission rules are evaluated against the updated input. Precedence among hooks: deny > defer > ask > allow. Exit code 2 blocks the call like deny (stderr shown to Claude), even if JSON says allow.",
+    "limits": "'Deny and ask rules are still evaluated regardless of what the hook returns' (allow does not override a deny rule). allow does not skip the prompt for MCP tools marked requiresUserInteraction, org-'ask' connector tools, or actions no mode auto-approves. PreToolUse does not fire for @-referenced files or non-tool paths. Only fires when Claude calls a tool.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/hooks.md#pretooluse ; https://code.claude.com/docs/en/permissions.md"
+   },
+   {
+    "feature": "Hook failure and timeout semantics",
+    "behavior": "Blocking is per event (PreToolUse can block; PostToolUse cannot undo). 'On most events, when a hook fails or times out, Claude Code still carries out the action.' command/http hooks accept \"onFailure\": \"block\" to make failures block (v2.1.295+). Default timeouts: 600s command/http/mcp_tool, 30s prompt, 60s agent; timed-out hooks are cancelled and output discarded. Non-2 nonzero exit is non-blocking.",
+    "limits": "Without onFailure: block, a crashing or timed-out PreToolUse hook does not block the MCP call. The hook 'if' filter is best-effort: 'use the permission system rather than a hook to enforce a hard allow or deny.' Hooks cannot see argument-level rules in the permission system, but hooks can inspect tool_input of MCP calls themselves.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/hooks.md"
+   },
+   {
+    "feature": "PostToolUse on MCP tools",
+    "behavior": "Fires after successful completion with tool_input, tool_response and mcp_server. updatedToolOutput replaces what Claude sees (all tools); updatedMCPToolOutput replaces output for MCP tools only ('Prefer updatedToolOutput'). decision: block adds reason next to the result. MCP output is passed through without schema validation.",
+    "limits": "Tool has already run; cannot undo side effects. Exit 2 only shows stderr to Claude. Changes only what Claude sees.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/hooks.md#posttooluse"
+   },
+   {
+    "feature": "Hook type mcp_tool (hooks that call an MCP tool)",
+    "behavior": "Hook entry {type:'mcp_tool', server, tool, input} calls a tool on a connected MCP server; input strings support ${tool_input.file_path}-style substitution. On blocking events (PreToolUse, Stop) Claude Code waits for a connecting server up to MCP_TIMEOUT. isError:true results are non-blocking errors.",
+    "limits": "Never starts OAuth. Skipped for SessionStart at launch and Setup events (servers not yet available). Does not wait on observational events.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/hooks.md"
+   },
+   {
+    "feature": "Headless (-p) behavior of MCP and hooks",
+    "behavior": "-p/SDK: project .mcp.json servers load without approval prompt; list_changed refreshes only the tool list; five reconnect attempts for dropped remote servers then run continues without them; no OAuth flow (use claude mcp login first). PreToolUse defer is honored only with -p. Hook docs do not state a blanket rule that hooks are skipped headless; ones documented (PreToolUse deny, exit 2) apply, and when a -p run denies a call the reason is returned to Claude in the tool result.",
+    "limits": "The hooks page excerpt does not state generally whether every hook event fires in -p; only specific -p notes (defer, terminalSequence ignored, Setup with --init/--maintenance) were found.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; https://code.claude.com/docs/en/hooks.md"
+   },
+   {
+    "feature": "allowManagedHooksOnly and disableAllHooks",
+    "behavior": "allowManagedHooksOnly: user, project, local and plugin hooks are blocked (plugins force-enabled in managed enabledPlugins are exempt). disableAllHooks:true turns hooks off; the value after settings precedence applies, so a project false overrides a user true; managed hooks can only be disabled by disableAllHooks at the managed level.",
+    "limits": "disableAllHooks in a user file is overridable by project settings; it does not disable managed hooks.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/hooks.md"
+   },
+   {
+    "feature": "Elicitation hooks",
+    "behavior": "MCP elicitation dialogs appear automatically when a server requests input. Elicitation hook (matcher = MCP server name) exit 2 declines with no dialog; ElicitationResult exit 2 blocks the response (action becomes decline). Hook output honored only on exit 0.",
+    "limits": "Not a general permission mechanism; only for elicitation requests.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/mcp.md ; https://code.claude.com/docs/en/hooks.md"
+   },
+   {
+    "feature": "Output limits and timeouts",
+    "behavior": "Warning above 10,000 tokens; default cap 25,000 tokens (MAX_MCP_OUTPUT_TOKENS); text results over 50,000 chars saved to a file unless the tool sets _meta['anthropic/maxResultSizeChars'] (hard ceiling 500,000). MCP_TIMEOUT startup; per-server 'timeout' ms field (hard wall clock, min 1000) over MCP_TOOL_TIMEOUT (default about 28 hours); idle timeout 5 min remote / 30 min stdio (CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT); calls over 2 minutes move to background (CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS). HTTP/SSE responses over 16 MiB fail.",
+    "limits": "Warning threshold is fixed.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp.md"
+   },
+   {
+    "feature": "MCP prompts as commands and resources as @-mentions",
+    "behavior": "MCP prompts appear as /servername:promptname (MCP); /mcp__servername__promptname also runs them. Resources are referenced with @server:protocol://path and fetched as attachments; Claude gets tools to list/read resources.",
+    "limits": "A server named anthropic-skills has its prompts hidden (name reserved). UI resources (ui:// or text/html;profile=mcp-app) are not listed in @ suggestions.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/mcp.md"
+   },
+   {
+    "feature": "Plugin-provided and claude.ai connector servers",
+    "behavior": "Plugin MCP servers start automatically when the plugin is enabled; registered as plugin:<plugin>:<server>; tool names mcp__plugin_<plugin>_<server>__<tool>. claude.ai connectors have lowest precedence, appear as mcp__claude_ai_<server>__<tool>, can be toggled per project in /mcp, and are blocked by name in deniedMcpServers (e.g. 'claude.ai Slack').",
+    "limits": "Connector display names can change, so prefer serverUrl for deny/allow. Plugin servers are suppressed by managed-mcp.json exclusive control.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/mcp.md"
+   }
+  ],
+  "unreachable": [
+   "Both target pages (mcp.md, hooks.md) were fetched via WebFetch's summarizer in chunks; hooks.md characters 200000-284276 and the 'Match MCP tools' section text were not read directly (matcher facts come from the first chunk).",
+   "No page 404ed. Extra pages fetched: https://code.claude.com/docs/en/managed-mcp.md and https://code.claude.com/docs/en/permissions.md (read via saved output, MCP sections only).",
+   "Not verified from docs: whether PreToolUse/PostToolUse fire for MCP calls made inside subagents; whether hooks fire for every event in -p mode; any standalone bypassPermissions hook section (docs only say deny/ask rules and requiresUserInteraction still apply after a hook allow).",
+   "mcp.md characters 0-100000 and 100000+ were read through summaries and grep of a saved copy; sections on OAuth, headersHelper details, and cloud-session elicitation were only skimmed."
+  ]
+ },
+ {
+  "area": "Headless and programmatic use (claude -p, Agent SDK), cost tracking (/usage, /cost), and OpenTelemetry monitoring",
+  "facts": [
+   {
+    "feature": "claude -p / --print (non-interactive mode)",
+    "behavior": "\"Add the -p (or --print) flag to any claude command to run it non-interactively.\" Exits 0 on success and non-zero on failure. Invalid flags are reported to stderr before the run starts; in-run failures such as missing auth are printed as the result on stdout. Without --bare, a -p session \"discovers and loads [hooks, skills, commands, subagents, plugins, MCP servers, auto memory, CLAUDE.md] as an interactive session would, including anything configured in the working directory or ~/.claude.\"",
+    "limits": "Not every CLI option combines with -p: --bg is rejected, and --cloud with a task description is rejected. Built-in terminal-only commands such as /login are unavailable. Piped stdin is capped at 10MB. Settings files that fail validation are silently ignored in this mode (no error dialog).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md ; claude --help (-p text)"
+   },
+   {
+    "feature": "--bare (bare mode)",
+    "behavior": "\"skip auto-discovery of hooks, skills, custom commands, subagents, installed plugins, MCP servers, auto memory, and CLAUDE.md.\" claude --help: also skips LSP, plugin sync, attribution, background prefetches, keychain reads; sets CLAUDE_CODE_SIMPLE=1. Claude keeps Bash, file read and file edit tools. Anthropic auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth/keychain never read); Bedrock/Vertex/Foundry use their own credentials. Context must be passed explicitly: --append-system-prompt[-file], --settings, --mcp-config, --agents, --plugin-dir/--plugin-url, --add-dir. Only MCP servers from the command line connect; no system reminders (Claude is not told the skills list, nor when files change on disk); no background commands or background subagents. Docs: \"--bare is the recommended mode for scripted and SDK calls, and will become the default for -p in a future release.\"",
+    "limits": "A directory given with --add-dir is a partial exception: its .claude/skills/ load but its .claude/commands/ and .claude/agents/ do not. Skills still resolve via /skill-name per --help. The project's env block and helpers such as awsAuthRefresh in settings files still apply, and apiKeyHelper is read only from --settings. Before v2.1.286 these limits held only partly. Does not use subscription login.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/headless.md#start-faster-with-bare-mode ; https://code.claude.com/docs/en/cli-reference.md (--bare) ; https://code.claude.com/docs/en/permissions.md#what-runs-before-you-trust-a-folder ; claude --help"
+   },
+   {
+    "feature": "Workspace trust in print mode",
+    "behavior": "claude --help: \"The workspace trust dialog is skipped when Claude is run in non-interactive mode (via -p, or when stdout is not a TTY, e.g. piped or redirected output). Only use this in directories you trust.\" Docs: \"A -p session shows no workspace trust dialog and no per-server approval prompt.\" Without --bare, -p runs the hooks in the project's .claude/settings.json and connects the servers in its .mcp.json, even in a never-trusted folder. For a never-trusted folder under -p: hooks in settings files, the env block, helpers like apiKeyHelper, and a project skill's hooks and allowed-tools are USED; permissions.allow rules and additionalDirectories in .claude/settings.json are NOT used (stderr warning 'this workspace has not been trusted'); frontmatter hooks in project subagents, project @skills-dir plugins, extraKnownMarketplaces, and inline subagent mcpServers are NOT used; .mcp.json servers are connected without asking, approved or not; a headersHelper is not run.",
+    "limits": "The mitigations are options Aaron must pass: --setting-sources user (reads neither project settings nor .mcp.json), --bare, or --settings '{\"disableAllHooks\": true}' (setting it only in user settings is not enough because project settings take precedence), or a disabledMcpjsonServers entry. Nothing gates automatically.",
+    "enforcement": "none",
+    "citation": "claude --help (-p); https://code.claude.com/docs/en/headless.md ; https://code.claude.com/docs/en/permissions.md#what-runs-before-you-trust-a-folder"
+   },
+   {
+    "feature": "Hooks in headless mode",
+    "behavior": "Settings-file hooks run in a plain -p session (project and user), including in never-trusted folders. --bare skips hooks defined in settings and by installed plugins (\"features built into Claude Code are unaffected\"). SessionStart and Setup hook events are always included in stream-json output; --include-hook-events adds other hook lifecycle events (requires --output-format stream-json). --init and --maintenance run Setup hooks with the init/maintenance matcher (print mode only). A PermissionRequest hook can approve a call that would otherwise be denied in a -p Manual-mode run. On SIGTERM only SessionEnd hooks run. --settings '{\"disableAllHooks\": true}' turns hooks off for the run.",
+    "limits": "The docs fetched do not state that any specific hook event is skipped in plain -p other than via --bare / disableAllHooks. Some events (Notification, SessionEnd, PreCompact, PostCompact) never produce hook_started even with --include-hook-events.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md ; https://code.claude.com/docs/en/cli-reference.md (--include-hook-events, --init, --maintenance) ; https://code.claude.com/docs/en/permissions.md#what-runs-before-you-trust-a-folder"
+   },
+   {
+    "feature": "CLAUDE.md, auto memory, and .claude/rules in headless",
+    "behavior": "Plain -p loads CLAUDE.md and auto memory like an interactive session (per headless page). --bare skips CLAUDE.md auto-discovery and auto-memory; supply context with --append-system-prompt[-file], --system-prompt, or --add-dir (CLAUDE.md dirs). In bare mode Claude is given no system reminders.",
+    "limits": "The four assigned pages do not mention .claude/rules/ files in headless mode specifically; whether rules load under -p or --bare is not stated in the fetched pages. Not speculating.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md ; claude --help (--bare)"
+   },
+   {
+    "feature": "Skills and slash commands in headless",
+    "behavior": "\"User-invoked skills and custom commands work. Include /skill-name in the prompt string and Claude Code expands it before running.\" Built-in terminal-only commands (e.g. /login) unavailable. /model, /effort, /fast, /color, /rename accept an argument; /mcp with no argument prints a text summary; /config key=value changes a setting; /output-style <style> switches output styles (v2.1.269+). --disable-slash-commands disables all skills and commands. A project skill's allowed-tools is never gated by workspace trust. --bare: skills still resolve via /skill-name but Claude is not given the skills list.",
+    "limits": "In bare mode Claude does not get the list of available skills, including those from --add-dir.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md#create-a-commit (command-support note) ; claude --help (--disable-slash-commands, --bare)"
+   },
+   {
+    "feature": "Output formats (--output-format) and input format",
+    "behavior": "--output-format: text (default), json (\"structured JSON with result, session ID, and metadata\"), stream-json (newline-delimited JSON for real-time streaming; last line is a result message with final text, cost and session metadata). stream-json with --verbose and --include-partial-messages streams tokens. --input-format: text (default) or stream-json (realtime streaming input). --replay-user-messages needs both stream-json formats. system/init event reports model, tools, MCP servers, plugins, plugin_errors, mcp_server_errors. system/api_retry events are emitted before retries. permission_denied system messages and result.permission_denials appear in stream-json.",
+    "limits": "Output-format flags work only with --print. --include-partial-messages, --include-hook-events, --forward-subagent-text, --prompt-suggestions require stream-json. MCP config entries that fail validation are skipped silently (exit stays clean); a CI gate must check mcp_server_errors.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md#get-structured-output ; claude --help"
+   },
+   {
+    "feature": "--json-schema structured output",
+    "behavior": "\"To get output conforming to a specific schema, use --output-format json with --json-schema.\" The structured result is in the structured_output field of the JSON response. An invalid schema makes claude exit with 'Error: --json-schema is not a valid JSON Schema'.",
+    "limits": "The format keyword is accepted but treated as an annotation and not enforced. If a run ends without valid structured output (e.g. Claude declined) the structured_output field is absent; scripts must check for it. Print mode only.",
+    "enforcement": "warns",
+    "citation": "https://code.claude.com/docs/en/headless.md#get-structured-output ; https://code.claude.com/docs/en/cli-reference.md (--json-schema)"
+   },
+   {
+    "feature": "--max-turns",
+    "behavior": "\"Limit the number of agentic turns (print mode only). No limit by default.\" With --input-format stream-json, a message still queued when the limit ends a turn stays queued and starts a new turn with its own limit.",
+    "limits": "Print mode only; no default cap. The fetched pages do not say what exit code or result subtype a cap hit produces.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/cli-reference.md (--max-turns)"
+   },
+   {
+    "feature": "--max-budget-usd",
+    "behavior": "\"Stop the run once estimated spend on API calls reaches this amount (print mode only).\" Checked against Claude Code's client-side cost estimate; subagent spend counts toward the cap; the 1.1x data-residency multiplier counts. Once spend reaches the cap, spawning another subagent fails with 'Budget limit reached', and background subagents still running are stopped (v2.1.217+). A run at the cap stops waiting on remaining background work.",
+    "limits": "Print mode only. Estimate can differ from the bill. \"Spend can pass the cap, so leave headroom.\" Totals restored from earlier runs via --continue/--resume do not count toward it. Not an account or org spend limit.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/cli-reference.md (--max-budget-usd) ; https://code.claude.com/docs/en/headless.md ; https://code.claude.com/docs/en/costs.md"
+   },
+   {
+    "feature": "Headless permissions: --allowedTools, --permission-mode, default mode",
+    "behavior": "--allowedTools auto-approves listed tools using permission rule syntax (trailing ' *' gives prefix matching; Bash(git diff *) allows any command starting with git diff). \"Calls to tools you didn't list run if they need no approval. In a Manual mode claude -p run, a call that needs approval is denied unless something approves it\" (a PermissionRequest hook or --permission-prompt-tool). From v2.1.302, -p runs start in Manual mode when nothing sets a mode. --permission-mode accepts acceptEdits, auto, bypassPermissions, manual, dontAsk, plan. dontAsk denies every call that would otherwise prompt (read-only/allowed actions still run; AskUserQuestion, requiresUserInteraction MCP tools, network-path reads, and org-'ask' connector tools are denied even with an allow rule); an installed mod can still approve some. acceptEdits auto-approves file writes and mkdir/touch/mv/cp. In auto mode a bare Bash allow entry is dropped and the classifier evaluates each command.",
+    "limits": "Bash argument-constraining patterns are fragile (docs warn Bash(curl http://github.com/ *) misses variations). Managed-settings permission rules cannot be overridden by command-line arguments.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/headless.md#auto-approve-tools ; https://code.claude.com/docs/en/permissions.md"
+   },
+   {
+    "feature": "--permission-prompts none / --permission-prompt-tool",
+    "behavior": "--permission-prompts host (default) sends prompts to the SDK host (canUseTool callback) or --permission-prompt-tool; none denies anything that would prompt, tells Claude nobody can approve and not to retry, removes AskUserQuestion-type tools, and cancels unanswered MCP elicitations. Rules, PermissionRequest hooks and the permission mode still decide first (v2.1.259+; present in installed claude --help). --permission-prompt-tool takes a full mcp__<server>__<tool> name of an MCP tool to answer prompts in non-interactive mode.",
+    "limits": "The prompt tool cannot approve an MCP tool marked requiresUserInteraction (allow converted to deny, v2.1.199+).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/headless.md#turn-off-permission-prompts-in-unattended-runs ; https://code.claude.com/docs/en/cli-reference.md ; claude --help"
+   },
+   {
+    "feature": "Permission rules and MCP tool calls",
+    "behavior": "MCP tools are matched by name only: mcp__server, mcp__server__*, or mcp__server__tool. \"To match a parameter on an MCP tool, pass a deny rule with --disallowedTools. When Claude Code loads a settings file, it skips any mcp__ rule that has parentheses.\" Skipped rules are listed in the invalid-settings dialog (interactive) and claude doctor. --disallowedTools: a bare name removes the tool from Claude's context ('mcp__*' removes every MCP tool); a scoped rule leaves the tool and denies matching calls. Allow globs are accepted only after a literal mcp__<server>__ prefix; unanchored allow globs like mcp__* are skipped. Deny/ask accept bare-name globs.",
+    "limits": "A settings-file rule cannot constrain MCP tool arguments; parenthesised mcp__ rules are skipped. Only the --disallowedTools CLI flag route is described for parameter matching on MCP tools. permissions.blockWritesOutsideWorkingDirectories does not limit shell commands, MCP tools, or hook programs.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/permissions.md ('Match by input parameter', MCP section, line 'To match a parameter on an MCP tool') ; https://code.claude.com/docs/en/cli-reference.md (--disallowedTools)"
+   },
+   {
+    "feature": "System prompt flags in headless",
+    "behavior": "--append-system-prompt[-file] adds to the default prompt, keeping tool guidance, safety instructions and coding conventions. --system-prompt[-file] replaces the default prompt entirely: \"Replacing drops all of the default prompt, including tool guidance and safety instructions\" and also drops the git status snapshot. --append-subagent-system-prompt[-file] (-p only) appends to every subagent's prompt (not forked subagents). --system-prompt-snapshot on|off: by default the rendered prompt (including --system-prompt/--append) is recorded on the first request and reused verbatim on later requests and resumes, even if a later launch passes different text, until compaction; off under --bare unless forced on. --exclude-dynamic-system-prompt-sections moves cwd/env/memory paths/git status into the first user message for cache reuse (default prompt only). For persistent personas docs point to output styles; for project conventions CLAUDE.md.",
+    "limits": "Fetched pages do not state whether an output style rewrites or only appends to the system prompt; not reachable from these four pages. /output-style <style> works in -p (v2.1.269+).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/cli-reference.md (system prompt flags) ; https://code.claude.com/docs/en/headless.md#customize-the-system-prompt ; claude --help"
+   },
+   {
+    "feature": "Sessions in headless: --continue, --resume, --no-session-persistence, --session-id",
+    "behavior": "--continue resumes the most recent conversation; --resume takes a session ID, name, or absolute path to a .jsonl transcript; session IDs can be captured from json output (.session_id). claude -p --continue includes -p, SDK and /loop sessions (plain --continue skips them). --no-session-persistence (print mode only) keeps sessions off disk so they cannot be resumed. --session-id <uuid> sets a specific ID; --fork-session makes a new ID on resume. --continue/--resume reports total_cost_usd for the whole conversation including earlier runs.",
+    "limits": "no-session-persistence is print mode only (CLAUDE_CODE_SKIP_PROMPT_HISTORY does the same in any mode).",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md#continue-conversations ; https://code.claude.com/docs/en/cli-reference.md"
+   },
+   {
+    "feature": "Headless run lifecycle: background work, SIGTERM, deleted cwd",
+    "behavior": "After the turn finishes and stdin closes, a -p run waits for background commands, subagents/workflows, Monitor watches and pending /loop wakeups (10 minute idle-wait cap by default; CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, 0 for no cap). MCP tasks and auto-backgrounded MCP calls are not waited on (results lost). SIGTERM exits 143, leaves the in-progress turn unfinished, kills Bash process trees and runs only SessionEnd hooks. If cwd is deleted mid-run the session continues with a stream-json warning.",
+    "limits": "--bare disables background tasks entirely. 10-minute cap does not end the wait while a main-conversation background command is still running.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/headless.md#background-tasks-at-exit"
+   },
+   {
+    "feature": "Other print-mode flags: --fallback-model, --tools, --setting-sources, --settings, --strict-mcp-config, --mcp-config, --restricted, --safe-mode",
+    "behavior": "--fallback-model sonnet,haiku: tries listed models in order when the primary is overloaded or unavailable. --tools restricts the built-in tool set ('' disables all). --setting-sources user,project,local limits which settings sources load. --settings loads extra settings from file or JSON. --strict-mcp-config uses only --mcp-config servers. With -p, --mcp-config waits for pending servers up to MCP_TIMEOUT (30s default). --restricted removes command-running tools and WebFetch unless named in --tools, ignores user/project/local settings (managed and --settings still apply), confines file tools to working directories, refuses bypassPermissions. --safe-mode disables CLAUDE.md, skills, plugins, hooks, MCP, custom commands/agents, output styles, workflows, themes, keybindings (managed policy still applies; auth, model, built-in tools and permissions work normally) and sets CLAUDE_CODE_SAFE_MODE=1. --dangerously-load-development-channels is ignored with -p. --prompt-suggestions emits prompt_suggestion messages (needs stream-json and --verbose).",
+    "limits": "--safe-mode differs from --bare: it keeps normal auth and built-in tools and still applies managed policy hooks.",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/cli-reference.md ; claude --help"
+   },
+   {
+    "feature": "Agent SDK (Python / TypeScript / CLI)",
+    "behavior": "\"The Agent SDK gives you the same tools, agent loop, and context management that power Claude Code. It's available as a CLI for scripts and CI/CD, or as Python and TypeScript packages\" with structured outputs, tool approval callbacks (canUseTool) and native message objects. claude -p is 'the Agent SDK via the CLI'. The SDK loads project .mcp.json servers only when settingSources includes project settings; set settingSources without project settings to skip project settings and .mcp.json. Cost tracking: SDK/CLI json result carries total_cost_usd and per-model breakdown, client-side estimates that can differ from the bill.",
+    "limits": "The SDK reference pages (agent-sdk/overview, python, typescript, cost-tracking, agent-loop) were not fetched; only what the four assigned pages and permissions.md say about the SDK is reported.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/headless.md ; https://code.claude.com/docs/en/permissions.md#what-runs-before-you-trust-a-folder"
+   },
+   {
+    "feature": "/usage (session cost and plan usage; /cost)",
+    "behavior": "The Session block at the top of /usage shows token usage, Total cost, API/wall durations, code changes and Usage by model. \"Claude Code computes the dollar figure locally from token counts at list price, unless a modelPricing table is in effect\" (admin managed setting, v2.1.242+). Resets on /clear (v2.1.211+). Adds a Prompt cache (main) line (v2.1.251+). On Pro/Max/Ultra/Team/Enterprise it shows plan usage bars, attribution by skills/subagents/plugins/MCP servers, recommendations (f to apply, v2.1.305+), loop rows, and a usage-credits row; d/w switches 24 hours/7 days. The costs.md page documents /usage; it does not document a separate /cost command in the fetched text.",
+    "limits": "\"The figure is an estimate\"; for subscribers the session dollar figure is not relevant to billing. Plan figures are approximate, from local session history on this machine only (other devices and claude.ai excluded). Informational only; does not cap anything.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/costs.md#using-the-usage-command"
+   },
+   {
+    "feature": "Spend caps and rate limits (org level)",
+    "behavior": "Teams/Enterprise: seat allowance on rolling 5-hour and weekly windows; spend limits at org/group/member level in admin settings; usage credits let members continue past the allowance. Console API: workspace spend limits and workspace rate limits (auto-created 'Claude Code' workspace). Bedrock/Vertex/Foundry: cloud provider budgets; Claude apps gateway offers per-user spend limits that block requests. Recommended TPM/RPM per user table (e.g. 1-5 users 200k-300k TPM, 5-20 users 100k-150k, 500+ users 10k-15k), applied at org level. --max-budget-usd is the per-run cap for -p.",
+    "limits": "Claude Code does not send Bedrock/Vertex/Foundry metrics to Anthropic dashboards or the Analytics API. Rate-limit table is a recommendation, not enforced by Claude Code. Developers cannot restore access after a seat limit by switching models via /model (except model-specific Opus/Sonnet limits).",
+    "enforcement": "blocks",
+    "citation": "https://code.claude.com/docs/en/costs.md#manage-costs-for-your-organization"
+   },
+   {
+    "feature": "Cost reduction guidance (advisory)",
+    "behavior": "Advisory habits: /clear between unrelated tasks (/rename first); /compact with focus instructions or a 'Compact instructions' section in CLAUDE.md; Sonnet for most coding, Opus for complex reasoning, model: haiku for simple subagents; MCP tool definitions deferred by default, prefer CLI tools, disable unused servers; code intelligence plugins; hooks to preprocess output (example PreToolUse hook filtering test output); move workflow instructions from CLAUDE.md to skills, keep CLAUDE.md under 200 lines; lower /effort or MAX_THINKING_TOKENS (thinking can't be disabled on Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable models); delegate verbose work to subagents; plan mode; specific prompts. Agent teams use ~7x more tokens in plan mode and are off by default (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1). Background token use: session recap, idle compaction, prompt suggestions, scheduled tasks, cross-session messages, goal check-ins (max 3 idle per goal).",
+    "limits": "Guidance only; nothing is enforced. Average enterprise cost about $13 per developer per active day, $150-250 per month, under $30 per active day for 90% of users.",
+    "enforcement": "advisory",
+    "citation": "https://code.claude.com/docs/en/costs.md#reduce-token-usage"
+   },
+   {
+    "feature": "/insights",
+    "behavior": "Analyzes up to 200 unseen recent sessions on this machine and writes an HTML report to ~/.claude/usage-data/report.html (timestamped copies kept; deleted after cleanupPeriodDays, 30 by default). Covers what you work on, friction points and suggestions.",
+    "limits": "Local sessions only; tokens used by the analysis count against plan or API usage.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/costs.md#analyze-your-usage-patterns"
+   },
+   {
+    "feature": "OpenTelemetry enablement and exporters",
+    "behavior": "\"Telemetry is off until you set CLAUDE_CODE_ENABLE_TELEMETRY=1.\" Metrics exporter via OTEL_METRICS_EXPORTER (otlp, prometheus, console, none; Prometheus serves on localhost:9464/metrics); events/logs via OTEL_LOGS_EXPORTER (otlp, console, none); traces are beta and need CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1 plus OTEL_TRACES_EXPORTER. No default OTLP protocol: set OTEL_EXPORTER_OTLP_PROTOCOL or the per-signal variable. Per-signal endpoints supported. Metrics: session.count, lines_of_code.count, pull_request.count, commit.count, cost.usage (USD), token.usage, code_edit_tool.decision, active_time.total. Events: user_prompt, tool_result, tool_decision, api_request, api_error, api_refusal, safety_event, correlated by prompt.id and event.sequence. Export intervals: metrics 60000 ms, logs 5000 ms.",
+    "limits": "Observational only. The page (first 100,000 of ~172,000 characters read) does not say telemetry blocks or stalls a session; the only failure described is that if otelHeadersHelper fails, exports fail and the backend receives nothing. otelHeadersHelper works only with http/protobuf and http/json, not grpc. Claude Code does not pass OTEL_* variables to subprocesses (Bash tool, hooks, MCP servers). The remaining ~72,000 characters were not read.",
+    "enforcement": "none",
+    "citation": "https://code.claude.com/docs/en/monitoring-usage.md"
+   },
+   {
+    "feature": "OpenTelemetry privacy controls and managed settings",
+    "behavior": "Content is redacted by default. OTEL_LOG_USER_PROMPTS (off: prompt is <REDACTED>), OTEL_LOG_TOOL_DETAILS (off: Bash commands, MCP server/tool names, skill names, tool input), OTEL_LOG_TOOL_CONTENT (off, needs tracing), OTEL_LOG_ASSISTANT_RESPONSES (off; falls back to OTEL_LOG_USER_PROMPTS), OTEL_LOG_RAW_API_BODIES (off; bodies include the entire conversation history), OTEL_METRICS_INCLUDE_REPOSITORY (false, v2.1.269+). Cardinality: OTEL_METRICS_INCLUDE_SESSION_ID true, _VERSION false, _ACCOUNT_UUID true, _ENTRYPOINT false, _RESOURCE_ATTRIBUTES true. CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH default 61440. Administrators set variables in managed settings; \"Claude Code ignores the OpenTelemetry exporter variables\" in a repository's .claude/settings.json and settings.local.json (a repo can still set an exporter selector to none unless managed settings or the launch environment sets it). Managed endpoint/protocol/credential settings remove conflicting developer-set variables; exporter selectors are not locked unless set in managed settings.",
+    "limits": "Removal behavior \"changes where telemetry is delivered, not what Claude Code collects.\" Per-user cost attribution via OTel works on every provider (Bedrock/Vertex/Foundry included), per costs.md.",
+    "enforcement": "automatic",
+    "citation": "https://code.claude.com/docs/en/monitoring-usage.md ; https://code.claude.com/docs/en/costs.md"
+   }
+  ],
+  "unreachable": [
+   "No fetched page 404'd. monitoring-usage.md was read only for characters 0-100000 of ~172,739 (safety_event detail, trace attributes and later sections unread).",
+   "https://code.claude.com/docs/en/agent-sdk/* (overview, python, typescript, cost-tracking, agent-loop, structured-outputs) were not fetched; Agent SDK facts rest on the four assigned pages and permissions.md.",
+   "Hooks reference (hooks.md), output-styles.md, memory.md (.claude/rules loading) and settings-reference.md not fetched, so whether .claude/rules load under -p or --bare, and whether output styles replace or append to the system prompt, is not established here.",
+   "costs.md documents /usage; no standalone /cost command section appeared in the fetched text.",
+   "cli-reference.md was fetched via a summarising fetch and saved to a file; some table rows (e.g. --max-budget-usd, --restricted, --safe-mode) were read in truncated form."
+  ]
+ }
+]

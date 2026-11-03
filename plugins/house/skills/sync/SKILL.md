@@ -34,7 +34,7 @@ First, is this session running an old copy? Claude Code keeps one directory per 
 ls "$(dirname "${CLAUDE_PLUGIN_ROOT}")" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 ```
 
-The `grep` drops any entry that is not a plain `X.Y.Z` directory name, and `sort -V` compares numerically, so `0.22.10` sorts above `0.22.9` (a plain `sort` would not). If the loaded version is older than that newest one, stop here: tell the user the plugin was updated but this session still runs the old copy, and to restart Claude Code and run `/house-rules:sync` again. Do not create a worktree or run render.
+The `grep` drops any entry that is not a plain `X.Y.Z` directory name, and `sort -V` compares numerically, so `0.22.10` sorts above `0.22.9` (a plain `sort` would not). If the loaded version is older than that newest one, stop here: tell the user the plugin was updated but this session still runs the old copy, and to run `/reload-plugins` or restart Claude Code before running `/house-rules:sync` again. Do not create a worktree or run render.
 
 Otherwise run the doctor (the same command as step 7) and read two of its lines now:
 

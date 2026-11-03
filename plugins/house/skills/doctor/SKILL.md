@@ -5,7 +5,7 @@ description: This skill should be used when the user asks to "run the house doct
 
 # House doctor
 
-Run `house doctor` on a repo and explain each line it prints, with the next action for every line that is not clean. Read-only: this skill runs the doctor and explains. It never runs `render --apply`, `house confirm`, `house decline` or `house upgrade --apply` itself; it names them and lets the user run them. (`/house-rules:sync` is the skill that writes files.)
+Run `house doctor` on a repo and explain each line it prints, with the next action for every line that is not clean. Read-only: this skill runs the doctor and explains. It never runs `render --apply`, `house confirm`, `house decline` or `house upgrade --apply` itself; it names them and lets the user run them. (`/house-rules:sync` is the skill that writes files.) This skill reports house state only; installation, settings and instruction-file health belong to the harness's own `/doctor` and `/doctor prompt-audit`, which this does not replace.
 
 ```
 node ${CLAUDE_PLUGIN_ROOT}/scripts/house doctor --repo <root>

@@ -18,6 +18,7 @@ Receipts: `docs/handbook/github.md#gate-every-pr-on-checks-that-need-no-credenti
 Declare read-only `permissions:` on every workflow and grant write per job, since repo write access can read every configured secret. Write the reason beside the block.
 Pin every third-party action to a full-length commit SHA, the only reference a tag cannot fake.
 Never interpolate event data into a `run:` block or an agent's prompt input; route it through a variable, and never check out untrusted code, or expose a secret to it, in a privileged trigger.
+An agent step over a checkout runs that checkout's code too, since a print-mode run skips the trust dialog and still runs the committed hooks, env block and MCP servers, so pass `--setting-sources user`, or `--bare` where an API key authenticates the step, to any agent step whose checkout you do not trust.
 Anchor: `node .house/check.mjs --only=workflows` fails on a `uses:` not pinned by SHA, a workflow with no top-level `permissions:`, event data in a `run:` block or an agent's prompt input, and a `pull_request_target` checkout of the pull request head; the rendered `.github/workflows/pr-checks.yml` ships the read-only default and SHA pins to copy. A workflow the agent platform's setup installs counts too: same permissions, same pins, though its documented workflows pin the action by version tag; its shared app takes a permission set GitHub will not let you narrow, so where only the action needs an app, a custom one is the least-privilege route.
 Receipts: `docs/handbook/github.md#give-a-workflow-read-only-permissions-and-pin-every-action-by-sha`
 
@@ -28,7 +29,7 @@ Pause an expensive cron by hand, then ship a one-shot job to re-enable it, since
 Read the check-run annotation when a run dies at startup: a billing failure carries no logs and looks nothing like code failure.
 Set `timeout-minutes` on every job near a small multiple of its normal run time, so a hung job costs minutes rather than GitHub's 360-minute default against the shared pool; `plugins/house/templates/pr-checks.yml` sets 5.
 Set the slot to null on a public repo, since its minutes are unmetered, and let the check say so instead of estimating against a stale budget.
-Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow sets no turn cap unless its `claude_args` pass `--max-turns`; its minutes draw from the same pool.
+Anchor: `node .house/check.mjs --only=minutes` estimates scheduled runs against `actionsBudgetMinutes`, a default when unset, and warns, never fails, when the estimate runs over; the platform's spending budget is the hard stop. An agent workflow sets no turn or spend cap unless its `claude_args` pass `--max-turns` or `--max-budget-usd`, neither of which bounds wall time, and a print-mode run waits on background work after its last turn, so the job's `timeout-minutes` is the wall-clock stop; its minutes draw from the same pool.
 Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 
 ## Open an issue instead of failing a scheduled run, and comment out a cron with its reason
@@ -36,7 +37,7 @@ Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 Have a scheduled audit open or update an issue rather than turn the run red, since a recurring red X trains you to ignore it.
 Keep a read-only data-quality report non-failing on purpose, and say so in a comment, so a finding never reads as a broken build.
 Comment a cron out with its reason instead of deleting it, so restoring the cadence is two lines. Verify a stale issue's premise against current code and live data first.
-Anchor: none (because a failure policy is a per-workflow editorial choice no checker can read). A scheduled agent run writes only to its run log unless its prompt directs it to post and its allowed tools include the issue command, so grant those before counting on the issue.
+Anchor: none (because a failure policy is a per-workflow editorial choice no checker can read). A scheduled agent run writes only to its run log unless its prompt directs it to post and its `--allowedTools` names the issue command, since a print-mode run denies any call that needs approval and ignores the committed allow rules in a folder never trusted, so grant it on the command line before counting on the issue.
 Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-run-and-comment-out-a-cron-with-its-reason`
 
 ## Turn on push protection, head-branch deletion, and grouped dependency updates
@@ -74,13 +75,13 @@ Receipts: `docs/handbook/github.md#close-an-issue-only-on-purpose-and-only-on-cl
 
 Ship a multi-phase change as commits on one PR with one reviewer, since a PR per step buys review nobody performs.
 After merging a stack's parent, confirm each child re-targeted its base, and fix forward from the leaf if a merge landed on a feature branch instead.
-Anchor: none (because PR granularity is a judgment call; base-retarget confirmation is a look at the open PR list). A fan-out command such as /batch or a background session works each unit in its own worktree, so say which shape phased work takes before launching one.
+Anchor: none (because PR granularity is a judgment call; base-retarget confirmation is a look at the open PR list). A fan-out command such as /batch opens a PR per unit, each from its own worktree, so keep it for mechanical changes and say which shape phased work takes before launching one or a background session.
 Receipts: `docs/handbook/github.md#ship-phased-work-as-commits-on-one-pr`
 
 ## Stage explicit paths, never everything at once
 
 Stage by path, since staging everything sweeps in untracked local-only files never meant to leave the machine.
-Anchor: the `pre-commit` template refuses a staged secret, and auto mode's classifier blocks a secret-bearing commit by default; both backstop a wide add without licensing one, and neither catches a local-only file that holds no secret. A staging-broad permission rule allows sweep-everything too, so the prompt filters nothing.
+Anchor: the `pre-commit` template refuses a staged secret, and auto mode's classifier blocks a secret-bearing commit by default; both backstop a wide add without licensing one, and neither catches a local-only file that holds no secret. A deny or ask rule on the sweep forms stops the invocation Claude usually writes in every mode, though the harness documents text-matched rules as no boundary; a staging-broad permission rule allows sweep-everything too, so the prompt filters nothing.
 Receipts: `docs/handbook/github.md#stage-explicit-paths-never-everything-at-once`
 
 ## Classify a merged branch by its PR state, not by merge detection
@@ -88,7 +89,7 @@ Receipts: `docs/handbook/github.md#stage-explicit-paths-never-everything-at-once
 Ask the platform whether the branch's PR merged: merge-detection flags lie under squash merging, and refusal to delete isn't evidence deleting is unsafe.
 Cross-check a branch's unique commits by squash-title references on the protected branch.
 Read a closed-but-unmerged PR's closing comment before calling the branch dead or salvageable. When a merge looks failed locally, verify the PR state before retrying, since it may have landed.
-Expect the harness's auto-mode classifier to refuse an agent-side remote-branch delete, a bulk one above all; hand the user the exact command instead of retrying it another way, and treat automatic head-branch deletion (the settings rule above) as what stops merged branches accumulating in the first place.
+Expect an agent-side remote-branch delete to be refused, by auto mode's classifier and, in a cloud session, always by the GitHub proxy, a bulk one above all; hand the user the exact command instead of retrying it another way, and treat automatic head-branch deletion (the settings rule above) as what stops merged branches accumulating in the first place.
 Anchor: `scripts/house/cleanup-worktree.sh` classifies from PR state through the platform CLI before deleting anything, prints the manual command when the remote delete fails, and reports when head-branch deletion is off. The harness's worktree sweep reads only local state, so it can't confirm or refute a squash merge.
 Receipts: `docs/handbook/github.md#classify-a-merged-branch-by-its-pr-state-not-by-merge-detection`
 
@@ -104,7 +105,7 @@ Receipts: `docs/handbook/github.md#never-delete-the-branch-from-the-worktree-bei
 Keep env files, account ids, and API keys out of the repo, and set every secret through the platform's secret command, not a config file.
 Load a vendor key from an env-file flag at run time, never a committed file.
 Run a credentialed diagnostic as a workflow step with no agent in it, so the token stays with the runner and never enters an agent session; in a cloud session, hold a token as a network secret where the proxy can attach it, since anyone using the environment can read its variables.
-Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; remote is the guard, hook the backstop. By default credential files stay readable to a session and a subprocess inherits its environment; a Read deny rule, the sandbox's credential deny or mask, and the subprocess scrub variable narrow that, but none is on until configured.
+Anchor: push protection at the remote, backstopped by the `pre-commit` template's staged-secret refusal; remote is the guard, hook the backstop. By default credential files stay readable to a session, auto mode's default allow list includes reading an env file, and a subprocess inherits its environment; a Read deny rule (which a script opening the file still passes), the sandbox's credential deny or mask, and the subprocess scrub variable narrow that, but none is on until configured.
 Receipts: `docs/handbook/github.md#keep-credentials-out-of-the-repo-the-commit-and-the-chat`
 
 ## Scan the built output after scrubbing the build, and plant a canary to prove the scanner fires
@@ -112,7 +113,7 @@ Receipts: `docs/handbook/github.md#keep-credentials-out-of-the-repo-the-commit-a
 Scrub the build environment and hide the secrets file from disk during the build, since an adapter can read that file directly and bypass it.
 Scan the built output anyway, and fail the build on an embedded credential or personal data.
 Write obviously fake credentials before the CI build and scan after, so a scrub regression fails the PR instead of shipping. An unfired scanner is not evidence of a clean build.
-Anchor: `scripts/house/scan-dist-secrets.mjs --self-test` as a CI step after the build, canary written before and removed after. A session-run build inherits that environment unless scrubbed, so the same applies off CI.
+Anchor: `scripts/house/scan-dist-secrets.mjs --self-test` as a CI step after the build, canary written before and removed after. A session-run build inherits that environment unless scrubbed, which the sandbox's credential deny or mask does for the commands it wraps once enabled, so the same applies off CI.
 Receipts: `docs/handbook/github.md#scan-the-built-output-after-scrubbing-the-build-and-plant-a-canary-to-prove-the-scanner-fires`
 
 ## Give a restricted key exactly one writable scope
@@ -149,7 +150,7 @@ Arm the floor with `core.hooksPath`, set by `house render --apply` and every ses
 Read the policy from `HEAD:house.json`, never the working tree, so a flipped `branchPolicy` counts only once landed.
 Keep the PreToolUse hook's job to verifying the floor is intact (every vendored hook byte-identical to the plugin's copy, `core.hooksPath` pointing at it) and refusing its short disable/bypass list (`--no-verify`, `core.hooksPath` or `include.path` in any form, `GIT_CONFIG_*`, `git replace`, `send-pack`, a `GIT_DIR`-named repo), never inferring a branch or tree from text, since the harness documents text-matched rules as no boundary, lets auto mode push to the default branch by default, and loads no project hooks in a bare or safe-mode session while git still runs its own.
 Read `house doctor` for whether the floor is armed here, or `node .house/check.mjs --floor-status` in a session where the plugin is not enabled and `house` is not on PATH (a cloud session, say), since `core.hooksPath` is machine-local state a repo-only checker cannot see.
-Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb. A cloud session installs no plugin a repo declares, so the floor is armed there by the `SessionStart` entry the github module renders into the committed `.claude/settings.json` (`cloudArming: false` removes it), with the remote branch rule above it.
+Anchor: `.githooks/pre-commit` and `.githooks/pre-push` (vendored here, kept executable by render and arming) are the floor; `core.hooksPath` arms it, set by `house render --apply` and a `SessionStart` hook, reported by `house doctor`. `plugins/house/hooks/no-direct-master.sh` treats a tampered or unarmed floor as unarmed and refuses any unreadable git verb. Where the sandbox is on, it write-denies `.git/config` and `.git/hooks` for the commands it wraps, an OS layer under the text scan for a `core.hooksPath` edit, though it is off by default, leaves the vendored `.githooks/` writable, and lets an unsandboxed retry through unless strict mode is set. A cloud session installs no plugin a repo declares, so in a single-repo cloud session the floor is armed by the `SessionStart` entry the github module renders into the committed `.claude/settings.json` (`cloudArming: false` removes it); in an Anthropic-hosted cloud environment a project cloud thread or a multi-repo session applies no repo hooks, so there the remote branch rule above is the only guard.
 Receipts: `docs/handbook/github.md#enforce-the-branch-policy-where-git-resolves-the-ref-and-let-the-text-scan-catch-only-the-ways-to-disable-it`
 
 ## Don't

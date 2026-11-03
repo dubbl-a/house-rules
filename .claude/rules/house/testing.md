@@ -5,7 +5,7 @@ paths:
   - "tests/**"
   - ".github/workflows/**"
 ---
-<!-- house-managed v0.23.2 module=testing source=modules/testing/rules/testing.md body-sha256=f7e77e792335cfda2bac577c939b22bd5df020079d39065ee68278b817624476 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.3 module=testing source=modules/testing/rules/testing.md body-sha256=2d9fbdbdb908f27dfa6bea5fd44ec088880285d9844b94372ee5a5a6cf28e611 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -13,7 +13,7 @@ These rules cover the checks a repo runs on itself: the suite, the gates that gu
 
 ## Give the agent a check it can run before you walk away
 
-Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted; making it enforced rather than advised is claude-code.md's hook ladder.
+Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted, and a `verify` skill a plugin supplies does not trigger this, so keep it in the repo's own skills directory; making it enforced rather than advised is claude-code.md's hook ladder.
 Anchor: a single `verify` script that runs the suite, the hook harness, and the checker in one pass, so one command covers the tree.
 Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you-walk-away`
 

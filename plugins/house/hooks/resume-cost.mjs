@@ -10,6 +10,11 @@
 // older versions and empty transcripts omit them, and then there is nothing
 // to say.
 //
+// Native floor: on Pro, Max and Ultra plans the harness's own resume dialog
+// already estimates what a long resumed conversation will cost, and /usage
+// reports cache state; this hook adds a dollar warning for the sessions that
+// dialog does not cover.
+//
 // The warning is advice, never a gate. Defaults a user can override from
 // settings env or the shell: HOUSE_RESUME_COST_WARN=off disables the hook,
 // HOUSE_RESUME_COST_WARN_USD sets the dollar threshold (default 5).

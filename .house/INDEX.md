@@ -92,7 +92,7 @@
 - Search public prior art before building a tool, and record what you did not adopt
   Look for an existing tool before writing one, and record what you evaluated and did not adopt with the deciding case, since an unrecorded rejection gets re-litigated and an approved plan is not that record.
 - Pin a framework default your output depends on, with the reason beside it
-  Pin any framework or adapter default your output depends on and put the reason in the config file itself, because an unexplained value is unexplained to the agent too.
+  Pin any framework or adapter default your output depends on and put the reason in the config file itself, or in a sibling note where the format cannot hold a comment, because an unexplained value is unexplained to the agent too.
 - Enumerate from the system of record, and fail hard on a missing member
   Build a list by reading the thing that defines it rather than typing the members, and fail loudly on an unresolvable member, since a hand-kept list silently omits whatever nobody remembered.
 - Normalize against fixed anchors, never against the live population
@@ -120,7 +120,7 @@
 - Evaluate the path a session actually takes
   Score the path everyday sessions use, since a strong score on a tuned path nobody takes says little; when the instrument and daily use diverge, measure the one in use or move the tuning there.
 - Deny the eval session what the project allows, and fail a run whose results contain the key
-  Pass every project allow, project skill tool grant, and project server the eval does not itself grant as a command-line deny, since a print-mode run uses a project's skill grants and servers even in a folder it never trusted, a trusted folder adds its allows, and a broad allow written for daily work is an open door in a measurement.
+  Pass every project allow, project skill tool grant, and project server the eval does not itself grant as a command-line deny, and turn off from the command line any project hook the eval does not measure, since a print-mode run uses a project's skill grants, servers, hooks, and env block even in a folder it never trusted, a trusted folder adds its allows, and a broad allow written for daily work is an open door in a measurement.
 - Count what the agent did, not only whether it passed
   Print the tool-call mix per arm, such as searches, document opens, shell reads, and verification calls, beside the outcome measures, and read it before adopting a change, because a prompt change can alter behaviour nobody asked about while every outcome measure stays flat.
 - Split a score gap into its causes from the transcripts before building to close it
@@ -208,7 +208,7 @@
 
 ## .claude/rules/house/testing.md
 - Give the agent a check it can run before you walk away
-  Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted; making it enforced rather than advised is claude-code.md's hook ladder.
+  Ship one command that answers "did this work" with nobody watching, exiting non-zero on failure and chaining the suite, the guard tests, and the repo checker, and name it in the root file so an agent finds it without being told; when the repo ships it as a project skill, name the skill `verify`, since the harness then tells Claude to run it before each commit, docs-only and tests-only commits excepted, and a `verify` skill a plugin supplies does not trigger this, so keep it in the repo's own skills directory; making it enforced rather than advised is claude-code.md's hook ladder.
 - Scale the pyramid to the repo you have, and route what the PR gate cannot afford
   Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 - Test the guard itself, as its own CI step

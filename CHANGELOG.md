@@ -6,6 +6,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.3] - 2026-11-03
+
+A patch release under ADR 0012: rule prose and header comments only, no heading renamed, and no change to what the guard denies. It records the 2026-11-03 re-survey under Claude Code 2.1.317 and applies the rewords it proposed that the banked facts support. Upgrading from 0.23.2: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- The claude-code, docs, engineering, github, testing, database, deployment, llm-output, evals, security and retrieval rules now name the native floor they build on where the re-survey found a claim loose or missing: the resume dialog shows on Pro, Max and Ultra and the rule pins no version; auto memory reaches a fork; bare mode drops hooks, CLAUDE.md and the subscription login; a print-mode run uses a checkout's hooks, env block and servers, so an agent step over an untrusted checkout should leave project settings out; `--max-turns` and `--max-budget-usd` exist only in print mode and bound no wall time; a deny on the platform CLI must cover its `npx` form, and an allow on the deploy script would skip the auto mode classifier's review; the sandbox write-denies `.git/config` and `.git/hooks` where it is on; in an Anthropic-hosted cloud environment a project cloud thread or a multi-repo session applies no repo hooks; the question tool's timeout and an output style do not waive a wait for a yes; and a printed run can end with no structured result. The security rule's credential, config-review and loop-bound lines say what the sandbox, the trust dialog and the print-mode caps do and do not cover.
+- The headers of the two cost hooks, the `lengths` and `agent-config` checker families, the managed-header comment in `house render`, and the doctor and sync skills name their native floor. The `agent-config` family is declared an intentional partial duplicate of the trust dialog. The sync skill offers `/reload-plugins` beside a restart when this session runs an old copy.
+- The harness audit lists `security-server.md`, which it never classified; a test fails when a module's rule file is in neither of its lists.
+
 ## [0.23.2] - 2026-11-03
 
 A patch release under ADR 0012: rule prose only, no heading renamed, and no change to what the guard denies. It records the Claude Code 2.1.316 and 2.1.317 survey, which supersedes PR #494, and corrects what the model rule says an unnamed subagent call's effort defaults to. Upgrading from 0.23.1: update the plugin as before, then run `/house-rules:sync`.
