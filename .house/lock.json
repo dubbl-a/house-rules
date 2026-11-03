@@ -106,7 +106,7 @@
       "path": ".claude/rules/house/security.md",
       "module": "security",
       "source": "modules/security/rules/security.md",
-      "bodySha256": "109baa090ea38124c9011b5643556936920b68258252c499dc2a480bb20d1fef"
+      "bodySha256": "04a12551c9df162c82ce4a83b564d272d1403d58de592c7cac6731af1c79a137"
     },
     {
       "path": ".claude/rules/house/security-server.md",
@@ -124,7 +124,7 @@
       "path": ".house/check.mjs",
       "module": "_payload",
       "source": "payload/check.mjs",
-      "bodySha256": "5f53bf96a32da2c8ddd4355bb1e038d952830faac9ed881c2232e74c6748b12e"
+      "bodySha256": "33f25b45ceaa77664792bb2df78ecd8c634aa5e4d8aa4b3af35c45350cfad463"
     },
     {
       "path": "AGENTS.md",

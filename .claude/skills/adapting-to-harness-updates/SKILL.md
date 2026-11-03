@@ -103,14 +103,23 @@ change whose effect is on tiers and effort.
 **Full re-survey.** Re-research every harness area from the docs, classify every rule heading and
 mechanism, verify, synthesize, and run a completeness critic. Then run a gap pass over whatever
 the critic names. Run the changelog triage from the delta path beside it: doc pages carry no dates,
-so without the changelog a full run cannot tell a current page from a stale one. Signals that the
-addendum is not enough:
-- the delta touches several areas at once;
-- a new model family or default arrives;
-- the prompt audit flags patterns across many files;
-- an addendum turns up a conflict it cannot resolve in its own PR, or conflicts in two or more areas whose banked facts predate the change; one conflict the addendum resolves is not a signal;
-- the last re-survey's critic listed areas nobody has researched since;
-- a quarter has passed since the last full re-survey, since docs drift without a changelog line.
+so without the changelog a full run cannot tell a current page from a stale one. Its job is the
+drift no changelog line records, so only two signals call for it:
+- a quarter has passed since the last full re-survey;
+- a Claude Code major version ships, since a major can restructure the docs across many areas.
+
+Route every other signal to the narrower tool that answers it:
+- a new model family, or a changed default model or effort: the model path in step 9, since a
+  model moves tiers and effort, not what a harness feature does;
+- the prompt audit flags patterns across many files: a wording pass under the prompt-audit rules
+  in [references/dispositions.md](references/dispositions.md), since the audit's classifiers do
+  not judge wording;
+- an addendum turns up a conflict it cannot resolve in its own PR, conflicts in two or more areas
+  whose banked facts predate the change, or the last critic named areas nobody has researched
+  since: a gap run over just those areas and the rule files they touch (a cloud routine run cannot
+  launch one, so it names the gap run and its areas in the PR body);
+- a delta that touches several areas needs nothing more, since the addendum classifies every
+  changelog entry whatever its area.
 
 The scripts are `scripts/house-vs-harness-audit.js` (main) and `scripts/house-vs-harness-gap-audit.js`
 (gap). Each takes `args.repo` (an absolute path to the clean worktree) and `args.date`. The gap run

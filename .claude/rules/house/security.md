@@ -6,7 +6,7 @@ paths:
   - "plugins/house/scripts/**"
   - "research/*/scripts/**"
 ---
-<!-- house-managed v0.23.3 module=security source=modules/security/rules/security.md body-sha256=6dc906722fae34da8a8c53f9bab23412cdc8cb6d643be0f53badc6ff04fa9677 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.3 module=security source=modules/security/rules/security.md body-sha256=2a3e2dd849da8f0e9b1307ea315eac754f5c23bfc59e672492c1d640ea4e3b37 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: agents and the supply chain
 
@@ -41,7 +41,7 @@ Receipts: `docs/handbook/security.md#review-a-change-to-agent-config-as-code-and
 ## Bound an agent's loops, spend, and reach from outside it, and keep a record it cannot rewrite
 
 Set the turn limit, the cost ceiling, and the timeout where the agent cannot raise them, and keep the run log, the transcript, and the audit row where it has no write access, because a cap or a record the agent holds is a suggestion.
-Anchor: the runner's own ceiling flags (the print-mode turn limit, off unless set, and the print-mode budget cap, an estimate a run can pass, so leave headroom), a subagent's turn limit, and the workflow's job timeout, set in a file the agent cannot edit; an interactive session has no native per-session turn cap, and spend limits, where an admin set them, apply per org or member, not per run; evals.md's budget rule and github.md's minutes rule carry the same cap for their tiers; telemetry exported to a store the agent cannot reach, with the exporter locked in managed settings, is the native record, and a transcript on the same machine is protected only by file permissions and the sandbox.
+Anchor: the runner's own ceiling flags (the print-mode turn limit, off unless set, and the print-mode budget cap, an estimate a run can pass, so leave headroom), a subagent's turn limit, and the workflow's job timeout, set in a file the agent cannot edit; an interactive session has no native per-session turn cap, and spend limits, where an admin set them, apply per org, group, member or Console workspace, not per run; evals.md's budget rule and github.md's minutes rule carry the same cap for their tiers; telemetry exported to a store the agent cannot reach, with the exporter locked in managed settings, is the native record, and a transcript on the same machine is protected only by file permissions and the sandbox.
 Receipts: `docs/handbook/security.md#bound-an-agents-loops-spend-and-reach-from-outside-it-and-keep-a-record-it-cannot-rewrite`
 
 ## Install only what was reviewed, and let a new release age first
