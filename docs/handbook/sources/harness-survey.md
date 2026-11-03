@@ -1426,7 +1426,7 @@ The bank's "Built-in subagents" fact dropped the force-variable condition, so th
 
 ### What triggered this run
 
-This run was triggered by a single conflict PR #496 had already resolved, found no duplicate or conflict, and 8 of its 62 proposed rewords repeated wording the 2026-10-21 adjudications had settled, so the conflict signal was narrowed and a monthly cadence added.
+This run was triggered by a single conflict PR #496 had already resolved, found no duplicate or conflict, and 8 of its 62 proposed rewords repeated wording the 2026-10-21 adjudications had settled, so the conflict signal was narrowed and a quarterly cadence added.
 
 ### The subagent effort variable
 
