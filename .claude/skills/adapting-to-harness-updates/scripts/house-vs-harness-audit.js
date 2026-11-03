@@ -95,7 +95,13 @@ For every distinct feature in this area return one fact: the feature name, what 
 }
 
 const MODULES = ['claude-code', 'docs', 'engineering', 'github', 'testing', 'database', 'deployment', 'data-pipelines', 'llm-output', 'evals', 'security', 'retrieval']
-const ITEMS = MODULES.map(m => ({ key: m, kind: 'module', path: `${REPO}/plugins/house/modules/${m}/rules/${m}.md` }))
+// A module's other rule files, as module/file. Keep this in step with plugins/house/modules/*/rules/;
+// tests/module-registration.test.mjs fails on a rule file missing from here.
+const EXTRA_RULE_FILES = ['security/security-server']
+const ITEMS = [
+  ...MODULES.map(m => ({ key: m, kind: 'module', path: `${REPO}/plugins/house/modules/${m}/rules/${m}.md` })),
+  ...EXTRA_RULE_FILES.map(f => ({ key: f.split('/')[1], kind: 'module', path: `${REPO}/plugins/house/modules/${f.split('/')[0]}/rules/${f.split('/')[1]}.md` })),
+]
 ITEMS.push({ key: 'mechanisms', kind: 'mechanisms', path: `${REPO}/README.md` })
 
 function classifyPrompt(item, factsText) {

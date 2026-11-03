@@ -132,3 +132,18 @@ test('every stated module and rule count in README.md and site/index.html matche
   }
   assert.deepEqual(problems, [], `\n${problems.join('\n')}`);
 });
+
+test('the harness audit classifies every rule file of every module, not only the one named for the module', () => {
+  const audit = read('.claude/skills/adapting-to-harness-updates/scripts/house-vs-harness-audit.js');
+  const extraList = audit.match(/const EXTRA_RULE_FILES = \[([^\]]*)\]/);
+  assert.ok(extraList, 'house-vs-harness-audit.js: no `const EXTRA_RULE_FILES = [...]` line found');
+  const extra = [...extraList[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  const misses = [];
+  for (const m of modules) {
+    for (const rel of spec(m).rules.map((r) => (typeof r === 'string' ? r : r.file))) {
+      const name = rel.replace(/^rules\//, '').replace(/\.md$/, '');
+      if (name !== m && !extra.includes(`${m}/${name}`)) misses.push(`${m}/${name}: not in EXTRA_RULE_FILES in house-vs-harness-audit.js, so the audit never classifies ${rel}`);
+    }
+  }
+  assert.deepEqual(misses, [], `\n${misses.join('\n')}`);
+});
