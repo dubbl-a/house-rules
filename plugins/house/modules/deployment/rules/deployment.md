@@ -28,7 +28,7 @@ Receipts: `docs/handbook/deployment.md#chain-the-deploy-guards-before-building-a
 Land the schema change first, because code deployed ahead of its migration reads tables and columns that do not exist yet, and it fails in front of users instead of in front of you.
 Write the test for the app-only fast path rather than leaving it to judgment: no migration files in the diff, no pipeline or scoring change, and when any doubt remains take the full ordered ship.
 In a scheduled run, apply migrations before the lanes that read them, and let independent lanes still run when an earlier unrelated lane fails.
-Anchor: the ordered ship script (`npm run ship`), which runs the migration step before the deploy step and exits at the first failure by name, because auto mode holds a production migration for review but has no notion of which step must come first.
+Anchor: the ordered ship script (`npm run ship`), which runs the migration step before the deploy step and exits at the first failure by name, because auto mode holds a production migration for review but has no notion of which step must come first, and a headless run that has one command blocked or denied carries on to the next instead of stopping.
 Receipts: `docs/handbook/deployment.md#migrate-before-deploying-the-code-that-reads-the-schema`
 
 ## Invoke a deploy only through its named script
@@ -37,7 +37,7 @@ Put the whole sequence in one script so the order cannot drift and a step cannot
 Never call the platform CLI by hand: it walks up the directory tree looking for config, so a stray file at the repo root can shadow the real one and ship an ungated service.
 Put the generators that produce what the build reads inside that script, because the build ships whatever the table already holds, not what the newest source data says.
 Name that script as the canonical runbook and have other procedures point at it instead of inventing their own step list.
-Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI and allow only the named deploy script (`npm run deploy`); a hook's allow cannot override that deny, but it matches the command text Claude writes rather than the program, so a `bash -c` wrapper or an absolute path gets past it, and the script's own guards remain the real gate.
+Anchor: the committed Claude Code settings permissions, which deny the raw platform CLI, including its `npx` form because the harness does not strip that wrapper, and add no allow rule for the named deploy script (`npm run deploy`), since an allow resolves before the auto mode classifier and would skip its review of a production deploy; a hook's allow cannot override that deny, but it matches the command text Claude writes rather than the program, so a `bash -c` wrapper or an absolute path gets past it, and the script's own guards remain the real gate.
 Receipts: `docs/handbook/deployment.md#invoke-a-deploy-only-through-its-named-script`
 
 ## Verify the deployed URL against the built file with the cache bypassed

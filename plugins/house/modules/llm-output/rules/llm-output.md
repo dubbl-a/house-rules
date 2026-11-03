@@ -17,7 +17,7 @@ Receipts: `docs/handbook/llm-output.md#quarantine-model-output-until-a-human-mov
 
 Put the process in data, the constants in config, the arithmetic in code, then let the model supply only judgment; anything re-derived from memory drifts between runs.
 Prefer a fixed code path whenever steps are knowable in advance, and reserve the model for work whose steps you cannot predict.
-Anchor a printed run or a workflow agent on a supplied output schema where one applies, since the harness fails a printed run on an invalid schema and validates a workflow agent's output against its schema, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing, and not every keyword either: a printed run and an Agent SDK run both pass a format annotation unenforced, and an SDK success that arrives with no structured result is a failure to handle, not an answer.
+Anchor a printed run or a workflow agent on a supplied output schema where one applies, since a printed run with an output schema returns its answer in a structured result field and refuses a schema that is not valid JSON Schema, and the harness validates a workflow agent's output against its schema, retries, and fails the call when the output cannot conform; a schema fixes shape, not footing, and not every keyword either: a printed run and an Agent SDK run both pass a format annotation unenforced, and a run of either kind that ends with no structured result, as when the model declines, is a failure to handle, not an answer.
 Label which output parts were computed and which were judged, and carry review context inline with the row so a review step never has to resolve a path to know what it sees.
 Anchor: test. The deterministic half carries unit tests under `npm test`; an untested figure is a judgment call and must say so in the output.
 Receipts: `docs/handbook/llm-output.md#keep-a-deterministic-backbone-and-let-the-model-fill-the-slots`
@@ -41,7 +41,7 @@ Receipts: `docs/handbook/llm-output.md#refute-with-named-lenses-drop-by-default-
 ## Cite or stay silent
 
 Attach evidence to every claim: a quote that does not match its source, a fact absent from the source bank and unconfirmed in session, or a principle attributed to someone who never said it, is a bug, not an answer.
-Verify each citation mechanically before making it, reading the raw markup and heading tree rather than a fetched summary, and diff the whole block against what is published instead of trusting the extractor; match a quote word for word against the one passage it cites, since a quote stitched from two places reads as one source saying what it never said.
+Verify each citation mechanically before making it: the harness's web fetch hands back a model-written summary of the page, not the page, so read the raw markup and heading tree yourself, and diff the whole block against what is published instead of trusting the extractor; match a quote word for word against the one passage it cites, since a quote stitched from two places reads as one source saying what it never said.
 Respect an explicit authoring marker: an entry its source flags as unconfirmed never ships as settled, whatever the rest of the page implies.
 Being the only candidate is not evidence: corroborate before treating a match as settled, round confidence down, let a weak match cap or forbid output classes, and turn a near miss into a question, not an insertion, unless mechanically checkable.
 Repoint a dead source rather than delete it, and confirm the replacement carries the cited claim, not merely responds; verify an outcome before calling it a track record, and change a published number only against the primary filing.
@@ -68,6 +68,7 @@ Receipts: `docs/handbook/llm-output.md#reword-a-locked-claim-never-strengthen-it
 ## Treat silence as not approval
 
 Outside a write the harness gates, show the diff and wait for an explicit yes before generating a file, since silence and an unanswered question are not approval, of a change or of data; a printed run has nobody to answer, so ask for the yes yourself.
+An unanswered question stays unanswered even where the question tool's optional timeout closes it and the session proceeds on its own judgment, and an output style that tells Claude to start work and assume routine decisions does not waive the wait: a timed-out question is a no, and a style is an instruction, not a person's yes.
 Plan mode holds edits until approved, but the hold ends there, does not bind where bypass permissions apply, covers edits rather than every write, and a teammate's plan is approved in the lead's session unread.
 Anchor: none (because a script-grantable approval is not an approval; the gate is the person).
 Receipts: `docs/handbook/llm-output.md#treat-silence-as-not-approval`

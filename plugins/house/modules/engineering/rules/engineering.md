@@ -31,7 +31,7 @@ Receipts: `docs/handbook/engineering.md#prove-a-check-can-fail-before-trusting-t
 Read the bytes that ship, because source and render diverge, and an option's name is never the evidence.
 Grep the built output for the literal after any value sweep, check an emitted asset's real format and shrink, prove no-visual-change with a computed-style diff across pages and widths, query the upstream rather than your cache, and test on the real client when a preview cannot reproduce the rendering.
 Assert the new content present and the prior content absent, whitespace normalized on both sides, because a page count is not a render check.
-Anchor: a `postbuild` check reading the emitted bytes, eval case `verify-served-artifact`; the bundled /verify runs the app only when invoked, so a byte check on every build is this repo's requirement
+Anchor: a `postbuild` check reading the emitted bytes, eval case `verify-served-artifact`; /verify runs the app on request, or before a commit once a project verify skill is recorded, but neither reads the emitted bytes on every build, so the byte check is this repo's requirement
 Receipts: `docs/handbook/engineering.md#verify-the-served-artifact-not-the-source`
 
 ## Validate the body before writing it, because a status code is not a content check
@@ -78,7 +78,7 @@ Receipts: `docs/handbook/engineering.md#record-a-significant-decision-as-a-numbe
 ## Land a build-time guard with the code it protects
 
 Ship a guard in the same change as the code it protects: guards exist for a failure class that renders fine, builds green, and is invisible to review.
-Open each guard by naming the failure class it catches, list one line per guard in the root file, and order guards first, generators second, and the check needing that output last.
+Open each guard by naming the failure class it catches, and order guards first, generators second, and the check needing that output last; add a root-file line only for a guard whose failure class Claude would not learn by reading the guard itself.
 Anchor: `prebuild` and `postbuild` wiring landed in the same change as the guard
 Receipts: `docs/handbook/engineering.md#land-a-build-time-guard-with-the-code-it-protects`
 
@@ -92,9 +92,9 @@ Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-
 
 ## Pin a framework default your output depends on, with the reason beside it
 
-Pin any framework or adapter default your output depends on and put the reason in the config file itself, because an unexplained value is unexplained to the agent too.
+Pin any framework or adapter default your output depends on and put the reason in the config file itself, or in a sibling note where the format cannot hold a comment, because an unexplained value is unexplained to the agent too.
 Justify a threshold constant with the range that makes it right, record a vendor quirk with its mitigation and removal cost, explain a non-obvious ignore rule in a comment, and give a temporary flag an expiry and removal condition.
-Anchor: the reason sits beside the pinned value, and a `postbuild` check proves the pin's protected behavior still holds
+Anchor: the reason sits beside the pinned value, or in a sibling note where the format is strict JSON such as Claude Code settings, and a `postbuild` check proves the pin's protected behavior still holds; the harness advises pinning a model alias to a full ID but asks for no reason, so the reason is this repo's addition
 Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depends-on-with-the-reason-beside-it`
 
 ## Enumerate from the system of record, and fail hard on a missing member

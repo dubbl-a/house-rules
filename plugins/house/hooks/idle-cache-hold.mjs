@@ -11,6 +11,11 @@
 // transcript format is internal and written asynchronously, so anything
 // unexpected means silence.
 //
+// Native floor: /usage reports cache state and the harness's idle compaction
+// can run first, but nothing native holds a prompt; this hook holds the first
+// typed prompt once when the transcript shows an expired cache and no
+// compaction since the last reply.
+//
 // The hold blocks the prompt once per idle gap: the block message shows the
 // prompt text (hooks reference, "What a blocked prompt leaves behind"), and
 // submitting it again goes through, because a state file in the temp dir

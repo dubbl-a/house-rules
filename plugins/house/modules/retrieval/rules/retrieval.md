@@ -15,7 +15,7 @@ Receipts: `docs/handbook/retrieval.md#diagnose-a-failed-answer-by-stage-before-f
 
 Assign the stage from what the transcript shows was surfaced, what was opened, and what was cited, never from the final answer alone, since an answer that names no source looks the same whether the source was never found or found and ignored.
 Keep undetermined as an explicit label, so a run the transcript cannot place is counted as such rather than forced into the nearest stage.
-Anchor: a scorer that writes one stage label per failed run from the transcript's tool calls, with undetermined in the label set, and refuses a failed run with no label; this package ships no scorer, so the labelling is this repo's addition.
+Anchor: a scorer that writes one stage label per failed run from the transcript's tool calls, with undetermined in the label set, and refuses a failed run with no label; this package ships no scorer, and Claude Code's plugin eval graders can read the trace and tool calls but return only pass or fail, so the stage labelling is this repo's addition.
 Receipts: `docs/handbook/retrieval.md#label-every-failed-run-with-its-stage-from-the-transcript-and-keep-an-undetermined-outcome`
 
 ## Verify each quote word for word against the cited document
@@ -34,7 +34,7 @@ Receipts: `docs/handbook/retrieval.md#keep-a-map-of-the-classes-of-quality-probl
 ## Cite a primary source for every lesson, with the quote and where it was read
 
 Back each lesson and each line of reference material with the primary source that states it, quoting the passage and naming where it was read, because a summary of a summary drifts from what was found and cannot be checked.
-Treat a secondary write-up as a pointer to the primary source, not a substitute for it, and a WebFetch result the same way: it is a model's answer about the page, so take the quote from the raw text.
+Treat a secondary write-up as a pointer to the primary source, not a substitute for it, and a WebFetch result the same way: Claude Code documents that WebFetch returns a separate model's answer about the page rather than the page itself, so take the quote from the raw text.
 Anchor: none (because whether a source is primary is a judgment no checker reads); each lesson's citation carries a quote and a location a reviewer can open.
 Receipts: `docs/handbook/retrieval.md#cite-a-primary-source-for-every-lesson-with-the-quote-and-where-it-was-read`
 
