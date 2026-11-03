@@ -112,19 +112,22 @@ Route every other signal to the narrower tool that answers it:
 - a new model family, or a changed default model or effort: the model path in step 9, since a
   model moves tiers and effort, not what a harness feature does;
 - the prompt audit flags patterns across many files: a wording pass under the prompt-audit rules
-  in [references/dispositions.md](references/dispositions.md), since the audit's classifiers do
-  not judge wording;
+  in [references/dispositions.md](references/dispositions.md), since the survey's
+  classifiers do not judge wording;
 - an addendum turns up a conflict it cannot resolve in its own PR, conflicts in two or more areas
   whose banked facts predate the change, or the last critic named areas nobody has researched
   since: a gap run over just those areas and the rule files they touch (a cloud routine run cannot
-  launch one, so it names the gap run and its areas in the PR body);
+  launch one, so it names the gap run and its areas in the PR body, or in its comment on the
+  survey-pending issue when it opens no PR);
 - a delta that touches several areas needs nothing more, since the addendum classifies every
   changelog entry whatever its area.
 
 The scripts are `scripts/house-vs-harness-audit.js` (main) and `scripts/house-vs-harness-gap-audit.js`
 (gap). Each takes `args.repo` (an absolute path to the clean worktree) and `args.date`. The gap run
-also takes `args.areas` and `args.targets` from the critic's findings, plus an optional
-`args.context` sentence stating the main run's result for its addendum. They run through the
+also takes `args.areas` and `args.targets`, from the critic's findings or from the addendum's
+conflicts, plus `args.context`, a sentence stating what prompted the run. Pass it every time: without
+it the addendum says a main audit and its critic came first, which is false for a run an addendum
+prompted. They run through the
 Workflow tool, which needs the user's explicit opt-in. Before asking, state the agent count: the
 main run is one researcher per area, one Opus classifier per module plus one for mechanisms, two
 skeptics per duplicate-or-conflict claim, and two synthesis agents.
