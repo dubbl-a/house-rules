@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-11-03
+
+A patch release under ADR 0012: rule prose only, no heading renamed, and no change to what the guard denies. It records the Claude Code 2.1.316 and 2.1.317 survey, which supersedes PR #494, and corrects what the model rule says an unnamed subagent call's effort defaults to. Upgrading from 0.23.1: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- The effort line of "Set the model explicitly on every subagent and workflow agent" in the claude-code rule said a subagent with no effort named inherits the session's. Claude Code 2.1.316 added a subagent effort variable that sets the level for such a call, and 2.1.317 runs a subagent on a different model from the session at that model's saved level or its default instead of the session's. The line now gives the order for a call with no per-call, pinned, or turn effort (a skill's, for example): the variable, then the session's effort on the main conversation's model, then the subagent's own model's saved level or default. The per-model level in user settings, already the rule's floor, now governs an unnamed call below the session unless the variable or a turn effort names one. The plugin's own agents pin an effort and the `/deep-research` fork names one per stage, so neither changes. The handbook receipt records both changelog lines and how the 2.1.317 binary applies them, and `research/model-tier/2026-11-03-subagent-effort.md` holds the role table: no role moves.
+
 ## [0.23.1] - 2026-10-30
 
 A patch release under ADR 0012: no heading renamed, no rule file changed, and no change to what the guard denies. The two cost hooks now speak up only for a very expensive rewrite, and the idle-cache hold no longer holds prompts nobody typed (#493). Upgrading from 0.23.0: update the plugin as before, restart Claude Code, then run `/house-rules:sync`. A user who wants the old $0.25 line sets `HOUSE_RESUME_COST_WARN_USD` and `HOUSE_IDLE_CACHE_HOLD_USD` to `0.25`.
