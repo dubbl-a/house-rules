@@ -403,6 +403,9 @@ runs every search, fetch, and verify agent, that holds from Claude Code 2.1.305,
 reads "Fixed Workflow resume re-running already-completed `pipeline()` and `parallel()` agents
 instead of serving them from the run's journal"; on an older CLI an extension re-runs those
 finished agents, so it costs nearly the whole run again and not the extra agents the note counts.
+A run resumed after a usage limit had the same gap until Claude Code 2.1.318, whose changelog
+(fetched 2026-11-03, same URL) reads "Fixed workflows re-running finished agents when resumed after
+a usage limit"; on 2.1.305 to 2.1.317 such a resume re-runs finished agents as an older CLI does.
 A changed depth or budget field (votes, say) would rewrite every verify prompt; with the args held
 and a deterministic selection, a larger cap keeps every verify call already made and appends the
 rest. The script cannot read its own run id, so the note says "this run's id" and the session
