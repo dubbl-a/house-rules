@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.4 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=bfffd12f9a17d0cf27447d51f3b2f3cd32d0008e96ab69780ed1e9363b092f76 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.4 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=3e099924621fcf78db08154ce5a1f19d1ec884e861d78f7ca1cfc789af9ae6a5 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -33,7 +33,7 @@ Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-
 
 Scope every domain rule with `paths:` so a session that never touches the domain never pays for it.
 A rule file with no `paths:` is not unscoped, it is always-on at root-file priority, so if it belongs in every session move it into the root file instead.
-Confirm the scoping defers loading before you count on it, by reading `/context all` yourself and checking that its memory files list does not name the rule at launch (plain `/context` collapses that list in fullscreen mode, and the table Claude reads keeps only each list's largest rows), since frontmatter that does not parse loads the rule as if it had no `paths:`; tell the reader to grep the rules directory when no matching file is open.
+Confirm the scoping defers loading before you count on it, by reading `/context all` yourself and checking that it does not list the rule at launch (plain `/context` collapses its memory files list in fullscreen mode, and at the terminal the table Claude reads keeps only each list's largest rows), since frontmatter that does not parse loads the rule as if it had no `paths:`; tell the reader to grep the rules directory when no matching file is open.
 Remember a scoped rule is summarized away at compaction and returns only when a matching file is read, written, or edited again, so a rule that must survive compaction belongs in the root file.
 Anchor: check.mjs `drift` validates every rule file's `paths:` first segment against the tree, and `coload` caps the summed budget of the rules that match any one path.
 Receipts: `docs/handbook/claude-code.md#give-a-domain-rule-a-paths-list-and-never-leave-a-rule-file-unscoped`

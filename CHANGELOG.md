@@ -13,7 +13,7 @@ A patch release under ADR 0012: rule prose only, no heading renamed, and no chan
 ### Changed
 
 - The `/deep-research` fork line of the claude-code rule said only a CLI older than 2.1.305 re-runs finished agents when a run is extended. Claude Code 2.1.318 fixed the same re-run for a workflow resumed after a usage limit, so the line now says a CLI older than 2.1.318 re-runs finished agents in such a resume too. The handbook receipt quotes the changelog line.
-- The claude-code rule's scoping check said to confirm a rule defers by checking that `/context` does not list it at launch. Claude Code 2.1.319 trims the table Claude reads from `/context` to each list's largest rows, and plain `/context` collapses the memory files list in fullscreen mode, so a short rule that loaded could look deferred. The line now says to read `/context all` yourself and check its memory files list. The handbook receipt quotes the changelog line and the memory page.
+- The claude-code rule's scoping check said to confirm a rule defers by checking that `/context` does not list it at launch. Claude Code 2.1.319 trims the table Claude reads from `/context` at the terminal to each list's largest rows, and plain `/context` collapses the memory files list in fullscreen mode, so a short rule that loaded could look deferred. The line now says to read `/context all` yourself. The handbook receipt quotes the changelog line and the memory page.
 
 ## [0.23.3] - 2026-11-03
 
