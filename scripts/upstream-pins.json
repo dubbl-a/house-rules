@@ -49,7 +49,7 @@
       "sha": "19839e671063babc676abd0b603fb70df5f4977b",
       "consulted": "2026-11-08",
       "paths": ["README.md"],
-      "recheck": "check whether include pinning or a lock has landed"
+      "recheck": "check whether it gains a deviations ledger or versioned cross-repo distribution"
     },
     {
       "upstream": "github.com/PackmindHub/packmind",
