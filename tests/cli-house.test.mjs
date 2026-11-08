@@ -639,14 +639,17 @@ test('#305 doctor: a malformed response prints not checked', () => {
 
 // A throwaway releases server in its own process (runCli blocks this one with
 // spawnSync). Modes: hang (accept, never answer), log (answer 200, append each
-// request's Authorization header to a file), auth401 (401 when a token is sent).
+// request's Authorization header to a file), auth401 (401 when a token is sent),
+// hangfirst (never answer the first request, then 200), err500 (always 500).
 const RELEASES_SERVER_SRC = `
 const http = require('http'); const fs = require('fs');
 const [mode, logFile] = process.argv.slice(1);
+let n = 0;
 const srv = http.createServer((req, res) => {
   const a = req.headers.authorization || '';
   fs.appendFileSync(logFile, JSON.stringify(a) + '\\n');
-  if (mode === 'hang') return;
+  if (mode === 'hang' || (mode === 'hangfirst' && ++n === 1)) return;
+  if (mode === 'err500') { res.statusCode = 500; return res.end('{}'); }
   if (mode === 'auth401' && a) { res.statusCode = 401; return res.end('{}'); }
   res.end(JSON.stringify([{ tag_name: 'v10.0.0', draft: false, prerelease: false }]));
 });
@@ -674,6 +677,36 @@ test('#305 doctor: a server that never answers times out in seconds, exit code u
     assert.ok(Date.now() - t0 < 30000, 'finishes well inside 30 s');
     assert.equal(r.code, 0);
     assert.match(r.out, /^latest release: not checked \(timed out after 3s\)$/m);
+  });
+});
+
+test('#499 doctor: a first response that times out is retried once and then read', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('hangfirst', (url, seen) => {
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url });
+    assert.match(r.out, /latest release v10\.0\.0/);
+    assert.equal(seen().length, 2);
+  });
+});
+
+test('#499 doctor: a server that never answers gets exactly two requests', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('hang', (url, seen) => {
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url });
+    assert.match(r.out, /^latest release: not checked \(timed out after 3s\)$/m);
+    assert.equal(seen().length, 2);
+  });
+});
+
+test('#499 doctor: a non-timeout failure is not retried', async () => {
+  const { cliPath } = buildFixturePlugin();
+  const repo = buildTargetRepo();
+  await withReleasesServer('err500', (url, seen) => {
+    const r = runCli(cliPath, ['doctor', '--repo', repo], { HOUSE_RELEASES_URL: url });
+    assert.match(r.out, /^latest release: not checked \(HTTP 500\)$/m);
+    assert.equal(seen().length, 1);
   });
 });
 
