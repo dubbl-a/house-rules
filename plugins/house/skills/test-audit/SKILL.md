@@ -23,10 +23,18 @@ can lag until the next sync.
    (`git symbolic-ref --short refs/remotes/origin/HEAD`). Stop if there is no remote: the CI
    survey and the PR step need one. The audit reads the default branch at origin, not the working
    tree.
-2. State the agent count before starting: about 12 to 16 (survey, up to 4 auditors and their
-   re-reads, merge, up to 4 refuters, builder, reviewer, and 2 agents per rework round, at most
-   2 rounds). Ask for a go-ahead if the user has not already given one. `apply: false` stops after
-   the refuters and builds nothing.
+2. State the agent count and a rough cost before starting. The count is about 12 to 16 (survey,
+   up to 4 auditors and their re-reads, merge, up to 4 refuters, builder, reviewer, and 2 agents
+   per rework round, at most 2 rounds), fewer for a small suite: auditors number one per about
+   1500 test lines, capped at `maxAuditors` and the test-file count. Give a token range of about
+   75k to 350k per agent, so roughly 1M to 5M tokens for a full 4-auditor run, scaled down by
+   agent count for a smaller one. Label it rough: it is extrapolated from one adopter run (56 test
+   files), where each finished agent left a 0.3 to 1.4 MB transcript, counted at 4 bytes per
+   token. Say which agents run on Opus: the merge, every refuter, the reviewer, and the
+   re-reviewer in each rework round. The survey, auditors, and builders run on Sonnet. Give no
+   dollar figure. Offer a lighter path beside the full run: for a small suite, `apply: false`
+   (stops after the refuters, so no builder, review, or rework agents) with a smaller
+   `maxAuditors`. Ask for a go-ahead if the user has not already given one.
 3. Copy the script into the session scratchpad, because the Workflow tool only runs a script it
    can already read:
 
@@ -46,6 +54,12 @@ can lag until the next sync.
    | `maxAuditors` | optional, default 4 |
    | `maxReworks` | optional, default 2; a non-negative integer, anything else is ignored with a log line. A round past the second still requires telling the user what each round found and why the next converges, per the orchestration rule |
 
+   If the session lists no scratchpad, use a gitignored directory inside the repo root in its
+   place, for the step 3 copy and for `scratch`. `<root>/.claude/worktrees/test-audit-scratch/`
+   works because the sync step ignores `.claude/worktrees/`. Confirm first that any such path is
+   ignored: `git -C <root> check-ignore -q <dir>/` must exit 0. If it does not, stop and ask the
+   user rather than editing their `.gitignore`.
+
    `root` and `scratch` must hold no spaces. The script creates branch `tests-audit-<date>` and a
    worktree under `<root>/.claude/worktrees/`.
 5. When it returns, summarize for the user: how many findings were confirmed, refuted, and
@@ -61,8 +75,19 @@ can lag until the next sync.
 ## While it runs
 
 Point the user at `/workflows`: each agent completion logs a line there (merge counts, each
-refuter as it returns, build start and end, each rework round). For a mid-run summary, read those
-log lines, not subagent transcripts.
+refuter as it returns, build start and end, each rework round). Those log lines are the user's
+view; the session cannot read them, and the script writes no progress file. For a mid-run
+summary, run this `jq` over the run's `journal.jsonl` (in the session's
+`subagents/workflows/<run id>/` folder), not subagent transcripts:
+
+```
+jq -s '[.[] | select(.type == "started")] as $s | [.[] | select(.type == "result")] as $r
+  | {phase: ($s | last | .phase), started: ($s | length), done: ($r | length),
+     verdicts: ([$r[] | .result | objects | .verdicts[]? | .verdict] | group_by(.) | map({(.[0]): length}) | add)}' journal.jsonl
+```
+
+`phase` is the phase of the latest agent started, `started` minus `done` is the agents still
+running, and `verdicts` tallies the refuters' confirmed, corrected, and refuted verdicts so far.
 
 ## The rework loop
 
