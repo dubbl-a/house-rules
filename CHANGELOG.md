@@ -6,6 +6,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.4] - 2026-11-06
+
+A patch release under ADR 0012: rule prose only, no heading renamed, and no change to what the guard denies. It records the Claude Code 2.1.318 and 2.1.319 survey. Upgrading from 0.23.3: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- The `/deep-research` fork line of the claude-code rule said only a CLI older than 2.1.305 re-runs finished agents when a run is extended. Claude Code 2.1.318 fixed the same re-run for a workflow resumed after a usage limit, so the line now says a CLI older than 2.1.318 re-runs finished agents in such a resume too. The handbook receipt quotes the changelog line.
+- The claude-code rule's scoping check said to confirm a rule defers by checking that `/context` does not list it at launch. Claude Code 2.1.319 trims the table Claude reads from `/context` at the terminal to each list's largest rows, and plain `/context` collapses the memory files list in fullscreen mode, so a short rule that loaded could look deferred. The line now says to read `/context all` yourself. The handbook receipt quotes the changelog line and the memory page.
+
 ## [0.23.3] - 2026-11-03
 
 A patch release under ADR 0012: rule prose and header comments only, no heading renamed, and no change to what the guard denies. It records the 2026-11-03 re-survey under Claude Code 2.1.317 and applies the rewords it proposed that the banked facts support. Upgrading from 0.23.2: update the plugin as before, then run `/house-rules:sync`.

@@ -117,7 +117,15 @@ claims they can load globally regardless: "do not assume the scoping works witho
 loading before counting on it. The memory page now names the check and the failure it catches:
 `/context` lists the rules files loaded at launch, and frontmatter whose YAML does not parse
 loads the rule as if it had no `paths` (https://code.claude.com/docs/en/memory, fetched
-2026-10-21).
+2026-10-21). Fetched again on 2026-11-06, the page gives the check for CLAUDE.md files: run
+`/context all` and look under Memory files, since "In fullscreen mode, `/context` alone collapses
+that list"; the rule applies the same check to a rule file on the strength of the earlier
+statement, which that fetch no longer carries in those words. Claude Code 2.1.319 also
+shortened the copy Claude reads: "Improved `/context` at the terminal so the table Claude reads
+stays short: each list keeps its 10 largest rows" (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-06).
+A short rule can drop out of that table while it is loaded, so the rule says to read the full
+list yourself rather than ask Claude whether the rule appears.
 
 **Other agents get a routing table, not the scoping.** Codex and Gemini CLI never read
 `.claude/rules/`, and neither has a `paths:` equivalent. A repo that lists them in `house.json`'s
@@ -403,6 +411,9 @@ runs every search, fetch, and verify agent, that holds from Claude Code 2.1.305,
 reads "Fixed Workflow resume re-running already-completed `pipeline()` and `parallel()` agents
 instead of serving them from the run's journal"; on an older CLI an extension re-runs those
 finished agents, so it costs nearly the whole run again and not the extra agents the note counts.
+A run resumed after a usage limit had the same gap until Claude Code 2.1.318, whose changelog
+(fetched 2026-11-03, same URL) reads "Fixed workflows re-running finished agents when resumed after
+a usage limit"; on 2.1.305 to 2.1.317 such a resume re-runs finished agents as an older CLI does.
 A changed depth or budget field (votes, say) would rewrite every verify prompt; with the args held
 and a deterministic selection, a larger cap keeps every verify call already made and appends the
 rest. The script cannot read its own run id, so the note says "this run's id" and the session
