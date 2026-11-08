@@ -28,6 +28,7 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 ## Put a fact where its litmus test says it belongs
 
 Give working rules, a runbook, strategy, the changelog, reference, and orientation each their own document (the README for a landing human, the archive for a dated observation), restating neither the code nor the manifest, and index a reference set with a start-here pointer; say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
+Route auto memory by the same test: personal working preferences and collaboration feedback stay there, and a fact that would be true and needed for another person or machine belongs in the repo.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file); the harness's routing guidance and its checkup's cuts cover instruction files, so routing the README, changelog, and archive is this repo's requirement.
 Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belongs`

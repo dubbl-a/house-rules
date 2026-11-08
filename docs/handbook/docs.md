@@ -86,6 +86,12 @@ log, and `docs/*.md` as deep reference. The external brief backs the same instin
 other direction: never mix tutorial, how-to, reference, and explanation modes in one document,
 because each serves a different reader need and mixing them degrades all four.
 
+Auto memory is a fifth place with its own litmus test (#487): Anthropic's memory page says it is
+machine-local ("Files are not shared across machines or cloud environments") and loads only
+the first 200 lines or 25KB of `MEMORY.md`, so a fact that would be true and needed for another
+person or machine goes in the repo, where review and other tools can see it
+(https://code.claude.com/docs/en/memory, checked 2026-10-25).
+
 Two repo-a reference docs put the pattern to work. `docs/data-dictionary.md` indexes the
 data-dictionary tables and says "start here, then follow the link" rather than restating them
 inline, and `docs/finance-data-dictionary.md` traces every published finance number back to the

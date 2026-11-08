@@ -28,15 +28,18 @@ only at the point a session is actually ending.
 2. List what shipped since the last release tag, or since session start if there is no tag.
 3. State one headline finding, with the evidence for it.
 4. Write the next-cycle list: ordered, concrete, each item with its reasoning.
-5. For each next-cycle item, check open issues for one that already covers it; open a new issue
-   only when none does, and record its number.
+5. For each next-cycle item, check the tracker for one that already covers it; open a new one
+   only when none does, and record its number. The tracker is the one the repo's CLAUDE.md
+   names, GitHub issues by default.
 6. For anything deferred by decision, record the reason where the decision already lives (the
    CHANGELOG, a decision record, the code comment at the site); file an issue closed as not
    planned only when no such place exists. Never do this for something simply not done; that
    stays a next-cycle item or drops silently.
 7. Legacy cleanup: if an open issue titled "Session carryover" exists, close it with a comment
    pointing to the issues its content was split into.
-8. Print the snapshot in the reply: the staleness disclaimer, tree state, shipped, headline
+8. If the handoff carries detail that cannot be committed or tracked, write it to the repo's
+   live handoff file (see "Keep uncommittable detail in one live file").
+9. Print the snapshot in the reply: the staleness disclaimer, tree state, shipped, headline
    finding, next-cycle list with issue numbers, and deferred-by-decision items with where each
    is recorded.
 
@@ -90,6 +93,23 @@ gh issue create --title "<item>" --body "<the one-line reasoning>"
 An issue exists for work someone will do; a next-cycle item that never becomes one is a list in
 prose that the next session has to trust instead of a tracker it can act on.
 
+When the repo's CLAUDE.md names another tracker (Linear, Jira), search and file there with its
+tool, and post the status update there too. If no tool for it is connected, print the items for
+the person to file by hand.
+
+## Keep uncommittable detail in one live file
+
+Do this only when the handoff carries detail that cannot go in an issue, a tracker, or a commit
+(record IDs, rollback snapshot paths). Status and decisions still go to the tracker or the spec;
+only the uncommittable detail stays in the file.
+
+1. Pick the gitignored directory the repo uses for handoffs, and run
+   `git check-ignore <dir>` to confirm it is ignored. If it is not, stop and say so; do not
+   write the detail anywhere else.
+2. The live file is `<dir>/<work>/CURRENT.md`, one per workstream. If one exists, move it to
+   `<dir>/<work>/archive/`, renamed by date, before writing the new one.
+3. The snapshot and the next session's start prompt name that `CURRENT.md`.
+
 ## Record deferred-by-decision where the decision lives
 
 Something this session chose not to do, on purpose, is not the same as something that simply did
@@ -130,6 +150,8 @@ each is recorded. Print this in the reply; it is never filed.
 - **No `gh` CLI, or it is not authenticated.** Print the snapshot and the next-cycle and
   deferred-by-decision items anyway, say that no issue could be opened, and let the person file
   them by hand.
+- **The named tracker has no connected tool.** Print the next-cycle and deferred-by-decision
+  items and let the person file them there by hand.
 - **Nothing shipped, no headline finding, no next-cycle items, or nothing deferred by decision.**
   Say so plainly in that section rather than leaving it out or padding it.
 
@@ -145,3 +167,5 @@ each is recorded. Print this in the reply; it is never filed.
 - Don't pad a missing headline finding or an empty shipped list to make the snapshot look more
   substantial than the session was.
 - Don't leave a "Session carryover" issue open once this handoff has run.
+- Don't write handoff detail to a directory the ignore check has not confirmed, and don't leave
+  more than one live `CURRENT.md` per workstream.
