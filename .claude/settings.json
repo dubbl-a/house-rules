@@ -31,6 +31,9 @@
       "Bash(git --exec-path*)",
       "Bash(git * --exec-path*)",
       "Bash(psql *\\!*)"
+    ],
+    "ask": [
+      "Bash(*house uninstall*--apply*)"
     ]
   },
   "hooks": {

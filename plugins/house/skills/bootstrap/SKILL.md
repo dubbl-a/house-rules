@@ -259,7 +259,7 @@ and then deleting (it will not be written again),
 the wiring block still needs pasting in, and `node .house/check.mjs` is worth a local run before
 the first commit so the repo starts from a clean gate rather than an inherited failure. Stage the
 rendered files by path first (`house.json .house/ .claude/rules/house/ .githooks/ .github/`, plus `scripts/house/`
-only when render listed a file there, since git refuses a pathspec that matches nothing): until
+only when render listed a file there, and `.claude/settings.json` only when the plan printed a `-hook` or `-rule` line for it, since git refuses a pathspec that matches nothing): until
 they are staged the manifest family warns `[untracked]` per file, and a wholesale `.claude/` or
 `.house/` ignore is a `[gitignored]` finding, because a file git cannot see is one no family
 checks. None of that is this skill's job to do for them; bootstrap stops at render.

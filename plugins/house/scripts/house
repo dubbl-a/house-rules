@@ -1233,7 +1233,8 @@ function planAgentsBlockRemoval(repoRoot, priorLock, forceManagedPath) {
 // missing. Not written when the file is not a JSON object, its hooks or
 // SessionStart value is not the shape the harness reads, or its text is not
 // what the serializer would produce (so a rewrite would change more than the
-// entry); a warning names it and the entry to add or remove by hand.
+// entry); a warning names it and the entry to add or remove by hand. The same
+// file also gets the one permissions.ask rule below, under the same refusals.
 const SETTINGS_JSON = '.claude/settings.json';
 const ARM_DEST = 'scripts/house/arm-git-hooks.sh';
 const ARM_COMMAND = `bash "$CLAUDE_PROJECT_DIR/${ARM_DEST}" --repo "$CLAUDE_PROJECT_DIR"`;
@@ -1264,67 +1265,122 @@ function wantsArmEntry(houseData, modules, plan, moduleWarnings) {
 
 function isArmHook(h) { return isPlainObject(h) && h.command === ARM_COMMAND; }
 
-// null when nothing changes; else {action, content} for the whole new file.
-// Removal drops house's hook, then its group, SessionStart and hooks only when
-// each is empty because of that removal. A file house created is left as {}
-// rather than deleted: render cannot tell it from an adopter's own, since
-// nothing records who created it.
+// Issue #163: Claude Code's auto mode runs `house uninstall --apply` without
+// asking unless a permissions.ask rule says to, and a plugin cannot ship one.
+// So render writes this one rule into the same file. It matches command text,
+// so it is a guard against an accidental run, not a security boundary, and an
+// argument order other than `house uninstall ... --apply` does not match. A
+// dry-run `house uninstall` stays prompt-free. House owns this exact string in
+// permissions.ask and nothing else there.
+const ASK_RULE = 'Bash(*house uninstall*--apply*)';
+
+// `want` is the SessionStart entry and `wantRule` the ask rule: true to have
+// it, false to have it gone, null to leave that part alone. Null when nothing
+// changes; else {action, rule, content} for the whole new file, with action
+// (the entry) and rule each null when that part is unchanged. Removal drops
+// house's hook, then its group, SessionStart and hooks only when each is empty
+// because of that removal; the rule likewise leaves ask and permissions only
+// when each is empty because of it. A file house created is left as {} rather
+// than deleted: render cannot tell it from an adopter's own, since nothing
+// records who created it.
 //
 // `strict` is uninstall's: it deletes the script, so a settings file it cannot
-// read is a refusal even when no entry could be shown to be there.
-function planArmEntry(repoRoot, want, moduleWarnings, strict = false) {
-  if (want === null) return null;
+// read is a refusal even when no entry could be shown to be there. It governs
+// the entry only; a rule left behind is a note (in `ruleWarnings`), not a refusal.
+function planSettings(repoRoot, want, wantRule, moduleWarnings, strict = false, ruleWarnings = moduleWarnings) {
+  if (want === null && wantRule === null) return null;
   const abs = path.join(repoRoot, SETTINGS_JSON);
   const entryJson = JSON.stringify({ type: 'command', command: ARM_COMMAND, timeout: 10 });
   const groupJson = JSON.stringify({ hooks: [JSON.parse(entryJson)] });
-  const notWritten = (why, how = null) => { moduleWarnings.push(`${SETTINGS_JSON} ${why}, so house's SessionStart entry that arms the git-hook floor was not written ${want ? 'into' : 'out of'} it; ${how || 'fix the file by hand, then `house render --apply`'}`); return null; };
+  const hookWarn = (why, how = null) => { if (want !== null) moduleWarnings.push(`${SETTINGS_JSON} ${why}, so house's SessionStart entry that arms the git-hook floor was not written ${want ? 'into' : 'out of'} it; ${how || 'fix the file by hand, then `house render --apply`'}`); };
+  const ruleWarn = (why, how = null) => { if (wantRule !== null) ruleWarnings.push(`${SETTINGS_JSON} ${why}, so house's permissions.ask rule ${ASK_RULE} (it makes Claude Code ask before \`house uninstall --apply\`) was not written ${wantRule ? 'into' : 'out of'} it; ${how || (wantRule ? 'fix the file by hand, then `house render --apply`' : `remove ${JSON.stringify(ASK_RULE)} from the "permissions"."ask" array by hand once the file is valid JSON (render would add it back)`)}`); };
+  const hookNamed = (raw) => want || (want !== null && raw.includes(ARM_DEST));
+  const ruleNamed = (raw) => wantRule || (wantRule !== null && raw.includes(ASK_RULE));
   const escape = writeEscapeReason(repoRoot, SETTINGS_JSON);
   if (!existsSync(abs)) {
-    if (!want) return null;
-    if (escape) return notWritten(`is ${escape}`);
-    const created = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }] } };
-    return { action: 'create', content: `${JSON.stringify(created, null, 2)}\n` };
+    if (!want && !wantRule) return null;
+    if (escape) { if (want) hookWarn(`is ${escape}`); if (wantRule) ruleWarn(`is ${escape}`); return null; }
+    const created = {};
+    if (wantRule) created.permissions = { ask: [ASK_RULE] };
+    if (want) created.hooks = { SessionStart: [{ hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }] };
+    return { action: want ? 'create' : null, rule: wantRule ? (want ? 'add' : 'create') : null, content: `${JSON.stringify(created, null, 2)}\n` };
   }
   const notRegular = notRegularReason(abs);
-  if (notRegular) return want || strict ? notWritten(`is ${notRegular.split(',')[0]}`) : null;
+  if (notRegular) {
+    if (want || (want !== null && strict)) hookWarn(`is ${notRegular.split(',')[0]}`);
+    if (wantRule) ruleWarn(`is ${notRegular.split(',')[0]}`);
+    return null;
+  }
   const raw = readFileSync(abs, 'utf8');
   let j;
-  try { j = JSON.parse(raw); } catch { return want || raw.includes(ARM_DEST) ? notWritten('is not valid JSON') : null; }
-  if (!isPlainObject(j)) return want || raw.includes(ARM_DEST) ? notWritten('is not a JSON object') : null;
-  if (j.hooks !== undefined && !isPlainObject(j.hooks)) return want ? notWritten('has a "hooks" value that is not an object') : null;
-  const groups = j.hooks ? j.hooks.SessionStart : undefined;
-  if (groups !== undefined && !Array.isArray(groups)) return want ? notWritten('has a "hooks.SessionStart" value that is not an array') : null;
+  try { j = JSON.parse(raw); } catch {
+    if (hookNamed(raw)) hookWarn('is not valid JSON');
+    if (ruleNamed(raw)) ruleWarn('is not valid JSON');
+    return null;
+  }
+  if (!isPlainObject(j)) {
+    if (hookNamed(raw)) hookWarn('is not a JSON object');
+    if (ruleNamed(raw)) ruleWarn('is not a JSON object');
+    return null;
+  }
+  // A part whose container is the wrong shape is left alone (warned about only
+  // when adding); the other part still goes ahead.
+  let hookOk = want !== null;
+  if (hookOk && j.hooks !== undefined && !isPlainObject(j.hooks)) { hookOk = false; if (want) hookWarn('has a "hooks" value that is not an object'); }
+  const groups = hookOk && j.hooks ? j.hooks.SessionStart : undefined;
+  if (hookOk && groups !== undefined && !Array.isArray(groups)) { hookOk = false; if (want) hookWarn('has a "hooks.SessionStart" value that is not an array'); }
+  let ruleOk = wantRule !== null;
+  if (ruleOk && j.permissions !== undefined && !isPlainObject(j.permissions)) { ruleOk = false; if (wantRule) ruleWarn('has a "permissions" value that is not an object'); }
+  const asks = ruleOk && j.permissions ? j.permissions.ask : undefined;
+  if (ruleOk && asks !== undefined && !Array.isArray(asks)) { ruleOk = false; if (wantRule) ruleWarn('has a "permissions.ask" value that is not an array'); }
   // Adding counts only a group the harness fires on every session start (no
   // matcher, an empty one, or "*"); a copy in a group scoped to "resume" never
   // fires on startup. Removing takes house's exact command out of every group,
   // scoped ones too, since uninstall deletes the script they would run.
   const hasArm = (g) => isPlainObject(g) && Array.isArray(g.hooks) && g.hooks.some(isArmHook);
   const unscoped = (g) => g.matcher === undefined || g.matcher === '' || g.matcher === '*';
-  const present = arr(groups).some((g) => hasArm(g) && (!want || unscoped(g)));
-  if (want === present) return null;
-  if (escape) return notWritten(`is ${escape}`);
+  const hookChange = hookOk && want !== arr(groups).some((g) => hasArm(g) && (!want || unscoped(g)));
+  const ruleChange = ruleOk && wantRule !== arr(asks).includes(ASK_RULE);
+  if (!hookChange && !ruleChange) return null;
+  if (escape) { if (hookChange) hookWarn(`is ${escape}`); if (ruleChange) ruleWarn(`is ${escape}`); return null; }
   const serialize = (obj) => `${JSON.stringify(obj, null, 2)}${raw.endsWith('\n') ? '\n' : ''}`;
   // A parse and re-serialize changes more than the entry (indent, line endings,
   // duplicate keys, integer-like key order, number forms), so a file not
   // already in this form is the adopter's to edit; nothing is spliced in.
-  if (serialize(j) !== raw) return notWritten('is not in the 2-space JSON form house writes, so rewriting it would change more than the entry', want
-    ? `append this group to the "hooks"."SessionStart" array by hand (create "hooks" and "SessionStart" if absent): ${groupJson}`
-    : `remove this hook from "hooks"."SessionStart" by hand: ${entryJson}`);
-  if (want) {
+  if (serialize(j) !== raw) {
+    const why = (what) => `is not in the 2-space JSON form house writes, so rewriting it would change more than ${what}`;
+    if (hookChange) hookWarn(why('the entry'), want
+      ? `append this group to the "hooks"."SessionStart" array by hand (create "hooks" and "SessionStart" if absent): ${groupJson}`
+      : `remove this hook from "hooks"."SessionStart" by hand: ${entryJson}`);
+    if (ruleChange) ruleWarn(why('the rule'), wantRule
+      ? `add ${JSON.stringify(ASK_RULE)} to the "permissions"."ask" array by hand (create "permissions" and "ask" if absent)`
+      : `remove ${JSON.stringify(ASK_RULE)} from the "permissions"."ask" array by hand`);
+    return null;
+  }
+  if (hookChange && want) {
     j.hooks = j.hooks || {};
     j.hooks.SessionStart = [...arr(groups), { hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }];
-    return { action: 'add', content: serialize(j) };
+  } else if (hookChange) {
+    const kept = [];
+    for (const g of groups) {
+      if (!hasArm(g)) { kept.push(g); continue; }
+      const rest = g.hooks.filter((h) => !isArmHook(h));
+      if (rest.length) kept.push({ ...g, hooks: rest });
+    }
+    if (kept.length) j.hooks.SessionStart = kept;
+    else delete j.hooks.SessionStart;
+    if (Object.keys(j.hooks).length === 0) delete j.hooks;
   }
-  const kept = [];
-  for (const g of groups) {
-    if (!hasArm(g)) { kept.push(g); continue; }
-    const rest = g.hooks.filter((h) => !isArmHook(h));
-    if (rest.length) kept.push({ ...g, hooks: rest });
+  if (ruleChange && wantRule) {
+    j.permissions = j.permissions || {};
+    j.permissions.ask = [...arr(asks), ASK_RULE];
+  } else if (ruleChange) {
+    const kept = asks.filter((r) => r !== ASK_RULE);
+    if (kept.length) j.permissions.ask = kept;
+    else delete j.permissions.ask;
+    if (Object.keys(j.permissions).length === 0) delete j.permissions;
   }
-  if (kept.length) j.hooks.SessionStart = kept;
-  else delete j.hooks.SessionStart;
-  if (Object.keys(j.hooks).length === 0) delete j.hooks;
-  return { action: 'remove', content: serialize(j) };
+  return { action: hookChange ? (want ? 'add' : 'remove') : null, rule: ruleChange ? (wantRule ? 'add' : 'remove') : null, content: serialize(j) };
 }
 
 // Gemini CLI reads GEMINI.md, not AGENTS.md, unless `.gemini/settings.json`
@@ -1507,6 +1563,11 @@ function scaffoldApplies(sc, repoRoot) { return !sc.when || sc.when(repoRoot); }
 // against the tracked tree plus what is about to exist.
 function plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceScaffold) {
   const dests = ['.house/check.mjs'];
+  // Issue #163: render writes the ask rule into the settings file, creating it,
+  // so a glob naming it (security's agent roots) is met by this render and not
+  // only by the next one, once the file exists and is tracked.
+  const settingsAbs = path.join(repoRoot, SETTINGS_JSON);
+  if (!writeEscapeReason(repoRoot, SETTINGS_JSON) && !(existsSync(settingsAbs) && notRegularReason(settingsAbs))) dests.push(SETTINGS_JSON);
   for (const m of modules) {
     if (m.error) continue;
     const name = moduleName(m);
@@ -2044,7 +2105,7 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
       skips, moduleWarnings, available: arr(available), droppedDefaults: arr(droppedDefaults), ignoredDests: arr(ignoredDests),
       migrations: arr(migrations),
       blockRemoval: blockRemoval ? { status: blockRemoval.status, path: blockRemoval.path, deleteFile: Boolean(blockRemoval.deleteFile) } : null,
-      settingsEntry: settingsEntry ? { action: settingsEntry.action, path: SETTINGS_JSON } : null,
+      settingsEntry: settingsEntry ? { action: settingsEntry.action, rule: settingsEntry.rule, path: SETTINGS_JSON } : null,
       scaffolds: geminiScaffold ? [GEMINI_MD] : [],
       editedOrphans: arr(editedOrphans),
       unsafeOrphans: arr(unsafeOrphans),
@@ -2108,9 +2169,13 @@ function printRenderPlan({ repoRoot, plan, skips, moduleWarnings, available, dro
       console.log(`  the house-managed block was edited by hand (or its markers are broken), so it is not removed silently. Exits: move your edit outside the markers, or \`house render --force-managed ${AGENTS_MD}\` to remove it anyway.`);
     }
   }
-  if (settingsEntry) {
-    const what = { create: 'new file holding only house\'s SessionStart entry', add: 'adds house\'s SessionStart entry; every other key and hook stays', remove: 'removes house\'s SessionStart entry only; every other key and hook stays' }[settingsEntry.action];
+  if (settingsEntry && settingsEntry.action) {
+    const what = { create: 'new file holding house\'s SessionStart entry', add: 'adds house\'s SessionStart entry; every other key and hook stays', remove: 'removes house\'s SessionStart entry only; every other key and hook stays' }[settingsEntry.action];
     console.log(`${`${settingsEntry.action}-hook`.padEnd(15)} ${SETTINGS_JSON}  (${what}; it runs ${ARM_DEST} to arm the git-hook floor, ADR 0019)`);
+  }
+  if (settingsEntry && settingsEntry.rule) {
+    const what = { create: 'new file holding only house\'s permissions.ask rule', add: 'adds house\'s permissions.ask rule; every other key and rule stays', remove: 'removes house\'s permissions.ask rule only; every other key and rule stays' }[settingsEntry.rule];
+    console.log(`${`${settingsEntry.rule}-rule`.padEnd(15)} ${SETTINGS_JSON}  (${what}; ${ASK_RULE} makes Claude Code ask before \`house uninstall --apply\`, even in auto mode; it matches command text, so it guards against an accidental run and is no boundary, and another argument order does not match, #163)`);
   }
   if (geminiScaffold) console.log(`${'scaffold'.padEnd(15)} ${GEMINI_MD}  (one-time, yours to edit; imports @${AGENTS_MD} so Gemini CLI reads the block)`);
   for (const s of skips) {
@@ -2210,7 +2275,7 @@ function cmdRender(args) {
   // same change to the committed settings the apply phase below makes. After
   // the escape check above, so a script destination render refuses to write
   // gets no entry either.
-  const settingsEntry = planArmEntry(repoRoot, wantsArmEntry(houseData, modules, plan, moduleWarnings), moduleWarnings);
+  const settingsEntry = planSettings(repoRoot, wantsArmEntry(houseData, modules, plan, moduleWarnings), true, moduleWarnings);
   // #18: warn (never refuse) when a destination this plan writes is
   // git-ignored; the lock and INDEX are written outside the plan, so probe
   // them by name.
@@ -3634,8 +3699,12 @@ function cmdUninstall(args) {
   // ADR 0019: house's SessionStart entry goes with the script it runs, so no
   // entry is left naming a deleted file. A settings file render would leave
   // unwritten (with a warning) is refused here, since the script would go.
+  // Issue #163: the permissions.ask rule that makes this very command prompt
+  // goes too, and a file that cannot be edited to take it out is a note, not
+  // a refusal.
   const settingsNotes = [];
-  const settingsEntry = removing.has(ARM_DEST) ? planArmEntry(repoRoot, false, settingsNotes, true) : null;
+  const ruleNotes = [];
+  let settingsEntry = planSettings(repoRoot, removing.has(ARM_DEST) ? false : null, false, settingsNotes, true, ruleNotes);
   const settingsRefusal = !settingsEntry && settingsNotes.length ? settingsNotes[0].slice(SETTINGS_JSON.length + 1).split(', so ')[0] : null;
   // The floor is house's when a module that ships it is on before this run,
   // or the lock records one of its files: only then did arming set the path.
@@ -3667,7 +3736,16 @@ function cmdUninstall(args) {
   };
   for (const r of removals.filter((x) => !x.unsafe)) { const b = blocker(r.path); if (b) blockers.push({ path: r.path, reason: b }); }
   if (blockRemoval && blockRemoval.status !== 'refuse' && !blockUnsafe) { const b = blocker(AGENTS_MD, !blockRemoval.deleteFile); if (b) blockers.push({ path: AGENTS_MD, reason: b }); }
-  if (settingsEntry) { const b = blocker(SETTINGS_JSON, true); if (b) blockers.push({ path: SETTINGS_JSON, reason: b }); }
+  if (settingsEntry) {
+    const b = blocker(SETTINGS_JSON, true);
+    // Only the entry that names the deleted script is a blocker; a file that
+    // holds the rule alone is noted and skipped, like any other rule left behind.
+    if (b && settingsEntry.action) blockers.push({ path: SETTINGS_JSON, reason: b });
+    else if (b) {
+      ruleNotes.push(`${SETTINGS_JSON} cannot be written (${b}), so house's permissions.ask rule ${ASK_RULE} was not removed from it; remove ${JSON.stringify(ASK_RULE)} from the "permissions"."ask" array by hand`);
+      settingsEntry = null;
+    }
+  }
   if (removeConfig && !configUnsafe) { const b = blocker('house.json'); if (b) blockers.push({ path: 'house.json', reason: b }); }
   for (const h of hooks.filter((x) => x.action === 'unset')) {
     const file = path.resolve(repoRoot, h.origin || '.git/config');
@@ -3707,8 +3785,9 @@ function cmdUninstall(args) {
     console.log(`${(blockRemoval.status === 'refuse' || blockUnsafe ? 'REFUSE' : 'remove-block').padEnd(15)} ${AGENTS_MD}  (${blockUnsafe || (blockRemoval.deleteFile ? 'nothing else is in the file, so it goes' : 'the house-managed block only; your text stays')})`);
     if (blockRemoval.status === 'refuse') console.log('  the house-managed block was edited by hand, or its markers are broken, so it is not removed silently. Move your edit outside the markers or restore the block, then re-run uninstall.');
   }
-  if (settingsEntry) console.log(`${'remove-hook'.padEnd(15)} ${SETTINGS_JSON}  (house's SessionStart entry only, which runs ${ARM_DEST}; every other key and hook stays)`);
-  for (const n of settingsEntry ? settingsNotes : []) console.log(`  ${n}`);
+  if (settingsEntry && settingsEntry.action) console.log(`${'remove-hook'.padEnd(15)} ${SETTINGS_JSON}  (house's SessionStart entry only, which runs ${ARM_DEST}; every other key and hook stays)`);
+  if (settingsEntry && settingsEntry.rule) console.log(`${'remove-rule'.padEnd(15)} ${SETTINGS_JSON}  (house's permissions.ask rule ${ASK_RULE} only; every other key and rule stays)`);
+  for (const n of settingsRefusal ? [] : ruleNotes) console.log(`  ${n}`);
   if (settingsRefusal) {
     console.log(`${'REFUSE'.padEnd(15)} ${SETTINGS_JSON}  (${settingsRefusal})`);
     console.log(`  house's SessionStart entry there runs ${ARM_DEST}, which uninstall removes, so it cannot be left behind unread. Fix the file by hand (or take the entry out yourself), then re-run uninstall.`);
@@ -3824,9 +3903,10 @@ function cmdUninstall(args) {
   const configChanged = [];
   const removed = [];
   const fileSteps = removals.filter((x) => !tail.includes(x.path)).map((r) => r.path);
+  const settingsLabel = settingsEntry ? [settingsEntry.action && 'house\'s SessionStart entry', settingsEntry.rule && 'house\'s permissions.ask rule'].filter(Boolean).join(' and ') : '';
   const pending = [
     ...hooks.filter((h) => h.action === 'unset').flatMap((h) => h.values.filter((v) => v.isFloor).map((v) => `unset core.hooksPath ${v.value} at ${h.scope} scope`)),
-    ...(settingsEntry ? [`${SETTINGS_JSON} (house's SessionStart entry)`] : []),
+    ...(settingsEntry ? [`${SETTINGS_JSON} (${settingsLabel})`] : []),
     ...fileSteps, ...(blockRemoval ? [`${AGENTS_MD} (house-managed block)`] : []), ...tail, ...(removeConfig ? ['house.json'] : []),
   ];
   const settle = (step) => { const i = pending.indexOf(step); if (i !== -1) pending.splice(i, 1); };
@@ -3852,8 +3932,8 @@ function cmdUninstall(args) {
   // Before the files, so the entry never outlives the script it runs.
   if (settingsEntry) {
     try { writeIfChanged(path.join(repoRoot, SETTINGS_JSON), settingsEntry.content); } catch (e) { stop(`edit ${SETTINGS_JSON}`, e); }
-    removed.push(`${SETTINGS_JSON} (house's SessionStart entry only; the rest stays)`);
-    settle(`${SETTINGS_JSON} (house's SessionStart entry)`);
+    removed.push(`${SETTINGS_JSON} (${settingsLabel} only; the rest stays)`);
+    settle(`${SETTINGS_JSON} (${settingsLabel})`);
   }
   for (const rel of fileSteps) {
     const abs = path.join(repoRoot, rel);

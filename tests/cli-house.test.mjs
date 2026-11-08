@@ -3618,8 +3618,9 @@ test('#152 uninstall --apply: every managed file, the floor, and house.json go; 
   assert.match(r.out, /unset core\.hooksPath at local scope/);
   assert.equal(readFileSync(env.GIT_CONFIG_GLOBAL, 'utf8'), globalBefore, 'global config untouched');
   const status = gitStatusShort(repo).split('\n').filter(Boolean);
-  const expected = [...MANAGED.map((p) => ` D ${p}`), ' D house.json', ' M AGENTS.md'].sort();
-  assert.deepEqual(status.sort(), expected, 'only deletions of tracked managed files and the AGENTS.md edit; nothing untracked');
+  const expected = [...MANAGED.map((p) => ` D ${p}`), ' D house.json', ' M AGENTS.md', ' M .claude/settings.json'].sort();
+  assert.deepEqual(status.sort(), expected, 'only deletions of tracked managed files, the AGENTS.md edit and the settings file losing its ask rule; nothing untracked');
+  assert.equal(readFileSync(join(repo, '.claude', 'settings.json'), 'utf8'), '{}\n', 'the ask rule went and the emptied permissions with it');
   commitAll(repo, 'uninstall house');
   assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf8' }), /uninstall house/);
   assert.equal(gitStatusShort(repo), '');
@@ -5809,7 +5810,11 @@ const ARM_HOOK_LINES = (pad) => [
   `${pad}  ]`,
   `${pad}}`,
 ];
-const ARM_ONLY_SETTINGS = ['{', '  "hooks": {', '    "SessionStart": [', ...ARM_HOOK_LINES('      '), '    ]', '  }', '}', ''].join('\n');
+// Issue #163: render also writes the one permissions.ask rule that makes Claude
+// Code ask before `house uninstall --apply`, so every file it renders holds it.
+const ASK_RULE = 'Bash(*house uninstall*--apply*)';
+const ASK_RULE_LINES = ['    "ask": [', `      ${JSON.stringify(ASK_RULE)}`, '    ]'];
+const ARM_ONLY_SETTINGS = ['{', '  "permissions": {', ...ASK_RULE_LINES, '  },', '  "hooks": {', '    "SessionStart": [', ...ARM_HOOK_LINES('      '), '    ]', '  }', '}', ''].join('\n');
 
 // The adopter's own settings: other keys, a foreign SessionStart entry (one
 // whose command differs from house's only by a missing --repo), and another
@@ -5826,16 +5831,10 @@ const FOREIGN_GROUP_LINES = [
   '        ]',
   '      }',
 ];
-const ADOPTER_SETTINGS_HEAD = [
-  '{',
-  '  "permissions": {',
-  '    "allow": [',
-  '      "Bash(npm test)"',
-  '    ]',
-  '  },',
-  '  "hooks": {',
-  '    "SessionStart": [',
-];
+const ADOPTER_SETTINGS_PERMS = ['{', '  "permissions": {', '    "allow": ['];
+const ADOPTER_SETTINGS_HOOKS = ['  },', '  "hooks": {', '    "SessionStart": ['];
+const ADOPTER_SETTINGS_HEAD = [...ADOPTER_SETTINGS_PERMS, '      "Bash(npm test)"', '    ]', ...ADOPTER_SETTINGS_HOOKS];
+const ADOPTER_SETTINGS_HEAD_RULED = [...ADOPTER_SETTINGS_PERMS, '      "Bash(npm test)"', '    ],', ...ASK_RULE_LINES, ...ADOPTER_SETTINGS_HOOKS];
 const ADOPTER_SETTINGS_TAIL = [
   '    ],',
   '    "PostToolUse": [',
@@ -5857,9 +5856,12 @@ const ADOPTER_SETTINGS_TAIL = [
   '',
 ];
 const ADOPTER_SETTINGS = [...ADOPTER_SETTINGS_HEAD, ...FOREIGN_GROUP_LINES, ...ADOPTER_SETTINGS_TAIL].join('\n');
+// What render makes of it: the entry appended, the rule added beside the adopter's allow list.
 const ADOPTER_SETTINGS_ARMED = [
-  ...ADOPTER_SETTINGS_HEAD, ...FOREIGN_GROUP_LINES.slice(0, -1), '      },', ...ARM_HOOK_LINES('      '), ...ADOPTER_SETTINGS_TAIL,
+  ...ADOPTER_SETTINGS_HEAD_RULED, ...FOREIGN_GROUP_LINES.slice(0, -1), '      },', ...ARM_HOOK_LINES('      '), ...ADOPTER_SETTINGS_TAIL,
 ].join('\n');
+// With cloudArming off the entry goes and the rule stays.
+const ADOPTER_SETTINGS_RULED = [...ADOPTER_SETTINGS_HEAD_RULED, ...FOREIGN_GROUP_LINES, ...ADOPTER_SETTINGS_TAIL].join('\n');
 
 /** The floor fixture, with the github module also vendoring the real arming script and declaring cloudArming. */
 function buildCloudArmingFixture() {
@@ -5882,12 +5884,13 @@ function setGithubConfig(repo, patch, enabled = true) {
   writeFileSync(join(repo, 'house.json'), `${JSON.stringify(data, null, 2)}\n`);
 }
 
-test('ADR 0019 render: an absent .claude/settings.json is planned on a dry run, then created holding only the entry, and the script is vendored executable', () => {
+test('ADR 0019 render: an absent .claude/settings.json is planned on a dry run, then created holding the entry and the ask rule, and the script is vendored executable', () => {
   const { cliPath } = buildCloudArmingFixture();
   const repo = buildFloorRepo();
   const dry = runCli(cliPath, ['render', '--repo', repo]);
   assert.equal(dry.code, 0, dry.out + dry.err);
   assert.match(dry.out, /^create-hook\s+\.claude\/settings\.json\s+\(/m);
+  assert.match(dry.out, /^add-rule\s+\.claude\/settings\.json\s+\(.*permissions\.ask rule.*accidental run/m, 'the rule is named on its own line');
   assert.equal(existsSync(settingsPath(repo)), false, 'a dry run writes nothing');
   const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
@@ -5920,17 +5923,18 @@ test('ADR 0019 render: cloudArming false removes only house\'s entry, keeping th
   setGithubConfig(repo, { cloudArming: false });
   const dry = runCli(cliPath, ['render', '--repo', repo]);
   assert.match(dry.out, /^remove-hook\s+\.claude\/settings\.json\s+\(/m);
+  assert.doesNotMatch(dry.out, /-rule\s+\.claude\/settings\.json/, 'the rule is not touched by cloudArming');
   assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED, 'a dry run writes nothing');
   const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_RULED);
 
   // House's hook beside a foreign one in the same group: only house's goes,
   // and the group stays because it is not empty.
   const shared = { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo mine' }, { type: 'command', command: ARM_COMMAND, timeout: 10 }] }] } };
   writeFileSync(settingsPath(repo), `${JSON.stringify(shared, null, 2)}\n`);
   assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
-  assert.deepEqual(JSON.parse(readFileSync(settingsPath(repo), 'utf8')), { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } });
+  assert.deepEqual(JSON.parse(readFileSync(settingsPath(repo), 'utf8')), { hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] }, permissions: { ask: [ASK_RULE] } });
 });
 
 test('ADR 0019 render: a settings file that is not a JSON object is left untouched with a warning naming it', () => {
@@ -5944,7 +5948,7 @@ test('ADR 0019 render: a settings file that is not a JSON object is left untouch
   }
 });
 
-test('ADR 0019 render: turning the github module off removes house\'s entry, and a file house created is left as an empty object', () => {
+test('ADR 0019 render: turning the github module off removes house\'s entry but not its ask rule, which render writes with the module off too', () => {
   const { cliPath } = buildCloudArmingFixture();
   const repo = buildFloorRepo();
   assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
@@ -5953,7 +5957,7 @@ test('ADR 0019 render: turning the github module off removes house\'s entry, and
   setGithubConfig(repo, {}, false);
   const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(readFileSync(settingsPath(repo), 'utf8'), '{}\n');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), stringifyJson({ permissions: { ask: [ASK_RULE] } }));
   assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false, 'the vendored script goes with its module');
 });
 
@@ -5983,6 +5987,155 @@ test('ADR 0019 uninstall --apply: a settings file it cannot read is refused, so 
   assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(.*not valid JSON/m);
   assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), 'nothing was deleted');
   assert.equal(readFileSync(settingsPath(repo), 'utf8'), broken);
+});
+
+// ── #163: the permissions.ask rule that makes Claude Code ask before `house uninstall --apply` ──
+//
+// Auto mode runs an uninstall unprompted unless an explicit ask rule says
+// otherwise, and a plugin cannot ship permission rules, so render writes one
+// into the repo's own settings, in the same file and apply as the arm entry.
+
+const askOf = (repo) => JSON.parse(readFileSync(settingsPath(repo), 'utf8')).permissions.ask;
+
+test('#163 render: the ask rule is written with the github module on, with cloudArming off, and with the module off, named on its own line, and a second render changes nothing', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const cases = { 'module on': null, 'cloudArming false': { patch: { cloudArming: false } }, 'module off': { patch: {}, enabled: false } };
+  for (const [name, c] of Object.entries(cases)) {
+    const repo = buildFloorRepo({ 'README.md': '# hi\n' });
+    if (c) setGithubConfig(repo, c.patch, c.enabled !== false);
+    const dry = runCli(cliPath, ['render', '--repo', repo]);
+    assert.equal(dry.code, 0, `${name}: ${dry.out}${dry.err}`);
+    assert.match(dry.out, /^(create|add)-rule\s+\.claude\/settings\.json\s+\(.*permissions\.ask rule.*accidental run.*no boundary.*another argument order does not match/m, `${name}: ${dry.out}`);
+    assert.equal(existsSync(settingsPath(repo)), false, `${name}: a dry run writes nothing`);
+    const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+    assert.equal(r.code, 0, `${name}: ${r.out}${r.err}`);
+    assert.deepEqual(askOf(repo), [ASK_RULE], name);
+    commitAll(repo, 'rendered');
+    const body = readFileSync(settingsPath(repo), 'utf8');
+    assert.equal(JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out).settingsEntry, null, `${name}: a second render plans nothing`);
+    assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+    assert.equal(readFileSync(settingsPath(repo), 'utf8'), body, `${name}: a second render changes nothing`);
+  }
+  // With the module off no hook is written, so the file holds the rule alone.
+  const off = buildFloorRepo({ 'README.md': '# hi\n' });
+  setGithubConfig(off, {}, false);
+  assert.equal(runCli(cliPath, ['render', '--repo', off, '--apply']).code, 0);
+  assert.deepEqual(JSON.parse(readFileSync(settingsPath(off), 'utf8')), { permissions: { ask: [ASK_RULE] } });
+});
+
+test('#163 render: an adopter\'s own ask, allow and deny entries stay, the rule joins the end of ask once, and a near miss is not house\'s', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const mine = { permissions: { allow: ['Bash(npm test)'], ask: ['Bash(git push*)'], deny: ['Bash(rm -rf *)'] }, env: { FOO: '1' } };
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': stringifyJson(mine) });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  const after = JSON.parse(readFileSync(settingsPath(repo), 'utf8'));
+  assert.deepEqual(after.permissions, { allow: ['Bash(npm test)'], ask: ['Bash(git push*)', ASK_RULE], deny: ['Bash(rm -rf *)'] });
+  assert.deepEqual(after.env, { FOO: '1' });
+  commitAll(repo, 'rendered');
+  const again = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(again.code, 0, again.out + again.err);
+  assert.deepEqual(askOf(repo), ['Bash(git push*)', ASK_RULE], 'a second render adds no second copy');
+  const near = 'Bash(*house uninstall*)';
+  writeFileSync(settingsPath(repo), stringifyJson({ permissions: { ask: [near] } }));
+  assert.equal(runCli(cliPath, ['render', '--repo', repo, '--apply']).code, 0);
+  assert.deepEqual(askOf(repo), [near, ASK_RULE]);
+});
+
+test('#163 render: a settings file not in the 2-space form, or with a mistyped permissions or ask, is not given the rule, and the warning names the rule to add by hand', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const four = `${JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }, null, 4)}\n`;
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': four });
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), four, 'the file is untouched');
+  assert.match(r.out, /^warning: \.claude\/settings\.json is not in the 2-space JSON form.*permissions\.ask rule Bash\(\*house uninstall\*--apply\*\).*add "Bash\(\*house uninstall\*--apply\*\)" to the "permissions"\."ask" array by hand/m);
+  for (const [name, permissions, what] of [['permissions a string', 'allow everything', '"permissions" value that is not an object'], ['ask an object', { ask: { a: 1 } }, '"permissions.ask" value that is not an array']]) {
+    const bad = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': stringifyJson({ permissions }) });
+    const b = runCli(cliPath, ['render', '--repo', bad, '--apply']);
+    assert.equal(b.code, 0, `${name}: ${b.out}${b.err}`);
+    assert.ok(b.out.split('\n').some((l) => l.startsWith('warning: .claude/settings.json has a ') && l.includes(what) && l.includes('permissions.ask rule')), `${name}: ${b.out}`);
+    assert.deepEqual(JSON.parse(readFileSync(settingsPath(bad), 'utf8')).permissions, permissions, `${name}: the adopter's value is untouched`);
+  }
+});
+
+test('#163 uninstall --apply: only house\'s ask rule is taken out, the adopter\'s other ask entries stay, and ask and permissions go only when emptied by it', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const mine = { permissions: { allow: ['Bash(npm test)'], ask: ['Bash(git push*)'] } };
+  const repo = uninstallRepo(cliPath, env, { '.claude/settings.json': stringifyJson(mine) });
+  assert.deepEqual(askOf(repo), ['Bash(git push*)', ASK_RULE]);
+  const dry = runCli(cliPath, ['uninstall', '--repo', repo], env);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /^remove-rule\s+\.claude\/settings\.json\s+\(.*permissions\.ask rule/m);
+  assert.deepEqual(askOf(repo), ['Bash(git push*)', ASK_RULE], 'a dry run writes nothing');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const after = JSON.parse(readFileSync(settingsPath(repo), 'utf8'));
+  assert.deepEqual(after.permissions, mine.permissions, 'the adopter\'s file is back as it was');
+  assert.equal(after.hooks, undefined, 'the entry went with the script');
+
+  // Ask holds the rule alone: ask goes, permissions stays for the allow list. Both empty: both go.
+  for (const [body, want] of [[{ permissions: { allow: ['Bash(npm test)'], ask: [ASK_RULE] } }, { permissions: { allow: ['Bash(npm test)'] } }], [{ permissions: { ask: [ASK_RULE] } }, {}]]) {
+    const again = uninstallRepo(cliPath, env);
+    writeFileSync(settingsPath(again), stringifyJson(body));
+    commitAll(again, 'ask only');
+    assert.equal(runCli(cliPath, ['uninstall', '--repo', again, '--apply'], env).code, 0);
+    assert.deepEqual(JSON.parse(readFileSync(settingsPath(again), 'utf8')), want, JSON.stringify(body));
+  }
+});
+
+test('#163 uninstall --apply: a read-only settings file holding only the rule is noted and skipped, and the uninstall goes ahead', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const body = stringifyJson({ permissions: { ask: [ASK_RULE] } });
+  writeFileSync(settingsPath(repo), body);
+  commitAll(repo, 'rule only');
+  chmodSync(settingsPath(repo), 0o444);
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(r.out, /^REFUSE\s+\.claude\/settings\.json/m);
+  assert.match(r.out, /^ {2}\.claude\/settings\.json cannot be written.*rule.*by hand/m, r.out);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), body, 'the read-only file is left alone');
+  assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false, 'the rest of the uninstall ran');
+});
+
+test('#163 uninstall --apply: a settings file that is not valid JSON and names the rule is told to drop it by hand, not to re-render', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const broken = `{ "permissions": { "ask": [${JSON.stringify(ASK_RULE)}] },`;
+  writeFileSync(settingsPath(repo), broken);
+  commitAll(repo, 'break the settings');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const note = r.out.split('\n').find((l) => l.includes('is not valid JSON') && l.includes('permissions.ask rule'));
+  assert.ok(note, r.out);
+  assert.match(note, /remove "Bash\(\*house uninstall\*--apply\*\)" from the "permissions"\."ask" array by hand/);
+  assert.doesNotMatch(note, /house render --apply/, 'render would add the rule back');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), broken);
+});
+
+test('#163 uninstall --apply: a settings file holding the rule in a non-canonical layout is noted, not refused, and nothing is rewritten', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env, { '.claude/settings.json': stringifyJson({ env: { FOO: '1' } }) });
+  const four = `${JSON.stringify({ permissions: { ask: [ASK_RULE] } }, null, 4)}\n`;
+  writeFileSync(settingsPath(repo), four);
+  commitAll(repo, 'reindent the settings');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), four);
+  assert.match(r.out, /^ {2}\.claude\/settings\.json is not in the 2-space JSON form.*remove "Bash\(\*house uninstall\*--apply\*\)" from the "permissions"\."ask" array by hand/m);
+});
+
+test('#163 the rule matches an apply and not a dry run, and not another argument order (limit)', () => {
+  // Claude Code matches a Bash rule as a glob over the command text, `*` standing for any run of characters.
+  const parts = ASK_RULE.slice('Bash('.length, -1).split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
+  const glob = new RegExp(`^${parts.join('.*')}$`);
+  for (const cmd of ['house uninstall --apply', 'node plugins/house/scripts/house uninstall --repo . --apply', 'house uninstall --apply --keep-config']) assert.match(cmd, glob, cmd);
+  for (const cmd of ['house uninstall', 'house uninstall --repo .', 'house render --apply', 'house --apply uninstall']) assert.doesNotMatch(cmd, glob, cmd);
 });
 
 // ── #479: edge cases of the ADR 0019 entry ───────────────────────────────
@@ -6026,6 +6179,7 @@ test('#479 render: the by-hand add instruction, followed literally, arms the fil
     const edited = JSON.parse(JSON.stringify(base));
     edited.hooks = edited.hooks || {};
     edited.hooks.SessionStart = [...(edited.hooks.SessionStart || []), group];
+    edited.permissions = { ask: [ASK_RULE] };
     writeFileSync(settingsPath(repo), stringifyJson(edited));
     const after = runCli(cliPath, ['render', '--repo', repo, '--json']);
     assert.equal(JSON.parse(after.out).settingsEntry, null, JSON.stringify(base));
@@ -6042,13 +6196,13 @@ test('#479 render: a refused scripts/house/arm-git-hooks.sh leaves a settings fi
   assert.doesNotMatch(dry.out, /-hook\s+\.claude\/settings\.json/, dry.out);
   assert.doesNotMatch(dry.out, /by hand: /, dry.out);
   assert.match(dry.out, /^warning: scripts\/house\/arm-git-hooks\.sh is not a file house manages.*see its REFUSE line/m, dry.out);
-  assert.equal(JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out).settingsEntry, null);
+  assert.equal(JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out).settingsEntry.action, null, 'the entry is left as it is; only the rule is planned');
   setGithubConfig(repo, { cloudArming: false });
   const off = runCli(cliPath, ['render', '--repo', repo]);
   assert.match(off.out, /^remove-hook\s+\.claude\/settings\.json/m, 'the adopter\'s explicit off still plans the removal');
 });
 
-test('#479 render: a canonical file still gains the entry, and a 4-space file with no entry to remove is left alone silently', () => {
+test('#479 render: a canonical file still gains the entry, and a 4-space file with no entry to remove is left alone, warned of the rule only', () => {
   const { cliPath } = buildCloudArmingFixture();
   const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': stringifyJson({ env: { FOO: '1' } }) });
   const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
@@ -6062,7 +6216,8 @@ test('#479 render: a canonical file still gains the entry, and a 4-space file wi
   const off = runCli(cliPath, ['render', '--repo', repo, '--apply']);
   assert.equal(off.code, 0, off.out + off.err);
   assert.equal(readFileSync(settingsPath(repo), 'utf8'), four);
-  assert.doesNotMatch(off.out, /warning: \.claude\/settings\.json/);
+  assert.doesNotMatch(off.out, /SessionStart/, 'nothing is said of an entry that is not there');
+  assert.match(off.out, /^warning: \.claude\/settings\.json is not in the 2-space JSON form.*the rule/m, 'the rule still wants a place');
 });
 
 test('#479 render: a 4-space file that holds house\'s entry is not rewritten when cloudArming turns off, and the warning names the entry to remove', () => {
@@ -6097,7 +6252,7 @@ test('#479 render: an unmanaged scripts/house/arm-git-hooks.sh gets no entry, an
   assert.doesNotMatch(dry.out, /-hook\s+\.claude\/settings\.json/, dry.out);
   assert.match(dry.out, /^warning: scripts\/house\/arm-git-hooks\.sh is not a file house manages here.*SessionStart entry.*not written/m, dry.out);
   const json = JSON.parse(runCli(cliPath, ['render', '--repo', repo, '--json']).out);
-  assert.equal(json.settingsEntry, null);
+  assert.equal(json.settingsEntry.action, null, 'no entry is planned; only the rule is');
   const forced = runCli(cliPath, ['render', '--repo', repo, '--force-managed', 'scripts/house/arm-git-hooks.sh']);
   assert.match(forced.out, /^create-hook\s+\.claude\/settings\.json/m, 'a file house now manages gets its entry');
 });
@@ -6134,7 +6289,7 @@ test('#479 render: house\'s command in a matcher-scoped SessionStart group does 
 test('#479 render: an unscoped group (no matcher, an empty one, or "*") counts as present (negative control)', () => {
   const { cliPath } = buildCloudArmingFixture();
   for (const group of [{ hooks: [ARM_HOOK] }, { matcher: '', hooks: [ARM_HOOK] }, { matcher: '*', hooks: [ARM_HOOK] }]) {
-    const body = stringifyJson({ hooks: { SessionStart: [group] } });
+    const body = stringifyJson({ hooks: { SessionStart: [group] }, permissions: { ask: [ASK_RULE] } });
     const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': body });
     const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
     assert.equal(r.code, 0, r.out + r.err);

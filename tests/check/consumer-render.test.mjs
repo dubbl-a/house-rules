@@ -1056,3 +1056,25 @@ test('#479: editing the vendored scripts/house/arm-git-hooks.sh makes .house/che
   assert.notEqual(tampered.status, 0, tampered.stdout + tampered.stderr);
   assert.match(tampered.stdout, /\[tamper\] scripts\/house\/arm-git-hooks\.sh/);
 });
+
+// #163: render creates .claude/settings.json to hold its ask rule. Security's
+// default agent roots name that file, so a first render that did not count it
+// dropped the glob, skipped security.md, and the next render (after the file
+// existed) planned a new rule file and the manifest family reported it.
+test('#163: security on and github off, with no other agent-config path, a second render after the first is a no-op and the checker is clean', () => {
+  const repo = fixtureRepo({ 'README.md': '# X\n', 'CLAUDE.md': '# X\n', 'notes.txt': 'x\n' });
+  house(repo, 'init', '--apply');
+  const hj = readHouseJson(repo);
+  hj.modules.github = { ...hj.modules.github, enabled: false };
+  hj.modules.security = { ...hj.modules.security, enabled: true };
+  writeFileSync(join(repo, 'house.json'), JSON.stringify(hj, null, 2) + '\n');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'security on');
+  house(repo, 'render', '--apply');
+  assert.ok(existsSync(join(repo, '.claude/settings.json')), 'render created the settings file for its ask rule');
+  git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'render');
+  const again = JSON.parse(house(repo, 'render', '--json').toString());
+  assert.deepEqual(again.plan.filter((p) => p.status !== 'clean' && !p.unchanged), [], 'a second render plans nothing new');
+  const res = spawnSync('node', [join(repo, '.house/check.mjs'), '--repo', repo, '--only=manifest'], { encoding: 'utf8' });
+  // Other manifest findings (github off with no deviation, testing with no test files) are this fixture's, not security's.
+  assert.doesNotMatch(res.stdout, /security/i, `the checker agrees with the first render about security:\n${res.stdout}${res.stderr}`);
+});
