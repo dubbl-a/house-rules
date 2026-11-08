@@ -157,8 +157,8 @@ export function pathMatches(file, path) {
   return file === dir || file.startsWith(`${dir}/`);
 }
 
-// GitHub lists at most 300 files for a compare, 100 a page.
-const COMPARE_PAGE = 100;
+// GitHub returns a compare's whole file list, at most 300, on the first response. per_page pages
+// commits only, and later pages carry no files (checked live 2026-11-08), so one request is all.
 const COMPARE_FILE_CAP = 300;
 
 /** Files changed between base and head from the GitHub compare API (a rename lists both names), as { files, truncated }; throws unless the pin is a plain ancestor of head. */
@@ -166,25 +166,22 @@ export async function compareFiles(remote, base, head, { fetchFn = globalThis.fe
   const gh = parseGithubRemote(remote);
   if (!gh) throw new Error('not a github.com remote, so no compare API');
   if (!FULL_SHA.test(base ?? '') || !FULL_SHA.test(head ?? '')) throw new Error('compare needs two full shas');
+  const res = await fetchFn(`https://api.github.com/repos/${gh.owner}/${gh.repo}/compare/${base}...${head}?per_page=1`, {
+    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'house-rules-check-upstreams', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`compare API answered HTTP ${res.status}${res.status === 403 || res.status === 429 ? ' (rate limit or access)' : ''}`);
+  const body = await res.json();
+  if (body?.status !== 'ahead') throw new Error(`compare status is ${JSON.stringify(body?.status)}, not a fast-forward from the pin`);
+  if (!Array.isArray(body.files)) throw new Error('compare response has no files list');
   const files = [];
-  for (let page = 1; page <= COMPARE_FILE_CAP / COMPARE_PAGE; page++) {
-    const res = await fetchFn(`https://api.github.com/repos/${gh.owner}/${gh.repo}/compare/${base}...${head}?per_page=${COMPARE_PAGE}&page=${page}`, {
-      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'house-rules-check-upstreams', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) throw new Error(`compare API answered HTTP ${res.status}${res.status === 403 || res.status === 429 ? ' (rate limit or access)' : ''}`);
-    const body = await res.json();
-    if (body?.status !== 'ahead') throw new Error(`compare status is ${JSON.stringify(body?.status)}, not a fast-forward from the pin`);
-    if (!Array.isArray(body.files)) throw new Error('compare response has no files list');
-    for (const f of body.files) {
-      if (typeof f?.filename !== 'string') throw new Error('compare response has a file with no name');
-      files.push(f.filename);
-      if (typeof f.previous_filename === 'string') files.push(f.previous_filename);
-    }
-    if (body.files.length < COMPARE_PAGE) return { files, truncated: false };
+  for (const f of body.files) {
+    if (typeof f?.filename !== 'string') throw new Error('compare response has a file with no name');
+    files.push(f.filename);
+    if (typeof f.previous_filename === 'string') files.push(f.previous_filename);
   }
-  // Three full pages: the list is at GitHub's cap, so more files may exist unseen.
-  return { files, truncated: true };
+  // At the cap, more files may exist unseen.
+  return { files, truncated: body.files.length >= COMPARE_FILE_CAP };
 }
 
 /** Narrow a moved row by its watched paths: `moved` with the changed files when one changed or nothing proves otherwise, `moved-unwatched` only when the compare proves none did. */

@@ -386,16 +386,20 @@ test('compareFiles: reads the compare API, sends the token only to api.github.co
   assert.equal(f.seen[0].init.headers.Authorization, 'Bearer tok');
 });
 
-test('compareFiles: a full 300-file list is reported truncated after three pages; a short one is not', async () => {
+// GitHub's real shape: the whole file list (up to 300) on the first response; a later page has none.
+test('compareFiles: a 300-file list is reported truncated from one response', async () => {
   const { compareFiles } = await mod();
-  const f = fakeFetch({ body: { status: 'ahead', files: names(100, 'a') } }, { body: { status: 'ahead', files: names(100, 'b') } }, { body: { status: 'ahead', files: names(100, 'c') } });
+  const f = fakeFetch({ body: { status: 'ahead', files: names(300, 'a') } });
   const out = await compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: f, token: '' });
-  assert.equal(out.truncated, true);
-  assert.equal(out.files.length, 300);
-  assert.equal(f.seen.length, 3);
+  assert.deepEqual([out.truncated, out.files.length, f.seen.length], [true, 300, 1]);
   assert.equal(f.seen[0].init.headers.Authorization, undefined);
-  const under = await compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch({ body: { status: 'ahead', files: names(100, 'a') } }, { body: { status: 'ahead', files: names(5, 'b') } }) });
-  assert.deepEqual([under.truncated, under.files.length], [false, 105]);
+});
+
+test('compareFiles: a 260-file list is complete from one response and asks for no second page', async () => {
+  const { compareFiles } = await mod();
+  const f = fakeFetch({ body: { status: 'ahead', files: names(260, 'a') } }, { body: { status: 'ahead' } });
+  const out = await compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: f, token: '' });
+  assert.deepEqual([out.truncated, out.files.length, f.seen.length], [false, 260, 1]);
 });
 
 test('compareFiles: an HTTP error, a rate limit, a diverged or behind pin, a network failure, and a non-github remote all throw', async () => {
