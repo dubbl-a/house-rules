@@ -6,6 +6,22 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.5] - 2026-11-08
+
+A patch release under ADR 0012: rule prose and skill text, one CLI retry, and a maintainer script, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.4: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- The claude-code rule no longer sends all learnings to auto memory. Personal preferences and collaboration feedback go there, and an operational fact goes to its repo home by PR unless it cannot be committed; `docs.md` gains the test for telling them apart. The handoff section now says the docs promise auto memory to no subagent but a fork, while plugin subagents were observed getting it (#487).
+- `/house-rules:handoff` files next-cycle items in the tracker the repo's `CLAUDE.md` names, GitHub issues by default, and keeps detail that cannot be committed in one gitignored `CURRENT.md` per workstream (#488).
+- `/house-rules:sync` runs its dry run before creating a worktree and stops when nothing needs syncing (#504). When the loaded plugin is older than the newest cached one, it also offers to continue by running the newer CLI by path (#500).
+- `/house-rules:test-audit` gives a rough token range and a lighter path before asking (#501), names a fallback when the session has no scratchpad (#502), and gives a `jq` command for mid-run progress (#503).
+- `npm run check:upstreams` counts a row as moved only when a watched path changed, and lists those files with a compare link. A row that moved elsewhere reports as `moved-unwatched`, and anything the check cannot prove stays moved (#199).
+
+### Fixed
+
+- `house changes` and `house doctor` retry the releases call once on a timeout, so a slow first response no longer drops the release notes from a sync PR (#499).
+
 ## [0.23.4] - 2026-11-06
 
 A patch release under ADR 0012: rule prose only, no heading renamed, and no change to what the guard denies. It records the Claude Code 2.1.318 and 2.1.319 survey. Upgrading from 0.23.3: update the plugin as before, then run `/house-rules:sync`.

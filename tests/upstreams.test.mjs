@@ -270,3 +270,165 @@ test('check: a pin on an annotated tag\'s object sha is not a false move', () =>
   const res = run([`--pins=${pinFixture([pin({ remote: bare, ref: { tag: '1.0.0' }, sha: obj })])}`, '--json']);
   assert.equal(res.status, 0, res.stdout + res.stderr);
 });
+
+// #199 option B: a moved row counts as moved only when a watched path changed.
+// The GitHub compare call is injected, so these cases need no network. Every
+// case that must stay `moved` is the fail-safe direction; the one that may go
+// quiet is a compare that proves no watched path changed.
+const HEAD_A = 'a'.repeat(40);
+const HEAD_B = 'b'.repeat(40);
+const GH = 'https://github.com/o/r';
+const compared = (files, truncated = false) => async () => ({ files, truncated });
+
+/** A real local branch pin that has moved, so checkPin's git half runs for real; the compare is the injected half. */
+function movedBranchPin(over = {}) {
+  const { bare, shas } = bareRepo([{ 'a.md': 'a\n' }, { 'a.md': 'b\n' }]);
+  return pin({ remote: bare, sha: shas[0], paths: ['skills/x/'], ...over });
+}
+
+test('paths: a file matches its own path or lies under a directory, and a directory never matches a sibling prefix', async () => {
+  const { pathMatches } = await mod();
+  assert.ok(pathMatches('a/b/c.md', 'a/b'));
+  assert.ok(pathMatches('a/b/c.md', 'a/b/'));
+  assert.ok(pathMatches('a/b', 'a/b'));
+  assert.ok(!pathMatches('a/bc/c.md', 'a/b'), 'a/bc is a sibling of a/b');
+  assert.ok(!pathMatches('a/bc', 'a/b/'));
+  assert.ok(pathMatches('README.md', 'README.md'));
+  assert.ok(!pathMatches('docs/README.md', 'README.md'));
+  assert.throws(() => pathMatches('a', 42));
+});
+
+test('checkPin: a change in a watched path stays moved and lists the changed files', async () => {
+  const { checkPin, lineFor } = await mod();
+  const row = await checkPin(movedBranchPin(), { compare: compared(['skills/x/SKILL.md', 'other.md']) });
+  assert.equal(row.status, 'moved');
+  assert.deepEqual(row.changed, ['skills/x/SKILL.md']);
+  assert.equal(row.pathCheck, 'changed');
+  assert.match(lineFor(row), /changed: skills\/x\/SKILL\.md/);
+});
+
+test('checkPin: a change only outside the watched paths is the quiet moved-unwatched verdict', async () => {
+  const { checkPin, lineFor, summarize } = await mod();
+  const row = await checkPin(movedBranchPin(), { compare: compared(['README.md', 'skills/xy/SKILL.md']) });
+  assert.equal(row.status, 'moved-unwatched');
+  assert.equal(row.otherFiles, 2);
+  assert.match(lineFor(row), /^moved-unwatched .*no watched path changed \(2 other files did\)/);
+  assert.equal(summarize([row]).status, 0, 'quiet rows do not set the moved exit status');
+  assert.equal(summarize([row, { ...row, status: 'moved' }]).status, 1);
+});
+
+test('checkPin: a truncated compare stays moved, never quiet (planted-failure control)', async () => {
+  const { checkPin } = await mod();
+  const row = await checkPin(movedBranchPin(), { compare: compared(['README.md'], true) });
+  assert.equal(row.status, 'moved');
+  assert.equal(row.pathCheck, 'unprovable');
+  assert.match(row.pathCheckDetail, /truncated/);
+});
+
+test('checkPin: an API failure, an empty file list, and a missing or unusable paths list all stay moved', async () => {
+  const { checkPin } = await mod();
+  const p = movedBranchPin();
+  const failing = await checkPin(p, { compare: async () => { throw new Error('compare API answered HTTP 403 (rate limit or access)'); } });
+  assert.equal(failing.status, 'moved');
+  assert.match(failing.pathCheckDetail, /HTTP 403/);
+  assert.equal((await checkPin(p, { compare: compared([]) })).status, 'moved');
+  assert.equal((await checkPin(p, { compare: compared(undefined) })).status, 'moved');
+  const noPaths = await checkPin({ ...p, paths: [] }, { compare: compared(['README.md']) });
+  assert.equal(noPaths.status, 'moved');
+  assert.match(noPaths.pathCheckDetail, /no watched paths/);
+  assert.equal((await checkPin({ ...p, paths: undefined }, { compare: compared(['README.md']) })).status, 'moved');
+  assert.equal((await checkPin({ ...p, paths: [7] }, { compare: compared(['README.md']) })).status, 'moved');
+});
+
+test('checkPin: a directory watched as a/b is not changed by a/bc, and is by a/b/x', async () => {
+  const { checkPin } = await mod();
+  const p = movedBranchPin({ paths: ['a/b'] });
+  assert.equal((await checkPin(p, { compare: compared(['a/bc/x.md']) })).status, 'moved-unwatched');
+  assert.equal((await checkPin(p, { compare: compared(['a/bc/x.md', 'a/b/x.md']) })).status, 'moved');
+});
+
+test('checkPin: a non-github remote has no compare API, so a moved row stays moved', async () => {
+  const { checkPin } = await mod();
+  const row = await checkPin(movedBranchPin());
+  assert.equal(row.status, 'moved');
+  assert.match(row.pathCheckDetail, /not a github\.com remote/);
+});
+
+test('checkPin: a moved tag pin is narrowed too, from the pin to the newer tag', async () => {
+  const { checkPin } = await mod();
+  const { bare, shas } = bareRepo([{ 'a.md': 'a\n' }, { 'a.md': 'b\n' }], { '1.0.0': 0, '1.1.0': 1 });
+  const p = pin({ remote: bare, ref: { tag: '1.0.0' }, sha: shas[0], paths: ['docs/'] });
+  const quiet = await checkPin(p, { compare: async (remote, base, head) => { assert.equal(base, shas[0]); assert.equal(head, shas[1]); return { files: ['a.md'], truncated: false }; } });
+  assert.equal(quiet.status, 'moved-unwatched');
+  assert.equal((await checkPin(p, { compare: compared(['docs/x.md']) })).status, 'moved');
+});
+
+/** A fetch double answering the given compare pages in order. */
+const fakeFetch = (...pages) => {
+  const seen = [];
+  const fn = async (url, init) => {
+    seen.push({ url, init });
+    const next = pages.shift();
+    if (next instanceof Error) throw next;
+    return { ok: next.ok ?? true, status: next.status ?? 200, json: async () => next.body };
+  };
+  fn.seen = seen;
+  return fn;
+};
+const names = (n, prefix) => Array.from({ length: n }, (_, i) => ({ filename: `${prefix}${i}` }));
+
+test('compareFiles: reads the compare API, sends the token only to api.github.com, and lists renames under both names', async () => {
+  const { compareFiles } = await mod();
+  const f = fakeFetch({ body: { status: 'ahead', files: [{ filename: 'new.md', previous_filename: 'old.md' }] } });
+  const out = await compareFiles(`${GH}.git`, HEAD_A, HEAD_B, { fetchFn: f, token: 'tok' });
+  assert.deepEqual(out, { files: ['new.md', 'old.md'], truncated: false });
+  assert.match(f.seen[0].url, new RegExp(`^https://api\\.github\\.com/repos/o/r/compare/${HEAD_A}\\.\\.\\.${HEAD_B}\\?`));
+  assert.equal(f.seen[0].init.headers.Authorization, 'Bearer tok');
+});
+
+// GitHub's real shape: the whole file list (up to 300) on the first response; a later page has none.
+test('compareFiles: a 300-file list is reported truncated from one response', async () => {
+  const { compareFiles } = await mod();
+  const f = fakeFetch({ body: { status: 'ahead', files: names(300, 'a') } });
+  const out = await compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: f, token: '' });
+  assert.deepEqual([out.truncated, out.files.length, f.seen.length], [true, 300, 1]);
+  assert.equal(f.seen[0].init.headers.Authorization, undefined);
+});
+
+test('compareFiles: a 260-file list is complete from one response and asks for no second page', async () => {
+  const { compareFiles } = await mod();
+  const f = fakeFetch({ body: { status: 'ahead', files: names(260, 'a') } }, { body: { status: 'ahead' } });
+  const out = await compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: f, token: '' });
+  assert.deepEqual([out.truncated, out.files.length, f.seen.length], [false, 260, 1]);
+});
+
+test('compareFiles: an HTTP error, a rate limit, a diverged or behind pin, a network failure, and a non-github remote all throw', async () => {
+  const { compareFiles } = await mod();
+  await assert.rejects(compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch({ ok: false, status: 404, body: {} }) }), /HTTP 404/);
+  await assert.rejects(compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch({ ok: false, status: 429, body: {} }) }), /rate limit/);
+  await assert.rejects(compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch({ body: { status: 'diverged', files: [] } }) }), /not a fast-forward/);
+  await assert.rejects(compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch({ body: { status: 'behind', files: [] } }) }), /not a fast-forward/);
+  await assert.rejects(compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch({ body: { status: 'ahead' } }) }), /no files list/);
+  await assert.rejects(compareFiles(GH, HEAD_A, HEAD_B, { fetchFn: fakeFetch(new Error('fetch failed')) }), /fetch failed/);
+  await assert.rejects(compareFiles('https://example.com/o/r', HEAD_A, HEAD_B, { fetchFn: fakeFetch() }), /not a github\.com remote/);
+  await assert.rejects(compareFiles(GH, 'abc', HEAD_B, { fetchFn: fakeFetch() }), /full shas/);
+});
+
+test('summarize: unreadable outranks moved, moved-unwatched is neither, and a clean walk is exit 0', async () => {
+  const { summarize } = await mod();
+  const r = (status) => ({ status });
+  assert.equal(summarize([r('unchanged'), r('moved-unwatched')]).status, 0);
+  assert.equal(summarize([r('unchanged')]).verdict, 'every upstream unchanged since its pin');
+  assert.equal(summarize([r('moved'), r('unreadable')]).status, 3);
+  assert.equal(summarize([r('moved'), r('moved-unwatched')]).status, 1);
+  assert.match(summarize([r('moved-unwatched'), r('moved')]).tally, /1 moved, 1 moved outside watched paths/);
+});
+
+test('wiring: the weekly workflow gives the pins step a token and files only moved rows with their changed files', () => {
+  const wf = readFileSync(join(ROOT, '.github/workflows/upstream-watch.yml'), 'utf8');
+  const step = wf.slice(wf.indexOf('- name: Run the pinned-upstreams check'), wf.indexOf('- name: File or update the one moved-upstreams issue'));
+  assert.match(step, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  assert.match(wf, /r\.status === 'moved' && !r\.watchedBy/);
+  assert.match(wf, /r\.changed/);
+  assert.match(wf, /r\.compareUrl/);
+});
