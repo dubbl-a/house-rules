@@ -30,10 +30,11 @@ only at the point a session is actually ending.
 4. Write the next-cycle list: ordered, concrete, each item with its reasoning.
 5. For each next-cycle item, check the tracker for one that already covers it; open a new one
    only when none does, and record its number. The tracker is the one the repo's CLAUDE.md
-   names, GitHub issues by default.
+   names, GitHub issues by default; a repo that uses both names in its CLAUDE.md which one
+   receives new items.
 6. For anything deferred by decision, record the reason where the decision already lives (the
    CHANGELOG, a decision record, the code comment at the site); file an issue closed as not
-   planned only when no such place exists. Never do this for something simply not done; that
+   planned, in the tracker step 5 names, only when no such place exists. Never do this for something simply not done; that
    stays a next-cycle item or drops silently.
 7. Legacy cleanup: if an open issue titled "Session carryover" exists, close it with a comment
    pointing to the issues its content was split into.
@@ -95,7 +96,9 @@ prose that the next session has to trust instead of a tracker it can act on.
 
 When the repo's CLAUDE.md names another tracker (Linear, Jira), search and file there with its
 tool, and add a one-line status to each item's ticket there; the snapshot itself is still not
-filed. If no tool for it is connected, print the items for the person to file by hand.
+filed. If no tool for it is connected, print the items for the person to file by hand. A repo
+that uses both trackers names in its CLAUDE.md which one receives new items, and an item deferred
+by decision follows that tracker too, not GitHub.
 
 ## Keep uncommittable detail in one live file
 
@@ -116,7 +119,7 @@ Something this session chose not to do, on purpose, is not the same as something
 not get to this session. Only the first kind gets recorded, with its reason, in the place the
 decision already lives: the CHANGELOG entry that shipped around it, a decision record, or the code
 comment at the site. Point to that place in the snapshot. Only when no such place exists, file it
-as an issue opened closed:
+as an issue opened closed in the tracker the repo names (the commands below are the GitHub form):
 
 ```
 gh issue create --title "<item>" --body "Deferred by decision: <the reason>"

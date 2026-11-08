@@ -32,7 +32,7 @@
 - Read a resume file as a harness artifact, not a handoff
   Treat a checkpoint file the harness writes as a record of where a session stopped, not a protocol the next session follows.
 - Hand off through the repo, not a standing issue
-  Open an issue only for work someone will do; a standing issue with nothing to act on is noise in the tracker, not a handoff.
+  Open an issue or ticket only for work someone will do; a standing one with nothing to act on is noise in the tracker, not a handoff.
 - Check for a peer session before driving shared external state
   List the running agents before driving a shared application, database, or checkout; a peer session may already own it.
 - Don't

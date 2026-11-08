@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- A repo can opt into Linear as its tracker with a line in its own `CLAUDE.md`; GitHub Issues stays the default and there is no `house.json` key. The handoff skill files next-cycle and deferred-by-decision items in the tracker `CLAUDE.md` names, and a repo using both names the one that receives new items. The claude-code rule says "issue or ticket", the github rule says how a Linear ID and a closing word go in a PR title, and the GitHub chapter of the handbook gains an opt-in section. Research note: `research/linear/2026-11-08.md`.
+
 ## [0.23.5] - 2026-11-08
 
 A patch release under ADR 0012: rule prose and skill text, one CLI retry, and a maintainer script, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.4: update the plugin as before, then run `/house-rules:sync`.

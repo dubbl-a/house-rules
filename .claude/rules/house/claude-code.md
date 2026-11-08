@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.5 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=d22b8a104e46eff4722de6d5a045f9943dfad620a0d8c78740f69a52832b3ee1 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.5 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4b678ff644d5919c7de50fa9b3af11b6dd6faf58a270477d7072199073f103c1 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -167,9 +167,9 @@ Receipts: `docs/handbook/claude-code.md#read-a-resume-file-as-a-harness-artifact
 
 ## Hand off through the repo, not a standing issue
 
-Open an issue only for work someone will do; a standing issue with nothing to act on is noise in the tracker, not a handoff.
+Open an issue or ticket only for work someone will do; a standing one with nothing to act on is noise in the tracker, not a handoff.
 Auto memory is the harness's own place for ongoing work, but it is machine-local and never reaches another machine or a cloud session, and the docs promise it to no subagent but a fork (plugin subagents were observed getting it anyway), so it cannot be the channel the next session reads.
-Turn each next-cycle item into its own issue, after checking that an open one does not already cover it, so the tracker stays a list of work, not snapshots.
+Turn each next-cycle item into its own issue or ticket, after checking that an open one does not already cover it, so the tracker stays a list of work, not snapshots.
 Record a thing deferred by decision, with its reason, where the decision already lives (the CHANGELOG, a decision record, a code comment), and file an issue closed as not planned only when no such place exists; the rest is re-derivable from the default branch and merged PRs, except detail that cannot be committed or tracked (record IDs, rollback snapshot paths), which the handoff skill keeps in one gitignored `CURRENT.md` per workstream.
 Print the handoff's snapshot in the session rather than filing it anywhere. Gate verdicts and counts are re-run from the recorded commit, never copied in, since a copied number goes stale and a re-run one cannot be fabricated.
 State measurements in a hand-off with their sample and run count, label estimates, put your own interpretations in a section marked unverified, and link the prior research, so the next session tests the mechanism an issue names against saved evidence before building from it.
