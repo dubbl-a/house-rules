@@ -12,6 +12,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - A repo can opt into Linear as its tracker with a line in its own `CLAUDE.md`; GitHub Issues stays the default and there is no `house.json` key. The handoff skill files next-cycle and deferred-by-decision items in the tracker `CLAUDE.md` names, and a repo using both names the one that receives new items. The claude-code rule says "issue or ticket", the github rule says how a Linear ID and a closing word go in a PR title, and the GitHub chapter of the handbook gains an opt-in section. Research note: `research/linear/2026-11-08.md`.
 - `.github/workflows/dependabot-actions-merge.yml` merges Dependabot GitHub Actions bumps in the adopters the package syncs, minor and patch only and once checks are green. It only reports until the repo variable `DEPENDABOT_MERGE_LIVE` is `true`. Part of #199.
 
+### Fixed
+
+- `house render --apply` no longer throws on a read-only `.claude/settings.json` after the plan is written: it warns before writing anything, naming the `chmod` that fixes it, and a file it cannot read is warned about the same way (and refused by `house uninstall` when its SessionStart entry would go). `house disable`'s dry run now lists the settings change `--apply` makes (#516).
+
 ## [0.23.5] - 2026-11-08
 
 A patch release under ADR 0012: rule prose and skill text, one CLI retry, and a maintainer script, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.4: update the plugin as before, then run `/house-rules:sync`.

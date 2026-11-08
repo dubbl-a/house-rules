@@ -6138,6 +6138,64 @@ test('#163 the rule matches an apply and not a dry run, and not another argument
   for (const cmd of ['house uninstall', 'house uninstall --repo .', 'house render --apply', 'house --apply uninstall']) assert.doesNotMatch(cmd, glob, cmd);
 });
 
+// ── #516: an unwritable settings file, and disable's dry run ─────────────
+
+// Mode bits do not stop root, so these cannot fail there.
+const NOT_ROOT = { skip: process.getuid && process.getuid() === 0 ? 'running as root: chmod does not block it' : false };
+
+test('#516 render --apply: a read-only settings file is warned about before the plan is written, not thrown on after it', NOT_ROOT, (t) => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': ADOPTER_SETTINGS });
+  chmodSync(settingsPath(repo), 0o444);
+  t.after(() => chmodSync(settingsPath(repo), 0o644));
+  const dry = runCli(cliPath, ['render', '--repo', repo]);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.doesNotMatch(dry.out, /^(add|create)-(hook|rule)\s+\.claude\/settings\.json/m, 'the dry run does not promise a write apply cannot make');
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^warning: \.claude\/settings\.json cannot be written.*SessionStart entry.*chmod u\+w \.claude\/settings\.json.*house render --apply/m, r.out);
+  assert.match(r.out, /^warning: \.claude\/settings\.json cannot be written.*permissions\.ask rule/m, r.out);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS, 'the read-only file is left alone');
+  assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), true, 'the rest of the render ran');
+});
+
+test('#516 render --apply: a settings file it cannot read is warned about, with the github module off too', NOT_ROOT, (t) => {
+  const { cliPath } = buildCloudArmingFixture();
+  const repo = buildFloorRepo({ 'README.md': '# hi\n', '.claude/settings.json': ADOPTER_SETTINGS });
+  setGithubConfig(repo, {}, false);
+  chmodSync(settingsPath(repo), 0o000);
+  t.after(() => chmodSync(settingsPath(repo), 0o644));
+  const r = runCli(cliPath, ['render', '--repo', repo, '--apply']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^warning: \.claude\/settings\.json cannot be read.*permissions\.ask rule.*chmod u\+rw \.claude\/settings\.json/m, r.out);
+});
+
+test('#516 uninstall: a settings file it cannot read is refused when the entry would go, and does not crash the plan', NOT_ROOT, (t) => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  chmodSync(settingsPath(repo), 0o000);
+  t.after(() => chmodSync(settingsPath(repo), 0o644));
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^REFUSE\s+\.claude\/settings\.json\s+\(.*cannot be read/m, r.out);
+  assert.ok(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), 'nothing was deleted');
+});
+
+test('#516 disable: the dry run lists the settings change --apply makes', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env, { '.claude/settings.json': ADOPTER_SETTINGS });
+  const dry = runCli(cliPath, ['disable', 'github', '--why', 'a test', '--repo', repo], env);
+  assert.equal(dry.code, 0, dry.out + dry.err);
+  assert.match(dry.out, /^remove-hook\s+\.claude\/settings\.json\s+\(removes house's SessionStart entry only/m, dry.out);
+  assert.doesNotMatch(dry.out, /-rule\s+\.claude\/settings\.json/, 'the rule is already there, so there is nothing to say about it');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_ARMED, 'a dry run writes nothing');
+  const r = runCli(cliPath, ['disable', 'github', '--why', 'a test', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), ADOPTER_SETTINGS_RULED, 'apply made the change the dry run named');
+});
+
 // ── #479: edge cases of the ADR 0019 entry ───────────────────────────────
 
 const ARM_HOOK = { type: 'command', command: ARM_COMMAND, timeout: 10 };
