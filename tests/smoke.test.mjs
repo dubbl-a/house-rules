@@ -113,3 +113,12 @@ test('the vendored checker is byte-identical to the payload and matches the lock
   assert.equal(entry.bodySha256, createHash('sha256').update(payload, 'utf8').digest('hex'),
     'the lock hash for .house/check.mjs does not match the payload: re-render');
 });
+
+// #163: render may write .claude/settings.json (the SessionStart entry, the ask
+// rule), and the skills stage by explicit path, so each staging list must name it.
+test('#163 the sync and bootstrap skills stage .claude/settings.json when the render plan listed a -hook or -rule line', () => {
+  for (const skill of ['sync', 'bootstrap']) {
+    const body = readFileSync(new URL(`../plugins/house/skills/${skill}/SKILL.md`, import.meta.url), 'utf8');
+    assert.match(body, /`\.claude\/settings\.json`[^\n]*`-hook`[^\n]*`-rule`/, `${skill} names the path with the plan lines that call for it`);
+  }
+});

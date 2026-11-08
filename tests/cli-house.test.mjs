@@ -6085,6 +6085,38 @@ test('#163 uninstall --apply: only house\'s ask rule is taken out, the adopter\'
   }
 });
 
+test('#163 uninstall --apply: a read-only settings file holding only the rule is noted and skipped, and the uninstall goes ahead', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const body = stringifyJson({ permissions: { ask: [ASK_RULE] } });
+  writeFileSync(settingsPath(repo), body);
+  commitAll(repo, 'rule only');
+  chmodSync(settingsPath(repo), 0o444);
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.doesNotMatch(r.out, /^REFUSE\s+\.claude\/settings\.json/m);
+  assert.match(r.out, /^ {2}\.claude\/settings\.json cannot be written.*rule.*by hand/m, r.out);
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), body, 'the read-only file is left alone');
+  assert.equal(existsSync(join(repo, 'scripts', 'house', 'arm-git-hooks.sh')), false, 'the rest of the uninstall ran');
+});
+
+test('#163 uninstall --apply: a settings file that is not valid JSON and names the rule is told to drop it by hand, not to re-render', () => {
+  const { cliPath } = buildCloudArmingFixture();
+  const env = isolatedGitEnv();
+  const repo = uninstallRepo(cliPath, env);
+  const broken = `{ "permissions": { "ask": [${JSON.stringify(ASK_RULE)}] },`;
+  writeFileSync(settingsPath(repo), broken);
+  commitAll(repo, 'break the settings');
+  const r = runCli(cliPath, ['uninstall', '--repo', repo, '--apply'], env);
+  assert.equal(r.code, 0, r.out + r.err);
+  const note = r.out.split('\n').find((l) => l.includes('is not valid JSON') && l.includes('permissions.ask rule'));
+  assert.ok(note, r.out);
+  assert.match(note, /remove "Bash\(\*house uninstall\*--apply\*\)" from the "permissions"\."ask" array by hand/);
+  assert.doesNotMatch(note, /house render --apply/, 'render would add the rule back');
+  assert.equal(readFileSync(settingsPath(repo), 'utf8'), broken);
+});
+
 test('#163 uninstall --apply: a settings file holding the rule in a non-canonical layout is noted, not refused, and nothing is rewritten', () => {
   const { cliPath } = buildCloudArmingFixture();
   const env = isolatedGitEnv();

@@ -122,7 +122,7 @@ If render or the checker printed `warning: module `<name>` is not in house.json,
 git add house.json .house/ .claude/rules/house/
 ```
 
-Add `scripts/house/` to that command only when the render plan listed a file there; git refuses the whole command when any pathspec matches nothing. By explicit path, never `git add -A`: the checker and CI read `git ls-files`, so a rendered file that is not staged is one nobody checks, and a blanket add would sweep in whatever else is lying in the tree.
+Add `scripts/house/` to that command only when the render plan listed a file there, and `.claude/settings.json` only when the plan printed a `-hook` or `-rule` line for it (the SessionStart entry, the `permissions.ask` rule that makes Claude Code ask before `house uninstall --apply`); git refuses the whole command when any pathspec matches nothing. By explicit path, never `git add -A`: the checker and CI read `git ls-files`, so a rendered file that is not staged is one nobody checks, and a blanket add would sweep in whatever else is lying in the tree.
 
 Render's `Scaffolded` list (`.github/PULL_REQUEST_TEMPLATE.md`, `.github/workflows/pr-checks.yml`, the CLAUDE.md skeleton) is not a managed file, so the `[untracked]` warning cannot see it: review those files, then stage them by path too.
 

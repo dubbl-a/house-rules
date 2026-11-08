@@ -1293,7 +1293,7 @@ function planSettings(repoRoot, want, wantRule, moduleWarnings, strict = false, 
   const entryJson = JSON.stringify({ type: 'command', command: ARM_COMMAND, timeout: 10 });
   const groupJson = JSON.stringify({ hooks: [JSON.parse(entryJson)] });
   const hookWarn = (why, how = null) => { if (want !== null) moduleWarnings.push(`${SETTINGS_JSON} ${why}, so house's SessionStart entry that arms the git-hook floor was not written ${want ? 'into' : 'out of'} it; ${how || 'fix the file by hand, then `house render --apply`'}`); };
-  const ruleWarn = (why, how = null) => { if (wantRule !== null) ruleWarnings.push(`${SETTINGS_JSON} ${why}, so house's permissions.ask rule ${ASK_RULE} (it makes Claude Code ask before \`house uninstall --apply\`) was not written ${wantRule ? 'into' : 'out of'} it; ${how || 'fix the file by hand, then `house render --apply`'}`); };
+  const ruleWarn = (why, how = null) => { if (wantRule !== null) ruleWarnings.push(`${SETTINGS_JSON} ${why}, so house's permissions.ask rule ${ASK_RULE} (it makes Claude Code ask before \`house uninstall --apply\`) was not written ${wantRule ? 'into' : 'out of'} it; ${how || (wantRule ? 'fix the file by hand, then `house render --apply`' : `remove ${JSON.stringify(ASK_RULE)} from the "permissions"."ask" array by hand once the file is valid JSON (render would add it back)`)}`); };
   const hookNamed = (raw) => want || (want !== null && raw.includes(ARM_DEST));
   const ruleNamed = (raw) => wantRule || (wantRule !== null && raw.includes(ASK_RULE));
   const escape = writeEscapeReason(repoRoot, SETTINGS_JSON);
@@ -1563,6 +1563,11 @@ function scaffoldApplies(sc, repoRoot) { return !sc.when || sc.when(repoRoot); }
 // against the tracked tree plus what is about to exist.
 function plannedDestPaths(repoRoot, houseData, modules, scaffoldRecord, forceScaffold) {
   const dests = ['.house/check.mjs'];
+  // Issue #163: render writes the ask rule into the settings file, creating it,
+  // so a glob naming it (security's agent roots) is met by this render and not
+  // only by the next one, once the file exists and is tracked.
+  const settingsAbs = path.join(repoRoot, SETTINGS_JSON);
+  if (!writeEscapeReason(repoRoot, SETTINGS_JSON) && !(existsSync(settingsAbs) && notRegularReason(settingsAbs))) dests.push(SETTINGS_JSON);
   for (const m of modules) {
     if (m.error) continue;
     const name = moduleName(m);
@@ -3699,7 +3704,7 @@ function cmdUninstall(args) {
   // a refusal.
   const settingsNotes = [];
   const ruleNotes = [];
-  const settingsEntry = planSettings(repoRoot, removing.has(ARM_DEST) ? false : null, false, settingsNotes, true, ruleNotes);
+  let settingsEntry = planSettings(repoRoot, removing.has(ARM_DEST) ? false : null, false, settingsNotes, true, ruleNotes);
   const settingsRefusal = !settingsEntry && settingsNotes.length ? settingsNotes[0].slice(SETTINGS_JSON.length + 1).split(', so ')[0] : null;
   // The floor is house's when a module that ships it is on before this run,
   // or the lock records one of its files: only then did arming set the path.
@@ -3731,7 +3736,16 @@ function cmdUninstall(args) {
   };
   for (const r of removals.filter((x) => !x.unsafe)) { const b = blocker(r.path); if (b) blockers.push({ path: r.path, reason: b }); }
   if (blockRemoval && blockRemoval.status !== 'refuse' && !blockUnsafe) { const b = blocker(AGENTS_MD, !blockRemoval.deleteFile); if (b) blockers.push({ path: AGENTS_MD, reason: b }); }
-  if (settingsEntry) { const b = blocker(SETTINGS_JSON, true); if (b) blockers.push({ path: SETTINGS_JSON, reason: b }); }
+  if (settingsEntry) {
+    const b = blocker(SETTINGS_JSON, true);
+    // Only the entry that names the deleted script is a blocker; a file that
+    // holds the rule alone is noted and skipped, like any other rule left behind.
+    if (b && settingsEntry.action) blockers.push({ path: SETTINGS_JSON, reason: b });
+    else if (b) {
+      ruleNotes.push(`${SETTINGS_JSON} cannot be written (${b}), so house's permissions.ask rule ${ASK_RULE} was not removed from it; remove ${JSON.stringify(ASK_RULE)} from the "permissions"."ask" array by hand`);
+      settingsEntry = null;
+    }
+  }
   if (removeConfig && !configUnsafe) { const b = blocker('house.json'); if (b) blockers.push({ path: 'house.json', reason: b }); }
   for (const h of hooks.filter((x) => x.action === 'unset')) {
     const file = path.resolve(repoRoot, h.origin || '.git/config');
