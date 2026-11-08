@@ -19,6 +19,8 @@ Run any script with `PROJECT_GLOB` set to the project folder pattern:
 | `idle_sleep.py` | Takes the `--gaps` output and a saved `pmset -g log` file, and reports whether the Mac was awake when idle compaction should have fired (54 min after the last response). Save the log with `pmset -g log > <file>`; it keeps only recent days, so older gaps read as unknown |
 | `compactions.py` | Record types mentioning compaction in the transcripts (positive control for `idle_versions.py`) and the `idleCompaction` setting in user settings plus any settings paths passed as arguments |
 | `bash_output.py` | Share of list-price cost from Bash tool output and from other tool results, split by result size (under 2k, 2k to 5k, 5k to 10k, over 10k estimated tokens), main vs subagent, with first words of the largest Bash commands. `--days N` sets the window. Prices copied from `plugins/house/scripts/cost-report.mjs` |
+| `subagent_cuts.py` | Three cuts for `../2026-11-08.md`: same-type parallel Agent-tool launches (upper-bound stagger saving, workflow agents as control), forks from large parents, and the make-up of the first main-session request. `--days N` sets the window. Prices copied from `plugins/house/scripts/cost-report.mjs` |
+| `session_skew.py` | How skewed main-session cost is over 30 days, and how often a "$5 and unusual for this account" test would fire. Reuses `subagent_cuts.py` |
 
 Caveats:
 - Prices are hard-coded from https://platform.claude.com/docs/en/about-claude/pricing as of 2026-10-20. Every cost figure is a list-price estimate.
