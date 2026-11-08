@@ -223,6 +223,16 @@ Decision records: [ADR 0013](../decisions/0013-branch-policy-enforced-by-git-hoo
 
 Native floor, as of 2026-09-20: git's own `pre-commit`, `pre-push`, and `reference-transaction` hooks, `reference-transaction` only on git 2.28 and later, armed by `core.hooksPath` and reported by `house doctor` (https://git-scm.com/docs/githooks).
 
+## Merging Dependabot action bumps in the adopters, #199
+
+`.github/workflows/dependabot-actions-merge.yml` runs weekly (and on demand, from `main` only) and merges the open Dependabot pull requests in the four sync adopters that change nothing but GitHub Actions, once every check on them passes. It reads each PR and the workflow runs at its head commit, then asks `scripts/dependabot-actions-merge.mjs` for `merge <sha>` or `skip: <reason>`; the merge is `gh pr merge --squash --delete-branch --match-head-commit <sha>`, the form `release.yml` uses for its sync PRs. Any unreadable field is a skip, and `tests/dependabot-actions-merge.test.mjs` plants a failure for each rule.
+
+A PR merges only when all of these hold: Dependabot opened it; every changed file is under `.github/workflows/`; every commit on it is authored by Dependabot, so a human or other bot push disqualifies it; every version bump in its title and body is a minor or patch step (a major bump, a version that is not plain numeric such as a SHA or a pre-release, and a 0.x minor bump are left for a person); GitHub reports it `CLEAN` and `MERGEABLE` (`UNKNOWN` skips, since GitHub computes it lazily and the next weekly run sees it); and the runs at the head commit are all green by `scripts/release-run-state.mjs`, where no runs at all skips.
+
+The job is report-only until the repository variable `DEPENDABOT_MERGE_LIVE` is `true`. In report-only mode it prints each PR with its decision and writes the same list to the job summary, and merges nothing. Run it that way first and compare the list with what you would have merged.
+
+Two limits to know. The change is not read: a minor or patch bump of an action merges on the checks alone, which #199 decided. And merging a PR that changes workflow files may need the Workflows permission on `ADOPTER_SYNC_TOKEN`, which a token made for the sync may lack; this has not been tested, and a refusal shows as a failed merge in the summary and a red leg. Repos outside the matrix are not covered.
+
 ## What the workflows and agent-config checks read
 
 Issue #134 added two checker families that read repo files only, with no network and no credential. The `workflows` family runs when the github module is enabled and the repo has workflow files under `.github/workflows/`; with none, it reports nothing but check 12. The `agent-config` family runs when the claude-code module is enabled.
