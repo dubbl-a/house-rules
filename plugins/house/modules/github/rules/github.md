@@ -66,6 +66,7 @@ Receipts: `docs/handbook/github.md#make-the-pr-template-force-a-docs-check-answe
 
 A closed issue reads as done to every later reader, so an accidental close or a closing comment the repo does not bear out hides open work.
 Never put a closing keyword beside an issue number you mean to keep open: the platform closes it at merge whatever words sit in front, since negation is never parsed. Write "does not address" instead, and check the issue's state after merging any PR that mentions one.
+In a repo that tracks work in Linear, put the Linear ID in the PR title, with a closing word only when the PR finishes the issue and `Part of` plus the ID otherwise; a phased PR carries no closing word.
 Before closing by hand, check each claim in the closing comment against the repo: the doc that records it, the commit that shipped it.
 Cut an issue list by finishing work, narrowing scope with a stated reason, or merging duplicates, never by closing to lower the count; a defect against the repo's own rules stays open.
 Anchor: none (because the platform parses the body at merge time, and no check can tell whether a closing comment's claims are true).

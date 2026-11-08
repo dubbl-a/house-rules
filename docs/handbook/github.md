@@ -103,6 +103,22 @@ Native floor, as of 2026-09-02: hosted Code Review reads the repo CLAUDE.md and 
 
 **This repo's own triage, 2026-10-04.** A triage meant to reduce open issues closed #166 and #163 with closing comments that overstated the work. #166's comment said its remaining items were documented, but one verification, a real GitHub Actions run of the install template adopters are told to copy, was never done. #163 was closed to keep the package small while its live safety runs were still undone. Checking each claim against the repo found both, and both were reopened with narrowed scope. The lesson widens the rule past accidental closes: a closing comment is a claim, and a closed issue reads as done to every later reader, so each claim gets checked against the doc that records it and the commit that shipped it before the issue closes.
 
+### Opting a repo into Linear as its tracker
+
+GitHub Issues stays the default. A repo opts into Linear with one line in its own `CLAUDE.md`, such as `Tracker: Linear`; there is no `house.json` key and the plugin bundles no Linear server, because a bundled server would reach every repo, including those that do not use Linear. Pull requests, branches and CI stay on GitHub. A repo may use both trackers, and then its `CLAUDE.md` names the one that receives new items; the handoff skill files next-cycle items and deferred-by-decision items there.
+
+To give a session the tool, add the official server and authenticate:
+
+```
+claude mcp add --transport http linear-server https://mcp.linear.app/mcp
+```
+
+Then run `/mcp` and complete the sign-in. If the session cannot see the tool, the handoff skill prints the items for filing by hand. The default local scope is untested inside worktrees; `--scope user` is the alternative.
+
+Linear links a PR to an issue through its GitHub integration: the Linear ID goes in the PR title, with the word in the title or description. A closing word moves the issue to the "On PR or commit merge" status and a non-closing word does not, so a PR that finishes the issue may carry a closing word and any other PR says `Part of` plus the ID. A phased PR carries no closing word and puts `Part of` plus the ID together in the title, because a bare ID in a title or branch name still links the PR, and whether that link moves the issue at merge is unverified. Whether Linear parses a negated closing word is unverified, so the rule above applies here too: never write a closing word beside an ID you mean to keep open. The read behind this is `research/linear/2026-11-08.md`.
+
+Known limit: the issue forms and scheduled audit guidance in `github.md`, and `security.md`, still speak of GitHub Issues and read as advice in a Linear-only repo.
+
 ## Ship phased work as commits on one PR
 
 **Phase A1 through A5, one PR, five commits.** When a plan defines phases, the whole phase ships as one PR with each step as a commit on it, not as separate PRs per step. The maintainer is the sole reviewer, so multi-PR ceremony buys no review-distribution benefit; a phase is the real review unit because individual steps often do not stand alone (a schema without the script that populates it, for instance), and the election timeline rewards fewer serial PR cycles.

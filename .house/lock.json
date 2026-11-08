@@ -4,7 +4,7 @@
       "path": ".claude/rules/house/claude-code.md",
       "module": "claude-code",
       "source": "modules/claude-code/rules/claude-code.md",
-      "bodySha256": "24296b0a8da2c50d70ea43449f2b289082e0a48b94f61bbf8d390bd539a93336"
+      "bodySha256": "aa32dbe536f8f9b4e3815bfd8e916eb9d1559cb475b158979f7a372ecac35053"
     },
     {
       "path": "scripts/house/check-deep-research-upstream.mjs",
@@ -40,7 +40,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "ab4c19af3b9c67c4ea4e796ab4c845b95613768a478028294a688a54fc311745"
+      "bodySha256": "3adf9c711ff425b5ba3fcbdc15584df0d21642dc540e6d30cfe51b7f55e0c38c"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
