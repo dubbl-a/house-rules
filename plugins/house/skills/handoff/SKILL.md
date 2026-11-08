@@ -98,7 +98,7 @@ When the repo's CLAUDE.md names another tracker (Linear, Jira), search and file 
 tool, and add a one-line status to each item's ticket there; the snapshot itself is still not
 filed. If no tool for it is connected, print the items for the person to file by hand. A repo
 that uses both trackers names in its CLAUDE.md which one receives new items, and an item deferred
-by decision follows that tracker too, not GitHub.
+by decision follows that tracker too.
 
 ## Keep uncommittable detail in one live file
 
