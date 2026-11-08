@@ -12,11 +12,23 @@
 // The checker reports and never merges: a moved BORROW row is a review of the
 // named paths, a moved REUSE row is a re-vendor at the new version.
 //
+// A moved github.com row is then narrowed by the GitHub compare API: it counts
+// as moved only when a file under one of its watched paths changed between the
+// pin and the new head, and the report lists those files and a compare URL. A
+// row whose every changed file lies outside its watched paths is the quiet
+// verdict `moved-unwatched`. Anything that stops the path check from proving
+// "nothing watched changed" keeps the row `moved` (the fail-safe direction): an
+// API error or rate limit, a compare that is not a plain fast-forward from the
+// pin (force-push, unrelated pin), a file list at GitHub's 300-file cap or empty,
+// a non-github remote, a row with no usable paths. GH_TOKEN (or GITHUB_TOKEN)
+// is sent to api.github.com only, to lift the unauthenticated rate limit.
+//
 // Usage:
 //   node scripts/check-upstreams.mjs [--json] [--only=<upstream substring>] [--pins=<path>]
 //
 // Exit codes (read the verdict by name, never "non-zero = bad"):
-//   0  every walked row unchanged since its pin
+//   0  every walked row unchanged since its pin, or moved only outside its
+//      watched paths (`moved-unwatched`, printed but not counted as moved)
 //   1  at least one row moved; each moved row prints what to do about it
 //   3  bad argument, a pins file that does not parse, an --only that matches
 //      nothing, or a row that could not be read (no network, wrong url, the
@@ -121,41 +133,129 @@ export function remoteTags(remote) {
 
 /** What a reader does about a moved row: a BORROW is a review, a REUSE is a re-vendor. */
 export function actionFor(pin) {
-  return pin.relationship === 'REUSE' ? 're-vendor at the new version' : `review these paths: ${pin.paths.join(' ')}`;
+  return pin.relationship === 'REUSE' ? 're-vendor at the new version' : `review these paths: ${Array.isArray(pin.paths) && pin.paths.length > 0 ? pin.paths.join(' ') : '(none named)'}`;
 }
 
-/** One row's verdict: unchanged, moved, or unreadable, never a guess. */
-export function checkPin(pin) {
+/** owner and repo of a plain github.com https remote, or null for any other remote. */
+export function parseGithubRemote(remote) {
+  const m = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(remote ?? '');
+  return m ? { owner: m[1], repo: m[2] } : null;
+}
+
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+function compareUrlFor(remote, base, head) {
+  const gh = parseGithubRemote(remote);
+  return gh && FULL_SHA.test(base ?? '') && FULL_SHA.test(head ?? '') ? `https://github.com/${gh.owner}/${gh.repo}/compare/${base}...${head}` : null;
+}
+
+/** True when file is the watched path or lies under it; a directory matches by whole path segment, so `a/b` never matches `a/bc`. A path that cannot be read as one throws, which keeps the row moved. */
+export function pathMatches(file, path) {
+  if (typeof path !== 'string') throw new Error('a watched path is not a string');
+  const dir = path.replace(/^(\.?\/)+/, '').replace(/\/+$/, '');
+  if (dir === '' || dir === '.') return true;
+  return file === dir || file.startsWith(`${dir}/`);
+}
+
+// GitHub lists at most 300 files for a compare, 100 a page.
+const COMPARE_PAGE = 100;
+const COMPARE_FILE_CAP = 300;
+
+/** Files changed between base and head from the GitHub compare API (a rename lists both names), as { files, truncated }; throws unless the pin is a plain ancestor of head. */
+export async function compareFiles(remote, base, head, { fetchFn = globalThis.fetch, token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN } = {}) {
+  const gh = parseGithubRemote(remote);
+  if (!gh) throw new Error('not a github.com remote, so no compare API');
+  if (!FULL_SHA.test(base ?? '') || !FULL_SHA.test(head ?? '')) throw new Error('compare needs two full shas');
+  const files = [];
+  for (let page = 1; page <= COMPARE_FILE_CAP / COMPARE_PAGE; page++) {
+    const res = await fetchFn(`https://api.github.com/repos/${gh.owner}/${gh.repo}/compare/${base}...${head}?per_page=${COMPARE_PAGE}&page=${page}`, {
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'house-rules-check-upstreams', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`compare API answered HTTP ${res.status}${res.status === 403 || res.status === 429 ? ' (rate limit or access)' : ''}`);
+    const body = await res.json();
+    if (body?.status !== 'ahead') throw new Error(`compare status is ${JSON.stringify(body?.status)}, not a fast-forward from the pin`);
+    if (!Array.isArray(body.files)) throw new Error('compare response has no files list');
+    for (const f of body.files) {
+      if (typeof f?.filename !== 'string') throw new Error('compare response has a file with no name');
+      files.push(f.filename);
+      if (typeof f.previous_filename === 'string') files.push(f.previous_filename);
+    }
+    if (body.files.length < COMPARE_PAGE) return { files, truncated: false };
+  }
+  // Three full pages: the list is at GitHub's cap, so more files may exist unseen.
+  return { files, truncated: true };
+}
+
+/** Narrow a moved row by its watched paths: `moved` with the changed files when one changed or nothing proves otherwise, `moved-unwatched` only when the compare proves none did. */
+async function narrowMove(moved, pin, compare) {
+  const compareUrl = compareUrlFor(pin.remote, pin.sha, moved.head);
+  const row = compareUrl ? { ...moved, compareUrl } : moved;
+  try {
+    if (!Array.isArray(pin.paths) || pin.paths.length === 0) throw new Error('the row names no watched paths');
+    const { files, truncated } = await compare(pin.remote, pin.sha, moved.head);
+    if (truncated) throw new Error(`the compare file list is truncated (GitHub caps it at ${COMPARE_FILE_CAP} files)`);
+    if (!Array.isArray(files) || files.length === 0) throw new Error('the compare lists no files');
+    const changed = [...new Set(files.filter((f) => pin.paths.some((p) => pathMatches(f, p))))];
+    if (changed.length > 0) return { ...row, pathCheck: 'changed', changed };
+    return { ...row, status: 'moved-unwatched', pathCheck: 'unchanged', otherFiles: new Set(files).size, action: undefined };
+  } catch (e) {
+    return { ...row, pathCheck: 'unprovable', pathCheckDetail: (e.message || String(e)).trim().split('\n')[0] };
+  }
+}
+
+/** One row's verdict: unchanged, moved, moved-unwatched, or unreadable, never a guess. */
+export async function checkPin(pin, { compare = compareFiles } = {}) {
   const row = { upstream: pin.upstream, relationship: pin.relationship, remote: pin.remote, ref: pin.ref, consulted: pin.consulted, sha: pin.sha, paths: pin.paths, recheck: pin.recheck ?? null, watchedBy: pin.watchedBy ?? null };
   const label = pin.ref.tag ?? pin.sha.slice(0, 7);
+  let moved;
   try {
     if (pin.ref.branch) {
       const head = remoteHead(pin.remote, pin.ref.branch);
       if (head === pin.sha) return { ...row, status: 'unchanged', pinned: label, current: head.slice(0, 7) };
-      return { ...row, status: 'moved', pinned: label, current: head.slice(0, 7), head, action: actionFor(pin) };
+      moved = { ...row, status: 'moved', pinned: label, current: head.slice(0, 7), head, action: actionFor(pin) };
+    } else {
+      const out = lsRemoteTags(pin.remote);
+      const tags = parseTagRefs(out);
+      if (!tags.has(pin.ref.tag)) return { ...row, status: 'unreadable', pinned: label, detail: `pinned tag ${pin.ref.tag} is not on the remote` };
+      const newer = newerTags([...tags.keys()], pin.ref.tag);
+      const target = tags.get(pin.ref.tag);
+      // A pin may record an annotated tag's own object sha rather than its commit.
+      if (target !== pin.sha && parseTagObjects(out).get(pin.ref.tag) !== pin.sha) moved = { ...row, status: 'moved', pinned: label, current: `tag ${pin.ref.tag} moved to ${target.slice(0, 7)}`, head: target, newer, action: actionFor(pin) };
+      else if (newer.length === 0) return { ...row, status: 'unchanged', pinned: label, current: pin.ref.tag };
+      else moved = { ...row, status: 'moved', pinned: label, current: newer[0], head: tags.get(newer[0]), newer, action: actionFor(pin) };
     }
-    const out = lsRemoteTags(pin.remote);
-    const tags = parseTagRefs(out);
-    if (!tags.has(pin.ref.tag)) return { ...row, status: 'unreadable', pinned: label, detail: `pinned tag ${pin.ref.tag} is not on the remote` };
-    const newer = newerTags([...tags.keys()], pin.ref.tag);
-    const target = tags.get(pin.ref.tag);
-    // A pin may record an annotated tag's own object sha rather than its commit.
-    if (target !== pin.sha && parseTagObjects(out).get(pin.ref.tag) !== pin.sha) return { ...row, status: 'moved', pinned: label, current: `tag ${pin.ref.tag} moved to ${target.slice(0, 7)}`, head: target, newer, action: actionFor(pin) };
-    if (newer.length === 0) return { ...row, status: 'unchanged', pinned: label, current: pin.ref.tag };
-    return { ...row, status: 'moved', pinned: label, current: newer[0], head: tags.get(newer[0]), newer, action: actionFor(pin) };
   } catch (e) {
     return { ...row, status: 'unreadable', pinned: label, detail: (e.stderr?.toString() || e.message).trim().split('\n')[0] };
   }
+  return narrowMove(moved, pin, compare);
 }
 
+const SHOWN_FILES = 8;
+
 export function lineFor(r) {
-  const head = `${r.status.padEnd(10)} ${r.upstream} [${r.relationship}]`;
+  const head = `${r.status.padEnd(15)} ${r.upstream} [${r.relationship}]`;
   if (r.status === 'unchanged') return `${head} at ${r.current}`;
-  if (r.status === 'moved') return `${head} pinned ${r.pinned}, current ${r.current}; ${r.action}`;
+  const link = r.compareUrl ? `; compare ${r.compareUrl}` : '';
+  if (r.status === 'moved-unwatched') return `${head} pinned ${r.pinned}, current ${r.current}; no watched path changed (${r.otherFiles} other file${r.otherFiles === 1 ? '' : 's'} did)${link}`;
+  if (r.status === 'moved') {
+    const why = r.changed ? `changed: ${r.changed.slice(0, SHOWN_FILES).join(' ')}${r.changed.length > SHOWN_FILES ? ` (+${r.changed.length - SHOWN_FILES} more)` : ''}` : `path check could not prove otherwise: ${r.pathCheckDetail}`;
+    return `${head} pinned ${r.pinned}, current ${r.current}; ${r.action}; ${why}${link}`;
+  }
   return `${head} pinned ${r.pinned}; ${r.detail}`;
 }
 
-function main() {
+/** The exit status, verdict, and tally for a set of rows; unreadable outranks moved, and moved-unwatched counts as neither. */
+export function summarize(rows) {
+  const count = (s) => rows.filter((r) => r.status === s).length;
+  const tally = `${count('moved')} moved, ${count('moved-unwatched')} moved outside watched paths, ${count('unchanged')} unchanged, ${count('unreadable')} unreadable, of ${rows.length}`;
+  if (count('unreadable') > 0) return { status: 3, verdict: 'some upstreams could not be read', tally };
+  if (count('moved') > 0) return { status: 1, verdict: 'some upstreams moved', tally };
+  if (count('moved-unwatched') > 0) return { status: 0, verdict: 'no watched path changed since a pin (some upstreams moved elsewhere)', tally };
+  return { status: 0, verdict: 'every upstream unchanged since its pin', tally };
+}
+
+async function main() {
   const report = { pins: null, status: null, verdict: null, rows: [] };
   let opts;
   const emit = (status, verdict, detail) => {
@@ -173,12 +273,11 @@ function main() {
   try { ({ pins } = loadPins(readFileSync(opts.pins, 'utf8'))); } catch (e) { emit(3, 'pins file unreadable', e.message); }
   if (opts.only) pins = pins.filter((p) => p.upstream.includes(opts.only));
   if (pins.length === 0) emit(3, 'no pin matches --only', opts.only);
-  report.rows = pins.map(checkPin);
-  const count = (s) => report.rows.filter((r) => r.status === s).length;
-  const tally = `${count('moved')} moved, ${count('unchanged')} unchanged, ${count('unreadable')} unreadable, of ${report.rows.length}`;
-  if (count('unreadable') > 0) emit(3, 'some upstreams could not be read', tally);
-  if (count('moved') > 0) emit(1, 'some upstreams moved', tally);
-  emit(0, 'every upstream unchanged since its pin', tally);
+  // One row at a time: each moved row makes a compare call, and the walk is small.
+  for (const p of pins) report.rows.push(await checkPin(p));
+  const { status, verdict, tally } = summarize(report.rows);
+  emit(status, verdict, tally);
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main();
+// An uncaught rejection would exit 1, which this checker reserves for "a row moved".
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main().catch((e) => { process.stderr.write(`check-upstreams: ${e.stack || e}\n`); process.exit(3); });

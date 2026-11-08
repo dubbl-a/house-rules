@@ -25,8 +25,17 @@ version pins that tag. `npm run check:upstreams` walks the pins and prints one
 verdict per row (exit 0 unchanged, 1 a row moved, 3 a remote or the pins file
 could not be read), and `.github/workflows/upstream-watch.yml` runs it weekly
 beside `npm run check:kit`, keeping one `upstream-update` issue whose table lists
-every moved row, updated in place and closed only by the maintainer. A branch pin moves on any commit to that branch, so a move is a
-prompt to look, not proof the taken paths changed. Two REUSE or BORROW rows have
+every moved row, updated in place and closed only by the maintainer. A branch pin
+moves on any commit to that branch, so the checker then asks the GitHub compare
+API which files changed between the pin and the new head. A row counts as moved
+only when one of its watched `paths` changed (a directory path matches by whole
+segment, so `a/b` never matches `a/bc`); the report and the issue list those
+files and a compare URL. A row that moved only outside its watched paths is the
+quiet verdict `moved-unwatched`: printed locally, not counted as moved, not in the
+issue, exit 0. Whatever stops the checker proving that stays `moved`: an API error
+or rate limit, a pin the new head does not fast-forward from (a force-push), a
+file list at GitHub's 300-file cap or empty, a remote that is not github.com, or
+a row with no paths. Two REUSE or BORROW rows have
 no pin, and the pins file lists them with the reason: the evals article is a web
 page with no git remote, and the deep-research fork is read from the installed
 Claude Code binary, which its own checker watches after each upgrade. Rows with

@@ -85,6 +85,10 @@ jobs:
       - name: Run the pinned-upstreams check
         id: pins
         if: ${{ !cancelled() }}
+        # The token lifts the compare API's unauthenticated rate limit (60 an
+        # hour); the script sends it to api.github.com only.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
           node scripts/check-upstreams.mjs --json > upstreams.json
@@ -114,15 +118,30 @@ jobs:
           const PREFIX = 'Upstreams moved past their pins: ';
           const title = `${PREFIX}${moved.length} row(s)`;
           const cell = (s) => String(s).replace(/\|/g, '\\|');
-          const body = [
-            'These REUSE and BORROW rows moved past their pins in `scripts/upstream-pins.json`. Nothing is merged for you: take what is worth taking in a normal PR, then move the pin\'s sha (and tag) and the ledger row\'s Consulted date together.',
+          // Upstream file names are data: a code span keeps markup and @mentions inert, and a backtick or newline in a name is flattened so it cannot close the span.
+          const code = (s) => `\`${String(s).replace(/[`\r\n]/g, "'")}\``;
+          const SHOWN = 25;
+          const detail = (r) => [
+            `**${cell(r.upstream)}**${r.compareUrl ? ` ([compare](${r.compareUrl}))` : ''}`,
+            ...(r.changed
+              ? [...r.changed.slice(0, SHOWN).map((f) => `- ${code(f)}`), ...(r.changed.length > SHOWN ? [`- and ${r.changed.length - SHOWN} more, see the compare`] : [])]
+              : [`- no changed-file list: ${cell(r.pathCheckDetail ?? 'path check did not run')}. Treat it as moved and read the compare.`]),
+          ].join('\n');
+          let body = [
+            'These REUSE and BORROW rows moved past their pins in `scripts/upstream-pins.json`, and a watched path changed (or the checker could not prove none did). A row that moved only outside its watched paths is left out. Nothing is merged for you: take what is worth taking in a normal PR, then move the pin\'s sha (and tag) and the ledger row\'s Consulted date together.',
             '',
             '| Upstream | Relationship | Pinned | Current | What to do |',
             '| --- | --- | --- | --- | --- |',
             ...moved.map((r) => `| ${cell(r.upstream)} | ${r.relationship} | ${cell(r.pinned)} | ${cell(r.current)} | ${cell(r.action)} |`),
             '',
+            '### Changed files in the watched paths',
+            '',
+            moved.map(detail).join('\n\n'),
+            '',
             'Run `npm run check:upstreams` locally for the same verdicts, or `--only=<upstream>` for one row.',
           ].join('\n');
+          // An issue body holds 65536 characters; cut the file lists, never the table, if a busy week overruns it.
+          if (body.length > 60000) body = `${body.slice(0, 60000)}\n\n(list cut to fit the issue body limit; run the checker locally)`;
           writeFileSync('issue-body.md', `${body}\n`);
           const open = JSON.parse(gh(['issue', 'list', '--state', 'open', '--label', 'upstream-update', '--limit', '200', '--json', 'number,title,body']));
           const existing = open.find((i) => i.title.startsWith(PREFIX));
