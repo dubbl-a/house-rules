@@ -4921,6 +4921,11 @@ function parseArgs(argv) {
   return out;
 }
 
+function cmdCost(args) {
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'cost-report.mjs'), ...args], { stdio: 'inherit' });
+  process.exit(r.status === null ? 1 : r.status);
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
@@ -4929,9 +4934,11 @@ function main() {
   if (cmd === 'check') { cmdCheck(rest); return; }
   // upgrade parses its own argv strictly: it writes, so a stray flag must not be ignored.
   if (cmd === 'upgrade') return cmdUpgrade(rest);
+  // cost forwards to cost-report.mjs, which parses its own argv strictly.
+  if (cmd === 'cost') return cmdCost(rest);
 
   if (!['init', 'render', 'enable', 'disable', 'uninstall', 'confirm', 'decline', 'defer', 'doctor', 'changes', 'hook'].includes(cmd)) {
-    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house defer <module> <step-id> --why "<reason>" --until <YYYY-MM-DD> [--ref <url>] [--repo <path>]\n       house changes <from> [<to>]\n       house upgrade [<tag>] [--apply] [--pin] [--allow-downgrade] [--repo <path>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
+    console.error('usage: house <init|render|check|doctor> [--repo <path>] [--apply] [--force-managed <path>] [--scaffold] [--json]\n       house enable <module...> [--repo <path>] [--apply]\n       house disable <module...> [--repo <path>] [--apply] [--why "<reason>"]\n       house uninstall [--repo <path>] [--apply] [--keep-config | --discard-untracked-config]\n       house confirm <module> <step-id> [--repo <path>]\n       house decline <module> <step-id> --why "<reason>" [--repo <path>]\n       house defer <module> <step-id> --why "<reason>" --until <YYYY-MM-DD> [--ref <url>] [--repo <path>]\n       house changes <from> [<to>]\n       house cost [<cost-report args>]\n       house upgrade [<tag>] [--apply] [--pin] [--allow-downgrade] [--repo <path>]\n       house hook add <file> [--name NN-name] [--stage pre-commit|pre-push] [--repo <path>]');
     process.exit(2);
   }
 

@@ -61,7 +61,7 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   standard, deep; `args.efforts` overrides the per-stage effort); Workflow runs only a script
   the session can already read. If the fork is missing or drifted, first run `check-deep-research-upstream.mjs
   --install` (`scripts/house/`, else the plugin's claude-code module files). Before launch, ask the verify
-  setting with the depth, each with its agent count: all claims (`budget.maxVerifyClaims: 500`) or a cap.
+  setting with the depth, each with its agent count and the estimate from `house cost --workflow-estimate <agents>`, which never changes the depth or verify recommendation: all claims (`budget.maxVerifyClaims: 500`) or a cap.
   After, `unverified` is empty and `stats.claimsExtracted` = `claimsVerified` (early return with `claims` above 0: `claims` = `verified`).
 - Subagents report back and never spawn subagents. Roster agents cannot; any other, forks and
   built-in general-purpose included, can by default, so its brief forbids it under DO NOT.
@@ -79,7 +79,7 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
   a brief's STOP asks it to stop or hand over any background job it started before it reports.
 - A subagent with worktree isolation writes inside its own worktree, gitignored paths included; a
   brief names a destination there and the session moves the artifact afterwards.
-- Workflows run only when the user asks; when they do, name the agent count, and treat the
+- Workflows run only when the user asks; when they do, name the agent count and state the same estimate, and treat the
   harness's workflow size guideline as advice to stay under rather than a target.
 
 ## Briefs
