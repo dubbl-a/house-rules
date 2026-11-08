@@ -1,0 +1,171 @@
+# Merges Dependabot pull requests that only bump GitHub Actions in the four
+# adopters, once every check on them passes (#199). A person still reads
+# everything else: major bumps, npm updates, and any PR a human touched.
+#
+# The eligibility rules live in scripts/dependabot-actions-merge.mjs, which
+# prints `merge <sha>` or `skip: <reason>` for one PR; this file only gathers
+# the inputs and acts on the answer. A PR merges only when Dependabot opened it,
+# every changed file is under .github/workflows/, every commit is Dependabot's,
+# every bump is minor or patch, GitHub reports the PR CLEAN and MERGEABLE, and
+# every workflow run at the head commit is green. Anything unreadable skips.
+#
+# Report-only by default. Set the repository variable DEPENDABOT_MERGE_LIVE to
+# true to merge (gh variable set DEPENDABOT_MERGE_LIVE --body true -R
+# dubbl-a/house-rules); any other value prints each PR with its decision and
+# merges nothing. Every run writes the decisions to the job summary.
+#
+# Not gated:
+# - The change itself is not read. A minor or patch Dependabot bump of an
+#   action is trusted by decision (#199); release notes and the action's code
+#   are not looked at, and a bump to a compromised release would merge.
+# - A required human review is whatever the adopter's branch protection says.
+#   CLEAN covers it; this job adds no review of its own.
+# - Runs are read once, at the head commit. A check that registers after the
+#   read is not seen; the head-pinned merge and CLEAN narrow that window, they
+#   do not close it.
+# - Only the four repos in the matrix are covered. A new adopter is not picked
+#   up until it is added here (and to release.yml's sync matrix).
+# - Dependabot PRs for npm or any non-workflow file are skipped, by design.
+#
+# Untested: merging a PR that changes workflow files may need the Workflows
+# permission on ADOPTER_SYNC_TOKEN, which a token set up for the sync (Contents,
+# Pull requests, Actions) may not have. Until a live run has merged one, a
+# refusal shows up as a failed merge in the summary and a red leg.
+name: dependabot-actions-merge
+on:
+  schedule:
+    # Tuesday, the day after Dependabot's weekly run; offset off the top of
+    # the hour to dodge the cron stampede (see pr-checks.yml's header note).
+    - cron: '41 7 * * 2'
+  workflow_dispatch:
+# Read-only by default. The merges go through ADOPTER_SYNC_TOKEN, never this
+# repo's GITHUB_TOKEN, which has no reach into the adopters.
+permissions:
+  contents: read
+concurrency:
+  group: dependabot-actions-merge
+  cancel-in-progress: false
+jobs:
+  merge:
+    # Only main's copy of the script may hold the adopter token.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        # Mirrors release.yml's sync matrix (minus the protect column); change
+        # both together.
+        include:
+          - { repo: aaron-gtm, branch: master }
+          - { repo: aaron-personal, branch: main }
+          - { repo: torrance-watch, branch: master }
+          - { repo: sb-takeover, branch: master }
+    env:
+      REPO: dubbl-a/${{ matrix.repo }}
+      BASE: ${{ matrix.branch }}
+      LIVE: ${{ vars.DEPENDABOT_MERGE_LIVE }}
+    steps:
+      - name: Check for the sync token
+        env:
+          TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::ADOPTER_SYNC_TOKEN is not set; ${REPO} not checked"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc }
+      # Each PR is judged alone: a PR that cannot be read or merged is counted
+      # and the loop goes on, so one bad PR does not hide the rest. The leg
+      # fails at the end if any PR could not be read or merged. A skip is not a
+      # failure. Only the reasons the script prints reach the log and summary,
+      # never PR text, so a title cannot inject a workflow command.
+      - name: Judge and merge the Dependabot actions PRs
+        env:
+          GH_TOKEN: ${{ secrets.ADOPTER_SYNC_TOKEN }}
+        run: |
+          if [ "$LIVE" = true ]; then MODE=live; else MODE=report-only; fi
+          echo "${REPO}: ${MODE}"
+          {
+            echo "### ${REPO} (${MODE})"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          if ! NUMBERS=$(gh pr list --repo "$REPO" --base "$BASE" --author app/dependabot --state open --limit 100 --json number --jq '.[].number'); then
+            echo "::error::${REPO}: could not list the Dependabot pull requests"
+            echo "- could not list the Dependabot pull requests" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ -z "$NUMBERS" ]; then
+            echo "no open Dependabot pull requests"
+            echo "- no open Dependabot pull requests" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          FAILED=0
+          for N in $NUMBERS; do
+            case "$N" in ''|*[!0-9]*) continue ;; esac
+            URL="https://github.com/${REPO}/pull/${N}"
+            PR_FILE="$RUNNER_TEMP/pr-${N}.json"
+            RUNS_FILE="$RUNNER_TEMP/runs-${N}.json"
+            if ! gh pr view "$N" --repo "$REPO" --json author,files,commits,title,body,mergeStateStatus,mergeable,headRefOid > "$PR_FILE"; then
+              echo "#${N}: could not read the pull request"
+              echo "- ${URL}: could not read the pull request" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+              continue
+            fi
+            SHA=$(jq -r '.headRefOid // empty' "$PR_FILE")
+            if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "#${N}: skip: head commit unreadable"
+              echo "- ${URL}: skip: head commit unreadable" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+              continue
+            fi
+            if ! gh api "repos/${REPO}/actions/runs?head_sha=${SHA}&per_page=100" > "$RUNS_FILE"; then
+              echo "#${N}: could not read the workflow runs"
+              echo "- ${URL}: could not read the workflow runs" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+              continue
+            fi
+            # A non-zero exit is a crash or unreadable input, not a decision: the
+            # PR is skipped and the leg fails, so a broken script is not green.
+            if DECISION=$(node scripts/dependabot-actions-merge.mjs "$PR_FILE" "$RUNS_FILE"); then RC=0; else RC=$?; fi
+            if [ "$RC" -ne 0 ]; then
+              echo "#${N}: skip: the eligibility script failed (exit ${RC})"
+              echo "- ${URL}: skip: the eligibility script failed (exit ${RC})" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+              continue
+            fi
+            case "$DECISION" in
+              "merge ${SHA}") ;;
+              skip:*)
+                echo "#${N}: ${DECISION}"
+                echo "- ${URL}: ${DECISION}" >> "$GITHUB_STEP_SUMMARY"
+                continue ;;
+              *)
+                echo "#${N}: skip: unrecognised answer from the eligibility script"
+                echo "- ${URL}: skip: unrecognised answer from the eligibility script" >> "$GITHUB_STEP_SUMMARY"
+                FAILED=1
+                continue ;;
+            esac
+            if [ "$MODE" != live ]; then
+              echo "#${N}: would merge at ${SHA} (report-only)"
+              echo "- ${URL}: would merge at \`${SHA}\` (report-only)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            # The head judged green is the only head that may merge.
+            if gh pr merge "$N" --repo "$REPO" --squash --delete-branch --match-head-commit "$SHA"; then
+              echo "#${N}: merged at ${SHA}"
+              echo "- ${URL}: merged at \`${SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::${REPO}#${N}: the merge failed"
+              echo "- ${URL}: **merge failed** (left open)" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::${REPO}: at least one pull request could not be read or merged; see the summary"
+            exit 1
+          fi
