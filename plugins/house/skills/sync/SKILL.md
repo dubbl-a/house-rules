@@ -34,7 +34,13 @@ First, is this session running an old copy? Claude Code keeps one directory per 
 ls "$(dirname "${CLAUDE_PLUGIN_ROOT}")" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 ```
 
-The `grep` drops any entry that is not a plain `X.Y.Z` directory name, and `sort -V` compares numerically, so `0.22.10` sorts above `0.22.9` (a plain `sort` would not). If the loaded version is older than that newest one, stop here: tell the user the plugin was updated but this session still runs the old copy, and to run `/reload-plugins` or restart Claude Code before running `/house-rules:sync` again. Do not create a worktree or run render.
+The `grep` drops any entry that is not a plain `X.Y.Z` directory name, and `sort -V` compares numerically, so `0.22.10` sorts above `0.22.9` (a plain `sort` would not). If the loaded version is older than that newest one, stop here: tell the user the plugin was updated but this session still runs the old copy, and offer three ways forward:
+
+- Run `/reload-plugins`, then run `/house-rules:sync` again.
+- Restart Claude Code, then run `/house-rules:sync` again.
+- Continue now with the newer copy: run every later CLI command in this skill by the full path of the newest cached version's script, `"$(dirname "${CLAUDE_PLUGIN_ROOT}")/<newest version>/scripts/house"`, in place of `${CLAUDE_PLUGIN_ROOT}/scripts/house`. Say plainly that until a reload or restart the session's hooks and skills (including this skill's text) still come from the old copy; only the CLI commands run the new one.
+
+Do not create a worktree or run render until the user picks one.
 
 Otherwise run the doctor (the same command as step 7) and read two of its lines now:
 
@@ -51,7 +57,13 @@ Read `house.json` at the repo root. Missing `house.json` means this repo was nev
 
 Note three values now, before any render: `version` (call it vOLD; `render --apply` overwrites it with the loaded plugin's version, vNEW, so it cannot be read afterwards), `defaultBranch`, and `branchPolicy`.
 
-With `branchPolicy` `pr`, do not write in the main checkout: the default branch is protected, and the PR is step 7b. Create the worktree now and run every later step with `--repo <worktree>`:
+With `branchPolicy` `pr`, do not write in the main checkout: the default branch is protected, and the PR is step 7b. First check whether there is anything to sync, so a no-op run leaves no branch behind. Run the dry run (no `--apply`, which writes nothing) against the main checkout:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/scripts/house render --repo <path>
+```
+
+If every file plans `unchanged` and the pin in `house.json` matches the loaded plugin's version, report "nothing to sync" and stop: create no branch and no worktree. Otherwise create the worktree now and run every later step with `--repo <worktree>`:
 
 ```
 git fetch origin

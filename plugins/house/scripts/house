@@ -4056,10 +4056,15 @@ async function fetchReleaseList() {
   // never send the token off this machine.
   const loopback = (() => { try { return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(override).hostname); } catch { return false; } })();
   const mayAuth = token && (!override || (process.env.HOUSE_RELEASES_SEND_TOKEN === '1' && loopback));
-  const get = (withToken) => {
+  const get = async (withToken) => {
     const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'house-doctor' };
     if (withToken) headers.Authorization = `Bearer ${token}`;
-    return fetch(override || RELEASES_URL, { headers, signal: AbortSignal.timeout(RELEASES_TIMEOUT_MS) });
+    const attempt = () => fetch(override || RELEASES_URL, { headers, signal: AbortSignal.timeout(RELEASES_TIMEOUT_MS) });
+    // #499: a slow first response is common; retry once, on a timeout only.
+    try { return await attempt(); } catch (e) {
+      if (e && e.name === 'TimeoutError') return attempt();
+      throw e;
+    }
   };
   let res = await get(Boolean(mayAuth));
   // A stale or wrong token makes a public read fail; the list needs no auth.
