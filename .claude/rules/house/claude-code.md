@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.4 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=5fa6a0a5eb6659f4ff3db22abe8da638a31acb6b18a5d3dc7bee622317d36015 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.4 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=d22b8a104e46eff4722de6d5a045f9943dfad620a0d8c78740f69a52832b3ee1 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -13,7 +13,7 @@ What belongs in the root file, what belongs in a scoped rule, what belongs in a 
 
 Ask of every line whether removing it would cause a mistake, and cut the line when the answer is no.
 A file layout, a dependency list, or generic craft advice is derivable from the code; a non-guessable command, a differing convention, and an environment quirk are not.
-Open the file by naming what to read first and which file wins a conflict, and send personal working preferences and collaboration feedback to auto memory, but an operational fact (credential and scope, schedule, ID, decision, process, system behaviour) to its repo home by PR, so the file holds rules only.
+Open the file by naming what to read first and which file wins a conflict, and send personal working preferences and collaboration feedback to auto memory, but an operational fact (credential and scope, schedule, ID, decision, process, system behaviour) to its repo home by PR unless it cannot be committed (see the handoff section), so the file holds rules only.
 The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file.
 Anchor: `node .house/check.mjs --only=lengths` warns, without failing, when the root file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such entry; a glob entry that matches the root file fails it on lines or bytes, and so does listing the root file in `ratchet`.
 Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-without-it-in-the-root-file`

@@ -7,7 +7,7 @@ What belongs in the root file, what belongs in a scoped rule, what belongs in a 
 
 Ask of every line whether removing it would cause a mistake, and cut the line when the answer is no.
 A file layout, a dependency list, or generic craft advice is derivable from the code; a non-guessable command, a differing convention, and an environment quirk are not.
-Open the file by naming what to read first and which file wins a conflict, and send personal working preferences and collaboration feedback to auto memory, but an operational fact (credential and scope, schedule, ID, decision, process, system behaviour) to its repo home by PR, so the file holds rules only.
+Open the file by naming what to read first and which file wins a conflict, and send personal working preferences and collaboration feedback to auto memory, but an operational fact (credential and scope, schedule, ID, decision, process, system behaviour) to its repo home by PR unless it cannot be committed (see the handoff section), so the file holds rules only.
 The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file.
 Anchor: `node .house/check.mjs --only=lengths` warns, without failing, when the root file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such entry; a glob entry that matches the root file fails it on lines or bytes, and so does listing the root file in `ratchet`.
 Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-without-it-in-the-root-file`

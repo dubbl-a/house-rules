@@ -94,8 +94,8 @@ An issue exists for work someone will do; a next-cycle item that never becomes o
 prose that the next session has to trust instead of a tracker it can act on.
 
 When the repo's CLAUDE.md names another tracker (Linear, Jira), search and file there with its
-tool, and post the status update there too. If no tool for it is connected, print the items for
-the person to file by hand.
+tool, and add a one-line status to each item's ticket there; the snapshot itself is still not
+filed. If no tool for it is connected, print the items for the person to file by hand.
 
 ## Keep uncommittable detail in one live file
 
@@ -104,8 +104,8 @@ Do this only when the handoff carries detail that cannot go in an issue, a track
 only the uncommittable detail stays in the file.
 
 1. Pick the gitignored directory the repo uses for handoffs, and run
-   `git check-ignore <dir>` to confirm it is ignored. If it is not, stop and say so; do not
-   write the detail anywhere else.
+   `git check-ignore <dir>/<work>/CURRENT.md` to confirm the file will be ignored (the path need
+   not exist yet). If it is not, stop and say so; do not write the detail anywhere else.
 2. The live file is `<dir>/<work>/CURRENT.md`, one per workstream. If one exists, move it to
    `<dir>/<work>/archive/`, renamed by date, before writing the new one.
 3. The snapshot and the next session's start prompt name that `CURRENT.md`.
@@ -143,7 +143,8 @@ Skip this step once no such issue remains.
 Open with the staleness disclaimer, verbatim in spirit: "Verify anything here before relying on
 it, this is a snapshot and the repo moves." Then, in order: tree state, shipped PRs, headline
 finding, next-cycle list with each item's issue number, deferred-by-decision items with where
-each is recorded. Print this in the reply; it is never filed.
+each is recorded, and the path of any live `CURRENT.md`. Print this in the reply; it is never
+filed.
 
 ## Escape hatches
 
