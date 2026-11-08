@@ -1300,6 +1300,16 @@ function planSettings(repoRoot, want, wantRule, moduleWarnings, strict = false, 
   if (!existsSync(abs)) {
     if (!want && !wantRule) return null;
     if (escape) { if (want) hookWarn(`is ${escape}`); if (wantRule) ruleWarn(`is ${escape}`); return null; }
+    // Creating the file needs the nearest existing directory above it writable.
+    let parent = path.dirname(abs);
+    while (parent !== repoRoot && !existsSync(parent)) parent = path.dirname(parent);
+    try { accessSync(parent, fsConstants.W_OK | fsConstants.X_OK); } catch {
+      const rel = path.relative(repoRoot, parent) || '.';
+      const how = `make the directory writable (\`chmod u+w ${rel}\`), then \`house render --apply\``;
+      if (want) hookWarn(`cannot be written (${rel} is not writable)`, how);
+      if (wantRule) ruleWarn(`cannot be written (${rel} is not writable)`, how);
+      return null;
+    }
     const created = {};
     if (wantRule) created.permissions = { ask: [ASK_RULE] };
     if (want) created.hooks = { SessionStart: [{ hooks: [{ type: 'command', command: ARM_COMMAND, timeout: 10 }] }] };
@@ -1317,7 +1327,8 @@ function planSettings(repoRoot, want, wantRule, moduleWarnings, strict = false, 
   try { raw = readFileSync(abs, 'utf8'); } catch {
     const how = 'make it readable (`chmod u+rw .claude/settings.json`), then `house render --apply`';
     if (want || (want !== null && strict)) hookWarn('cannot be read', how);
-    if (wantRule) ruleWarn('cannot be read', how);
+    // Unread, the rule may be there, so removal is noted too; render would add it back.
+    if (wantRule !== null) ruleWarn('cannot be read', wantRule ? how : `make it readable (\`chmod u+rw ${SETTINGS_JSON}\`) and remove ${JSON.stringify(ASK_RULE)} from the "permissions"."ask" array by hand`);
     return null;
   }
   let j;
@@ -3342,9 +3353,12 @@ function cmdDisable(args) {
   for (const p of planChanges(repoRoot, after.plan)) console.log(`${(STATUS_LABEL[p.status] || p.status).padEnd(15)} ${p.target.path}  (module: ${p.target.module})`);
   if (after.blockRemoval) console.log(`${(after.blockRemoval.status === 'refuse' ? 'REFUSE' : 'remove-block').padEnd(15)} ${after.blockRemoval.path}`);
   // The render --apply below edits the committed settings too (ADR 0019, #163).
-  const settingsWarnings = [];
-  printSettingsPlan(planSettings(repoRoot, wantsArmEntry(proposed, modules, after.plan, settingsWarnings), true, settingsWarnings));
-  for (const w of settingsWarnings) console.log(`warning: ${w}`);
+  // Under --apply that render prints these same lines itself, so only a dry run does.
+  if (!args.apply) {
+    const settingsWarnings = [];
+    printSettingsPlan(planSettings(repoRoot, wantsArmEntry(proposed, modules, after.plan, settingsWarnings), true, settingsWarnings));
+    for (const w of settingsWarnings) console.log(`warning: ${w}`);
+  }
   const left = new Set();
   for (const s of SCAFFOLDS) {
     if (!toDisable.includes(s.module)) continue;
