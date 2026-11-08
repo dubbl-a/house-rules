@@ -19,6 +19,16 @@ and names `CLAUDE.md` as the tiebreaker: "It wins over anything here" (`.claude/
 323 lines). That is the practice this heading generalizes: name what to read first, name which
 file wins a conflict, and leave the rest to auto-memory.
 
+Added from an adopter, dated 2026-10-25 (#487): following "leave learnings to auto-memory" put
+operational facts in memory over two weeks (credential scopes and their grant dates, approved
+write carve-outs, decisions with alternatives, process facts). An audit of 43 entries sorted
+them as 13 personal, 15 already in the repo, 11 memory-only operational facts, 2 stale, and 2
+in flight. Anthropic's memory page says auto memory is machine-local ("Files are not shared
+across machines or cloud environments") and that a project CLAUDE.md is "Team-shared
+instructions for the project", so the rule now sends personal preferences and collaboration
+feedback to memory and every operational fact to its repo home by PR
+(https://code.claude.com/docs/en/memory, checked 2026-10-25).
+
 Anthropic's own best-practices guidance states the litmus test directly, and four of its clauses
 map straight onto this heading: for every line, ask whether removing it would cause a mistake and
 cut it if the answer is no; exclude anything derivable from the code (file layouts, dependency
@@ -1097,6 +1107,17 @@ cannot reconstruct on its own.
 Native floor, as of 2026-09-02: auto memory, the harness's own store for ongoing work, which is
 machine-local, shared by one repository's worktrees on one machine and by no other machine,
 cloud session, or subagent (https://code.claude.com/docs/en/memory, re-read 2026-10-21).
+The docs still said the main conversation's auto memory "isn't loaded into subagents" (a fork
+excepted), but #342 observed it in 77 of 78 plugin `house-rules:researcher` runs on Claude Code
+2.1.305, so the rule claims only that the docs promise it to no other subagent.
+
+Added from an adopter, dated 2026-10-25 (#488): a repo whose handoff carried workflow IDs, test
+record IDs, and rollback snapshot paths, none of which can go in an issue, a tracker, or a
+commit, so none is re-derivable from main. Sessions wrote dated handoff files to a gitignored
+folder that reached 19 files across 3 workstreams, 8 for one workstream where only the newest
+counted. The repo's fix, which the handoff skill now documents: one live `CURRENT.md` per
+workstream, older ones in `archive/` renamed by date, the start prompt always naming it, and
+status and decisions still going to the tracker or spec.
 
 Reversed, dated 2026-09-21: this package's own chain (#2 through #75) is the negative case now.
 It ran the corrected form above for months and still left one issue permanently open at any

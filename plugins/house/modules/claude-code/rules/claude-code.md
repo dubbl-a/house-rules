@@ -7,7 +7,7 @@ What belongs in the root file, what belongs in a scoped rule, what belongs in a 
 
 Ask of every line whether removing it would cause a mistake, and cut the line when the answer is no.
 A file layout, a dependency list, or generic craft advice is derivable from the code; a non-guessable command, a differing convention, and an environment quirk are not.
-Open the file by naming what to read first and which file wins a conflict, and leave learnings to auto-memory so the file holds rules only.
+Open the file by naming what to read first and which file wins a conflict, and send personal working preferences and collaboration feedback to auto memory, but an operational fact (credential and scope, schedule, ID, decision, process, system behaviour) to its repo home by PR unless it cannot be committed (see the handoff section), so the file holds rules only.
 The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file.
 Anchor: `node .house/check.mjs --only=lengths` warns, without failing, when the root file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such entry; a glob entry that matches the root file fails it on lines or bytes, and so does listing the root file in `ratchet`.
 Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-without-it-in-the-root-file`
@@ -162,9 +162,9 @@ Receipts: `docs/handbook/claude-code.md#read-a-resume-file-as-a-harness-artifact
 ## Hand off through the repo, not a standing issue
 
 Open an issue only for work someone will do; a standing issue with nothing to act on is noise in the tracker, not a handoff.
-Auto memory is the harness's own place for ongoing work, but it is machine-local and never reaches another machine, a cloud session, or any subagent but a fork, so it cannot be the channel the next session reads.
+Auto memory is the harness's own place for ongoing work, but it is machine-local and never reaches another machine or a cloud session, and the docs promise it to no subagent but a fork (plugin subagents were observed getting it anyway), so it cannot be the channel the next session reads.
 Turn each next-cycle item into its own issue, after checking that an open one does not already cover it, so the tracker stays a list of work, not snapshots.
-Record a thing deferred by decision, with its reason, where the decision already lives (the CHANGELOG, a decision record, a code comment), and file an issue closed as not planned only when no such place exists; the rest is re-derivable from the default branch and merged PRs.
+Record a thing deferred by decision, with its reason, where the decision already lives (the CHANGELOG, a decision record, a code comment), and file an issue closed as not planned only when no such place exists; the rest is re-derivable from the default branch and merged PRs, except detail that cannot be committed or tracked (record IDs, rollback snapshot paths), which the handoff skill keeps in one gitignored `CURRENT.md` per workstream.
 Print the handoff's snapshot in the session rather than filing it anywhere. Gate verdicts and counts are re-run from the recorded commit, never copied in, since a copied number goes stale and a re-run one cannot be fabricated.
 State measurements in a hand-off with their sample and run count, label estimates, put your own interpretations in a section marked unverified, and link the prior research, so the next session tests the mechanism an issue names against saved evidence before building from it.
 Anchor: the `/house-rules:handoff` skill, whose required sections are that shape.
