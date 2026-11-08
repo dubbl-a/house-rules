@@ -74,24 +74,44 @@ function parseVersion(s) {
 // Every "from A to B" statement Dependabot writes: the title of a single bump,
 // the first body line of a single bump, and the table row and "Updates" line
 // per package of a grouped one. Release notes sit in HTML lines and never
-// start these ways.
+// start these ways. A statement is [from, to, package]; the title's has no
+// package, since a single bump's title is repeated by its body line.
 function bumpStatements(pr) {
   const out = [];
   const t = / from (\S+) to (\S+)/.exec(pr.title);
-  if (t) out.push([t[1], t[2]]);
+  if (t) out.push([t[1], t[2], null]);
   for (const line of pr.body.split(/\r?\n/)) {
-    let m = /^Bumps \[[^\]]*\]\([^)]*\) from (\S+) to (\S+?)\.?$/.exec(line);
-    if (!m) m = /^Updates `[^`]+` from (\S+) to (\S+)$/.exec(line);
-    if (!m) m = /^\| \[[^\]]*\]\([^)]*\) \| `([^`]+)` \| `([^`]+)` \|$/.exec(line);
-    if (m) out.push([m[1], m[2]]);
+    let m = /^Bumps \[([^\]]*)\]\([^)]*\) from (\S+) to (\S+?)\.?$/.exec(line);
+    if (m) {
+      out.push([m[2], m[3], m[1]]);
+      continue;
+    }
+    m = /^Updates `([^`]+)` from (\S+) to (\S+)$/.exec(line);
+    if (m) {
+      out.push([m[2], m[3], m[1]]);
+      continue;
+    }
+    // A table row, with or without the package link.
+    m = /^\| (?:\[([^\]]*)\]\([^)]*\)|([^|`]+?)) \| `([^`]+)` \| `([^`]+)` \|$/.exec(line);
+    if (m) out.push([m[3], m[4], m[1] ?? m[2]]);
   }
   return out;
 }
 
+// Dependabot cuts a long body and says so; what was cut may hold a major bump.
+const TRUNCATED = '_Description has been truncated_';
+
 function checkBump(pr) {
   if (typeof pr.title !== 'string' || typeof pr.body !== 'string') return 'title or body unreadable';
+  if (pr.body.includes(TRUNCATED)) return 'body is truncated, so not every bump is visible; left for a person';
   const stmts = bumpStatements(pr);
   if (stmts.length === 0) return 'no version bump found in the title or body';
+  // A grouped title says how many packages it bumps; every one must be parsed.
+  const n = /\bwith (\d+) updates?\b/.exec(pr.title);
+  if (n) {
+    const seen = new Set(stmts.map((s) => s[2]).filter((p) => p !== null));
+    if (seen.size < Number(n[1])) return 'fewer packages parsed than the title counts; left for a person';
+  }
   for (const [from, to] of stmts) {
     const a = parseVersion(from);
     const b = parseVersion(to);
@@ -118,7 +138,11 @@ function checkRuns(pr, runs) {
   if (typeof runs.total_count === 'number' && runs.total_count > runs.workflow_runs.length) return 'workflow run list may be cut short';
   if (runs.workflow_runs.some((r) => !isObj(r) || r.head_sha !== pr.headRefOid)) return 'a workflow run is for another commit';
   const state = classifyRuns(runs);
-  return state === 'green' ? null : `workflow runs at the head commit are ${state}`;
+  if (state !== 'green') return `workflow runs at the head commit are ${state}`;
+  // classifyRuns counts skipped and neutral as passing, so a head whose runs
+  // were all skipped would read green with nothing having run.
+  if (!runs.workflow_runs.some((r) => r.conclusion === 'success')) return 'no workflow run succeeded at the head commit';
+  return null;
 }
 
 const RULES = [

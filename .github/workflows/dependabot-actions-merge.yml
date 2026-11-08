@@ -120,6 +120,7 @@ jobs:
             if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
               echo "#${N}: skip: head commit unreadable"
               echo "- ${URL}: skip: head commit unreadable" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
               continue
             fi
             if ! gh api "repos/${REPO}/actions/runs?head_sha=${SHA}&per_page=100" > "$RUNS_FILE"; then
@@ -128,7 +129,15 @@ jobs:
               FAILED=1
               continue
             fi
-            DECISION=$(node scripts/dependabot-actions-merge.mjs "$PR_FILE" "$RUNS_FILE" || true)
+            # A non-zero exit is a crash or unreadable input, not a decision: the
+            # PR is skipped and the leg fails, so a broken script is not green.
+            if DECISION=$(node scripts/dependabot-actions-merge.mjs "$PR_FILE" "$RUNS_FILE"); then RC=0; else RC=$?; fi
+            if [ "$RC" -ne 0 ]; then
+              echo "#${N}: skip: the eligibility script failed (exit ${RC})"
+              echo "- ${URL}: skip: the eligibility script failed (exit ${RC})" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=1
+              continue
+            fi
             case "$DECISION" in
               "merge ${SHA}") ;;
               skip:*)
@@ -138,6 +147,7 @@ jobs:
               *)
                 echo "#${N}: skip: unrecognised answer from the eligibility script"
                 echo "- ${URL}: skip: unrecognised answer from the eligibility script" >> "$GITHUB_STEP_SUMMARY"
+                FAILED=1
                 continue ;;
             esac
             if [ "$MODE" != live ]; then
