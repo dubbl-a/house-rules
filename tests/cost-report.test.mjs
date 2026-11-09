@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnCpuSync } from './spawn-cpu.mjs';
-import { advise } from '../plugins/house/scripts/cost-report.mjs';
+import { advise, patternRows, usageSummary, formatAdvice, scan } from '../plugins/house/scripts/cost-report.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'plugins/house/scripts/cost-report.mjs');
@@ -778,7 +778,131 @@ test('--advise names the environment as the limit source and reports no qualifyi
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Limit: \$50\.00 \(HOUSE_COST_ADVISOR_USD\)/);
   assert.match(r.stdout, /No pattern at or over the limit/);
-  assert.doesNotMatch(r.stdout, /context-over-200k/);
+  assert.doesNotMatch(r.stdout.slice(0, r.stdout.indexOf('Patterns below the limit')), /context-over-200k/, 'the row is below the limit, not over it');
+  assert.match(r.stdout, /Patterns below the limit[^]*context-over-200k: \$12\.00[^\n]*\(below the limit\)/);
+});
+
+// ---- cost advisor: always-on summary, below-limit patterns ----
+
+// $12 of context over 200k, plus a fast-mode premium of $0.40 that stays under a limit above it.
+function summaryFixture() {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(12), entry({ model: 'claude-opus-5-5', ts: ago(50), inTok: 100000, speed: 'fast' })]);
+  return d;
+}
+const section = (out, from, to) => out.slice(out.indexOf(from), to ? out.indexOf(to) : undefined);
+const emptyBaselines = { days: 30, account: { sessions: 0 }, projects: {} };
+
+test('patternRows lists every row above $0, and advise is that list cut at the limit', () => {
+  const all = patternRows(advisable()).map((r) => r.id);
+  assert.deepEqual(all, ['price-premiums', 'context-over-200k', 'avoidable-rebuilds', 'short-ttl-rebuilds']);
+  assert.deepEqual(advise(advisable(), 50).map((r) => r.id), ['price-premiums', 'context-over-200k'], 'a row exactly at the limit stays');
+  assert.deepEqual(advise(advisable(), 50.01).map((r) => r.id), ['price-premiums'], 'a row under the limit goes');
+  assert.deepEqual(advise(advisable(), 0).map((r) => r.id), all, 'a limit of 0 keeps every positive row');
+  assert.deepEqual(patternRows({ avoidableUsd: 'lots', premiums: { totalUsd: null }, shortTtl: {} }), [], 'a missing field is no row');
+  assert.deepEqual(patternRows({ avoidableUsd: 0, contextBands: bands(0, 0) }), [], 'a $0 row is never listed');
+  assert.deepEqual(patternRows(null), []);
+});
+
+test('--advise labels a pattern below the limit, and a row at the limit is not labelled below', () => {
+  const d = summaryFixture();
+  const out = advised(d, [], { HOUSE_COST_ADVISOR_USD: '12' }).stdout;
+  const over = section(out, 'Patterns at or over the limit', 'Patterns below the limit');
+  const below = section(out, 'Patterns below the limit', 'Baseline');
+  assert.match(over, /context-over-200k: \$12\.00/, 'the row exactly at the limit is over');
+  assert.doesNotMatch(over, /below the limit\)/);
+  assert.match(below, /price-premiums: \$0\.40[^\n]*\(below the limit\)/);
+  assert.match(below, /Next: Run \/fast/);
+  assert.doesNotMatch(below, /context-over-200k/);
+  const low = advised(d, [], { HOUSE_COST_ADVISOR_USD: '0.1' }).stdout;
+  assert.match(low, /price-premiums: \$0\.40/);
+  assert.doesNotMatch(low, /below the limit\)/, 'nothing is below a limit of 10 cents');
+  assert.doesNotMatch(low, /Patterns below the limit/);
+});
+
+test('--advise prints the usage summary when nothing crosses the limit, and the plain report does not', () => {
+  const d = summaryFixture();
+  const r = advised(d, [], { HOUSE_COST_ADVISOR_USD: '1000' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /No pattern at or over the limit/);
+  assert.match(r.stdout, /Recent usage/);
+  assert.match(r.stdout, /claude-opus-5-5: \$12\.80 main thread, \$0\.00 subagent \(100% of total\)/);
+  assert.match(r.stdout, /Main thread \$12\.80, subagents \$0\.00/);
+  assert.match(r.stdout, /500k and over: 1 \/ \$12\.00/);
+  assert.match(r.stdout, /Patterns below the limit/);
+  const plain = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' }).stdout;
+  assert.doesNotMatch(plain, /Recent usage/);
+});
+
+test('usageSummary: a missing or non-numeric field is left out, a real $0 is kept', () => {
+  const sparse = usageSummary({ totalUsd: 10, byModel: { 'claude-opus-5-5': { mainUsd: 4 }, bad: { mainUsd: 'x', subUsd: null } }, contextBands: { 'under 200k': { requests: 3 } }, byCause: {} });
+  assert.deepEqual(sparse.models.map((m) => m.model), ['claude-opus-5-5']);
+  assert.equal(sparse.models[0].subUsd, undefined);
+  assert.equal(sparse.models[0].share, undefined, 'no share without both halves');
+  assert.equal(sparse.mainUsd, 4, 'the main total is kept when every listed model has it');
+  for (const k of ['subUsd', 'bands', 'workflow', 'rebuilds']) assert.equal(sparse[k], undefined, k);
+  assert.deepEqual(usageSummary(null), {});
+  const causes = Object.fromEntries(['model switch', 'idle >1h', 'idle 5m-1h', 'no idle gap'].map((k) => [k, { count: 0, usd: 0 }]));
+  const full = usageSummary({ totalUsd: 10, byModel: { m: { mainUsd: 4, subUsd: 0 } }, workflowAgentsInWindow: { agents: 0, usd: 0 }, avoidableUsd: 0, avoidableCount: 0, byCause: causes, contextBands: bands(0, 0) });
+  near(full.models[0].share, 0.4);
+  assert.equal(full.subUsd, 0);
+  assert.deepEqual(full.workflow, { agents: 0, usd: 0 });
+  assert.equal(full.rebuilds.avoidableCount, 0);
+  const limit = { usd: 5, source: 'default' };
+  const text = formatAdvice({ totalUsd: 10, byModel: { 'claude-opus-5-5': { mainUsd: 4 } }, baselines: emptyBaselines }, 'since 7d', limit);
+  assert.match(text, /claude-opus-5-5: \$4\.00 main thread/);
+  assert.doesNotMatch(text, /\$0\.00/, 'a missing field is not shown as $0');
+  const zero = formatAdvice({ totalUsd: 4, byModel: { 'claude-opus-5-5': { mainUsd: 4, subUsd: 0 } }, baselines: emptyBaselines }, 'since 7d', limit);
+  assert.match(zero, /\$0\.00 subagent/, 'a real zero is shown');
+});
+
+test('scan counts workflow agents over the report window apart from the 30-day figure', async () => {
+  const d = tmp();
+  put(d, 'p/s/subagents/workflows/run/new.jsonl', [dollars(2)]);
+  put(d, 'p/s/subagents/workflows/run/old.jsonl', [dollars(5, { ts: ago(10 * 86400) })]);
+  const now = Date.now();
+  const r = await scan({ dir: d, sinceMs: now - 7 * 86400000, baselineSinceMs: now - 30 * 86400000 });
+  assert.equal(r.workflowAgents.agents, 2);
+  near(r.workflowAgents.usd, 7);
+  assert.equal(r.workflowAgentsInWindow.agents, 1);
+  near(r.workflowAgentsInWindow.usd, 2);
+  assert.equal((await scan({ dir: d, sinceMs: now - 7 * 86400000 })).workflowAgentsInWindow, undefined, 'asked for with baselines only, like workflowAgents');
+  assert.equal(stateOf(d).workflowAgentsInWindow, undefined, '--state output is unchanged');
+  const out = advised(d, ['--since', '7d']).stdout;
+  assert.match(out, /of which workflow agents \$2\.00, 1 agent\)/);
+  assert.doesNotMatch(out, /\$7\.00/);
+});
+
+test('--advise notes the two areas with no pattern row only when their dollars are above $0', () => {
+  const none = tmp();
+  put(none, 'p/s.jsonl', [dollars(2)]);
+  const quiet = advised(none).stdout;
+  assert.doesNotMatch(quiet, /workflow-estimate/);
+  assert.doesNotMatch(quiet, /subagents: /);
+  const both = tmp();
+  put(both, 'p/s.jsonl', [dollars(2)]);
+  put(both, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  put(both, 'p/s/subagents/workflows/run/a.jsonl', [dollars(1)]);
+  const out = advised(both).stdout;
+  assert.match(out, /workflows: [^\n]*--workflow-estimate <agents>[^\n]*before a launch[^\n]*recommends no setting/);
+  assert.match(out, /subagents: [^\n]*no fix that leaves the work unchanged is measured/);
+  const subOnly = tmp();
+  put(subOnly, 'p/s.jsonl', [dollars(2)]);
+  put(subOnly, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  const sub = advised(subOnly).stdout;
+  assert.match(sub, /subagents: /);
+  assert.doesNotMatch(sub, /workflow-estimate/, 'no workflow dollars, no workflow note');
+  const rows = advise({ ...advisable(), byModel: { m: { subUsd: 99 } }, workflowAgentsInWindow: { agents: 3, usd: 50 } }, 5);
+  assert.deepEqual(rows.map((r) => r.id), ['price-premiums', 'context-over-200k', 'avoidable-rebuilds', 'short-ttl-rebuilds'], 'advise never carries the notes');
+});
+
+test('--advise output suggests no cheaper model or lower effort', () => {
+  const words = /\b(cheaper|lower effort|less effort|smaller model|downgrade|switch to)\b/i;
+  const d = summaryFixture();
+  put(d, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  put(d, 'p/s/subagents/workflows/run/a.jsonl', [dollars(1)]);
+  for (const usd of ['0.1', '12', '1000']) assert.doesNotMatch(advised(d, [], { HOUSE_COST_ADVISOR_USD: usd }).stdout, words, `limit ${usd}`);
+  assert.match('try a cheaper model at lower effort', words, 'the pattern does match such advice');
 });
 
 function workflowAgents(d, n, usd) {

@@ -930,8 +930,8 @@ project directory, and `session-cost-line.mjs` (UserPromptSubmit) uses them: it 
 when main-thread cost reaches the larger of the limit and the p95, using the project's p95 at 20
 sessions and over, otherwise the account's at 20 and over, otherwise nothing. `research/token-cost/2026-11-08.md`
 holds the measurement behind p95: a flat $5 test fired in 45% of sessions on the maintainer machine, past
-$5 and over p95 in about 6%. `/house-rules:cost-advisor` runs `cost-report.mjs --advise` and explains
-the top row, and `house cost --workflow-estimate <agents>` prints a rough list-price estimate from
+$5 and over p95 in about 6%. `/house-rules:cost-advisor` runs `cost-report.mjs --advise`, which always prints the recent usage split and the patterns over and below the limit,
+and explains the largest areas, and `house cost --workflow-estimate <agents>` prints a rough list-price estimate from
 this account's past workflow agents, with no dollars below 50 past agents. Output tokens can be undercounted, and
 subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses
 (changelog, https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched

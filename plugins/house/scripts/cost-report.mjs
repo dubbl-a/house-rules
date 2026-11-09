@@ -245,6 +245,8 @@ export async function scan({ dir, sinceMs, project, baselineSinceMs } = {}) {
   if (baselineSinceMs !== undefined) {
     out.baselines = sessionBaselines(recs, baselineSinceMs);
     out.workflowAgents = workflowAgentCost(recs, baselineSinceMs);
+    // The same agents over the report window, for --advise; --workflow-estimate keeps the 30 days above.
+    out.workflowAgentsInWindow = workflowAgentCost(recs, sinceMs);
   }
   return out;
 }
@@ -268,13 +270,13 @@ const PREMIUM_NEXT = {
   'legacy models': 'Move pinned model IDs to the current version of the same tier.',
 };
 
-// The advice table: rows at or over the limit, largest first. Every row keeps
-// the work unchanged, so none suggests a cheaper model or a lower effort. A
-// field that is missing or not a number is no row, never a $0 row.
-export function advise(d, limitUsd) {
+// The pattern table: every row above $0, largest first. Every row keeps the
+// work unchanged, so none suggests a cheaper model or a lower effort. A field
+// that is missing or not a number is no row, never a $0 row.
+export function patternRows(d) {
   if (!d || typeof d !== 'object') return [];
   const rows = [];
-  const add = (id, usd, text, next) => { if (Number.isFinite(usd) && usd > 0 && usd >= limitUsd) rows.push({ id, usd, text, next }); };
+  const add = (id, usd, text, next) => { if (Number.isFinite(usd) && usd > 0) rows.push({ id, usd, text, next }); };
   const bands = d.contextBands || {};
   const over = [bands['200k-500k'], bands['500k and over']].map((b) => b && b.usd);
   add('context-over-200k', over.every(Number.isFinite) ? over[0] + over[1] : NaN, 'main-thread turns over 200k context', NEXT_CLEAR);
@@ -289,6 +291,48 @@ export function advise(d, limitUsd) {
   add('short-ttl-rebuilds', ttl.usd, `idle rebuilds written to the 5-minute cache${Number.isFinite(ttl.count) ? ` (${ttl.count}, part of the rebuild total)` : ''}`,
     'Set promptCacheTtl: "1h" (Claude Code 2.1.242+) if such gaps are common; one-hour writes cost more per token.');
   return rows.sort((a, b) => b.usd - a.usd);
+}
+
+// The rows at or over the limit, read by the weekly notice and the session line.
+export function advise(d, limitUsd) {
+  return patternRows(d).filter((r) => r.usd >= limitUsd);
+}
+
+// The recent split behind the table, for --advise. A field that is missing or
+// not a number is left out, never shown as $0. Subagent dollars include the
+// workflow agents, which is why they are reported as "of which".
+export function usageSummary(d) {
+  const s = {};
+  if (!d || typeof d !== 'object') return s;
+  const num = Number.isFinite;
+  const models = [];
+  if (d.byModel && typeof d.byModel === 'object') {
+    for (const [model, v] of Object.entries(d.byModel)) {
+      if (!v || typeof v !== 'object' || !(num(v.mainUsd) || num(v.subUsd))) continue;
+      const m = { model };
+      if (num(v.mainUsd)) m.mainUsd = v.mainUsd;
+      if (num(v.subUsd)) m.subUsd = v.subUsd;
+      if (num(m.mainUsd) && num(m.subUsd) && num(d.totalUsd) && d.totalUsd > 0) m.share = (m.mainUsd + m.subUsd) / d.totalUsd;
+      models.push(m);
+    }
+    models.sort((a, b) => (b.mainUsd || 0) + (b.subUsd || 0) - (a.mainUsd || 0) - (a.subUsd || 0));
+  }
+  if (models.length) {
+    s.models = models;
+    if (models.every((m) => num(m.mainUsd))) s.mainUsd = models.reduce((t, m) => t + m.mainUsd, 0);
+    if (models.every((m) => num(m.subUsd))) s.subUsd = models.reduce((t, m) => t + m.subUsd, 0);
+  }
+  const bands = d.contextBands && typeof d.contextBands === 'object' ? d.contextBands : {};
+  const listed = BANDS.map(([k]) => ({ band: k, requests: bands[k] && bands[k].requests, usd: bands[k] && bands[k].usd })).filter((b) => num(b.requests) && num(b.usd));
+  if (listed.length) s.bands = listed;
+  const wf = d.workflowAgentsInWindow;
+  if (wf && num(wf.agents) && num(wf.usd)) s.workflow = { agents: wf.agents, usd: wf.usd };
+  const causes = d.byCause && typeof d.byCause === 'object' ? CAUSES.filter((k) => d.byCause[k] && num(d.byCause[k].count) && num(d.byCause[k].usd)).map((k) => ({ cause: k, count: d.byCause[k].count, usd: d.byCause[k].usd })) : [];
+  if (causes.length || (num(d.avoidableCount) && num(d.avoidableUsd))) {
+    s.rebuilds = { causes };
+    if (num(d.avoidableCount) && num(d.avoidableUsd)) Object.assign(s.rebuilds, { avoidableCount: d.avoidableCount, avoidableUsd: d.avoidableUsd });
+  }
+  return s;
 }
 
 const usd = (n) => '$' + n.toFixed(2);
@@ -329,13 +373,49 @@ export function formatText(d, sinceLabel) {
   return L.join('\n') + '\n';
 }
 
+function formatSummary(s) {
+  const L = ['Recent usage (list price; model figures are descriptive):'];
+  if (s.models) {
+    L.push('  By model:');
+    for (const m of s.models) {
+      const parts = [Number.isFinite(m.mainUsd) && `${usd(m.mainUsd)} main thread`, Number.isFinite(m.subUsd) && `${usd(m.subUsd)} subagent`].filter(Boolean);
+      L.push(`    ${m.model}: ${parts.join(', ')}${m.share === undefined ? '' : ` (${Math.round(m.share * 100)}% of total)`}`);
+    }
+  }
+  const wf = s.workflow ? `workflow agents ${usd(s.workflow.usd)}, ${s.workflow.agents} ${s.workflow.agents === 1 ? 'agent' : 'agents'}` : '';
+  const split = [Number.isFinite(s.mainUsd) && `Main thread ${usd(s.mainUsd)}`, Number.isFinite(s.subUsd) && `${s.mainUsd === undefined ? 'Subagents' : 'subagents'} ${usd(s.subUsd)}${wf ? ` (of which ${wf})` : ''}`].filter(Boolean);
+  if (split.length) L.push(`  ${split.join(', ')}`);
+  if (wf && !Number.isFinite(s.subUsd)) L.push(`  ${wf[0].toUpperCase()}${wf.slice(1)}`);
+  if (s.bands) {
+    L.push('  Main-thread requests by context size, requests / cost:');
+    for (const b of s.bands) L.push(`    ${b.band}: ${b.requests} / ${usd(b.usd)}`);
+  }
+  if (s.rebuilds) {
+    L.push('  Main-thread cache rebuilds, by cause:');
+    for (const c of s.rebuilds.causes) L.push(`    ${c.cause}: ${c.count} (${usd(c.usd)})`);
+    if (s.rebuilds.avoidableCount !== undefined) L.push(`    avoidable (idle >1h + idle 5m-1h + model switch): ${s.rebuilds.avoidableCount} (${usd(s.rebuilds.avoidableUsd)})`);
+  }
+  return L;
+}
+
 export function formatAdvice(d, sinceLabel, limit) {
-  const rows = advise(d, limit.usd);
-  const L = [`Cost advisor, ${sinceLabel}: ${usd(d.totalUsd)} at list price`, `Limit: ${usd(limit.usd)} (${limit.source})`, ''];
-  if (rows.length) {
+  const rows = patternRows(d);
+  const over = rows.filter((r) => r.usd >= limit.usd), below = rows.filter((r) => r.usd < limit.usd);
+  const s = usageSummary(d);
+  const L = [`Cost advisor, ${sinceLabel}: ${usd(d.totalUsd)} at list price`, `Limit: ${usd(limit.usd)} (${limit.source})`, '', ...formatSummary(s), ''];
+  if (over.length) {
     L.push('Patterns at or over the limit, largest first:');
-    for (const r of rows) L.push(`  ${r.id}: ${usd(r.usd)}  ${r.text}`, `    Next: ${r.next}`);
+    for (const r of over) L.push(`  ${r.id}: ${usd(r.usd)}  ${r.text}`, `    Next: ${r.next}`);
   } else L.push('No pattern at or over the limit.');
+  if (below.length) {
+    L.push('', 'Patterns below the limit, largest first:');
+    for (const r of below) L.push(`  ${r.id}: ${usd(r.usd)}  ${r.text} (below the limit)`, `    Next: ${r.next}`);
+  }
+  // Two large areas have no pattern row. These notes are descriptive and live here, never in the table the notice reads.
+  const notes = [];
+  if (s.workflow && s.workflow.usd > 0) notes.push('  workflows: `--workflow-estimate <agents>` gives a dollar estimate before a launch; it recommends no setting.');
+  if (s.subUsd > 0) notes.push('  subagents: no fix that leaves the work unchanged is measured; first-request and mid-run cache writes point to nothing to change.');
+  if (notes.length) L.push('', 'Areas with no pattern row:', ...notes);
   const line = (b) => (b.sessions ? `${b.sessions} sessions, p50 ${usd(b.p50)}, p90 ${usd(b.p90)}, p95 ${usd(b.p95)}` : '0 sessions');
   L.push('', `Baseline, main-thread cost per session over the last ${d.baselines.days} days:`, `  account: ${line(d.baselines.account)}`);
   for (const [k, b] of Object.entries(d.baselines.projects).filter(([, b]) => b.sessions >= MIN_BASELINE_SESSIONS).sort((a, b) => b[1].sessions - a[1].sessions)) L.push(`  ${k}: ${line(b)}`);
