@@ -251,8 +251,8 @@ export async function scan({ dir, sinceMs, project, baselineSinceMs } = {}) {
   return out;
 }
 
-// The advisor's limit, from one place. Only the weekly notice honours the older
-// HOUSE_COST_CHECK_USD, so a limit set for it keeps meaning what it meant.
+// The advisor's limit, from one place. Only the weekly notice and --advise, which
+// lists the notice's rows, honour the older HOUSE_COST_CHECK_USD, so a limit set for it keeps meaning what it meant.
 export function advisorLimit({ notice = false, env = process.env } = {}) {
   for (const key of notice ? ['HOUSE_COST_ADVISOR_USD', 'HOUSE_COST_CHECK_USD'] : ['HOUSE_COST_ADVISOR_USD']) {
     const v = Number.parseFloat(env[key]);
@@ -425,7 +425,7 @@ export function formatAdvice(d, sinceLabel, limit, project) {
   if (s.subUsd > 0) notes.push("  subagents: measured on the maintainer's transcripts only, where nothing (first-request and mid-run cache writes included) pointed to a change that leaves the work unchanged.");
   if (notes.length) L.push('', 'Areas with no pattern row:', ...notes);
   const line = (b) => (b.sessions ? `${b.sessions} sessions, p50 ${usd(b.p50)}, p90 ${usd(b.p90)}, p95 ${usd(b.p95)}` : '0 sessions');
-  L.push('', `Baseline, main-thread cost per session over the last ${d.baselines.days} days:`, `  ${project === undefined ? 'account' : 'project filter'}: ${line(d.baselines.account)}`);
+  L.push('', `Baseline, main-thread cost per session over the last ${d.baselines.days} days:`, `  ${project ? 'project filter' : 'account'}: ${line(d.baselines.account)}`);
   for (const [k, b] of Object.entries(d.baselines.projects).filter(([, b]) => b.sessions >= MIN_BASELINE_SESSIONS).sort((a, b) => b[1].sessions - a[1].sessions)) L.push(`  ${k}: ${line(b)}`);
   L.push('', 'Dollars are list price, not your bill. How a plan\'s limits weight cache reads and writes is unknown.');
   return L.join('\n') + '\n';

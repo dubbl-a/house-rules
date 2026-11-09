@@ -134,8 +134,11 @@ test('silent below 20 sessions at both levels, and 20 at the account level is en
 
 test('silent on a malformed or wrong-shaped baseline', () => {
   const lines = [assistant(30)];
-  for (const stateBody of ['{not json', 'null', '[]', '{}', '{"baselines":null}', '{"baselines":{"account":{"sessions":40}}}', '{"baselines":{"account":{"sessions":"many","p95":1}}}', '{"baselines":{"account":{"sessions":40,"p95":"high"}}}',
-    '{"baselines":{"account":{"sessions":40,"p95":1},"projects":{"proj":{"sessions":40}}}}']) {
+  // Each object carries a fresh checkedAt, so it reaches the baseline checks and not the staleness gate.
+  const checkedAt = new Date().toISOString();
+  const shapes = [{}, { baselines: null }, { baselines: { account: { sessions: 40 } } }, { baselines: { account: { sessions: 'many', p95: 1 } } }, { baselines: { account: { sessions: 40, p95: 'high' } } },
+    { baselines: { account: { sessions: 40, p95: 1 }, projects: { proj: { sessions: 40 } } } }];
+  for (const stateBody of ['{not json', 'null', '[]', ...shapes.map((s) => JSON.stringify({ checkedAt, ...s }))]) {
     assert.equal(run(setup({ lines, stateBody })), null, stateBody);
   }
 });
