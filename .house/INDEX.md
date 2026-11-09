@@ -178,7 +178,7 @@
 - Give an agent, a key, and a token only what one task needs
   Scope every grant to the job in front of it (the tools, the paths and hosts, what a key may write, how long a token lives) so a leaked credential has a blast radius statable in one sentence; prefer an identity issued per run, and remove a grant when its task ends.
 - Review a change to agent config as code, and keep a second party on every consequential action
-  A hook, a server entry, a plugin, and a settings file all run or steer commands with the full access of whoever opens the repo, no sandbox contains them, and a print-mode or SDK run uses a repo's hooks and servers without the approval an interactive session asks for.
+  A hook, a server entry, a plugin, a mod, and a settings file all run or steer commands with the full access of whoever opens the repo, no sandbox contains them, and a print-mode or SDK run uses a repo's hooks and servers without the approval an interactive session asks for.
 - Bound an agent's loops, spend, and reach from outside it, and keep a record it cannot rewrite
   Set the turn limit, the cost ceiling, and the timeout where the agent cannot raise them, and keep the run log, the transcript, and the audit row where it has no write access, because a cap or a record the agent holds is a suggestion.
 - Install only what was reviewed, and let a new release age first

@@ -1,6 +1,6 @@
 import json, glob, os, collections, datetime
-P = {  # in, w5, w1, read, out  per MTok, from platform.claude.com pricing page 2026-10-20
- 'claude-fable-5-1':(10,12.5,20,.25,50),'claude-fable-5':(10,12.5,20,1,50),'claude-opus-5-5':(4,5,8,.2,20),
+P = {  # in, w5, w1, read, out  per MTok, from platform.claude.com pricing page 2026-11-09
+ 'claude-fable-5-2':(8,10,16,.2,40),'claude-fable-5-1':(10,12.5,20,.25,50),'claude-fable-5':(10,12.5,20,1,50),'claude-opus-5-5':(4,5,8,.2,20),
  'claude-opus-5':(5,6.25,10,.5,25),'claude-opus-4-8':(5,6.25,10,.5,25),'claude-sonnet-5-5':(2,2.5,4,.1,10),'claude-sonnet-5':(2,2.5,4,.2,10)}
 roots = glob.glob(os.path.expanduser('~/.claude/projects/' + os.environ['PROJECT_GLOB'] + ''))
 seen = {}

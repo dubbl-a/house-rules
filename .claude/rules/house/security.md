@@ -6,7 +6,7 @@ paths:
   - "plugins/house/scripts/**"
   - "research/*/scripts/**"
 ---
-<!-- house-managed v0.23.6 module=security source=modules/security/rules/security.md body-sha256=2a3e2dd849da8f0e9b1307ea315eac754f5c23bfc59e672492c1d640ea4e3b37 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=security source=modules/security/rules/security.md body-sha256=e8e63200df40cfb6365998efdcde77f510e357304ce6ce2bc1dcce9ebe47c050 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: agents and the supply chain
 
@@ -30,9 +30,9 @@ Receipts: `docs/handbook/security.md#give-an-agent-a-key-and-a-token-only-what-o
 
 ## Review a change to agent config as code, and keep a second party on every consequential action
 
-A hook, a server entry, a plugin, and a settings file all run or steer commands with the full access of whoever opens the repo, no sandbox contains them, and a print-mode or SDK run uses a repo's hooks and servers without the approval an interactive session asks for.
+A hook, a server entry, a plugin, a mod, and a settings file all run or steer commands with the full access of whoever opens the repo, no sandbox contains them, and a print-mode or SDK run uses a repo's hooks and servers without the approval an interactive session asks for.
 Read every change to them in review as you would a shell script, and refuse one that redirects the API endpoint, approves every server, or sets a bypass permission mode; the harness discards a bypass mode only from project settings and a repo's self-approval of servers only in an untrusted folder, so review is the gate everywhere else. Start a print-mode or SDK run in a repo you did not write with project settings left out or in bare mode, so its hooks and servers do not load unread.
-Install a plugin or a server by name from a source you chose, pin it, and read what its hooks run before enabling it; hold this package to the same standard.
+Install a plugin or a server by name from a source you chose, pin it, and read what its hooks and mods run before enabling it; hold this package to the same standard.
 Require something that is not the model before a deploy, a publish, a merge to the protected branch, or a destructive write: a person answering an ask rule, a hook, or a protected branch, since a model cannot be the check on its own action and auto mode's classifier is a model too.
 Run generated or fetched code only inside a boundary that code cannot edit, such as the sandbox with the unsandboxed retry turned off, and never through an excluded command.
 Anchor: `/house-rules:sync` prints its plan and writes only after approval, `npm run check:house` (tamper) fails an edited managed file, and github.md's branch floor is the second party on a merge; the harness's own floor is the workspace trust dialog, which holds repo allow rules (repo settings never apply an auto or bypass default mode, trusted or not), but print-mode and SDK runs skip that dialog, so a config file this package does not manage has review as its only gate.

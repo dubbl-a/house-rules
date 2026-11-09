@@ -658,6 +658,31 @@ models overview now says cache reads cost 5 percent of the base input price on O
 ladder and the roster pins are unchanged; a budget ceiling now counts a Sonnet subagent's cache
 reads at half the earlier rate.
 
+The ladder after Fable 5.2, 2026-11-09: Claude Code 2.1.321 added Claude Fable 5.2
+(`claude-fable-5-2`, also its alias), with 1M context, 128K output, and "Moderate" latency
+(https://platform.claude.com/docs/en/about-claude/models/overview). It lists at $8 input and $40
+output per Mtok, with cache reads at $0.20 (https://platform.claude.com/docs/en/about-claude/pricing),
+and its fast mode is $16 input and $80 output, which is 2x (the same page). Fable 5.1 is unchanged
+at $10/$50 and now sits under "Legacy models (still available)" on the overview page. Two default
+efforts belong to two surfaces: `high` is the API default (the overview page), and `medium` is the
+Claude Code default, since "Fable 5.2, Opus 5.5, Sonnet 5.5, and Haiku 5.5 default to `medium`"
+(https://code.claude.com/docs/en/model-config). The `fable` alias resolves to Fable 5.2 everywhere
+except Claude apps gateway sessions, where it resolves to Fable 5, and no Fable model is the
+account-type default on any plan or provider (the same page). A `claude-fable-5-1` model saved in
+user settings moves to the `fable` alias on Pro or Max the first time v2.1.321 or later runs, and
+on Team or Enterprise once the organization's settings allow it; Console accounts, third-party
+providers, and project, local, or managed settings keep it, and a session after the move starts at
+Fable 5.2's default effort unless a level is set (the same page). The recommendation is unchanged
+in substance, only the version moved: "start with Claude Opus 5.5 for most workloads. Use Claude
+Fable 5.2 for demanding reasoning and long-horizon agentic work, or when your evals on Claude Opus
+5.5 at higher effort still fall short" (the overview page), and on cost, "Claude Fable 5.2 as the
+orchestrator in Claude Opus 5.5's place cost 19% more and scored about the same"
+(https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence).
+The launch post is https://www.anthropic.com/claude-fable-and-mythos-5-2. The ladder stands
+(Fable, Opus, Sonnet, Haiku), Opus stays the default session, Fable stays off subagents unless the
+user asks, and no roster pin moves; no house role runs on Fable, so no departure note went stale.
+Benchmarks, which decide nothing here, are in `research/model-tier/2026-11-09-fable-5-2.md`.
+
 The workflow model variable, 2026-10-09: Claude Code 2.1.296 added
 `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` "to run every workflow agent on one model while other
 subagents keep theirs" (changelog at
@@ -769,6 +794,22 @@ guard for a Monitor call only when that guard's matcher reaches Monitor. `tests/
 two denies, two allows, the WebSocket watch, two unreadable payloads, and that deference. A plugin
 monitor, which a plugin starts on its own, is not a tool call, so no PreToolUse hook is expected
 to see it; that is not verified.
+
+The last sentence of the floor paragraph, on mods, rests on the permissions page read 2026-11-09:
+a mod you install that handles `tool.check` "gives its answer after the `PreToolUse` hooks have
+run," and "with neither managed settings nor a Team or Enterprise `/login` as the session's
+credential, the mod can approve a call that a deny rule refuses or a `PreToolUse` hook blocked"
+(https://code.claude.com/docs/en/permissions, "Precedence among rules, hooks, and mods"). A mod
+is "code that runs with your permissions" and "Mods aren't sandboxed"
+(https://code.claude.com/docs/en/plugins/mods/overview). Claude Code 2.1.321 made a mod's own
+tool calls (`$.tool.call`, `$.mcp.call`) raise no permission prompt, even under the user's ask
+rules or in `dontAsk` and `-p` runs, with deny rules and organization policy still applying
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-09).
+The package ships no mod, and no mod's approval was tested here. With managed settings or such a
+login as the session's credential, by default a mod's approval does not get past a deny rule, an
+ask rule, or a `PreToolUse` hook; an organization can change that, an API key or long-lived token
+session does not count as that login, and none of it covers a mod's own `$.fs` and `$.process`
+calls (https://code.claude.com/docs/en/plugins/mods/admin).
 
 ## Run adversarial review in a fresh subagent with a named lens
 

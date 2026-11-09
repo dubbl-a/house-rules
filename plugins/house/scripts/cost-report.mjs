@@ -29,10 +29,11 @@ import { join, relative, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Per MTok: [input, 5m cache write, 1h cache write, cache read, output].
-// Source: https://platform.claude.com/docs/en/about-claude/pricing (verified 2026-10-20).
+// Source: https://platform.claude.com/docs/en/about-claude/pricing (verified 2026-11-09).
 export const PRICES_SOURCE = 'https://platform.claude.com/docs/en/about-claude/pricing';
-export const PRICES_DATE = '2026-10-20';
+export const PRICES_DATE = '2026-11-09';
 export const PRICES = {
+  'claude-fable-5-2': [8, 10, 16, 0.2, 40],
   'claude-fable-5-1': [10, 12.5, 20, 0.25, 50],
   'claude-fable-5': [10, 12.5, 20, 1, 50],
   'claude-opus-5-5': [4, 5, 8, 0.2, 20],
@@ -45,10 +46,10 @@ export const PRICES = {
 // Haiku 5.5 prices rise when a request's total input exceeds 100,000 tokens.
 const HAIKU_LONG = { model: 'claude-haiku-5-5', over: 100000, prices: [0.5, 0.625, 1, 0.05, 2.5] };
 // Fast mode is 2x for these models (input and output; cache scaled the same, an estimate).
-const FAST_FACTOR = { 'claude-opus-5-5': 2, 'claude-opus-5': 2, 'claude-opus-4-8': 2 };
+const FAST_FACTOR = { 'claude-fable-5-2': 2, 'claude-opus-5-5': 2, 'claude-opus-5': 2, 'claude-opus-4-8': 2 };
 const US_FACTOR = 1.1;
 // Current successor of each legacy model, for the legacy-model premium.
-const SUCCESSOR = { 'claude-opus-5': 'claude-opus-5-5', 'claude-opus-4-8': 'claude-opus-5-5', 'claude-fable-5': 'claude-fable-5-1', 'claude-sonnet-5': 'claude-sonnet-5-5' };
+const SUCCESSOR = { 'claude-opus-5': 'claude-opus-5-5', 'claude-opus-4-8': 'claude-opus-5-5', 'claude-fable-5': 'claude-fable-5-2', 'claude-fable-5-1': 'claude-fable-5-2', 'claude-sonnet-5': 'claude-sonnet-5-5' };
 const BANDS = [['under 200k', 0], ['200k-500k', 200000], ['500k and over', 500000]];
 const REBUILD_TOKENS = 50000;
 const CAUSES = ['model switch', 'idle >1h', 'idle 5m-1h', 'no idle gap'];
@@ -77,7 +78,7 @@ function priceRow(r, drop) {
   let p = PRICES[model];
   if (!p) return null;
   if (model === HAIKU_LONG.model && r.inTok + r.w5 + r.w1 + r.read > HAIKU_LONG.over) p = HAIKU_LONG.prices;
-  let f = r.speed === 'fast' && !off('fast') ? FAST_FACTOR[model] || 1 : 1;
+  let f = r.speed === 'fast' && !off('fast') ? FAST_FACTOR[r.model] || 1 : 1;
   if (r.geo === 'us' && !off('us')) f *= US_FACTOR;
   return p.map((x) => x * f);
 }

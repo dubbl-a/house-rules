@@ -53,10 +53,11 @@ import { join } from 'node:path';
 
 const DEFAULT_THRESHOLD_USD = 5;
 // Cache write list prices in USD per million tokens, [5 min, 1 h], from the
-// platform.claude.com pricing page on 2026-10-20 (the same figures as
+// platform.claude.com pricing page on 2026-11-09 (the same figures as
 // research/token-cost/scripts/cost.py). A model matching no row gets no
 // estimate and no message.
 const WRITE_PRICE = {
+  'claude-fable-5-2': [10, 16],
   'claude-fable-5-1': [12.5, 20],
   'claude-fable-5': [12.5, 20],
   'claude-opus-5-5': [5, 8],

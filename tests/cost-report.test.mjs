@@ -214,7 +214,7 @@ test('text output carries the totals, caveats and pointers; bad flags exit non-z
   put(d, 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
   const r = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' });
   assert.equal(r.status, 0);
-  for (const re of [/\$5\.00 at list price/, /claude-opus-5/, /Avoidable rebuilds/, /undercounted/, /before 2\.1\.307/, /2026-10-20/, /platform\.claude\.com/, /\/session-report/, /@rixtay\/mcp-usage/, /\/usage/]) assert.match(r.stdout, re);
+  for (const re of [/\$5\.00 at list price/, /claude-opus-5/, /Avoidable rebuilds/, /undercounted/, /before 2\.1\.307/, /2026-11-09/, /platform\.claude\.com/, /\/session-report/, /@rixtay\/mcp-usage/, /\/usage/]) assert.match(r.stdout, re);
   const bad = spawnSync(process.execPath, [CLI, '--bogus'], { encoding: 'utf8' });
   assert.notEqual(bad.status, 0);
   assert.equal(spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).status, 0);
@@ -423,9 +423,53 @@ test('premiums: each factor is the extra cost over the same tokens without it', 
     entry({ model: 'claude-sonnet-5', ts: ago(40), read: 1e6, sidechain: true }),
   ]);
   const l = report(legacy).premiums;
-  near(l.legacyModelUsd, 6 + 0.75 + 0.1);
+  near(l.legacyModelUsd, 6 + 0.8 + 0.1);
   assert.equal(l.fastUsd, 0);
   assert.equal(l.usOnlyUsd, 0);
+});
+
+test('fable 5.2 is priced on its own row, not the Fable 5 row', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-fable-5-2', ts: ago(60), read: 1e6 })]);
+  const r = report(d);
+  assert.equal(r.byModel['claude-fable-5-2'].requests, 1);
+  near(r.totalUsd, 0.2);
+});
+
+test('fable 5.2 cache writes are priced at 10 (5 min) and 16 (1 h) per million', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ model: 'claude-fable-5-2', ts: ago(60), w5: 1e6 }),
+    entry({ model: 'claude-fable-5-2', ts: ago(50), w1: 1e6 }),
+  ]);
+  near(report(d).totalUsd, 10 + 16);
+});
+
+test('premiums: a fast request on a model with no fast factor never has a negative legacy premium', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-fable-5-1', ts: ago(60), inTok: 1e6, speed: 'fast' })]);
+  const p = report(d).premiums;
+  assert.ok(p.legacyModelUsd >= 0, `${p.legacyModelUsd} < 0`);
+  near(p.legacyModelUsd, 10 - 8);
+  assert.equal(p.fastUsd, 0);
+});
+
+test('premiums: a fast fable 5.2 request carries the 2x premium', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-fable-5-2', ts: ago(60), inTok: 1e6, out: 1e6, speed: 'fast' })]);
+  const p = report(d).premiums;
+  near(p.fastUsd, 48);
+  near(report(d).totalUsd, 96);
+  assert.equal(p.legacyModelUsd, 0);
+});
+
+test('premiums: fable 5.1 and fable 5 count a legacy premium against fable 5.2', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ model: 'claude-fable-5-1', ts: ago(60), inTok: 1e6 }),
+    entry({ model: 'claude-fable-5', ts: ago(50), inTok: 1e6 }),
+  ]);
+  near(report(d).premiums.legacyModelUsd, 2 + 2);
 });
 
 test('premiums: totalUsd is the cost minus the standard price, not the sum of the overlapping factors', () => {
