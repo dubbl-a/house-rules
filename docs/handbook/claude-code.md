@@ -917,9 +917,22 @@ since they overlap), splits main-thread requests by context size, and counts the
 written to the five-minute cache, which `promptCacheTtl: "1h"` would likely have turned into hits
 at a higher write price. Everything else is left to `/session-report` and
 `npx -y @rixtay/mcp-usage`. The scan takes seconds on a week of transcripts, so `session-start.mjs`
-runs it detached once a week on startup and shows one line next startup when avoidable rebuilds
-or the combined premium reach $10 (`HOUSE_COST_CHECK_USD`; `HOUSE_COST_CHECK=off` disables). A
-scan that dies is retried once its lock is an hour old. Output tokens can be undercounted, and
+runs it detached once a week on startup and shows one line next startup: the top row of one table,
+`advise()` in that script, which holds four patterns (main-thread cost over 200k context, avoidable
+rebuilds, price premiums, short-TTL rebuilds), each with a next step that leaves the work unchanged
+and none suggesting a cheaper model or lower effort. The line also says how that row moved since the
+previous scan, and, when the previous scan's top row was a different one, how that one moved. A row qualifies at $5 (`HOUSE_COST_ADVISOR_USD`, then an existing
+`HOUSE_COST_CHECK_USD` for this notice and `--advise` only; `HOUSE_COST_ADVISOR=off` or `HOUSE_COST_CHECK=off`
+disables it). A scan that dies is retried once its lock is an hour old.
+
+The same scan records main-thread session-cost percentiles over 30 days, for the account and per
+project directory, and `session-cost-line.mjs` (UserPromptSubmit) uses them: it says once per session
+when main-thread cost reaches the larger of the limit and the p95, using the project's p95 at 20
+sessions and over, otherwise the account's at 20 and over, otherwise nothing. `research/token-cost/2026-11-08.md`
+holds the measurement behind p95: a flat $5 test fired in 45% of sessions on the maintainer machine, past
+$5 and over p95 in about 6%. `/house-rules:cost-advisor` runs `cost-report.mjs --advise`, which always prints the recent usage split and the patterns over and below the limit,
+and explains the largest areas, and `house cost --workflow-estimate <agents>` prints a rough list-price estimate from
+this account's past workflow agents, with no dollars below 50 past agents. Output tokens can be undercounted, and
 subagent usage logged by Claude Code before 2.1.307 can be a placeholder for streamed responses
 (changelog, https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched
 2026-10-21: "Fixed subagent transcripts recording placeholder token usage and an empty stop reason

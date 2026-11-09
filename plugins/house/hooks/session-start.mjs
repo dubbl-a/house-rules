@@ -9,12 +9,12 @@
 //
 // On startup it also runs a weekly cost check: a detached scan
 // (../scripts/cost-report.mjs) writes <config dir>/house/cost-check.json, and
-// a later startup shows one systemMessage line when rebuilds after idle gaps
-// or model switches cost at least HOUSE_COST_CHECK_USD (default 10), or when
-// the price premiums (fast mode, US-only inference, legacy models) total at
-// least that, once per result; a premium line names the largest of the three.
-// HOUSE_COST_CHECK=off disables it. The scan takes seconds, so the
-// hook never waits for it. An exclusive lock file (cost-check.lock, stale after
+// a later startup shows one systemMessage line, once per result, naming the
+// top row of the advice table in cost-report.mjs (largest pattern at or over
+// the limit) and, when the previous scan held that row, how it moved. The
+// limit is HOUSE_COST_ADVISOR_USD, then HOUSE_COST_CHECK_USD, default 5.
+// HOUSE_COST_ADVISOR=off or HOUSE_COST_CHECK=off disables it. The scan takes
+// seconds, so the hook never waits for it. An exclusive lock file (cost-check.lock, stale after
 // an hour, removed by the scan when it finishes) lets only one of several
 // parallel sessions spawn it. The hook writes no claim at spawn, so a scan that
 // dies without a result is retried at the first startup after the lock goes
@@ -33,8 +33,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const WEEK_MS = 7 * 86400000;
-const DEFAULT_THRESHOLD_USD = 10;
 const LOCK_STALE_MS = 3600000;
+const isOff = (name) => String(process.env[name] || '').toLowerCase() === 'off';
 
 // Same-directory temp file and rename, so a reader never sees a half-written state.
 function writeState(file, state) {
@@ -88,8 +88,8 @@ function scanDue(file) {
 }
 
 // Returns the notice to show, or undefined; spawns the weekly scan when due.
-function costCheck(here) {
-  if (String(process.env.HOUSE_COST_CHECK || '').toLowerCase() === 'off') return undefined;
+async function costCheck(here) {
+  if (isOff('HOUSE_COST_CHECK') || isOff('HOUSE_COST_ADVISOR')) return undefined;
   const input = JSON.parse(readFileSync(0, 'utf8'));
   if (!input || input.source !== 'startup') return undefined;
   const cfgDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
@@ -98,29 +98,28 @@ function costCheck(here) {
   let state = null;
   try { state = JSON.parse(readFileSync(file, 'utf8')); } catch { /* none or malformed: treat as no state */ }
   if (state === null || typeof state !== 'object' || Array.isArray(state)) state = null;
-  const override = Number.parseFloat(process.env.HOUSE_COST_CHECK_USD);
-  const threshold = Number.isFinite(override) && override >= 0 ? override : DEFAULT_THRESHOLD_USD;
   let notice;
-  const valid = state && !state.shownAt && Number.isFinite(state.totalUsd);
-  const rebuildOver = valid && Number.isFinite(state.avoidableUsd) && state.avoidableUsd >= threshold;
-  const prem = valid && state.premiums && typeof state.premiums === 'object' ? state.premiums : {};
-  const premiumList = [['fast mode', prem.fastUsd], ['US-only inference', prem.usOnlyUsd], ['legacy models', prem.legacyModelUsd]]
-    .map(([name, v]) => [name, Number.isFinite(v) ? v : 0]);
-  // The factors overlap, so the notice uses the combined premium, not their sum.
-  const premiumTotal = Number.isFinite(prem.totalUsd) ? prem.totalUsd : 0;
-  const premiumOver = premiumTotal > 0 && premiumTotal >= threshold;
-  if (rebuildOver || premiumOver) {
-    state = { ...state, shownAt: new Date().toISOString() };
-    writeState(file, state);
-    const parts = ['house: in the last 7 days,'];
-    if (rebuildOver) parts.push(`cache rebuilds after idle gaps or model switches cost about $${state.avoidableUsd.toFixed(0)} of $${state.totalUsd.toFixed(0)} at list price (${state.avoidableCount} rebuilds).`);
-    if (premiumOver) {
-      const [name, v] = premiumList.reduce((a, b) => (b[1] > a[1] ? b : a));
-      parts.push(`${rebuildOver ? 'price premiums' : 'price premiums (fast mode, US-only inference, legacy models)'} added about $${premiumTotal.toFixed(0)}, mostly ${name} ($${v.toFixed(0)}).`);
+  // Imported only when there is a result to show: the table is advice, so a
+  // broken report module costs the notice and never the orchestration text.
+  let lib = null;
+  if (state && !state.shownAt && Number.isFinite(state.totalUsd)) {
+    try { lib = await import('../scripts/cost-report.mjs'); } catch { /* no notice this time */ }
+  }
+  if (lib && lib.advise) {
+    const limit = lib.advisorLimit({ notice: true }).usd;
+    const [row] = lib.advise(state, limit);
+    if (row) {
+      state = { ...state, shownAt: new Date().toISOString() };
+      writeState(file, state);
+      const before = lib.advise(state.previous, limit).find((r) => r.id === row.id);
+      const moved = before ? Math.round(row.usd - before.usd) : 0;
+      const move = moved ? `, ${moved < 0 ? 'down' : 'up'} $${Math.abs(moved)} since last check` : '';
+      // Last period's top pattern, when it is not the one named now: say how it moved too.
+      const [prevTop] = lib.advise(state.previous, limit);
+      const prevNow = prevTop && prevTop.id !== row.id ? (lib.patternRows(state).find((r) => r.id === prevTop.id) || { usd: 0 }).usd : undefined;
+      const prior = prevNow === undefined ? '' : `; last check's top pattern, ${prevTop.text}, went from $${prevTop.usd.toFixed(0)} to $${prevNow.toFixed(0)}`;
+      notice = `house: in the last 7 days, ${row.text} cost about $${row.usd.toFixed(0)} at list price${move}${prior}. Next: ${row.next} /house-rules:cost-advisor explains it. Silence with HOUSE_COST_ADVISOR=off.`;
     }
-    parts.push(rebuildOver ? `Next: /session-report shows where; node "${script}" splits cost by model and cause. Silence with HOUSE_COST_CHECK=off.`
-      : `Next: node "${script}" shows the split. Silence with HOUSE_COST_CHECK=off.`);
-    notice = parts.join(' ');
   }
   // No claim is written at spawn: a scan that dies leaves no new checkedAt, and the
   // lock (stale after an hour) is what paces the retry.
@@ -158,7 +157,7 @@ try {
   // Never block or noise a session over a missing file.
 }
 try {
-  const systemMessage = costCheck(here);
+  const systemMessage = await costCheck(here);
   if (systemMessage) out.systemMessage = systemMessage;
 } catch {
   // The cost check is advice; any failure just skips it.

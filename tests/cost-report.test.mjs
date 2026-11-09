@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnCpuSync } from './spawn-cpu.mjs';
+import { advise, patternRows, usageSummary, formatAdvice, scan } from '../plugins/house/scripts/cost-report.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'plugins/house/scripts/cost-report.mjs');
@@ -225,6 +226,8 @@ function hook(cfg, { source = 'startup', env = {}, stdin } = {}) {
   const e = { ...process.env, CLAUDE_CONFIG_DIR: cfg, HOUSE_COST_CHECK_PROJECTS_DIR: join(cfg, 'projects') };
   delete e.HOUSE_COST_CHECK;
   delete e.HOUSE_COST_CHECK_USD;
+  delete e.HOUSE_COST_ADVISOR;
+  delete e.HOUSE_COST_ADVISOR_USD;
   Object.assign(e, env);
   const r = spawnCpuSync(process.execPath, [HOOK], { input: stdin ?? JSON.stringify({ source }), encoding: 'utf8', env: e });
   assert.equal(r.status, 0, r.stderr);
@@ -250,10 +253,10 @@ test('hook: over threshold prints one line once, then marks it shown', () => {
   seed(cfg);
   const first = hook(cfg).out;
   assert.ok(!first.systemMessage.includes('\n'));
-  assert.match(first.systemMessage, /\$35 of \$120 at list price \(5 rebuilds\)/);
-  assert.match(first.systemMessage, /\/session-report/);
-  assert.match(first.systemMessage, /cost-report\.mjs/);
-  assert.match(first.systemMessage, /HOUSE_COST_CHECK=off/);
+  assert.match(first.systemMessage, /cache rebuilds after idle gaps or model switches \(5 rebuilds\) cost about \$35 at list price/);
+  assert.match(first.systemMessage, /\/house-rules:handoff/);
+  assert.match(first.systemMessage, /\/house-rules:cost-advisor/);
+  assert.match(first.systemMessage, /HOUSE_COST_ADVISOR=off/);
   assert.ok(first.hookSpecificOutput.additionalContext);
   assert.ok(JSON.parse(readFileSync(stateFile(cfg), 'utf8')).shownAt);
   assert.deepEqual(readdirSync(join(cfg, 'house')).filter((f) => f.endsWith('.tmp')), [], 'the shown-at write leaves no temp file');
@@ -381,7 +384,7 @@ test('hook: an unshown over-threshold result is shown before a rescan replaces i
   put(join(cfg, 'projects'), 'p/s.jsonl', [entry({ ts: ago(60), inTok: 1e6 })]);
   seed(cfg, { checkedAt: ago(8 * 86400) });
   const { out } = hook(cfg);
-  assert.match(out.systemMessage, /\$35 of \$120/);
+  assert.match(out.systemMessage, /about \$35 at list price/);
   const done = await waitFor(() => {
     try { return JSON.parse(readFileSync(stateFile(cfg), 'utf8')).totalUsd === 5; } catch { return false; }
   });
@@ -504,28 +507,31 @@ test('--state carries the premiums, bands and short-TTL figures', () => {
 const premiums = (fastUsd, usOnlyUsd = 0, legacyModelUsd = 0) => ({ fastUsd, usOnlyUsd, legacyModelUsd, totalUsd: fastUsd + usOnlyUsd + legacyModelUsd });
 
 test('hook: premiums alone trigger the notice at the threshold and not below it', () => {
+  const env = { HOUSE_COST_CHECK_USD: '10' };
   const below = tmp();
   seed(below, { avoidableUsd: 2, premiums: premiums(4, 3, 2.99) });
-  assert.equal(hook(below).out.systemMessage, undefined);
+  assert.equal(hook(below, { env }).out.systemMessage, undefined);
   const at = tmp();
   seed(at, { avoidableUsd: 2, premiums: premiums(4, 3, 3) });
-  const msg = hook(at).out.systemMessage;
+  const msg = hook(at, { env }).out.systemMessage;
   assert.ok(!msg.includes('\n'));
-  assert.match(msg, /added about \$10,/);
+  assert.match(msg, /cost about \$10 at list price/);
   assert.match(msg, /fast mode/);
-  assert.match(msg, /HOUSE_COST_CHECK=off/);
+  assert.match(msg, /HOUSE_COST_ADVISOR=off/);
   assert.ok(JSON.parse(readFileSync(stateFile(at), 'utf8')).shownAt);
-  assert.equal(hook(at).out.systemMessage, undefined);
+  assert.equal(hook(at, { env }).out.systemMessage, undefined);
 });
 
-test('hook: premiums name the largest of the three and join the rebuild line when both are over', () => {
+test('hook: the notice shows only the top row and names the largest premium', () => {
   const cfg = tmp();
   seed(cfg, { premiums: premiums(1, 2, 30) });
   const msg = hook(cfg).out.systemMessage;
   assert.ok(!msg.includes('\n'));
-  assert.match(msg, /\$35 of \$120 at list price \(5 rebuilds\)/);
-  assert.match(msg, /\$33/);
-  assert.match(msg, /legacy models/);
+  assert.match(msg, /\$35 at list price/);
+  assert.doesNotMatch(msg, /legacy models/, 'the smaller premium row is left out');
+  const legacy = tmp();
+  seed(legacy, { avoidableUsd: 2, premiums: premiums(1, 2, 30) });
+  assert.match(hook(legacy).out.systemMessage, /legacy models/);
   const us = tmp();
   seed(us, { avoidableUsd: 2, premiums: premiums(1, 20, 2) });
   assert.match(hook(us).out.systemMessage, /US-only inference/);
@@ -539,10 +545,428 @@ test('hook: the notice threshold and figure use the combined premium, not the ov
   const at = tmp();
   seed(at, state);
   const msg = hook(at, { env: { HOUSE_COST_CHECK_USD: '7' } }).out.systemMessage;
-  assert.match(msg, /added about \$7, mostly fast mode \(\$6\)/);
+  assert.match(msg, /mostly fast mode, \$6\) cost about \$7 at list price/);
   const old = tmp();
   seed(old, { avoidableUsd: 0, premiums: { fastUsd: 40, usOnlyUsd: 0, legacyModelUsd: 0 } });
   assert.equal(hook(old).out.systemMessage, undefined);
+});
+
+// ---- cost advisor: pattern table ----
+
+const bands = (a, b) => ({ 'under 200k': { requests: 9, usd: 999 }, '200k-500k': { requests: 2, usd: a }, '500k and over': { requests: 1, usd: b } });
+const advisable = () => ({ contextBands: bands(30, 20), avoidableUsd: 40, avoidableCount: 7, premiums: { fastUsd: 60, usOnlyUsd: 1, legacyModelUsd: 2, totalUsd: 62 }, shortTtl: { count: 3, usd: 10 } });
+
+test('advise: rows at or over the limit come largest first, and a row under it is dropped', () => {
+  assert.deepEqual(advise(advisable(), 5).map((r) => r.id), ['price-premiums', 'context-over-200k', 'avoidable-rebuilds', 'short-ttl-rebuilds']);
+  assert.deepEqual(advise(advisable(), 50).map((r) => r.id), ['price-premiums', 'context-over-200k'], '50 is at the limit, 40 is under');
+  assert.deepEqual(advise(advisable(), 50.01).map((r) => r.id), ['price-premiums']);
+  assert.deepEqual(advise(advisable(), 62.01), []);
+});
+
+test('advise: context cost counts the two bands over 200k and never the band under it', () => {
+  const [row] = advise({ contextBands: bands(30, 20) }, 5);
+  assert.equal(row.id, 'context-over-200k');
+  assert.equal(row.usd, 50);
+  assert.deepEqual(advise({ contextBands: bands(1, 2) }, 5), [], 'the $999 under-200k band alone must not qualify');
+});
+
+test('advise: every row carries id, usd, text and next, and the next step is exact', () => {
+  const rows = Object.fromEntries(advise(advisable(), 1).map((r) => [r.id, r]));
+  for (const r of Object.values(rows)) for (const k of ['id', 'usd', 'text', 'next']) assert.ok(r[k], `${r.id}: ${k}`);
+  assert.match(rows['context-over-200k'].next, /\/house-rules:handoff.*\/clear.*finished work/);
+  assert.match(rows['price-premiums'].text, /fast mode/);
+  assert.match(rows['short-ttl-rebuilds'].next, /promptCacheTtl: "1h"/);
+  assert.match(rows['avoidable-rebuilds'].text, /7 rebuilds/);
+});
+
+test('advise: the premium next step follows the largest premium', () => {
+  const next = (fastUsd, usOnlyUsd, legacyModelUsd) => advise({ premiums: premiums(fastUsd, usOnlyUsd, legacyModelUsd) }, 1)[0].next;
+  assert.match(next(9, 1, 1), /\/fast/);
+  assert.match(next(1, 9, 1), /US-only/);
+  assert.match(next(1, 1, 9), /current version of the same tier/);
+});
+
+test('advise: never suggests a cheaper model or lower effort', () => {
+  const words = /\b(sonnet|haiku|cheaper model|lower effort|smaller model|downgrade)\b/i;
+  for (const p of [premiums(60, 1, 2), premiums(1, 60, 2), premiums(1, 2, 60)]) {
+    for (const r of advise({ ...advisable(), premiums: p }, 1)) assert.doesNotMatch(`${r.text} ${r.next}`, words, r.id);
+  }
+});
+
+test('advise: a missing or malformed field is no row, and a $0 row never qualifies', () => {
+  assert.deepEqual(advise({}, 5), []);
+  assert.deepEqual(advise(null, 5), []);
+  assert.deepEqual(advise({ avoidableUsd: 'lots', premiums: { totalUsd: null }, contextBands: { '200k-500k': { usd: 90 } }, shortTtl: {} }, 5), [], 'one band of two is not a figure');
+  assert.deepEqual(advise({ avoidableUsd: 0, contextBands: bands(0, 0) }, 0), []);
+  assert.deepEqual(advise({ avoidableUsd: 0.01 }, 0).map((r) => r.id), ['avoidable-rebuilds'], 'a limit of 0 still passes a positive row');
+});
+
+// ---- cost advisor: weekly notice ----
+
+test('hook: the notice says how a row moved since the previous scan', () => {
+  const moved = (previous) => { const cfg = tmp(); seed(cfg, { previous }); return hook(cfg).out.systemMessage; };
+  assert.match(moved({ avoidableUsd: 65.6, avoidableCount: 9 }), /\$35 at list price, down \$31 since last check\./);
+  assert.match(moved({ avoidableUsd: 22.6, avoidableCount: 3 }), /\$35 at list price, up \$12 since last check\./);
+});
+
+test('hook: no movement is claimed without the same row in the previous state', () => {
+  const quiet = (over) => { const cfg = tmp(); seed(cfg, over); return hook(cfg).out.systemMessage; };
+  assert.doesNotMatch(quiet({}), /since last check/, 'no previous state');
+  assert.doesNotMatch(quiet({ previous: { premiums: premiums(70) } }), /since last check/, 'previous held a different row');
+  assert.doesNotMatch(quiet({ previous: { avoidableUsd: 2 } }), /since last check/, 'the row did not qualify last time');
+  assert.doesNotMatch(quiet({ previous: { avoidableUsd: 34.4 } }), /since last check/, 'under a dollar of movement');
+  assert.match(quiet({ previous: 'garbage' }), /\$35 at list price\./, 'a malformed previous is no previous');
+});
+
+test('hook: the default limit is 5, HOUSE_COST_ADVISOR_USD wins, and HOUSE_COST_CHECK_USD applies only when it is unset', () => {
+  const run = (avoidableUsd, env) => { const cfg = tmp(); seed(cfg, { avoidableUsd }); return hook(cfg, { env }).out.systemMessage; };
+  assert.match(run(5, {}), /about \$5 at list price/);
+  assert.equal(run(4.99, {}), undefined);
+  assert.equal(run(6, { HOUSE_COST_ADVISOR_USD: '7' }), undefined);
+  assert.match(run(8, { HOUSE_COST_ADVISOR_USD: '7', HOUSE_COST_CHECK_USD: '100' }), /house:/);
+  assert.equal(run(8, { HOUSE_COST_CHECK_USD: '9' }), undefined);
+  assert.match(run(9, { HOUSE_COST_CHECK_USD: '9' }), /house:/);
+});
+
+test('hook: HOUSE_COST_ADVISOR=off silences the notice and spawns nothing; without it the same state speaks', () => {
+  const cfg = tmp();
+  seed(cfg);
+  const log = join(cfg, 'spawns.log');
+  assert.equal(hook(cfg, { env: { HOUSE_COST_ADVISOR: 'off', HOUSE_COST_CHECK_SPAWN_LOG: log } }).out.systemMessage, undefined);
+  assert.ok(!existsSync(log));
+  assert.equal(JSON.parse(readFileSync(stateFile(cfg), 'utf8')).shownAt, undefined);
+  assert.match(hook(cfg).out.systemMessage, /house:/);
+});
+
+test('hook: a broken cost-report module costs the notice, not the orchestration text', () => {
+  const plugin = tmp();
+  mkdirSync(join(plugin, 'hooks'));
+  mkdirSync(join(plugin, 'scripts'));
+  mkdirSync(join(plugin, 'orchestration'));
+  writeFileSync(join(plugin, 'hooks', 'session-start.mjs'), readFileSync(HOOK));
+  writeFileSync(join(plugin, 'orchestration', 'ORCHESTRATION.md'), 'text');
+  writeFileSync(join(plugin, 'scripts', 'cost-report.mjs'), 'this is not javascript (');
+  const cfg = tmp();
+  seed(cfg);
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg };
+  delete env.HOUSE_COST_CHECK;
+  delete env.HOUSE_COST_ADVISOR;
+  const r = spawnSync(process.execPath, [join(plugin, 'hooks', 'session-start.mjs')], { input: JSON.stringify({ source: 'startup' }), encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.systemMessage, undefined);
+  assert.ok(out.hookSpecificOutput.additionalContext.includes('text'));
+});
+
+// ---- cost advisor: baselines, --advise, workflow estimate, strict args ----
+
+// $1 of Opus 5.5 input per 250,000 tokens, so a fixture's dollars read directly.
+const dollars = (usd, over = {}) => entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: usd * 250000, ...over });
+
+function stateOf(d, args = []) {
+  const state = join(tmp(), 'cost-check.json');
+  const r = spawnSync(process.execPath, [CLI, '--dir', d, '--state', state, ...args], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(readFileSync(state, 'utf8'));
+}
+
+test('--state records 30-day session percentiles for the account and each project', () => {
+  const d = tmp();
+  for (const [i, usd] of [1, 2, 3, 4].entries()) put(d, `alpha/s${i}.jsonl`, [dollars(usd)]);
+  put(d, 'beta/s.jsonl', [dollars(10)]);
+  const { baselines } = stateOf(d);
+  assert.equal(baselines.account.sessions, 5);
+  near(baselines.account.p50, 3);
+  near(baselines.account.p95, 8.8);
+  assert.equal(baselines.projects.alpha.sessions, 4);
+  near(baselines.projects.alpha.p50, 2.5);
+  near(baselines.projects.alpha.p95, 3.85);
+  assert.equal(baselines.projects.beta.sessions, 1);
+  near(baselines.projects.beta.p95, 10);
+});
+
+test('baselines: subagent files and sidechain entries are not session cost', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(1), dollars(50, { sidechain: true })]);
+  put(d, 'p/s/subagents/agent-1.jsonl', [dollars(100)]);
+  put(d, 'p/s/subagents/workflows/run/agent-2.jsonl', [dollars(100)]);
+  const { baselines } = stateOf(d);
+  assert.equal(baselines.account.sessions, 1, 'subagent files are not sessions');
+  near(baselines.account.p95, 1);
+});
+
+test('baselines cover 30 days while the advice figures stay on 7, in one scan', () => {
+  const d = tmp();
+  const f = put(d, 'p/recent.jsonl', [dollars(2, { ts: ago(20 * 86400) })]);
+  const past = new Date(Date.now() - 20 * 86400000);
+  utimesSync(f, past, past);
+  const old = put(d, 'p/old.jsonl', [dollars(1000, { ts: ago(40 * 86400) })]);
+  const older = new Date(Date.now() - 40 * 86400000);
+  utimesSync(old, older, older);
+  put(d, 'p/now.jsonl', [dollars(3)]);
+  const s = stateOf(d);
+  assert.equal(s.since, '7d');
+  near(s.totalUsd, 3);
+  assert.equal(s.baselines.account.sessions, 2, 'the 20-day file counts and the 40-day one does not');
+  near(s.baselines.account.p95, 2.95);
+});
+
+test('baselines: a request before the 30-day cut does not count toward its session', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(100, { ts: ago(40 * 86400) }), dollars(2)]);
+  near(stateOf(d).baselines.account.p95, 2);
+});
+
+test('baselines: an unpriced session is left out rather than counted at $0', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-mystery-9', ts: ago(60), inTok: 1e6 })]);
+  put(d, 'p/t.jsonl', [dollars(2)]);
+  const { baselines } = stateOf(d);
+  assert.equal(baselines.account.sessions, 1);
+  near(baselines.account.p50, 2);
+});
+
+test('--state with no sessions records a zero count and no percentile', () => {
+  const { baselines } = stateOf(tmp());
+  assert.equal(baselines.account.sessions, 0);
+  assert.equal(baselines.account.p95, undefined);
+  assert.deepEqual(baselines.projects, {});
+});
+
+test('--state keeps the previous scan\'s figures and does not chain them', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 1e6, speed: 'fast' })]);
+  const state = join(tmp(), 'cost-check.json');
+  const scanOnce = () => spawnSync(process.execPath, [CLI, '--dir', d, '--state', state], { encoding: 'utf8' });
+  assert.equal(scanOnce().status, 0);
+  assert.equal(JSON.parse(readFileSync(state, 'utf8')).previous, undefined, 'the first scan has nothing before it');
+  put(d, 'p/t.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(50), inTok: 1e6, speed: 'fast' })]);
+  assert.equal(scanOnce().status, 0);
+  const second = JSON.parse(readFileSync(state, 'utf8'));
+  near(second.previous.premiums.fastUsd, 4);
+  near(second.premiums.fastUsd, 8);
+  assert.equal(scanOnce().status, 0);
+  const third = JSON.parse(readFileSync(state, 'utf8'));
+  near(third.previous.premiums.fastUsd, 8);
+  assert.equal(third.previous.previous, undefined);
+});
+
+function advised(d, args = [], env = {}) {
+  const e = { ...process.env, ...env };
+  if (!('HOUSE_COST_ADVISOR_USD' in env)) delete e.HOUSE_COST_ADVISOR_USD;
+  if (!('HOUSE_COST_CHECK_USD' in env)) delete e.HOUSE_COST_CHECK_USD;
+  return spawnSync(process.execPath, [CLI, '--dir', d, '--advise', ...args], { encoding: 'utf8', env: e });
+}
+
+test('--advise prints the qualifying rows, the limit with its source, the baseline, and the plain total', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 3e6 })]);
+  const plain = spawnSync(process.execPath, [CLI, '--dir', d, '--since', '30d'], { encoding: 'utf8' }).stdout;
+  const total = /\$(\d+\.\d\d) at list price/.exec(plain)[1];
+  const r = advised(d, ['--since', '30d']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, new RegExp(`\\$${total.replace('.', '\\.')} at list price`));
+  assert.match(r.stdout, /context-over-200k: \$12\.00/);
+  assert.match(r.stdout, /\/house-rules:handoff/);
+  assert.match(r.stdout, /Limit: \$5\.00 \(default\)/);
+  assert.match(r.stdout, /account: 1 sessions?, p50 \$12\.00/);
+});
+
+test('--advise names the environment as the limit source and reports no qualifying row', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-opus-5-5', ts: ago(60), inTok: 3e6 })]);
+  const r = advised(d, [], { HOUSE_COST_ADVISOR_USD: '50' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Limit: \$50\.00 \(HOUSE_COST_ADVISOR_USD\)/);
+  assert.match(r.stdout, /No pattern at or over the limit/);
+  assert.doesNotMatch(r.stdout.slice(0, r.stdout.indexOf('Patterns below the limit')), /context-over-200k/, 'the row is below the limit, not over it');
+  assert.match(r.stdout, /Patterns below the limit[^]*context-over-200k: \$12\.00[^\n]*\(below the limit\)/);
+});
+
+// ---- cost advisor: always-on summary, below-limit patterns ----
+
+// $12 of context over 200k, plus a fast-mode premium of $0.40 that stays under a limit above it.
+function summaryFixture() {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(12), entry({ model: 'claude-opus-5-5', ts: ago(50), inTok: 100000, speed: 'fast' })]);
+  return d;
+}
+const section = (out, from, to) => out.slice(out.indexOf(from), to ? out.indexOf(to) : undefined);
+const emptyBaselines = { days: 30, account: { sessions: 0 }, projects: {} };
+
+test('patternRows lists every row above $0, and advise is that list cut at the limit', () => {
+  const all = patternRows(advisable()).map((r) => r.id);
+  assert.deepEqual(all, ['price-premiums', 'context-over-200k', 'avoidable-rebuilds', 'short-ttl-rebuilds']);
+  assert.deepEqual(advise(advisable(), 50).map((r) => r.id), ['price-premiums', 'context-over-200k'], 'a row exactly at the limit stays');
+  assert.deepEqual(advise(advisable(), 50.01).map((r) => r.id), ['price-premiums'], 'a row under the limit goes');
+  assert.deepEqual(advise(advisable(), 0).map((r) => r.id), all, 'a limit of 0 keeps every positive row');
+  assert.deepEqual(patternRows({ avoidableUsd: 'lots', premiums: { totalUsd: null }, shortTtl: {} }), [], 'a missing field is no row');
+  assert.deepEqual(patternRows({ avoidableUsd: 0, contextBands: bands(0, 0) }), [], 'a $0 row is never listed');
+  assert.deepEqual(patternRows(null), []);
+});
+
+test('--advise labels a pattern below the limit, and a row at the limit is not labelled below', () => {
+  const d = summaryFixture();
+  const out = advised(d, [], { HOUSE_COST_ADVISOR_USD: '12' }).stdout;
+  const over = section(out, 'Patterns at or over the limit', 'Patterns below the limit');
+  const below = section(out, 'Patterns below the limit', 'Baseline');
+  assert.match(over, /context-over-200k: \$12\.00/, 'the row exactly at the limit is over');
+  assert.doesNotMatch(over, /below the limit\)/);
+  assert.match(below, /price-premiums: \$0\.40[^\n]*\(below the limit\)/);
+  assert.match(below, /Next: Run \/fast/);
+  assert.doesNotMatch(below, /context-over-200k/);
+  const low = advised(d, [], { HOUSE_COST_ADVISOR_USD: '0.1' }).stdout;
+  assert.match(low, /price-premiums: \$0\.40/);
+  assert.doesNotMatch(low, /below the limit\)/, 'nothing is below a limit of 10 cents');
+  assert.doesNotMatch(low, /Patterns below the limit/);
+});
+
+test('--advise prints the usage summary when nothing crosses the limit, and the plain report does not', () => {
+  const d = summaryFixture();
+  const r = advised(d, [], { HOUSE_COST_ADVISOR_USD: '1000' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /No pattern at or over the limit/);
+  assert.match(r.stdout, /Recent usage/);
+  assert.match(r.stdout, /claude-opus-5-5: \$12\.80 main thread, \$0\.00 subagent \(100% of total\)/);
+  assert.match(r.stdout, /Main thread \$12\.80, subagents \$0\.00/);
+  assert.match(r.stdout, /500k and over: 1 \/ \$12\.00/);
+  assert.match(r.stdout, /Patterns below the limit/);
+  const plain = spawnSync(process.execPath, [CLI, '--dir', d], { encoding: 'utf8' }).stdout;
+  assert.doesNotMatch(plain, /Recent usage/);
+});
+
+test('usageSummary: a missing or non-numeric field is left out, a real $0 is kept', () => {
+  const sparse = usageSummary({ totalUsd: 10, byModel: { 'claude-opus-5-5': { mainUsd: 4 }, bad: { mainUsd: 'x', subUsd: null } }, contextBands: { 'under 200k': { requests: 3 } }, byCause: {} });
+  assert.deepEqual(sparse.models.map((m) => m.model), ['claude-opus-5-5']);
+  assert.equal(sparse.models[0].subUsd, undefined);
+  assert.equal(sparse.models[0].share, undefined, 'no share without both halves');
+  assert.equal(sparse.mainUsd, 4, 'the main total is kept when every listed model has it');
+  for (const k of ['subUsd', 'bands', 'workflow', 'rebuilds']) assert.equal(sparse[k], undefined, k);
+  assert.deepEqual(usageSummary(null), {});
+  const causes = Object.fromEntries(['model switch', 'idle >1h', 'idle 5m-1h', 'no idle gap'].map((k) => [k, { count: 0, usd: 0 }]));
+  const full = usageSummary({ totalUsd: 10, byModel: { m: { mainUsd: 4, subUsd: 0 } }, workflowAgentsInWindow: { agents: 0, usd: 0 }, avoidableUsd: 0, avoidableCount: 0, byCause: causes, contextBands: bands(0, 0) });
+  near(full.models[0].share, 0.4);
+  assert.equal(full.subUsd, 0);
+  assert.deepEqual(full.workflow, { agents: 0, usd: 0 });
+  assert.equal(full.rebuilds.avoidableCount, 0);
+  const limit = { usd: 5, source: 'default' };
+  const text = formatAdvice({ totalUsd: 10, byModel: { 'claude-opus-5-5': { mainUsd: 4 } }, baselines: emptyBaselines }, 'since 7d', limit);
+  assert.match(text, /claude-opus-5-5: \$4\.00 main thread/);
+  assert.doesNotMatch(text, /\$0\.00/, 'a missing field is not shown as $0');
+  const zero = formatAdvice({ totalUsd: 4, byModel: { 'claude-opus-5-5': { mainUsd: 4, subUsd: 0 } }, baselines: emptyBaselines }, 'since 7d', limit);
+  assert.match(zero, /\$0\.00 subagent/, 'a real zero is shown');
+});
+
+test('scan counts workflow agents over the report window apart from the 30-day figure', async () => {
+  const d = tmp();
+  put(d, 'p/s/subagents/workflows/run/new.jsonl', [dollars(2)]);
+  put(d, 'p/s/subagents/workflows/run/old.jsonl', [dollars(5, { ts: ago(10 * 86400) })]);
+  const now = Date.now();
+  const r = await scan({ dir: d, sinceMs: now - 7 * 86400000, baselineSinceMs: now - 30 * 86400000 });
+  assert.equal(r.workflowAgents.agents, 2);
+  near(r.workflowAgents.usd, 7);
+  assert.equal(r.workflowAgentsInWindow.agents, 1);
+  near(r.workflowAgentsInWindow.usd, 2);
+  assert.equal((await scan({ dir: d, sinceMs: now - 7 * 86400000 })).workflowAgentsInWindow, undefined, 'asked for with baselines only, like workflowAgents');
+  assert.equal(stateOf(d).workflowAgentsInWindow, undefined, '--state output is unchanged');
+  const out = advised(d, ['--since', '7d']).stdout;
+  assert.match(out, /of which workflow agents \$2\.00, 1 agent\)/);
+  assert.doesNotMatch(out, /\$7\.00/);
+});
+
+test('--advise notes the two areas with no pattern row only when their dollars are above $0', () => {
+  const none = tmp();
+  put(none, 'p/s.jsonl', [dollars(2)]);
+  const quiet = advised(none).stdout;
+  assert.doesNotMatch(quiet, /workflow-estimate/);
+  assert.doesNotMatch(quiet, /subagents: /);
+  const both = tmp();
+  put(both, 'p/s.jsonl', [dollars(2)]);
+  put(both, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  put(both, 'p/s/subagents/workflows/run/a.jsonl', [dollars(1)]);
+  const out = advised(both).stdout;
+  assert.match(out, /workflows: [^\n]*--workflow-estimate <agents>[^\n]*before a launch[^\n]*recommends no setting/);
+  assert.match(out, /subagents: [^\n]*maintainer's transcripts[^\n]*pointed to a change/);
+  const subOnly = tmp();
+  put(subOnly, 'p/s.jsonl', [dollars(2)]);
+  put(subOnly, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  const sub = advised(subOnly).stdout;
+  assert.match(sub, /subagents: /);
+  assert.doesNotMatch(sub, /workflow-estimate/, 'no workflow dollars, no workflow note');
+  const rows = advise({ ...advisable(), byModel: { m: { subUsd: 99 } }, workflowAgentsInWindow: { agents: 3, usd: 50 } }, 5);
+  assert.deepEqual(rows.map((r) => r.id), ['price-premiums', 'context-over-200k', 'avoidable-rebuilds', 'short-ttl-rebuilds'], 'advise never carries the notes');
+});
+
+test('--advise output suggests no cheaper model or lower effort', () => {
+  const words = /\b(cheaper|lower effort|less effort|smaller model|downgrade|switch to)\b/i;
+  const d = summaryFixture();
+  put(d, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  put(d, 'p/s/subagents/workflows/run/a.jsonl', [dollars(1)]);
+  for (const usd of ['0.1', '12', '1000']) assert.doesNotMatch(advised(d, [], { HOUSE_COST_ADVISOR_USD: usd }).stdout, words, `limit ${usd}`);
+  assert.match('try a cheaper model at lower effort', words, 'the pattern does match such advice');
+});
+
+function workflowAgents(d, n, usd) {
+  for (let i = 0; i < n; i++) put(d, `p/s/subagents/workflows/run/agent-${i}.jsonl`, [dollars(usd)]);
+}
+
+test('--workflow-estimate multiplies the mean workflow-agent cost at 50 past agents and over', () => {
+  const d = tmp();
+  workflowAgents(d, 50, 2);
+  put(d, 'p/s/subagents/agent-x.jsonl', [dollars(1000)]);
+  put(d, 'p/main.jsonl', [dollars(1000)]);
+  const r = spawnSync(process.execPath, [CLI, '--dir', d, '--workflow-estimate', '7'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /about \$14/);
+  assert.match(r.stdout, /rough/i);
+  assert.match(r.stdout, /list[- ]price/i);
+  assert.match(r.stdout, /50 past workflow agents/);
+});
+
+test('--workflow-estimate below 50 past agents prints no dollars and says why', () => {
+  const d = tmp();
+  workflowAgents(d, 49, 2);
+  const r = spawnSync(process.execPath, [CLI, '--dir', d, '--workflow-estimate', '7'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /\$/);
+  assert.match(r.stdout, /49 past workflow agents/);
+  assert.match(r.stdout, /at least 50/);
+});
+
+test('--workflow-estimate counts only the last 30 days', () => {
+  const d = tmp();
+  workflowAgents(d, 50, 2);
+  for (let i = 0; i < 10; i++) put(d, `p/old/subagents/workflows/run/a${i}.jsonl`, [dollars(500, { ts: ago(40 * 86400) })]);
+  assert.match(spawnSync(process.execPath, [CLI, '--dir', d, '--workflow-estimate', '1'], { encoding: 'utf8' }).stdout, /about \$2\b/);
+});
+
+test('strict args: a bad flag or value exits non-zero before any scan, and --help prints usage', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(1)]);
+  for (const args of [['--bogus'], ['--advise', 'stray'], ['--workflow-estimate'], ['--workflow-estimate', '0'], ['--workflow-estimate', '-3'], ['--workflow-estimate', '1.5'], ['--workflow-estimate', 'many'],
+    ['--workflow-estimate', '5', '--since', '7d'], ['--workflow-estimate', '5', '--project', 'p'], ['--advise', '--json'], ['--advise', '--state', join(d, 'x.json')], ['--advise', '--workflow-estimate', '5'], ['--advise', '--since', 'never']]) {
+    const r = spawnSync(process.execPath, [CLI, '--dir', d, ...args], { encoding: 'utf8' });
+    assert.notEqual(r.status, 0, args.join(' '));
+    assert.match(r.stderr, /usage: cost-report/, args.join(' '));
+    assert.equal(r.stdout, '', args.join(' '));
+  }
+  assert.ok(!existsSync(join(d, 'x.json')));
+  const help = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /--advise/);
+  assert.match(help.stdout, /--workflow-estimate/);
+});
+
+test('house cost forwards its arguments and the exit code to cost-report', () => {
+  const HOUSE = join(ROOT, 'plugins/house/scripts/house');
+  const d = tmp();
+  workflowAgents(d, 50, 2);
+  const ok = spawnSync(process.execPath, [HOUSE, 'cost', '--dir', d, '--workflow-estimate', '3'], { encoding: 'utf8' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /about \$6/);
+  const bad = spawnSync(process.execPath, [HOUSE, 'cost', '--workflow-estimate', 'many'], { encoding: 'utf8' });
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /usage: cost-report/);
 });
 
 test('hook: a scan that dies is respawned once its lock is over an hour old, and a finished result stays due a week out', () => {
@@ -566,4 +990,81 @@ test('hook: a scan that dies is respawned once its lock is over an hour old, and
   seed(done, { checkedAt: ago(6 * 86400), avoidableUsd: 2 });
   hook(done, { env: { HOUSE_COST_CHECK_SPAWN_LOG: join(done, 'spawns.log') } });
   assert.ok(!existsSync(join(done, 'spawns.log')), 'a result six days old is not yet due');
+});
+
+// ---- cost advisor: review fixes ----
+
+test('--advise names an unpriced model as unpriced, never as $0, and prints the caveat formatText prints', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(12), entry({ model: 'claude-mystery-9', ts: ago(50), inTok: 1e6 })]);
+  const out = advised(d).stdout;
+  assert.match(out, /Unpriced models \(counted as \$0\): claude-mystery-9/);
+  assert.match(out, /claude-mystery-9: unpriced/);
+  assert.doesNotMatch(out, /claude-mystery-9: \$/, 'an unpriced model shows no dollars');
+  assert.doesNotMatch(out, /claude-mystery-9[^\n]*0%/);
+  assert.match(out, /claude-opus-5-5: \$12\.00 main thread, \$0\.00 subagent \(100% of total\)/, 'a priced model keeps its dollars');
+  const clean = advised(summaryFixture()).stdout;
+  assert.doesNotMatch(clean, /Unpriced models/, 'no caveat without an unpriced model');
+  assert.doesNotMatch(clean, /: unpriced/);
+  const s = usageSummary({ totalUsd: 4, unpriced: ['m2'], byModel: { m1: { mainUsd: 4, subUsd: 0 }, m2: { mainUsd: 0, subUsd: 0 } } });
+  assert.equal(s.models.find((m) => m.model === 'm2').unpriced, true);
+  assert.equal(s.models.find((m) => m.model === 'm1').unpriced, undefined);
+  assert.equal(s.mainUsd, 4, 'the totals are the priced models');
+});
+
+test('cost-advisor skill: the same-tier move is named as the one exception to never suggesting a cheaper model', () => {
+  const skill = readFileSync(join(ROOT, 'plugins/house/skills/cost-advisor/SKILL.md'), 'utf8');
+  assert.match(skill, /Never suggest a cheaper model or a lower effort/);
+  assert.match(skill, /the one exception[^\n]*current version of the same tier[^\n]*same tier, not a capability downgrade/i);
+  assert.match(advise({ premiums: premiums(0, 0, 9) }, 1)[0].next, /current version of the same tier/, 'the row the exception is for still says it');
+});
+
+test('--advise uses the limit the weekly notice uses: HOUSE_COST_CHECK_USD counts, HOUSE_COST_ADVISOR_USD still wins', () => {
+  const d = summaryFixture();
+  const withCheck = advised(d, [], { HOUSE_COST_CHECK_USD: '20' }).stdout;
+  assert.match(withCheck, /Limit: \$20\.00 \(HOUSE_COST_CHECK_USD\)/);
+  assert.match(withCheck, /No pattern at or over the limit/, 'the $12 row is under the notice limit');
+  assert.match(advised(d, [], { HOUSE_COST_CHECK_USD: '20', HOUSE_COST_ADVISOR_USD: '7' }).stdout, /Limit: \$7\.00 \(HOUSE_COST_ADVISOR_USD\)/);
+  assert.match(advised(d).stdout, /Limit: \$5\.00 \(default\)/);
+});
+
+test('--advise labels the baseline line for --project, and calls it the account without one', () => {
+  const d = summaryFixture();
+  const filtered = advised(d, ['--project', 'p']).stdout;
+  assert.match(filtered, /\n  project filter: \d+ sessions?/);
+  assert.doesNotMatch(filtered, /\n  account:/);
+  const plain = advised(d).stdout;
+  assert.match(plain, /\n  account: \d+ sessions?/);
+  assert.doesNotMatch(plain, /project filter:/);
+});
+
+test('--advise states the subagents finding as the maintainer\'s, not as a general one', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(2)]);
+  put(d, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  const out = advised(d).stdout;
+  assert.match(out, /subagents: [^\n]*maintainer's transcripts[^\n]*nothing[^\n]*pointed to a change/);
+  assert.doesNotMatch(out, /no fix that leaves the work unchanged is measured/);
+});
+
+test('hook: when last period\'s top pattern differs, the notice says how it moved; the same top row keeps today\'s text', () => {
+  const note = (over) => { const cfg = tmp(); seed(cfg, over); return hook(cfg).out.systemMessage; };
+  // This period: premiums $60 is top, avoidable rebuilds $34.6 is second. Last period: avoidable $65.6 was top.
+  const shrank = note({ premiums: premiums(60), previous: { avoidableUsd: 65.6, avoidableCount: 9 } });
+  assert.match(shrank, /^house: in the last 7 days, price premiums \(mostly fast mode, \$60\) cost about \$60 at list price; last check's top pattern, cache rebuilds after idle gaps or model switches \(9 rebuilds\), went from \$66 to \$35\. Next:/);
+  assert.ok(!shrank.includes('\n'));
+  // The previous top row is gone this period: it went to $0.
+  assert.match(note({ previous: { premiums: premiums(70) } }), /last check's top pattern, price premiums \(mostly fast mode, \$70\), went from \$70 to \$0\. Next:/);
+  // Same top row: today's text, nothing added.
+  const same = note({ previous: { avoidableUsd: 65.6, avoidableCount: 9 } });
+  assert.match(same, /\$35 at list price, down \$31 since last check\. Next:/);
+  assert.doesNotMatch(same, /last check's top pattern/);
+  // No previous data, no previous top row: nothing added.
+  assert.doesNotMatch(note({}), /last check's top pattern/);
+  assert.doesNotMatch(note({ previous: { avoidableUsd: 2 } }), /last check's top pattern/, 'nothing qualified last time');
+  assert.doesNotMatch(note({ previous: 'garbage' }), /last check's top pattern/);
+  // Nothing crosses the limit this period: silent as before.
+  const cfg = tmp();
+  seed(cfg, { avoidableUsd: 2, previous: { premiums: premiums(70) } });
+  assert.equal(hook(cfg).out.systemMessage, undefined);
 });
