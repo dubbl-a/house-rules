@@ -41,11 +41,17 @@ runtime protection because there is no other runtime.
 A sync is not the only way new code arrives. The plugin's hooks run unsandboxed with the adopter's
 access, and they change when the plugin updates, with no sync and no diff to approve. Auto-update is
 off by default for third-party marketplaces; where it is turned on, it delivers hook changes. The
-install prompt shows that a hook exists but not what it runs, and Claude Code does not document
-whether an update that changes hooks asks again, so assume it does not. Mitigation: pin the
-marketplace to a release tag (`claude plugin marketplace add dubbl-a/house-rules#v0.20.0`), and
-read the hooks diff between tags (`git diff vA..vB -- plugins/house/hooks`) before moving the pin.
-Whether auto-update follows or respects a pin is also not documented.
+install prompt shows that a hook exists but not what it runs. An update that changes hooks does not
+ask again: on Claude Code 2.1.319, `claude plugin update` swapped a hook with no prompt and the next
+session ran the new one. Mitigation: pin the marketplace to a release tag
+(`claude plugin marketplace add dubbl-a/house-rules#v0.20.0`), and read the hooks diff between tags
+(`git diff vA..vB -- plugins/house/hooks`) before moving the pin. In the same version
+`claude plugin update` held to a pin. Whether background auto-update does is not documented and was
+not tested.
+
+Turning the plugin off does not stop it at once: on that version, a running session's hooks kept
+firing after `claude plugin disable` and after `claude plugin uninstall`. They stop when the session
+restarts, so restart every open session after either.
 
 Tags `v0.15.2` and older are lightweight, and `v0.16.0` and `v0.17.0` are annotated and unsigned.
 `v0.18.0` is immutable on GitHub (its tag and assets cannot be changed once published) and its tag
