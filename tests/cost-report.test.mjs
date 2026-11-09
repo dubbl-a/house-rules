@@ -754,6 +754,7 @@ test('--state keeps the previous scan\'s figures and does not chain them', () =>
 function advised(d, args = [], env = {}) {
   const e = { ...process.env, ...env };
   if (!('HOUSE_COST_ADVISOR_USD' in env)) delete e.HOUSE_COST_ADVISOR_USD;
+  if (!('HOUSE_COST_CHECK_USD' in env)) delete e.HOUSE_COST_CHECK_USD;
   return spawnSync(process.execPath, [CLI, '--dir', d, '--advise', ...args], { encoding: 'utf8', env: e });
 }
 
@@ -885,7 +886,7 @@ test('--advise notes the two areas with no pattern row only when their dollars a
   put(both, 'p/s/subagents/workflows/run/a.jsonl', [dollars(1)]);
   const out = advised(both).stdout;
   assert.match(out, /workflows: [^\n]*--workflow-estimate <agents>[^\n]*before a launch[^\n]*recommends no setting/);
-  assert.match(out, /subagents: [^\n]*no fix that leaves the work unchanged is measured/);
+  assert.match(out, /subagents: [^\n]*maintainer's transcripts[^\n]*pointed to a change/);
   const subOnly = tmp();
   put(subOnly, 'p/s.jsonl', [dollars(2)]);
   put(subOnly, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
@@ -989,4 +990,81 @@ test('hook: a scan that dies is respawned once its lock is over an hour old, and
   seed(done, { checkedAt: ago(6 * 86400), avoidableUsd: 2 });
   hook(done, { env: { HOUSE_COST_CHECK_SPAWN_LOG: join(done, 'spawns.log') } });
   assert.ok(!existsSync(join(done, 'spawns.log')), 'a result six days old is not yet due');
+});
+
+// ---- cost advisor: review fixes ----
+
+test('--advise names an unpriced model as unpriced, never as $0, and prints the caveat formatText prints', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(12), entry({ model: 'claude-mystery-9', ts: ago(50), inTok: 1e6 })]);
+  const out = advised(d).stdout;
+  assert.match(out, /Unpriced models \(counted as \$0\): claude-mystery-9/);
+  assert.match(out, /claude-mystery-9: unpriced/);
+  assert.doesNotMatch(out, /claude-mystery-9: \$/, 'an unpriced model shows no dollars');
+  assert.doesNotMatch(out, /claude-mystery-9[^\n]*0%/);
+  assert.match(out, /claude-opus-5-5: \$12\.00 main thread, \$0\.00 subagent \(100% of total\)/, 'a priced model keeps its dollars');
+  const clean = advised(summaryFixture()).stdout;
+  assert.doesNotMatch(clean, /Unpriced models/, 'no caveat without an unpriced model');
+  assert.doesNotMatch(clean, /: unpriced/);
+  const s = usageSummary({ totalUsd: 4, unpriced: ['m2'], byModel: { m1: { mainUsd: 4, subUsd: 0 }, m2: { mainUsd: 0, subUsd: 0 } } });
+  assert.equal(s.models.find((m) => m.model === 'm2').unpriced, true);
+  assert.equal(s.models.find((m) => m.model === 'm1').unpriced, undefined);
+  assert.equal(s.mainUsd, 4, 'the totals are the priced models');
+});
+
+test('cost-advisor skill: the same-tier move is named as the one exception to never suggesting a cheaper model', () => {
+  const skill = readFileSync(join(ROOT, 'plugins/house/skills/cost-advisor/SKILL.md'), 'utf8');
+  assert.match(skill, /Never suggest a cheaper model or a lower effort/);
+  assert.match(skill, /the one exception[^\n]*current version of the same tier[^\n]*same tier, not a capability downgrade/i);
+  assert.match(advise({ premiums: premiums(0, 0, 9) }, 1)[0].next, /current version of the same tier/, 'the row the exception is for still says it');
+});
+
+test('--advise uses the limit the weekly notice uses: HOUSE_COST_CHECK_USD counts, HOUSE_COST_ADVISOR_USD still wins', () => {
+  const d = summaryFixture();
+  const withCheck = advised(d, [], { HOUSE_COST_CHECK_USD: '20' }).stdout;
+  assert.match(withCheck, /Limit: \$20\.00 \(HOUSE_COST_CHECK_USD\)/);
+  assert.match(withCheck, /No pattern at or over the limit/, 'the $12 row is under the notice limit');
+  assert.match(advised(d, [], { HOUSE_COST_CHECK_USD: '20', HOUSE_COST_ADVISOR_USD: '7' }).stdout, /Limit: \$7\.00 \(HOUSE_COST_ADVISOR_USD\)/);
+  assert.match(advised(d).stdout, /Limit: \$5\.00 \(default\)/);
+});
+
+test('--advise labels the baseline line for --project, and calls it the account without one', () => {
+  const d = summaryFixture();
+  const filtered = advised(d, ['--project', 'p']).stdout;
+  assert.match(filtered, /\n  project filter: \d+ sessions?/);
+  assert.doesNotMatch(filtered, /\n  account:/);
+  const plain = advised(d).stdout;
+  assert.match(plain, /\n  account: \d+ sessions?/);
+  assert.doesNotMatch(plain, /project filter:/);
+});
+
+test('--advise states the subagents finding as the maintainer\'s, not as a general one', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [dollars(2)]);
+  put(d, 'p/s/subagents/agent-1.jsonl', [dollars(3)]);
+  const out = advised(d).stdout;
+  assert.match(out, /subagents: [^\n]*maintainer's transcripts[^\n]*nothing[^\n]*pointed to a change/);
+  assert.doesNotMatch(out, /no fix that leaves the work unchanged is measured/);
+});
+
+test('hook: when last period\'s top pattern differs, the notice says how it moved; the same top row keeps today\'s text', () => {
+  const note = (over) => { const cfg = tmp(); seed(cfg, over); return hook(cfg).out.systemMessage; };
+  // This period: premiums $60 is top, avoidable rebuilds $34.6 is second. Last period: avoidable $65.6 was top.
+  const shrank = note({ premiums: premiums(60), previous: { avoidableUsd: 65.6, avoidableCount: 9 } });
+  assert.match(shrank, /^house: in the last 7 days, price premiums \(mostly fast mode, \$60\) cost about \$60 at list price; last check's top pattern, cache rebuilds after idle gaps or model switches \(9 rebuilds\), went from \$66 to \$35\. Next:/);
+  assert.ok(!shrank.includes('\n'));
+  // The previous top row is gone this period: it went to $0.
+  assert.match(note({ previous: { premiums: premiums(70) } }), /last check's top pattern, price premiums \(mostly fast mode, \$70\), went from \$70 to \$0\. Next:/);
+  // Same top row: today's text, nothing added.
+  const same = note({ previous: { avoidableUsd: 65.6, avoidableCount: 9 } });
+  assert.match(same, /\$35 at list price, down \$31 since last check\. Next:/);
+  assert.doesNotMatch(same, /last check's top pattern/);
+  // No previous data, no previous top row: nothing added.
+  assert.doesNotMatch(note({}), /last check's top pattern/);
+  assert.doesNotMatch(note({ previous: { avoidableUsd: 2 } }), /last check's top pattern/, 'nothing qualified last time');
+  assert.doesNotMatch(note({ previous: 'garbage' }), /last check's top pattern/);
+  // Nothing crosses the limit this period: silent as before.
+  const cfg = tmp();
+  seed(cfg, { avoidableUsd: 2, previous: { premiums: premiums(70) } });
+  assert.equal(hook(cfg).out.systemMessage, undefined);
 });

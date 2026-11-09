@@ -921,7 +921,7 @@ runs it detached once a week on startup and shows one line next startup: the top
 `advise()` in that script, which holds four patterns (main-thread cost over 200k context, avoidable
 rebuilds, price premiums, short-TTL rebuilds), each with a next step that leaves the work unchanged
 and none suggesting a cheaper model or lower effort. The line also says how that row moved since the
-previous scan. A row qualifies at $5 (`HOUSE_COST_ADVISOR_USD`, then an existing
+previous scan, and, when the previous scan's top row was a different one, how that one moved. A row qualifies at $5 (`HOUSE_COST_ADVISOR_USD`, then an existing
 `HOUSE_COST_CHECK_USD` for this notice only; `HOUSE_COST_ADVISOR=off` or `HOUSE_COST_CHECK=off`
 disables it). A scan that dies is retried once its lock is an hour old.
 

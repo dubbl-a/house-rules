@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // UserPromptSubmit hook: say once, in one systemMessage line, when this
-// session's main-thread cost is unusual for this repo or account.
+// conversation's main-thread cost is unusual for this repo or account.
 //
 // The baselines come from the weekly scan (<config dir>/house/cost-check.json,
 // written by ../scripts/cost-report.mjs --state). Session cost is priced from
@@ -28,6 +28,12 @@ import { basename, dirname, join } from 'node:path';
 
 const MARKER_DIR = join(tmpdir(), 'house-session-cost-line');
 
+// A baseline older than this is not trusted. A healthy scan runs weekly, so 30
+// days means the scan has stopped (HOUSE_COST_ADVISOR=off or HOUSE_COST_CHECK=off
+// after the baseline was written), and 30 days is also the window the baseline
+// covers, so an older one describes sessions that have all aged out.
+const BASELINE_MAX_AGE_MS = 30 * 86400000;
+
 // The baseline to judge against, or null when there is none to trust. A project
 // with enough sessions is used even when its p95 is unreadable, so a malformed
 // entry is silence and never a quiet swap to a different scope.
@@ -50,14 +56,16 @@ try {
         const lib = await import('../scripts/cost-report.mjs');
         const cfgDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
         const state = JSON.parse(readFileSync(join(cfgDir, 'house', 'cost-check.json'), 'utf8'));
-        const base = chooseBaseline(state && state.baselines, basename(dirname(path)), lib);
+        const checkedAt = state && typeof state === 'object' && typeof state.checkedAt === 'string' ? Date.parse(state.checkedAt) : NaN;
+        const age = Date.now() - checkedAt;
+        const base = Number.isFinite(age) && age <= BASELINE_MAX_AGE_MS && age >= -86400000 ? chooseBaseline(state && state.baselines, basename(dirname(path)), lib) : null;
         if (base) {
           const line = Math.max(lib.advisorLimit().usd, base.p95);
           const usd = await lib.sessionMainUsd(path);
           if (usd > 0 && usd >= line) {
             mkdirSync(MARKER_DIR, { recursive: true });
             writeFileSync(marker, new Date().toISOString(), { flag: 'wx' });
-            const systemMessage = `house: this session's main thread has cost about $${usd.toFixed(0)} at list price, unusual for this ${base.scope} (p95 of past sessions is $${base.p95.toFixed(0)}). ` +
+            const systemMessage = `house: this conversation's main thread has cost about $${usd.toFixed(0)} at list price, unusual for this ${base.scope} (p95 of past sessions is $${base.p95.toFixed(0)}). ` +
               `Next: ${lib.NEXT_CLEAR} /house-rules:cost-advisor explains it. Silence with HOUSE_COST_ADVISOR=off.`;
             process.stdout.write(JSON.stringify({ systemMessage }) + '\n');
           }

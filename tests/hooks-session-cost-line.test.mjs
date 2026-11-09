@@ -84,6 +84,8 @@ test('says the dollars, the scope, the next step, the skill and the off switch, 
   const m = out.systemMessage;
   assert.ok(!m.includes('\n'));
   assert.match(m, /\$62/);
+  assert.match(m, /^house: this conversation's main thread has cost about/);
+  assert.doesNotMatch(m, /this session/, 'a resumed transcript holds the whole conversation, so the figure is not this session\'s');
   assert.match(m, /unusual for this account/);
   assert.match(m, /\/house-rules:handoff/);
   assert.match(m, /\/clear/);
@@ -169,4 +171,18 @@ test('session cost dedupes split responses and leaves out sidechain entries', ()
   assert.equal(run(setup({ lines: [dup, dup], baselines })), null, 'one response logged twice is $15');
   assert.equal(run(setup({ lines: [assistant(1), assistant(100, { isSidechain: true })], baselines })), null);
   fires(run(setup({ lines: [assistant(15), assistant(15)], baselines })));
+});
+
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+const stateAt = (checkedAt) => JSON.stringify({ ...(checkedAt === undefined ? {} : { checkedAt }), baselines: { account: account(40, 1), projects: {} } });
+
+test('a baseline older than 30 days, or with no readable checkedAt, is silent; one just inside 30 days speaks', () => {
+  const lines = [assistant(30)];
+  fires(run(setup({ lines, stateBody: stateAt(daysAgo(29.9)) })));
+  assert.equal(run(setup({ lines, stateBody: stateAt(daysAgo(30.1)) })), null, 'frozen baseline');
+  assert.equal(run(setup({ lines, stateBody: stateAt(undefined) })), null, 'no checkedAt');
+  assert.equal(run(setup({ lines, stateBody: stateAt('yesterday-ish') })), null, 'invalid checkedAt');
+  assert.equal(run(setup({ lines, stateBody: stateAt(12345) })), null, 'a number is not a timestamp');
+  assert.equal(run(setup({ lines, stateBody: stateAt(null) })), null, 'null checkedAt');
+  assert.equal(run(setup({ lines, stateBody: stateAt(daysAgo(-5)) })), null, 'a timestamp in the future would never go stale');
 });

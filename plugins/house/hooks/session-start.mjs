@@ -114,7 +114,11 @@ async function costCheck(here) {
       const before = lib.advise(state.previous, limit).find((r) => r.id === row.id);
       const moved = before ? Math.round(row.usd - before.usd) : 0;
       const move = moved ? `, ${moved < 0 ? 'down' : 'up'} $${Math.abs(moved)} since last check` : '';
-      notice = `house: in the last 7 days, ${row.text} cost about $${row.usd.toFixed(0)} at list price${move}. Next: ${row.next} /house-rules:cost-advisor explains it. Silence with HOUSE_COST_ADVISOR=off.`;
+      // Last period's top pattern, when it is not the one named now: say how it moved too.
+      const [prevTop] = lib.advise(state.previous, limit);
+      const prevNow = prevTop && prevTop.id !== row.id ? (lib.patternRows(state).find((r) => r.id === prevTop.id) || { usd: 0 }).usd : undefined;
+      const prior = prevNow === undefined ? '' : `; last check's top pattern, ${prevTop.text}, went from $${prevTop.usd.toFixed(0)} to $${prevNow.toFixed(0)}`;
+      notice = `house: in the last 7 days, ${row.text} cost about $${row.usd.toFixed(0)} at list price${move}${prior}. Next: ${row.next} /house-rules:cost-advisor explains it. Silence with HOUSE_COST_ADVISOR=off.`;
     }
   }
   // No claim is written at spawn: a scan that dies leaves no new checkedAt, and the

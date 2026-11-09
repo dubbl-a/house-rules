@@ -299,28 +299,33 @@ export function advise(d, limitUsd) {
 }
 
 // The recent split behind the table, for --advise. A field that is missing or
-// not a number is left out, never shown as $0. Subagent dollars include the
-// workflow agents, which is why they are reported as "of which".
+// not a number is left out, never shown as $0, and a model with no price is
+// marked unpriced and carries no dollars, since its $0 is a gap and not a cost.
+// Subagent dollars include the workflow agents, which is why they are reported
+// as "of which".
 export function usageSummary(d) {
   const s = {};
   if (!d || typeof d !== 'object') return s;
   const num = Number.isFinite;
   const models = [];
+  const unpriced = new Set(Array.isArray(d.unpriced) ? d.unpriced : []);
   if (d.byModel && typeof d.byModel === 'object') {
     for (const [model, v] of Object.entries(d.byModel)) {
       if (!v || typeof v !== 'object' || !(num(v.mainUsd) || num(v.subUsd))) continue;
       const m = { model };
+      if (unpriced.has(model)) { m.unpriced = true; models.push(m); continue; }
       if (num(v.mainUsd)) m.mainUsd = v.mainUsd;
       if (num(v.subUsd)) m.subUsd = v.subUsd;
       if (num(m.mainUsd) && num(m.subUsd) && num(d.totalUsd) && d.totalUsd > 0) m.share = (m.mainUsd + m.subUsd) / d.totalUsd;
       models.push(m);
     }
-    models.sort((a, b) => (b.mainUsd || 0) + (b.subUsd || 0) - (a.mainUsd || 0) - (a.subUsd || 0));
+    models.sort((a, b) => (a.unpriced ? 1 : 0) - (b.unpriced ? 1 : 0) || (b.mainUsd || 0) + (b.subUsd || 0) - (a.mainUsd || 0) - (a.subUsd || 0));
   }
   if (models.length) {
     s.models = models;
-    if (models.every((m) => num(m.mainUsd))) s.mainUsd = models.reduce((t, m) => t + m.mainUsd, 0);
-    if (models.every((m) => num(m.subUsd))) s.subUsd = models.reduce((t, m) => t + m.subUsd, 0);
+    const priced = models.filter((m) => !m.unpriced);
+    if (priced.length && priced.every((m) => num(m.mainUsd))) s.mainUsd = priced.reduce((t, m) => t + m.mainUsd, 0);
+    if (priced.length && priced.every((m) => num(m.subUsd))) s.subUsd = priced.reduce((t, m) => t + m.subUsd, 0);
   }
   const bands = d.contextBands && typeof d.contextBands === 'object' ? d.contextBands : {};
   const listed = BANDS.map(([k]) => ({ band: k, requests: bands[k] && bands[k].requests, usd: bands[k] && bands[k].usd })).filter((b) => num(b.requests) && num(b.usd));
@@ -378,6 +383,7 @@ function formatSummary(s) {
   if (s.models) {
     L.push('  By model:');
     for (const m of s.models) {
+      if (m.unpriced) { L.push(`    ${m.model}: unpriced (not in the price table)`); continue; }
       const parts = [Number.isFinite(m.mainUsd) && `${usd(m.mainUsd)} main thread`, Number.isFinite(m.subUsd) && `${usd(m.subUsd)} subagent`].filter(Boolean);
       L.push(`    ${m.model}: ${parts.join(', ')}${m.share === undefined ? '' : ` (${Math.round(m.share * 100)}% of total)`}`);
     }
@@ -398,11 +404,13 @@ function formatSummary(s) {
   return L;
 }
 
-export function formatAdvice(d, sinceLabel, limit) {
+export function formatAdvice(d, sinceLabel, limit, project) {
   const rows = patternRows(d);
   const over = rows.filter((r) => r.usd >= limit.usd), below = rows.filter((r) => r.usd < limit.usd);
   const s = usageSummary(d);
-  const L = [`Cost advisor, ${sinceLabel}: ${usd(d.totalUsd)} at list price`, `Limit: ${usd(limit.usd)} (${limit.source})`, '', ...formatSummary(s), ''];
+  const L = [`Cost advisor, ${sinceLabel}: ${usd(d.totalUsd)} at list price`, `Limit: ${usd(limit.usd)} (${limit.source})`, '', ...formatSummary(s)];
+  if (Array.isArray(d.unpriced) && d.unpriced.length) L.push(`  Unpriced models (counted as $0): ${d.unpriced.join(', ')}`);
+  L.push('');
   if (over.length) {
     L.push('Patterns at or over the limit, largest first:');
     for (const r of over) L.push(`  ${r.id}: ${usd(r.usd)}  ${r.text}`, `    Next: ${r.next}`);
@@ -414,10 +422,10 @@ export function formatAdvice(d, sinceLabel, limit) {
   // Two large areas have no pattern row. These notes are descriptive and live here, never in the table the notice reads.
   const notes = [];
   if (s.workflow && s.workflow.usd > 0) notes.push('  workflows: `--workflow-estimate <agents>` gives a dollar estimate before a launch; it recommends no setting.');
-  if (s.subUsd > 0) notes.push('  subagents: no fix that leaves the work unchanged is measured; first-request and mid-run cache writes point to nothing to change.');
+  if (s.subUsd > 0) notes.push("  subagents: measured on the maintainer's transcripts only, where nothing (first-request and mid-run cache writes included) pointed to a change that leaves the work unchanged.");
   if (notes.length) L.push('', 'Areas with no pattern row:', ...notes);
   const line = (b) => (b.sessions ? `${b.sessions} sessions, p50 ${usd(b.p50)}, p90 ${usd(b.p90)}, p95 ${usd(b.p95)}` : '0 sessions');
-  L.push('', `Baseline, main-thread cost per session over the last ${d.baselines.days} days:`, `  account: ${line(d.baselines.account)}`);
+  L.push('', `Baseline, main-thread cost per session over the last ${d.baselines.days} days:`, `  ${project === undefined ? 'account' : 'project filter'}: ${line(d.baselines.account)}`);
   for (const [k, b] of Object.entries(d.baselines.projects).filter(([, b]) => b.sessions >= MIN_BASELINE_SESSIONS).sort((a, b) => b[1].sessions - a[1].sessions)) L.push(`  ${k}: ${line(b)}`);
   L.push('', 'Dollars are list price, not your bill. How a plan\'s limits weight cache reads and writes is unknown.');
   return L.join('\n') + '\n';
@@ -481,7 +489,7 @@ async function main() {
     // Release the hook's spawn lock (see session-start.mjs) now the result is in place.
     try { unlinkSync(join(dirname(o.state), 'cost-check.lock')); } catch { /* none */ }
   } else if (o.advise) {
-    process.stdout.write(formatAdvice(d, `since ${o.since}`, advisorLimit()));
+    process.stdout.write(formatAdvice(d, `since ${o.since}`, advisorLimit({ notice: true }), o.project));
   } else if (o.json) {
     process.stdout.write(JSON.stringify({ since: o.since, ...d }, null, 2) + '\n');
   } else {
