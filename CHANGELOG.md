@@ -6,6 +6,18 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.7] - 2026-11-09
+
+A patch release under ADR 0012: a price row, rule prose, and a survey, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.321 survey. Upgrading from 0.23.6: update the plugin as before, then run `/house-rules:sync`.
+
+### Added
+
+- A Claude Fable 5.2 price row in the cost report, the cost advisor, and the idle-cache hold (`plugins/house/scripts/cost-report.mjs`, `plugins/house/hooks/idle-cache-hold.mjs`), with its 2x fast mode, and Fable 5 and Fable 5.1 now count their legacy-model premium against Fable 5.2. Prices are dated 2026-11-09. No role runs on Fable 5.2: the ladder, the default session, and every roster pin stay as they were, and the research note is `research/model-tier/2026-11-09-fable-5-2.md`.
+
+### Changed
+
+- The claude-code rule's floor-under-the-hook line now says a mod you installed answers after the pre-tool hooks and, without managed settings or a Team or Enterprise login, can approve a call a deny rule refused or a hook blocked. The security rule lists a mod beside the hook, the server entry, and the plugin as something that runs with the full access of whoever opens the repo, and says to read what its hooks and mods run before enabling it. The handbook receipts quote the permissions and mods pages.
+
 ## [0.23.6] - 2026-11-09
 
 A patch release under ADR 0012: a new advisory hook, CLI additions, and rule prose, with no heading renamed and no change to what the guard denies. Upgrading: update the plugin as before, then run `/house-rules:sync`. Four things change what you see: the weekly cost notice limit drops from $10 to $5; a new `session-cost-line.mjs` hook can print one cost line per session; `HOUSE_COST_ADVISOR=off` silences both; and `house render --apply` adds `Bash(*house uninstall*--apply*)` to `permissions.ask` in each repo's `.claude/settings.json`.
