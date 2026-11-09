@@ -46,8 +46,8 @@
       "relationship": "BORROW",
       "remote": "https://github.com/Goldziher/ai-rulez",
       "ref": { "branch": "main" },
-      "sha": "19839e671063babc676abd0b603fb70df5f4977b",
-      "consulted": "2026-11-08",
+      "sha": "5cf12807a83f76882552503a51b1108bde33f257",
+      "consulted": "2026-11-09",
       "paths": ["README.md"],
       "recheck": "check whether it gains a deviations ledger or versioned cross-repo distribution"
     },
@@ -66,8 +66,8 @@
       "relationship": "BORROW",
       "remote": "https://github.com/karanb192/claude-code-hooks",
       "ref": { "branch": "main" },
-      "sha": "57a28c7687305e4a9b9dd50490e9b3c552c71ca4",
-      "consulted": "2026-10-21",
+      "sha": "e7f9c80bb166715df9b78db4460710f78506916e",
+      "consulted": "2026-11-09",
       "paths": ["plugins/guard-pack/", "plugins/config-guard/"],
       "recheck": "re-check if house ships more than one PreToolUse hook"
     },
@@ -136,8 +136,8 @@
       "relationship": "BORROW",
       "remote": "https://github.com/karanb192/claude-code-hooks",
       "ref": { "branch": "main" },
-      "sha": "57a28c7687305e4a9b9dd50490e9b3c552c71ca4",
-      "consulted": "2026-10-21",
+      "sha": "e7f9c80bb166715df9b78db4460710f78506916e",
+      "consulted": "2026-11-09",
       "paths": ["package.json", ".github/workflows/test.yml"],
       "recheck": "re-check the test layout on a major"
     },
