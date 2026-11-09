@@ -78,7 +78,7 @@ function priceRow(r, drop) {
   let p = PRICES[model];
   if (!p) return null;
   if (model === HAIKU_LONG.model && r.inTok + r.w5 + r.w1 + r.read > HAIKU_LONG.over) p = HAIKU_LONG.prices;
-  let f = r.speed === 'fast' && !off('fast') ? FAST_FACTOR[model] || 1 : 1;
+  let f = r.speed === 'fast' && !off('fast') ? FAST_FACTOR[r.model] || 1 : 1;
   if (r.geo === 'us' && !off('us')) f *= US_FACTOR;
   return p.map((x) => x * f);
 }

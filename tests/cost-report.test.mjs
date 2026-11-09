@@ -436,6 +436,24 @@ test('fable 5.2 is priced on its own row, not the Fable 5 row', () => {
   near(r.totalUsd, 0.2);
 });
 
+test('fable 5.2 cache writes are priced at 10 (5 min) and 16 (1 h) per million', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [
+    entry({ model: 'claude-fable-5-2', ts: ago(60), w5: 1e6 }),
+    entry({ model: 'claude-fable-5-2', ts: ago(50), w1: 1e6 }),
+  ]);
+  near(report(d).totalUsd, 10 + 16);
+});
+
+test('premiums: a fast request on a model with no fast factor never has a negative legacy premium', () => {
+  const d = tmp();
+  put(d, 'p/s.jsonl', [entry({ model: 'claude-fable-5-1', ts: ago(60), inTok: 1e6, speed: 'fast' })]);
+  const p = report(d).premiums;
+  assert.ok(p.legacyModelUsd >= 0, `${p.legacyModelUsd} < 0`);
+  near(p.legacyModelUsd, 10 - 8);
+  assert.equal(p.fastUsd, 0);
+});
+
 test('premiums: a fast fable 5.2 request carries the 2x premium', () => {
   const d = tmp();
   put(d, 'p/s.jsonl', [entry({ model: 'claude-fable-5-2', ts: ago(60), inTok: 1e6, out: 1e6, speed: 'fast' })]);

@@ -16,7 +16,7 @@ A patch release under ADR 0012: a price row, rule prose, and a survey, with no h
 
 ### Changed
 
-- The claude-code rule's floor-under-the-hook line now says a mod you installed answers after the pre-tool hooks and, without managed settings or a Team or Enterprise login, can approve a call a deny rule refused or a hook blocked. The security rule lists a mod beside the hook, the server entry, and the plugin as something that runs with the full access of whoever opens the repo, and says to read what its hooks and mods run before enabling it. The handbook receipts quote the permissions and mods pages.
+- The claude-code rule's floor-under-the-hook line now says a mod you installed that handles `tool.check` answers after the pre-tool hooks and, without managed settings or a Team or Enterprise login as the session's credential, can approve a call a deny rule refused or a hook blocked. The security rule lists a mod beside the hook, the server entry, and the plugin as something that runs with the full access of whoever opens the repo, and says to read what its hooks and mods run before enabling it. The handbook receipts quote the permissions and mods pages.
 
 ## [0.23.6] - 2026-11-09
 

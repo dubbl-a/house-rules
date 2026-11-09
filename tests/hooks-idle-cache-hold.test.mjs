@@ -170,6 +170,12 @@ test('prices Fable 5.2 at its own write rate, not the Fable 5 row it prefix-matc
   assert.match(parsed(run(box)).reason, /\$6\.40/);
 });
 
+test('prices Fable 5.2 at its own 5 min write rate, not the Fable 5 row it prefix-matches', () => {
+  // 400,000 tokens at the 5 min write price of $10 per million is $4.00; the Fable 5 row ($12.50) would print $5.00.
+  const box = sandbox([assistant({ model: 'claude-fable-5-2', minutesAgo: 6, ttl: '5m' })]);
+  assert.match(parsed(run(box)).reason, /\$4\.00/);
+});
+
 test('stays silent below the threshold, and HOUSE_IDLE_CACHE_HOLD_USD moves it', () => {
   const box = sandbox([assistant()]);
   assert.equal(run(box, { env: { HOUSE_IDLE_CACHE_HOLD_USD: '5' } }).stdout, '');

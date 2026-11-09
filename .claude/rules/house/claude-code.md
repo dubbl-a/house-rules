@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=9f24151a4ff2fff5f11c9ee653cdcfa33a398ff2bb24bbc0a67c235d65ee2ff4 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=f4e0b2f4b5525f4594c9003159138ea65ab141ae09467cccbb2931c26b12590d DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -86,7 +86,7 @@ Receipts: `docs/handbook/claude-code.md#set-the-model-explicitly-on-every-subage
 ## Make a must-hold rule a hook, fail it closed, and test it with real payloads
 
 Turn a rule that must hold every time into a hook; a rule file is advisory context, and only a pre-tool hook stops the action.
-Know the floor under the hook: a deny rule is evaluated whatever the hook returns, a bare, safe-mode, or restricted session, a run started with all hooks disabled, or an SDK run whose setting sources leave out the project never loads project hooks, and a cloud session loads no plugin from repo or user settings, only the hooks committed in the project's own settings, so anything that must survive needs a deny rule in managed settings too. A mod the user installed answers after the pre-tool hooks, and with neither managed settings nor a Team or Enterprise login it can approve a call a deny rule refused or a hook blocked, so read what a mod approves before enabling it.
+Know the floor under the hook: a deny rule is evaluated whatever the hook returns, a bare, safe-mode, or restricted session, a run started with all hooks disabled, or an SDK run whose setting sources leave out the project never loads project hooks, and a cloud session loads no plugin from repo or user settings, only the hooks committed in the project's own settings, so anything that must survive needs a deny rule in managed settings too. A mod the user installed that handles `tool.check` answers after the pre-tool hooks, and with neither managed settings nor a Team or Enterprise login as the session's credential it can approve a call a deny rule refused or a hook blocked, so read what a mod approves before enabling it.
 Fail it closed: a crash, a missing helper, or an unreadable payload denies rather than passing quietly, since by default the harness reads any exit but the blocking one as no objection and lets a stalled pre-tool hook through on timeout; set the hook's `onFailure` to `block` as the floor, so a hook that cannot start, times out, or exits with an unexpected code blocks the call, and keep the script's own denial, which names its reason and still holds on a CLI that ignores the key.
 Know where that exit stops binding: of the events around a tool call, only the pre-tool event blocks the call on a failing exit, while the permission-request event ignores it and runs on, so a guard there has to deny through its decision object instead.
 Fail its text handling closed too: where a guard rewrites the command before matching, err toward rewriting less than intended, since text left in only adds denials while text wrongly removed hides the verb and bypasses. Pin both directions in the tests.

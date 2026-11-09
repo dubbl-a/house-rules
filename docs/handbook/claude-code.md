@@ -805,8 +805,11 @@ is "code that runs with your permissions" and "Mods aren't sandboxed"
 tool calls (`$.tool.call`, `$.mcp.call`) raise no permission prompt, even under the user's ask
 rules or in `dontAsk` and `-p` runs, with deny rules and organization policy still applying
 (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-09).
-The package ships no mod, and no mod's approval was tested here; the floor under the hook is
-unchanged for a session with managed settings or a Team or Enterprise login.
+The package ships no mod, and no mod's approval was tested here. With managed settings or such a
+login as the session's credential, by default a mod's approval does not get past a deny rule, an
+ask rule, or a `PreToolUse` hook; an organization can change that, an API key or long-lived token
+session does not count as that login, and none of it covers a mod's own `$.fs` and `$.process`
+calls (https://code.claude.com/docs/en/plugins/mods/admin).
 
 ## Run adversarial review in a fresh subagent with a named lens
 
