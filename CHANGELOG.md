@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.6] - 2026-11-09
+
+A patch release under ADR 0012: a new advisory hook, CLI additions, and rule prose, with no heading renamed and no change to what the guard denies. Upgrading: update the plugin as before, then run `/house-rules:sync`. Four things change what you see: the weekly cost notice limit drops from $10 to $5; a new `session-cost-line.mjs` hook can print one cost line per session; `HOUSE_COST_ADVISOR=off` silences both; and `house render --apply` adds `Bash(*house uninstall*--apply*)` to `permissions.ask` in each repo's `.claude/settings.json`.
+
 ### Added
 
 - A cost advisor, in four parts sharing one pattern table in `plugins/house/scripts/cost-report.mjs` (`advise()`): main-thread turns over 200k context, avoidable idle or model-switch rebuilds, price premiums, and short-TTL rebuilds, each with a next step that leaves the work unchanged. `/house-rules:cost-advisor` runs `cost-report.mjs --advise [--since 30d]`, which always prints a summary of recent usage and the patterns over and below the limit, explains the largest areas and applies a fix only after confirmation. The new `session-cost-line.mjs` UserPromptSubmit hook says once per session when main-thread cost reaches the larger of the limit and this repo's p95 of past sessions (the account's until the repo has 20 sessions, silent until the account has 20); it never blocks and adds nothing to the model's context. `house cost --workflow-estimate <agents>` prints a rough list-price estimate from this account's past workflow agents, or says it has too few past agents, and the orchestration text has the session state it before a workflow without changing the recommendation.
