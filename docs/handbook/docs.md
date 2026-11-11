@@ -117,6 +117,8 @@ Native floor, as of 2026-09-28: the memory page's own advice to keep only broad 
 root file, moving procedures to a skill and path-bound facts to a path-scoped rule, plus the
 checkup's proposed trim of what is derivable from the code (https://code.claude.com/docs/en/memory).
 
+Added 2026-11-11 (#535): one incident, not reproduced, where a live customer-facing system was recorded OFF in one document and ON in another. The litmus rule routes a fact to one document and the claude-code handoff rule keeps uncommitted state in one `CURRENT.md` per workstream, but neither says a work stream's state has one home that the others link to. State goes stale faster than facts, which is why it gets its own clause. Session judgment, not tested against transcripts.
+
 ## State a rule as imperative, why, anchor, receipts
 
 The canonical rule shape: an imperative heading that is itself the rule, a one-clause why, the
@@ -213,6 +215,8 @@ file-size cap past which the harness skips the file entirely
 2026-10-24 the same page adds a smaller per-file limit for files that load on demand, past which
 Claude receives only the start; the split section below records it, and the lengths family warns
 on a path-scoped rule or nested CLAUDE.md past its smallest value.
+
+Added 2026-11-11 (#531): a consumer session read ranges of a 91 KB status doc, up to about 60 KB in one ranged read at the first prompt, so the cost was large ranged reads of an oversized doc, not whole-file reads; the byte size is what made any ranged read expensive. Validation of 2026-11-11 found part of the premise wrong: the checker already warns when root `README.md`, `CLAUDE.md`, `.claude/rules/house/*.md` and `SKILL.md` bodies have no limit (`plugins/house/payload/check.mjs:2063`, `:2067`, `:1933`), and `lengthLimits` accepts `{lines, bytes}` (`:61`) with a shipped default of `{}` (`plugins/house/scripts/house:494`). The gap is a doc outside those, such as a status page under `docs/`. Not verified: whether `bytes` is enforced for glob entries.
 
 ## Cut, don't append, and trim on a fixed cadence
 

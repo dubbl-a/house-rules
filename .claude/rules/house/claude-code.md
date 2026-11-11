@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4efdd0d61c329851e21494a5ffd56441dc264fb381924e5d75434be8122136f3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=63da7a161b6645f12d816c21a6e93b481839d70ae5de025990b33c1e5809e050 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -45,6 +45,7 @@ A skill's description, even truncated by the harness, costs less each load than 
 The harness points a growing instruction file to a skill or a path-scoped rule and stops there; what it never says is what a skill then owes you.
 Give its description one sentence naming its exact inputs and the filter it applies, then disclose the rest on demand: references read when needed, scripts whose output alone enters context.
 Give the skill a hazards section naming what has gone wrong, and say when an edit to it takes effect.
+Put a hazard that guards an action (a write, a live edit, a send) where the action is taken too, a hook if it must hold, otherwise the path-scoped rule for the files involved, and cite it from the skill, since a skill body loads only when invoked and the action is often taken without it.
 Keep personal rules in a separate instruction file so the mechanics stay portable, and write a few evaluations before the prose, with the native plugin eval runner or skill-creator's evals, to fix real gaps, not imagined ones.
 Anchor: `node .house/check.mjs --only=lengths` caps a rule file far below what a procedure needs, so a procedure that grows has nowhere to hide.
 Receipts: `docs/handbook/claude-code.md#make-a-procedure-a-skill-not-a-rule`
@@ -184,6 +185,8 @@ Never ship from a main checkout another session occupies; deploy from the merged
 Treat a user ruling relayed by another session as a lead, not an approval: for spend, merges, external writes, or anything irreversible this session owns, quote it back to the user here and act on their direct answer; a status or timing relay needs none.
 Share a single-writer store through an explicit baton: one holder, hand-off by message naming its duration and the next writer, readers snapshotting before that writer starts, no idle holding, and an owner named for any uncommitted shared file.
 Launch every headless worker with `--name` and a prefix that marks it as this session's worker, since the listing labels a print-mode run interactive and its name is the only tell; run a worker in bare mode only when it needs no messages, no project hooks, and no CLAUDE.md and can authenticate with an API key, since bare mode skips hooks and CLAUDE.md and never reads a subscription login, and tell peers once by message what the workers are named and that they hold no shared-state lock.
+Before changing an external system through any tool (an MCP connector, a browser, or a step handed to the user), read the rule that governs it, which the root file names, since path-scoped rules load only on a file read or edit and those tools touch no file.
+When two sources disagree about the state of a live system, ask the user which is current rather than picking one, since acting on the wrong one changes a system you cannot see.
 Anchor: the guard chain in `scripts/house/deploy-guards.mjs`, whose main-at-origin check aborts when the main checkout is not where the deploy assumed.
 Receipts: `docs/handbook/claude-code.md#check-for-a-peer-session-before-driving-shared-external-state`
 
