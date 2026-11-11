@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4e46656dcb7c607f965816f520ee0053e64f8d84151aea9d16b3d6e48d605189 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=3dddf931316309dc39b5a2fba8f3d9bbd99bc8a3c9a6b4c5904e1ed624d3d1b2 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -136,7 +136,7 @@ Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fre
 
 Assume another checkout, or a cloud session such as auto-fix on the pull request, can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
 Enter a worktree before the first edit or branch as the first step of every plan, preferring the harness's worktree tool, which applies its base-branch, include, and isolation defaults, over a manual `git worktree add -b <branch> <path> origin/<default>`, which skips them; the main checkout is what every peer and the user hold.
-After a branch is pushed and the tree is clean, run `git fetch`, then start the session's next branch inside the same worktree (`git switch -c <branch> origin/<default>`) instead of opening another, since each new worktree path reloads every path-scoped rule; open a second worktree only for a parallel writer.
+After a branch is pushed and the tree is clean, run `git fetch`, then start the session's next branch inside the same worktree (`git switch -c <branch> origin/<default>`) instead of opening another, since each new worktree path reloads every path-scoped rule; open a second worktree only for a parallel writer. Where the permission layer refuses the switch, open the next worktree through the harness tool instead, and do not retry the switch another way.
 Never create a branch in the main checkout, not even for a one-commit change: the rubric that would license an exception is one every session answers in its own favor, and a worktree costs one command.
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.
