@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=3461681b15abd5d62fd3bbeb1592492ef7eb72d635d03f74ae9bff5029874fe1 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4efdd0d61c329851e21494a5ffd56441dc264fb381924e5d75434be8122136f3 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -135,7 +135,7 @@ Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fre
 
 Assume another checkout, or a cloud session such as auto-fix on the pull request, can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
 Enter a worktree before the first edit or branch as the first step of every plan, preferring the harness's worktree tool, which applies its base-branch, include, and isolation defaults, over a manual `git worktree add -b <branch> <path> origin/<default>`, which skips them; the main checkout is what every peer and the user hold.
-After a branch is pushed, start the session's next branch inside the same worktree (`git switch -c <branch> origin/<default>`) instead of opening another, since each new worktree path reloads every path-scoped rule; open a second worktree only for a parallel writer.
+After a branch is pushed and the tree is clean, run `git fetch`, then start the session's next branch inside the same worktree (`git switch -c <branch> origin/<default>`) instead of opening another, since each new worktree path reloads every path-scoped rule; open a second worktree only for a parallel writer.
 Never create a branch in the main checkout, not even for a one-commit change: the rubric that would license an exception is one every session answers in its own favor, and a worktree costs one command.
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.
