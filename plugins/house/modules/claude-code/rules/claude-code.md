@@ -129,6 +129,7 @@ Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fre
 
 Assume another checkout, or a cloud session such as auto-fix on the pull request, can move your branch mid-run and strand uncommitted work; ask before switching and commit early.
 Enter a worktree before the first edit or branch as the first step of every plan, preferring the harness's worktree tool, which applies its base-branch, include, and isolation defaults, over a manual `git worktree add -b <branch> <path> origin/<default>`, which skips them; the main checkout is what every peer and the user hold.
+After a branch is pushed, start the session's next branch inside the same worktree (`git switch -c <branch> origin/<default>`) instead of opening another, since each new worktree path reloads every path-scoped rule; open a second worktree only for a parallel writer.
 Never create a branch in the main checkout, not even for a one-commit change: the rubric that would license an exception is one every session answers in its own favor, and a worktree costs one command.
 Leave the main checkout on the default branch for reading, merging, and cleanup.
 Read the current branch immediately before every commit and push, not what it was at session start.

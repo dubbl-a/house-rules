@@ -1016,6 +1016,19 @@ user ran from the worktree and printed "0 documents" against a practice copy whe
 expected. The command was right and the place was wrong, so the rule puts the directory in the
 same message and has a state-writing command state its expected output.
 
+Reuse one worktree for the session's successive branches (#532). Across about 200 consumer
+sessions, a path-scoped rule's full body was re-injected 154 times under a new worktree path (47
+sessions) and 0 times under the same path; the largest contributors were the docs rule (53), a
+tracker rule (21) and the claude-code rule (19). In one session that opened several worktrees, a
+`scripts/**` rule cost about 14k tokens on each load. This rests on transcript observation of
+`nested_memory` attachments with distinct worktree paths, checked against the request payloads
+sent, not on a documented harness guarantee: the docs say rule paths resolve relative to the
+directory holding `.claude` and are silent on whether a second checkout's copy reloads. The
+`InstructionsLoaded` hook can confirm it. Caveats: reuse is for successive branches, never for a
+parallel writer, which needs its own worktree. Commit or push before `git switch -c`, since
+uncommitted work carries to the new branch. Gitignored files carry over too, so a stale `.env` or
+build output from the last branch is still there.
+
 ### What a worktree costs, and the levers that cut it
 
 An unconditional worktree rule has a price, and three levers lower it (source:

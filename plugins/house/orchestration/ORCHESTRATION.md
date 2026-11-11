@@ -14,9 +14,10 @@ every important finding.
 ## Workspace
 
 - Enter a worktree before the first edit or branch through the harness's worktree tool. A manual
-  `git worktree add -b <branch> <path> origin/<default>` skips its base-branch setting and its
-  copy of gitignored files; use it only when the tool cannot reach the branch you need. The main
-  checkout is for reading, merging, and cleanup.
+  `git worktree add -b <branch> <path> origin/<default>` skips its base-branch setting and its copy
+  of gitignored files; use it only when the tool cannot reach the branch. After a push, start the
+  next branch there (`git switch -c <branch> origin/<default>`): a new path reloads every scoped
+  rule. Remove it when the work ends. The main checkout is for reading, merging, and cleanup.
 - Never `git checkout -b` or `git switch -c` in the main checkout, not even for one commit.
 - Before handing the user a command, put the session where it must run (leave the worktree) and
   name the directory; one that writes shared state names its expected output. Anything to copy
@@ -72,7 +73,7 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 - Batch related fixes into one brief so large files are read once.
 - Subagents commit; the session pushes and opens the PR. On the user's "merge" it waits for green
   checks (`gh pr checks <n> --watch`), reporting a red or stuck one instead of merging, then merges
-  and cleans up (worktree, local branch, `git fetch --prune`, default branch pulled), each a plain
+  and cleans up (local branch, `git fetch --prune`, default branch pulled), each a plain
   call. A merge is not a deploy: offer one only where the repo names a deploy. Hand the user a
   command only for what the session cannot run; an agent's denial goes to the user, not the parent.
 - Stop a subagent by message or `TaskStop`, never by killing its children, then take over its work;
@@ -84,8 +85,7 @@ Loop: orchestrate, builder, refuter (when sent), orchestrate.
 
 ## Briefs
 
-Six sections, nothing else, plus an output budget ("Under N tokens. Cite file:line. No pasted
-diffs."):
+Six sections only, plus an output budget ("Under N tokens. Cite file:line. No pasted diffs."):
 
 ```
 1. CURRENT STATE  settled facts only; not reopenable by this agent
