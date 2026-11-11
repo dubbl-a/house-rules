@@ -9,7 +9,7 @@ Ask of every line whether removing it would cause a mistake, and cut the line wh
 A file layout, a dependency list, or generic craft advice is derivable from the code; a non-guessable command, a differing convention, and an environment quirk are not.
 Open the file by naming what to read first and which file wins a conflict, and send personal working preferences and collaboration feedback to auto memory, but an operational fact (credential and scope, schedule, ID, decision, process, system behaviour) to its repo home by PR unless it cannot be committed (see the handoff section), so the file holds rules only.
 The harness advises this already but stops at advice and warnings: its checkup proposes cutting derivable content, and its length warning at startup and in status never blocks a long file.
-Anchor: `node .house/check.mjs --only=lengths` warns, without failing, when the root file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such entry; a glob entry that matches the root file fails it on lines or bytes, and so does listing the root file in `ratchet`.
+Anchor: `node .house/check.mjs --only=lengths` warns, without failing, when the root file passes the line count in its own `CLAUDE.md` entry in `lengthLimits` or has no such entry.
 Receipts: `docs/handbook/claude-code.md#put-only-what-claude-would-get-wrong-without-it-in-the-root-file`
 
 ## Keep the auto-memory index to hooks, and hold it under its cap
@@ -27,7 +27,7 @@ Receipts: `docs/handbook/claude-code.md#keep-the-auto-memory-index-to-hooks-and-
 
 Scope every domain rule with `paths:` so a session that never touches the domain never pays for it.
 A rule file with no `paths:` is not unscoped, it is always-on at root-file priority, so if it belongs in every session move it into the root file instead.
-Confirm the scoping defers loading before you count on it, by reading `/context all` yourself and checking that it does not list the rule at launch (plain `/context` collapses its memory files list in fullscreen mode, and at the terminal the table Claude reads keeps only each list's largest rows), since frontmatter that does not parse loads the rule as if it had no `paths:`; tell the reader to grep the rules directory when no matching file is open.
+Confirm the scoping defers loading before you count on it, by reading `/context all` yourself and checking that it does not list the rule at launch, since frontmatter that does not parse loads the rule as if it had no `paths:`; tell the reader to grep the rules directory when no matching file is open.
 Remember a scoped rule is summarized away at compaction and returns only when a matching file is read, written, or edited again, so a rule that must survive compaction belongs in the root file.
 Anchor: check.mjs `drift` validates every rule file's `paths:` first segment against the tree, and `coload` caps the summed budget of the rules that match any one path.
 Receipts: `docs/handbook/claude-code.md#give-a-domain-rule-a-paths-list-and-never-leave-a-rule-file-unscoped`
@@ -52,7 +52,7 @@ Open any reference past the length threshold with a table of contents, so a part
 Write the description in third person, saying what the skill does and when to use it, and offer a default with an escape hatch rather than a menu.
 Keep time-sensitive facts out of the method; the full rule on that lives in docs.md.
 In a personal or project skill the harness takes the command from `name` and lets the directory name invoke it too, while a plugin skill's name replaces the last segment of its namespaced command; a legal mismatch is an error in both here.
-Anchor: check.mjs `lengths` warns on a skill body over 500 lines (a `lengthLimits` entry for it overrides that) and on a description plus `when_to_use` over 1,536 characters, and `shape` fails any skill whose name differs from its directory, including a plugin skill.
+Anchor: check.mjs `lengths` warns on a skill body over 500 lines and on a description plus `when_to_use` over 1,536 characters, and `shape` fails any skill whose name differs from its directory, including a plugin skill.
 Receipts: `docs/handbook/claude-code.md#keep-a-skill-body-short-its-references-one-level-deep-and-its-name-equal-to-its-directory`
 
 ## Disable model invocation on a skill with side effects
@@ -89,7 +89,7 @@ Keep the decision in the script rather than a hook's fine-grained filter, which 
 Name Monitor beside Bash in a command guard's matcher: Monitor runs a shell command under Bash's permission rules, and a CLI before 2.1.314 runs no Bash-matched hook for it.
 Escalate as autonomy rises, from a prompt, to a check the agent runs before you walk away, to a hook, to a verification subagent.
 Read a permission block as evidence of a wrong step earlier, not as an obstacle to route around.
-Anchor: `bash tests/hooks/run.sh` pipes real payloads straight into this package's own hook script, with a denied case, an allowed case, and a planted internal failure; it runs only in this package, so an adopter writes the equivalent for their own hook, and the pr-checks template at `plugins/house/templates/pr-checks.yml` runs a hooks test only if the adopter defines one.
+Anchor: `bash tests/hooks/run.sh` pipes real payloads straight into this package's own hook script, with a denied case, an allowed case, and a planted internal failure.
 Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-closed-and-test-it-with-real-payloads`
 
 ## Run adversarial review in a fresh subagent with a named lens
@@ -112,7 +112,7 @@ Receipts: `docs/handbook/claude-code.md#run-adversarial-review-in-a-fresh-subage
 Plan first when the approach is uncertain or the change spans files, and skip it when you could describe the diff in one sentence, since planning has real overhead.
 Clear the context after two failed corrections on the same issue; a context full of failed approaches loses to a clean session with a better prompt.
 Re-read the source of a ruling immediately before you act on it, not once at session start, since a ruling can land mid-session.
-Anchor: none (because the harness cannot see that a correction failed; the second failed attempt is the signal); the two-corrections threshold is Claude Code's own best-practices guidance, and plan mode and `/clear` are the native tools this rule points to.
+Anchor: none (because the harness cannot see that a correction failed; the second failed attempt is the signal).
 Receipts: `docs/handbook/claude-code.md#plan-when-the-approach-is-uncertain-and-clear-the-context-after-two-failed-corrections`
 
 ## Keep a session to one task, and start fresh rather than resume a large idle one
@@ -123,7 +123,7 @@ When stepping away from a session whose context has grown large, leave a handoff
 Compact at a natural break while the cache is warm, never right after an idle gap, since `/compact` is itself a request that reads everything it summarizes.
 Watch `/context` or the status line for size, and the prompt-cache line in `/usage` for misses.
 Correcting a failed approach is the section above's; the handoff's shape is the section below's.
-Anchor: Claude Code's native resume dialog, shown on Pro, Max and Ultra plans when resuming a long conversation after a long break would use a noticeable share of the usage limit, is the floor; the `plugins/house/hooks/resume-cost.mjs` SessionStart hook, matched on `resume|fork`, complements it by stating the cost in dollars and by warning on API-key and cloud-provider billing, where that dialog does not appear. It warns when the harness reports an expired cache and an estimated rewrite at or above a dollar threshold. It only advises: set `HOUSE_RESUME_COST_WARN=off` or `HOUSE_RESUME_COST_WARN_USD` in the shell or the settings env to silence or retune it. It needs a Claude Code version that reports the cache fields on resume, and says nothing on an older one. For a session left open and returned to, the `plugins/house/hooks/idle-cache-hold.mjs` UserPromptSubmit hook reads the idle gap and cache lifetime from the transcript and holds the first typed prompt once, past the same threshold; submitting it again sends it. `HOUSE_IDLE_CACHE_HOLD=off` or `=warn` and `HOUSE_IDLE_CACHE_HOLD_USD` retune it, and it holds only in the terminal client, never on a scheduled or background turn.
+Anchor: Claude Code's native resume dialog is the floor, but it appears only on Pro, Max and Ultra plans; the `plugins/house/hooks/resume-cost.mjs` SessionStart hook states the rewrite cost in dollars on resume and also covers API-key and cloud-provider billing, where the dialog does not appear, and the `plugins/house/hooks/idle-cache-hold.mjs` UserPromptSubmit hook holds the first prompt after an idle gap once.
 Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fresh-rather-than-resume-a-large-idle-one`
 
 ## Treat git state as shared across sessions
@@ -151,7 +151,8 @@ Write each deny in both the leading and the interior form, and run it against th
 Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, auto mode suspends a broad allow in favor of its classifier, and only a hook, or the sandbox where it is on and set to fail rather than run unsandboxed, enforces independent of command text; never grow the deny list chasing completeness.
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
 Expect a path deny to miss a search that names no path, and a search tool the client treats as read-only to run with no allow naming it; keep a path out of a built-in search with a hook and out of a shell search with a sandbox read deny, and read tool results for it as the fallback.
-Anchor: `plugins/house/templates/settings.json` is a reference copy of the narrow committed allowlist with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags; render never writes it into a repo, so the adopter copies it by hand and nothing checks the copy against the template. Render and sync write one thing into the committed settings file, the github module's `SessionStart` entry running `scripts/house/arm-git-hooks.sh` (ADR 0019; `cloudArming: false` removes it), known by its exact command, and leave every other key and hook as they are. `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, or a bypass permission mode.
+A tested reference allowlist with a deny list of each tool's escape flags lives at `plugins/house/templates/settings.json`; render never writes it, so copy it by hand rather than writing the deny list from scratch.
+Anchor: `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, or a bypass permission mode.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 
 ## Read a resume file as a harness artifact, not a handoff

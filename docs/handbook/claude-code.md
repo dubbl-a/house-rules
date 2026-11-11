@@ -105,6 +105,19 @@ at https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, f
 2026-10-07); the memory page (https://code.claude.com/docs/en/memory, fetched 2026-10-07) still
 names only the Read, Write, and Edit tools, so the changelog is the source for that trigger.
 
+Narrowing the glob is a trade, not a free saving (#530). A path-scoped rule loads on any read or
+write of a matching file, and there is no trigger for writes alone. A hook's `additionalContext`
+is no substitute, since it arrives with the tool result, after the edit it was meant to guide
+(code.claude.com/docs/en/hooks, PreToolUse decision control). So a glob that stops matching a
+governed file saves that file's reads and also drops the rule's guidance when the file is
+edited; a glob that keeps matching it pays the rule's size on every touch. In this repo's
+transcripts, most loads of `claude-code.md` came from touching governed files, not from
+reading about them. Choose `claudeGlobs` and `docFiles` knowingly, not to shave a load. The
+size of the rule file is guarded separately: the lengths family warns, without failing, on a
+path-scoped rule past 40,000 characters (`ON_DEMAND_INSTRUCTION_MAX_CHARS` in
+`plugins/house/payload/check.mjs`, added in 0.22.9), the point where Claude Code truncates an
+on-demand file to its start on a 200K window.
+
 repo-b's `maintaining-docs.md` states the inverse just as plainly: a rule file with no
 `paths:` is not unscoped, it is always-on at root-file priority; if a rule belongs in every
 session, it belongs in the root file instead, not in an unscoped rule file.
@@ -289,6 +302,10 @@ of the multi-file pattern below" and backtick-cites one of its reference files, 
 in repo-c (`data-story` is a repo-a skill). This survived because repo-c's drift scanner
 never scans `.claude/skills/`, even though `maintaining-docs.md` lists `.claude/skills/**` in its
 own `paths:`.
+
+The checker's 500-line warning on a skill body yields to a `lengthLimits` entry for skills, which
+overrides it, and its `shape` check fails a plugin skill whose name differs from its directory
+as it does a personal one.
 
 Native floor, as of 2026-09-02: SKILL.md frontmatter fields and the skill listing context
 budget, where a personal or project skill's `name` sets the command and the directory name also
@@ -721,6 +738,10 @@ trip the installed hook." The fail-closed half comes from repo-b's `no-direct-ma
 fails closed on a missing `jq` (emits a hand-written deny JSON rather than crashing into "no
 decision"); repo-c's version of the same hook does not, and calls `jq` directly.
 
+The suite runs only in this package. An adopter writes the equivalent for their own hook, and the
+`pr-checks` template at `plugins/house/templates/pr-checks.yml` runs a hooks test only if the
+adopter defines one.
+
 Anthropic's guidance covers the escalation ladder this heading names: give the agent a check it
 can run before you walk away, "or you become the verification loop"; escalate the gate as autonomy
 rises, from prompt to condition to hook to verification subagent; and make any rule that must hold
@@ -916,14 +937,16 @@ the SessionStart input on `resume` and `fork`: `seconds_since_last_response`, `c
 `prompt_cache_likely_expired` and `estimated_cache_write_usd`. The hook warns when the cache is
 expired and the estimate reaches a threshold (default $5), and fails open on missing fields.
 The estimate is a list-price figure, so an adopter on other pricing reads it as an order of
-magnitude.
+magnitude. The hook needs a Claude Code version that reports those fields on resume and says
+nothing on an older one. It only advises: `HOUSE_RESUME_COST_WARN=off` silences it, and
+`HOUSE_RESUME_COST_WARN_USD` retunes the threshold, in the shell or the settings `env`.
 
-Claude Code 2.1.304 added a native warning on Pro and Max plans when resuming an inactive
+Claude Code 2.1.304 added a native warning on Pro and Max plans (the sessions docs now list Pro, Max and Ultra: https://code.claude.com/docs/en/sessions) when resuming an inactive
 conversation would use a noticeable share of the 5-hour usage limit (changelog:
 https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, 2.1.304 entry). That
 is the floor, and the hook does not replace it. What the hook still adds: it states the cost in
 dollars, and it fires on API-key and cloud-provider billing. The second half is inferred, not
-documented: the changelog names only Pro and Max and says nothing of other billing, and a 5-hour
+documented: the changelog and the sessions docs name only subscription plans and say nothing of other billing, and a 5-hour
 usage limit is a subscription concept, so the native warning is not expected to fire elsewhere.
 Not verified on a live API-billed or Bedrock/Vertex session.
 
@@ -932,7 +955,9 @@ one adopter's idle rebuilds happened in sessions left open and returned to, not 
 native idle compaction (2.1.299), which covers only 200k-plus conversations on the one-hour cache,
 prevented none of the 12 it was eligible for in the following six days (issue #321). A status
 line cache display helps only someone watching it, so `idle-cache-hold.mjs` acts on submit
-instead. UserPromptSubmit input carries no timing or cost, so the hook reads the transcript's last
+instead. `HOUSE_IDLE_CACHE_HOLD=off` or `=warn` and `HOUSE_IDLE_CACHE_HOLD_USD` retune it, and it
+holds only in the terminal client, never on a scheduled or background turn.
+UserPromptSubmit input carries no timing or cost, so the hook reads the transcript's last
 main-conversation response: its `timestamp` gives the gap, its `usage` the context size, and
 `usage.cache_creation.ephemeral_1h_input_tokens` against `ephemeral_5m_input_tokens` the cache
 lifetime. It blocks the prompt once per gap, which the hooks reference says leaves the prompt's
@@ -1138,6 +1163,15 @@ a path out of a built-in search with a PreToolUse hook and out of a shell search
 read deny, which act independent of the command text, since the sandbox covers shell commands only
 and "A `denyRead` entry doesn't stop the Read tool" (https://code.claude.com/docs/en/sandboxing,
 fetched 2026-10-21), and treat inspecting tool results for the path as the fallback detection.
+
+`plugins/house/templates/settings.json` is a reference copy of the narrow committed allowlist,
+with no hooks block, beside a deny list naming each tool's inline-code and shell-escape flags.
+Render never writes it into a repo, so the adopter copies it by hand and nothing checks the copy
+against the template. Render and sync do write one thing into the committed settings file: the
+github module's `SessionStart` entry running `scripts/house/arm-git-hooks.sh` (ADR 0019;
+`cloudArming: false` removes it), known by its exact command, leaving every other key and hook as
+they are. `node .house/check.mjs --only=agent-config` fails on a committed API base URL override,
+approval of every project server, or a bypass permission mode.
 
 Native floor, as of 2026-09-02: permission lists merging across scopes rather than overriding
 (https://code.claude.com/docs/en/settings#combine-settings-across-scopes), the allow and deny
