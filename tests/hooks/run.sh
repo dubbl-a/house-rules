@@ -2589,6 +2589,14 @@ fi
 # the old code takes well over 20 s here and the new one about 2. The payload
 # goes in over stdin (Linux caps one argv string at 128 KB), and the bound is
 # CPU time, not the 5 s wall timeout.
+# The bound is 9000 ms, not the 4500 it started at (#528). On a quiet M-series
+# Mac on 2026-11-11 the guard alone took 1.37 to 1.95 s of CPU over ten runs,
+# so it has not slowed since #467. But CPU time is not immune to load: at a
+# load average above 60, two `npm run verify` runs took 4514 and 4632 ms. The
+# likely cause is work moved onto slower efficiency cores, but nobody has
+# measured it. 9000 leaves about 4.5 times
+# the measured cost and still sits under half of what the old code took.
+_long_clause_ms=9000
 _w=$(printf '%010000d' 0 | tr 0 Q)
 _words=''
 for ((_i = 0; _i < 20; _i++)); do _words+=" $_w"; done
@@ -2601,10 +2609,10 @@ for _lead in "$_sg status" "$_sg -C $sc status"; do
   run_hook "$(mk_stdin_payload "$_lead$_words" "$sc")"
   cpu_mark _end
   _ms=$((_end - _start))
-  if [[ "$HOOK_CODE" -eq 0 && -z "$HOOK_OUT" && "$_ms" -lt 4500 ]]; then
-    pass "'$_shape' with a 200 KB single clause is allowed in ${_ms} ms CPU, under 4500"
+  if [[ "$HOOK_CODE" -eq 0 && -z "$HOOK_OUT" && "$_ms" -lt "$_long_clause_ms" ]]; then
+    pass "'$_shape' with a 200 KB single clause is allowed in ${_ms} ms CPU, under ${_long_clause_ms}"
   else
-    fail "'$_shape' with a 200 KB single clause is allowed under 4500 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
+    fail "'$_shape' with a 200 KB single clause is allowed under ${_long_clause_ms} ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
   fi
 done
 # The words are still read: a second git command at the end of the same clause
@@ -2615,10 +2623,10 @@ for _lead in "$_sg status" "$_sg -C $sc status"; do
   run_hook "$(mk_stdin_payload "$_lead$_words $_sg $_cm --no-verify" "$sc")"
   cpu_mark _end
   _ms=$((_end - _start))
-  if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt 4500 ]]; then
-    pass "'$_shape' with a 200 KB single clause, then a commit with --no-verify, is denied in ${_ms} ms CPU, under 4500"
+  if [[ "$HOOK_CODE" -eq 0 && "$HOOK_OUT" == *'"deny"'* && "$HOOK_OUT" == *"disables or moves"* && "$_ms" -lt "$_long_clause_ms" ]]; then
+    pass "'$_shape' with a 200 KB single clause, then a commit with --no-verify, is denied in ${_ms} ms CPU, under ${_long_clause_ms}"
   else
-    fail "'$_shape' with a 200 KB single clause, then a commit with --no-verify, is denied under 4500 ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
+    fail "'$_shape' with a 200 KB single clause, then a commit with --no-verify, is denied under ${_long_clause_ms} ms" "took ${_ms} ms CPU, code=$HOOK_CODE out=[$HOOK_OUT]"
   fi
 done
 # Backslashes, the other long-clause cost: the four `${cmd//\\.../}`
