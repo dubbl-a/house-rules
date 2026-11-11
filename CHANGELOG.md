@@ -6,6 +6,24 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.8] - 2026-11-11
+
+A patch release under ADR 0012: rule prose, an optional `house.json` key, a stricter length check and a test bound, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.7: update the plugin as before, then run `/house-rules:sync`. One thing can turn a passing repo red: a `ratchetRaises` entry that clears a file's byte overrun now needs a `bytes` value at or above the file's size.
+
+### Added
+
+- An optional `bytes` field on a `ratchetRaises` entry in `house.json` (#541). A raise clears a byte overrun only when `bytes` is at or above the file's current size; before, a raise recorded only a line ceiling, so after one raise a file's bytes were unbounded. Line ceilings are unchanged.
+
+### Changed
+
+- The claude-code rule tells a session to reuse one worktree for successive branches: after a branch is pushed and the tree is clean, fetch and start the next branch in the same worktree, since each new worktree reloads every path-scoped rule (#532). Where the permission layer refuses that branch switch, the session opens the next worktree through the harness tool instead and does not retry the switch another way (#539). The orchestration defaults say the same, and post-merge cleanup keeps a worktree the next branch already started in.
+- Four clauses in existing sections (#531, #533, #534, #535): a hazard that guards an action also goes where the action is taken; the root file names the rule for each external system a session changes, and the session reads it before changing that system through any tool; a work stream's state has one home, and when sources disagree about a live system the session asks or, with no one to ask, changes nothing and reports both; a doc sessions read at start gets a `lengthLimits` entry with `bytes`.
+- About 1,800 characters of author-only prose moved from the claude-code rule to its handbook receipts, and the handbook now documents that a path-scoped rule loads on any read or write, with no write-only trigger (#530).
+
+### Fixed
+
+- The four 200 KB guard timing tests get measured headroom, 9000 ms instead of 4500 ms; the old quadratic code took well over 20 s, so a regression still fails (#528).
+
 ## [0.23.7] - 2026-11-09
 
 A patch release under ADR 0012: a price row, rule prose, and a survey, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.321 survey. Upgrading from 0.23.6: update the plugin as before, then run `/house-rules:sync`.
