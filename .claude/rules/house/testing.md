@@ -5,7 +5,7 @@ paths:
   - "tests/**"
   - ".github/workflows/**"
 ---
-<!-- house-managed v0.23.7 module=testing source=modules/testing/rules/testing.md body-sha256=2d9fbdbdb908f27dfa6bea5fd44ec088880285d9844b94372ee5a5a6cf28e611 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.8 module=testing source=modules/testing/rules/testing.md body-sha256=2d9fbdbdb908f27dfa6bea5fd44ec088880285d9844b94372ee5a5a6cf28e611 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
