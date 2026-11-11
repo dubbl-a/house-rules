@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=d481285477e7167e4733debfb6dee13097af00195bc205a9c0b199bf92a6c2b7 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=fff671c0ac1cfc501afc6d64725a5c156c63e6134ed594d272cebe2d256fedd1 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -129,7 +129,7 @@ When stepping away from a session whose context has grown large, leave a handoff
 Compact at a natural break while the cache is warm, never right after an idle gap, since `/compact` is itself a request that reads everything it summarizes.
 Watch `/context` or the status line for size, and the prompt-cache line in `/usage` for misses.
 Correcting a failed approach is the section above's; the handoff's shape is the section below's.
-Anchor: Claude Code's native resume dialog is the floor; the `plugins/house/hooks/resume-cost.mjs` SessionStart hook states the rewrite cost in dollars on resume, and the `plugins/house/hooks/idle-cache-hold.mjs` UserPromptSubmit hook holds the first prompt after an idle gap once.
+Anchor: Claude Code's native resume dialog is the floor, but it appears only on Pro, Max and Ultra plans; the `plugins/house/hooks/resume-cost.mjs` SessionStart hook states the rewrite cost in dollars on resume and also covers API-key and cloud-provider billing, where the dialog does not appear, and the `plugins/house/hooks/idle-cache-hold.mjs` UserPromptSubmit hook holds the first prompt after an idle gap once.
 Receipts: `docs/handbook/claude-code.md#keep-a-session-to-one-task-and-start-fresh-rather-than-resume-a-large-idle-one`
 
 ## Treat git state as shared across sessions
@@ -157,6 +157,7 @@ Write each deny in both the leading and the interior form, and run it against th
 Say in the file that this is not a boundary, since a heredoc and a pipe still run under a broad allow and are deliberately left open, auto mode suspends a broad allow in favor of its classifier, and only a hook, or the sandbox where it is on and set to fail rather than run unsandboxed, enforces independent of command text; never grow the deny list chasing completeness.
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
 Expect a path deny to miss a search that names no path, and a search tool the client treats as read-only to run with no allow naming it; keep a path out of a built-in search with a hook and out of a shell search with a sandbox read deny, and read tool results for it as the fallback.
+A tested reference allowlist with a deny list of each tool's escape flags lives at `plugins/house/templates/settings.json`; render never writes it, so copy it by hand rather than writing the deny list from scratch.
 Anchor: `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, or a bypass permission mode.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 

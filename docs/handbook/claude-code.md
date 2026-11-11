@@ -941,12 +941,12 @@ magnitude. The hook needs a Claude Code version that reports those fields on res
 nothing on an older one. It only advises: `HOUSE_RESUME_COST_WARN=off` silences it, and
 `HOUSE_RESUME_COST_WARN_USD` retunes the threshold, in the shell or the settings `env`.
 
-Claude Code 2.1.304 added a native warning on Pro and Max plans when resuming an inactive
+Claude Code 2.1.304 added a native warning on Pro and Max plans (the sessions docs now list Pro, Max and Ultra: https://code.claude.com/docs/en/sessions) when resuming an inactive
 conversation would use a noticeable share of the 5-hour usage limit (changelog:
 https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, 2.1.304 entry). That
 is the floor, and the hook does not replace it. What the hook still adds: it states the cost in
 dollars, and it fires on API-key and cloud-provider billing. The second half is inferred, not
-documented: the changelog names only Pro and Max and says nothing of other billing, and a 5-hour
+documented: the changelog and the sessions docs name only subscription plans and say nothing of other billing, and a 5-hour
 usage limit is a subscription concept, so the native warning is not expected to fire elsewhere.
 Not verified on a live API-billed or Bedrock/Vertex session.
 
