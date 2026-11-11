@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=63da7a161b6645f12d816c21a6e93b481839d70ae5de025990b33c1e5809e050 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.7 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=4e46656dcb7c607f965816f520ee0053e64f8d84151aea9d16b3d6e48d605189 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -185,8 +185,8 @@ Never ship from a main checkout another session occupies; deploy from the merged
 Treat a user ruling relayed by another session as a lead, not an approval: for spend, merges, external writes, or anything irreversible this session owns, quote it back to the user here and act on their direct answer; a status or timing relay needs none.
 Share a single-writer store through an explicit baton: one holder, hand-off by message naming its duration and the next writer, readers snapshotting before that writer starts, no idle holding, and an owner named for any uncommitted shared file.
 Launch every headless worker with `--name` and a prefix that marks it as this session's worker, since the listing labels a print-mode run interactive and its name is the only tell; run a worker in bare mode only when it needs no messages, no project hooks, and no CLAUDE.md and can authenticate with an API key, since bare mode skips hooks and CLAUDE.md and never reads a subscription login, and tell peers once by message what the workers are named and that they hold no shared-state lock.
-Before changing an external system through any tool (an MCP connector, a browser, or a step handed to the user), read the rule that governs it, which the root file names, since path-scoped rules load only on a file read or edit and those tools touch no file.
-When two sources disagree about the state of a live system, ask the user which is current rather than picking one, since acting on the wrong one changes a system you cannot see.
+Name in the root file the rule that governs each external system a session changes, and read it before changing that system through any tool (an MCP connector, a browser, or a step handed to the user), since path-scoped rules load only when a matching file is read or written and those tools touch no file.
+When two sources disagree about the state of a live system, ask the user which is current rather than picking one, and with no one to ask, change nothing and report both, since acting on the wrong one changes a system you cannot see.
 Anchor: the guard chain in `scripts/house/deploy-guards.mjs`, whose main-at-origin check aborts when the main checkout is not where the deploy assumed.
 Receipts: `docs/handbook/claude-code.md#check-for-a-peer-session-before-driving-shared-external-state`
 

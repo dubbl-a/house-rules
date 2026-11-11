@@ -1232,7 +1232,7 @@ Added 2026-10-20 (#283): headless `claude -p` workers show up in `ListAgents` as
 
 Added 2026-11-11 (#534): a consumer incident, not reproduced; the audit that found it is not available here. Review of 2026-11-11 confirmed the gap by mechanism: path-scoped rules load on a Read, Write or Edit, or a Bash `cat` or `head`, of a matching file (https://code.claude.com/docs/en/memory), and an MCP or browser tool call touches no file, so the rule never loads. Hook matchers can name MCP tools (`mcp__<server>__<tool>`) and an `additionalContext` over 10,000 characters spills to a file. Not verified: whether a `PreToolUse` hook can return `additionalContext`, so a hook is not built; the clause is the root-file route only.
 
-Added 2026-11-11 (#535): one incident, not reproduced, where a live customer-facing system showed OFF in one place and ON in another The ask-the-user clause is session judgment, not tested against transcripts. "Hand off through the repo, not a standing issue" already keeps uncommitted state in one `CURRENT.md` per workstream but does not say what to do when two sources disagree.
+Added 2026-11-11 (#535): one incident, not reproduced, where a live customer-facing system showed OFF in one place and ON in another. The ask-the-user clause is session judgment, not tested against transcripts. "Hand off through the repo, not a standing issue" already keeps uncommitted state in one `CURRENT.md` per workstream but does not say what to do when two sources disagree.
 
 ## Sources
 
