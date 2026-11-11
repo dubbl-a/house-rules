@@ -2133,7 +2133,7 @@ function checkLengths(ctx) {
     }
 
     if (linesOver || bytesOver) {
-      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided) && (!linesOver || r.from === (ceilingFromRatchet ?? limitLines)));
+      const raise = ratchetRaises.find((r) => isPlainObject(r) && r.path === file && isNonEmptyString(r.why) && typeof r.to === 'number' && r.to >= count && typeof r.from === 'number' && isDate(r.decided) && (!linesOver || r.from === (ceilingFromRatchet ?? limitLines)) && (!bytesOver || (typeof r.bytes === 'number' && r.bytes >= bytes)));
       if (raise) {
         // A raise moves the line ceiling only when it cleared a line overrun;
         // one that cleared a byte overrun alone leaves the ratchet to tighten

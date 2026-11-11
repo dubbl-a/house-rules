@@ -187,12 +187,43 @@ test('lengths: a file over only its byte limit keeps passing on a raise, run aft
     'README.md': Array.from({ length: 90 }, () => 'x'.repeat(8)).join('\n') + '\n',
     'house.json': houseJson({
       modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': { lines: 100, bytes: 500 } } } } },
-      ratchetRaises: [{ path: 'README.md', from: 100, to: 120, why: 'bytes', decided: '2026-08-24' }],
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 120, bytes: 900, why: 'bytes', decided: '2026-08-24' }],
     }),
   });
   assert.equal(run(dir, ['--only=lengths']).code, 0);
   assert.equal(run(dir, ['--only=lengths']).code, 0);
   assert.equal(JSON.parse(readFileSync(join(dir, 'house.json'), 'utf8')).ratchet?.['README.md'], undefined, 'a byte-only raise writes no line ceiling');
+});
+
+test('lengths: a raise clears a byte overrun only with a bytes value at or above the file size', () => {
+  const body = Array.from({ length: 90 }, () => 'x'.repeat(8)).join('\n') + '\n';
+  const size = Buffer.byteLength(body, 'utf8');
+  const codeFor = (extra) => run(sandbox({
+    'README.md': body,
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': { lines: 100, bytes: 500 } } } } },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 120, ...extra, why: 'bytes', decided: '2026-08-24' }],
+    }),
+  }), ['--only=lengths']);
+  const none = codeFor({});
+  assert.equal(none.code, 1, none.out);
+  assert.match(none.out, new RegExp(`${size} bytes \\(limit 500\\)`));
+  assert.equal(codeFor({ bytes: size - 1 }).code, 1);
+  assert.equal(codeFor({ bytes: size }).code, 0);
+  assert.equal(codeFor({ bytes: size + 100 }).code, 0);
+});
+
+test('lengths: a raise that clears a line overrun still needs bytes for a byte overrun', () => {
+  const body = Array.from({ length: 150 }, () => 'x'.repeat(8)).join('\n') + '\n';
+  const codeFor = (extra) => run(sandbox({
+    'README.md': body,
+    'house.json': houseJson({
+      modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': { lines: 100, bytes: 500 } } } } },
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 160, ...extra, why: 'both', decided: '2026-08-24' }],
+    }),
+  }), ['--only=lengths']).code;
+  assert.equal(codeFor({}), 1);
+  assert.equal(codeFor({ bytes: 5000 }), 0);
 });
 
 test('lengths: a raise that clears a byte overrun never lifts the line ratchet', () => {
@@ -201,7 +232,7 @@ test('lengths: a raise that clears a byte overrun never lifts the line ratchet',
     'house.json': houseJson({
       modules: { docs: { enabled: true, config: { lengthLimits: { 'README.md': { lines: 100, bytes: 3000 } } } } },
       ratchet: { 'README.md': 80 },
-      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, why: 'old', decided: '2026-08-24' }],
+      ratchetRaises: [{ path: 'README.md', from: 100, to: 150, bytes: 4000, why: 'old', decided: '2026-08-24' }],
     }),
   });
   assert.equal(run(dir, ['--only=lengths']).code, 0);
