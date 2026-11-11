@@ -1016,6 +1016,25 @@ user ran from the worktree and printed "0 documents" against a practice copy whe
 expected. The command was right and the place was wrong, so the rule puts the directory in the
 same message and has a state-writing command state its expected output.
 
+Reuse one worktree for the session's successive branches (#532). Across about 200 consumer
+sessions, a path-scoped rule's full body was re-injected 154 times under a new worktree path (47
+sessions) and 0 times under the same path; the largest contributors were the docs rule (53), a
+tracker rule (21) and the claude-code rule (19). In one session that opened several worktrees, a
+`scripts/**` rule cost about 14k tokens on each load. This rests on transcript observation of
+`nested_memory` attachments with distinct worktree paths, checked against the request payloads
+sent, not on a documented harness guarantee: the docs say rule paths resolve relative to the
+directory holding `.claude` and are silent on whether a second checkout's copy reloads. The
+`InstructionsLoaded` hook can confirm it. This repo's own transcripts agree: 38 extra loads in 17 of
+75 sessions, about 662 KB, from 2026-10-16 to 2026-11-11, and 0 repeats under the same root. Reuse
+after `git switch -c` is itself untested; confirm with `InstructionsLoaded` that the rules do not
+reload there. Caveats: reuse is for successive branches, never for a parallel writer, which needs
+its own worktree. Commit or push before `git switch -c`, since uncommitted work carries to the new
+branch, and run `git fetch` first, since a long-lived worktree otherwise branches from a stale
+default. Gitignored files carry over too, so a stale `.env` or build output from the last branch is
+still there. Merge cleanup keeps the worktree while the next branch lives in it and pulls the
+default branch only after the session leaves it, because a git call redirected into the main
+checkout is blocked from an isolated session.
+
 ### What a worktree costs, and the levers that cut it
 
 An unconditional worktree rule has a price, and three levers lower it (source:
