@@ -1035,7 +1035,7 @@ branch, and run `git fetch` first, since a long-lived worktree otherwise branche
 default. Gitignored files carry over too, so a stale `.env` or build output from the last branch is
 still there. Merge cleanup keeps the worktree while the next branch lives in it and pulls the
 default branch only after the session leaves it, because a git call redirected into the main
-checkout is blocked from an isolated session.
+checkout is blocked from an isolated session. The reuse is conditional (#539): in auto mode the `git switch -c` in a worktree was denied with no reason given, observed 2026-11-11 and 2026-10-02. Branch creation is not among auto mode's documented default blocks (code.claude.com/docs/en/permission-modes), and the documented allow routes (`autoMode.allow`, the /permissions "Recently blocked" tab) are untested for this. Where the switch is refused, the rule opens the next worktree through the harness tool, accepts the reload, and does not retry the switch another way.
 
 ### What a worktree costs, and the levers that cut it
 
