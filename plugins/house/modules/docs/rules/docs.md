@@ -30,6 +30,7 @@ Receipts: `docs/handbook/docs.md#give-every-rule-file-a-paths-list-whose-first-s
 Give working rules, a runbook, strategy, the changelog, reference, and orientation each their own document (the README for a landing human, the archive for a dated observation), restating neither the code nor the manifest, and index a reference set with a start-here pointer; say outright when a method doc is meant to be copied, and keep its worked examples: moves transfer, tables do not.
 Route auto memory by the same test: personal working preferences and collaboration feedback stay there, and a fact that would be true and needed for another person or machine belongs in the repo.
 Keep the four documentation modes apart (tutorial, how-to, reference, explanation); a document trying to be all four serves none.
+Give a work stream's state one home and link to it from the others instead of copying it, since copies of fast-changing state drift.
 Anchor: none (because routing is a judgment call: a gate can measure a file's length, not whether a fact is in the right file); the harness's routing guidance and its checkup's cuts cover instruction files, so routing the README, changelog, and archive is this repo's requirement.
 Receipts: `docs/handbook/docs.md#put-a-fact-where-its-litmus-test-says-it-belongs`
 
@@ -54,9 +55,10 @@ Receipts: `docs/handbook/docs.md#move-dates-names-and-measured-numbers-out-of-ru
 ## Keep files under budget, and raise a ceiling only with a written reason
 
 The harness warns at startup and in its status view when an instruction file passes its recommended length or the loaded set passes a combined limit, skips a file that loads at launch past its hard size cap, and gives one that loads on demand only its start past a smaller per-file limit; it never holds a file down, so hold every document to its own ceiling: root file, rule files, README, skill bodies, handbook chapters. The Claude Code docs say a file over 200 lines "may reduce adherence", and every loaded line costs context on each read.
+Give a doc that a rule tells sessions to read at start a `lengthLimits` entry with `bytes` as well as lines, and give a paragraph rewritten every session a stated size, since line counts miss long lines and "short" alone does not hold.
 The ceiling tightens on its own whenever a file shrinks, so the budget ratchets down with the work, not renegotiated.
 Raising a ceiling takes an entry naming the path, the old and new limit (the old must be the file's ratchet entry, or its configured limit when it has none, so a raise is spent once the file tightens), the reason, and the date decided, so it argues for itself in the diff, not as a quiet edit; it takes effect on its own, with no flag to run.
-Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema; lengths also warns, without failing, on a path-scoped rule or nested `CLAUDE.md` past the smallest on-demand limit (`ON_DEMAND_INSTRUCTION_MAX_CHARS` in `.house/check.mjs`).
+Anchor: `npm run check:house` (lengths and ratchet), with each raise validated against the manifest schema, and `lengthLimits` accepts `{lines, bytes}`; lengths also warns, without failing, on a path-scoped rule or nested `CLAUDE.md` past the smallest on-demand limit (`ON_DEMAND_INSTRUCTION_MAX_CHARS` in `.house/check.mjs`).
 Receipts: `docs/handbook/docs.md#keep-files-under-budget-and-raise-a-ceiling-only-with-a-written-reason`
 
 ## Cut, don't append, and trim on a fixed cadence
