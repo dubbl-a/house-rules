@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sandbox, run } from './helpers.mjs';
 // #550: the lockfile family. `npm ci` and `npm ls --all` accept a lockfile
 // whose workspace entry has drifted from its manifest (a caret range where the
@@ -151,4 +154,58 @@ test('lockfile: allowScripts alone, with no workspaces, is checked', () => {
   const root = { name: 'root', allowScripts: { 'better-sqlite3@13.0.3': true } };
   const lock = { lockfileVersion: 3, packages: { '': { name: 'root' }, 'node_modules/better-sqlite3': { version: '12.0.0' } } };
   assert.equal(lockfile(sandbox({ 'package.json': JSON.stringify(root), 'package-lock.json': JSON.stringify(lock) })).length, 1);
+});
+
+// A lock npm itself wrote (see fixtures/npm-lock/NOTE.txt): a root dependency
+// listed in both `dependencies` and `optionalDependencies`, which npm keeps
+// only under `optionalDependencies` in the lock entry, and an allowScripts
+// entry naming a linked workspace, whose `node_modules/<name>` entry is a link
+// with no version of its own.
+const NPM_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'npm-lock');
+const FIXTURE_FILES = ['package.json', 'package-lock.json', 'brain/package.json', 'vendor/localdep/package.json', 'vendor/other/package.json'];
+function npmRepo(edit = {}) {
+  const files = {};
+  for (const f of FIXTURE_FILES) {
+    const body = JSON.parse(readFileSync(join(NPM_FIXTURE, f), 'utf8'));
+    (edit[f] ?? (() => {}))(body);
+    files[f] = JSON.stringify(body, null, 2);
+  }
+  return sandbox(files);
+}
+
+test('lockfile: a lock written by real npm is clean, optional-and-regular duplicates and a linked workspace in allowScripts included', () => {
+  assert.deepEqual(lockfile(npmRepo()), []);
+});
+
+test('lockfile: planting drift in the real npm lock yields exactly that finding', () => {
+  const caret = lockfile(npmRepo({ 'package-lock.json': (l) => { l.packages.brain.dependencies.other = '^2.0.0'; } }));
+  assert.equal(caret.length, 1);
+  assert.equal(caret[0].kind, 'lock-drift');
+  assert.match(caret[0].message, /brain\/package\.json/);
+  assert.match(caret[0].message, /dependencies\.other/);
+  const optional = lockfile(npmRepo({ 'package-lock.json': (l) => { l.packages[''].optionalDependencies.localdep = 'file:vendor/elsewhere'; } }));
+  assert.equal(optional.length, 1);
+  assert.match(optional[0].message, /optionalDependencies\.localdep/);
+  const stale = lockfile(npmRepo({ 'package.json': (m) => { m.allowScripts = { 'brain@1.0.1': true }; } }));
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].kind, 'allow-scripts');
+  assert.match(stale[0].message, /brain@1\.0\.0/);
+});
+
+test('lockfile: a lockfileVersion 1 lock in a repo the family applies to warns that it cannot evaluate, and is no finding', () => {
+  const dir = sandbox({ 'package.json': JSON.stringify(ROOT), 'package-lock.json': JSON.stringify({ lockfileVersion: 1, dependencies: {} }), 'brain/package.json': JSON.stringify(BRAIN) });
+  const r = run(dir, ['--only=lockfile', '--json']);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.json.findings.filter((f) => f.family === 'lockfile'), []);
+  const ws = r.json.warnings.filter((w) => w.family === 'lockfile');
+  assert.equal(ws.length, 1);
+  assert.equal(ws[0].kind, 'lock-unevaluable');
+  assert.match(ws[0].message, /cannot evaluate/);
+  assert.match(ws[0].message, /lockfileVersion/);
+});
+
+test('lockfile: a lockfileVersion 1 lock where the family does not apply stays silent', () => {
+  const dir = sandbox({ 'package.json': JSON.stringify({ name: 'root' }), 'package-lock.json': JSON.stringify({ lockfileVersion: 1 }) });
+  const r = run(dir, ['--only=lockfile', '--json']);
+  assert.deepEqual([...r.json.findings, ...r.json.warnings].filter((x) => x.family === 'lockfile'), []);
 });

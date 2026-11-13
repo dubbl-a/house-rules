@@ -3723,15 +3723,21 @@ function checkLockfile(ctx) {
     findings.push(mk('lockfile', lockPath, null, 'lock-drift', `is not a readable JSON object, so it cannot be compared with the manifests: ${LOCK_FIX}.`));
     return { findings, warnings };
   }
-  if (!isPlainObject(lock.packages)) return { findings, warnings };
+  if (!isPlainObject(lock.packages)) {
+    warnings.push(mk('lockfile', lockPath, null, 'lock-unevaluable', 'has no `packages` map (lockfileVersion 1), so the lockfile family cannot evaluate it against the manifests or allowScripts. Regenerate it with a current npm (`npm install --package-lock-only --ignore-scripts`) to get lockfileVersion 3.'));
+    return { findings, warnings };
+  }
 
   const show = (v) => (v === undefined ? 'absent' : JSON.stringify(v));
   const drift = (manifest, locked, label) => {
     for (const field of LOCK_DEP_FIELDS) {
       const want = isPlainObject(manifest[field]) ? manifest[field] : {};
       const have = isPlainObject(locked[field]) ? locked[field] : {};
+      // npm drops a name listed in both `dependencies` and `optionalDependencies`
+      // from the lock entry's `dependencies` and keeps it under the optional one.
+      const optional = field === 'dependencies' && isPlainObject(manifest.optionalDependencies) ? manifest.optionalDependencies : {};
       for (const name of new Set([...Object.keys(want), ...Object.keys(have)])) {
-        if (want[name] === have[name]) continue;
+        if (want[name] === have[name] || Object.hasOwn(optional, name)) continue;
         findings.push(mk('lockfile', lockPath, null, 'lock-drift', `has ${field}.${name} as ${show(have[name])} for ${label}, but ${label} says ${show(want[name])}. \`npm ci\` and \`npm ls --all\` accept this while the installed version satisfies both, and a later \`npm install\` rewrites it. Fix: ${LOCK_FIX}.`));
       }
     }
@@ -3756,7 +3762,10 @@ function checkLockfile(ctx) {
       continue;
     }
     const entry = lock.packages[`node_modules/${name}`];
-    const installed = isPlainObject(entry) ? entry.version : undefined;
+    // A linked workspace has no version on its `node_modules/<name>` entry; its
+    // own entry is at the path `resolved` names.
+    const target = isPlainObject(entry) && entry.link === true && typeof entry.resolved === 'string' ? lock.packages[entry.resolved] : entry;
+    const installed = isPlainObject(target) ? target.version : undefined;
     if (installed !== version) {
       findings.push(mk('lockfile', 'package.json', null, 'allow-scripts', `has allowScripts approving ${spec}, but ${lockPath} installs ${name}@${installed === undefined ? '(nothing)' : installed}, so npm skips that package's build script without failing. Fix: edit the allowScripts version to ${installed === undefined ? 'the one the lock installs, or drop the entry' : installed}.`));
     }

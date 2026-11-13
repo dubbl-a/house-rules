@@ -1,0 +1,9 @@
+{
+  "name": "fixture-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["brain"],
+  "dependencies": { "localdep": "file:vendor/localdep", "other": "file:vendor/other" },
+  "optionalDependencies": { "localdep": "file:vendor/localdep" },
+  "allowScripts": { "brain@1.0.0": true }
+}
