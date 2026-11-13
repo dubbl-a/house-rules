@@ -6,6 +6,19 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.10] - 2026-11-13
+
+A patch release under ADR 0012: a new checker family, a new workflows warning, and reworded refusal text, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.9: update the plugin as before, then run `/house-rules:sync`. One thing can turn a passing repo red: in a repo whose root `package.json` declares `workspaces` or `allowScripts`, the new `lockfile` family fails a lockfile that has drifted from its manifests.
+
+### Added
+
+- A `lockfile` checker family (#550). Where the root `package.json` declares `workspaces` or `allowScripts` and a lockfile is tracked, it compares each manifest's dependency fields with its lock entry, and each `allowScripts` `name@version` with the version the lock installs. `npm ci` and `npm ls --all` accept both kinds of drift. A mismatch is a finding that names the fix (`npm install --package-lock-only --ignore-scripts`, or edit the `allowScripts` version); a lock with no `packages` map warns that it cannot be checked. Elsewhere the family does nothing.
+- The workflows family warns when a repo tracks a lockfile and no workflow runs `npm ls --all` (#550). `pr-checks.yml` is written only where absent, so a repo that adopted before the step was added never got it. Waive it as `template-step-npm-ls` with a reason.
+
+### Changed
+
+- The branch guard's two worktree refusals and the git-hook floor's refusal now lead with the harness's worktree tool, since a manual `git worktree add` fails read-only inside the Bash sandbox, and keep the manual command for use outside it (#548). The deploy guard's worktree option says it works only outside the sandbox and points a sandboxed session to its first option, since the worktree tool always makes a new branch and the guard needs `main`. The `test-audit` skill keeps its pinned-commit command and stops on a read-only failure rather than start from another commit.
+
 ## [0.23.9] - 2026-11-13
 
 A patch release under ADR 0012: rule prose and a vendored script's baseline, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.322 and 2.1.323 survey. Upgrading from 0.23.8: update the plugin as before, then run `/house-rules:sync`. If you use the pinned `/deep-research`, rebuild it once with `check-deep-research-upstream.mjs --install`; `house doctor` reports it stale until you do.
