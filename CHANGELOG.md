@@ -6,6 +6,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.11] - 2026-11-13
+
+A patch release under ADR 0012: rule prose only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.325 survey. Upgrading from 0.23.10: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- "Treat git state as shared across sessions" (claude-code module) sends the session's next branch to a fresh worktree from the harness tool when a sandboxed `git switch -c` in a reused worktree reports that it could not update protected files such as those under `.claude`, as it already did when the switch is refused. Claude Code 2.1.325 added that note and extended the sandbox's `.claude` protection to added directories.
+- "Give an agent, a key, and a token only what one task needs" (security module) says a hosted cloud session, which has no command sandbox, starts even when the sandbox is set to fail when unavailable, as Claude Code 2.1.325 changed it to.
+
 ## [0.23.10] - 2026-11-13
 
 A patch release under ADR 0012: a new checker family, a new workflows warning, and reworded refusal text, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.9: update the plugin as before, then run `/house-rules:sync`. One thing can turn a passing repo red: in a repo whose root `package.json` declares `workspaces` or `allowScripts`, the new `lockfile` family fails a lockfile that has drifted from its manifests.
