@@ -159,7 +159,7 @@ import { join, resolve, relative, sep, dirname, basename, isAbsolute, normalize,
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 
-const ALL_FAMILIES = ['drift', 'todo', 'tamper', 'behind', 'shape', 'lengths', 'coload', 'manifest', 'minutes', 'guard', 'workflows', 'agent-config'];
+const ALL_FAMILIES = ['drift', 'todo', 'tamper', 'behind', 'shape', 'lengths', 'coload', 'manifest', 'minutes', 'guard', 'workflows', 'agent-config', 'lockfile'];
 const NEEDS_HOUSE_JSON = new Set(['tamper', 'manifest', 'coload', 'guard']);
 
 // ── generic helpers ─────────────────────────────────────────────────────
@@ -3008,7 +3008,24 @@ function checkMinutes(ctx) {
 // are findings and fail the run; the rest are warnings. A recorded waiver
 // clears either. zizmor covers the workflow checks in
 // more depth; this family is the floor every adopter gets without installing it.
-const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy', 'pr-credential', 'pr-template-section'];
+// Render writes plugins/house/templates/pr-checks.yml only where it is absent
+// (a write-once scaffold), so a step added to the template after an adopter was
+// scaffolded never reaches that adopter, and nothing else would report it. This
+// table is that report: each entry names a template step worth a warning when
+// it is missing. It is not a diff of the template, since adopters legitimately
+// change their install lines. `applies` reads the repo; `re` is matched against
+// each shell command of every `run:` in every tracked workflow file; the check
+// id, and the waiver id, is `template-step-<id>`.
+const TEMPLATE_STEPS = [
+  {
+    id: 'npm-ls',
+    applies: (ctx) => ['package-lock.json', 'npm-shrinkwrap.json'].some((l) => ctx.allTracked.includes(l)),
+    re: /^(?:[A-Za-z_]\w*=\S*\s+)*npm\s+(?:ls|list)\b.*(?:\s--all\b|\s-a\b)/,
+    step: 'npm ls --all',
+    why: '`npm ci` accepts a stale nested lockfile entry a grouped bump left behind, and `npm ls` exits non-zero on an `invalid` or `missing` one',
+  },
+];
+const WORKFLOW_CHECKS = ['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout', 'dependabot-cooldown', 'codeowners', 'publish-token', 'unfrozen-install', 'binary', 'security-policy', 'pr-credential', 'pr-template-section', ...TEMPLATE_STEPS.map((t) => `template-step-${t.id}`)];
 const FAILING_CHECKS = new Set(['unpinned-uses', 'no-permissions', 'event-in-run', 'pr-target-checkout']);
 const WORKFLOW_FILE_RE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
@@ -3448,6 +3465,7 @@ function checkWorkflows(ctx) {
   }
   if (workflowFiles.length === 0) return { findings, warnings };
 
+  const ranCommands = [];
   for (const f of workflowFiles) {
     const raw = safeRead(join(ctx.repoRoot, f));
     const entries = yamlEntries(raw);
@@ -3561,6 +3579,7 @@ function checkWorkflows(ctx) {
     }
     for (const { lines: runText, gate } of runs) {
       for (const { line, cmd } of runCommands(runText)) {
+        ranCommands.push(cmd);
         for (const inst of INSTALLERS) {
           const m = cmd.match(inst.re);
           // Root lockfiles only: a nested lockfile, and a step run through
@@ -3574,6 +3593,13 @@ function checkWorkflows(ctx) {
           warn('unfrozen-install', f, line, `installs with \`${cmd}\`, which can resolve past the committed lockfile instead of failing when the two disagree. Use ${inst.fix}, or run a plain install only in a step gated on \`if: hashFiles('<lockfile>') == ''\`.`);
         }
       }
+    }
+  }
+
+  // 5b. A step the pr-checks template gained after this repo was scaffolded.
+  for (const t of TEMPLATE_STEPS) {
+    if (t.applies(ctx) && !ranCommands.some((cmd) => t.re.test(cmd))) {
+      warn(`template-step-${t.id}`, '.github/workflows', null, `runs no \`${t.step}\` in any workflow, a step the pr-checks template carries: ${t.why}. render writes the template only where it is absent, so a workflow scaffolded before the step never got it. Copy the step from plugins/house/templates/pr-checks.yml into \`.github/workflows/pr-checks.yml\`.`);
     }
   }
 
@@ -3665,6 +3691,75 @@ function checkAgentConfig(ctx) {
     const last = s.keys[s.keys.length - 1];
     const idx = lines.findIndex((l) => l.includes(`"${last}"`));
     findings.push(mk('agent-config', p, idx >= 0 ? idx + 1 : null, 'agent-settings', `commits \`${s.keys.join('.')}: ${JSON.stringify(v)}\`, which ${s.why}, for everyone who opens this repo. Move it to \`.claude/settings.local.json\` on the machine that needs it. Or record why with a {"check": "agent-settings", "why": "..."} entry in modules.claude-code.config.waivers.`));
+  }
+  return { findings, warnings };
+}
+
+// ── lockfile ─────────────────────────────────────────────────────────────
+
+// #550: `npm ci` and `npm ls --all` compare the installed tree to manifest
+// ranges, so they accept a lockfile whose workspace entry has drifted from its
+// manifest (a caret range where the manifest pins exactly, which every later
+// `npm install` rewrites) and a root `allowScripts` entry naming a version the
+// lock no longer installs (npm then skips that package's build script without
+// failing). Runs only where the root package.json declares `workspaces` or
+// `allowScripts` and the root lockfile npm reads (npm-shrinkwrap.json first) is
+// tracked; a lockfileVersion 1 file, which has no `packages` map, is skipped.
+// The workspaces are the lock's own non-node_modules keys, so a glob in
+// `workspaces` needs no expanding here. Offline; reads the manifests and the lock.
+const LOCK_DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+const LOCK_FIX = 'run `npm install --package-lock-only --ignore-scripts` and commit the lockfile';
+
+function checkLockfile(ctx) {
+  const findings = [];
+  const warnings = [];
+  const lockPath = ['npm-shrinkwrap.json', 'package-lock.json'].find((l) => ctx.allTracked.includes(l));
+  if (!lockPath || !ctx.allTracked.includes('package.json')) return { findings, warnings };
+  const readJson = (rel) => { try { const j = JSON.parse(safeRead(join(ctx.repoRoot, rel))); return isPlainObject(j) ? j : null; } catch { return null; } };
+  const root = readJson('package.json');
+  if (!root || (root.workspaces === undefined && root.allowScripts === undefined)) return { findings, warnings };
+  const lock = readJson(lockPath);
+  if (!lock) {
+    findings.push(mk('lockfile', lockPath, null, 'lock-drift', `is not a readable JSON object, so it cannot be compared with the manifests: ${LOCK_FIX}.`));
+    return { findings, warnings };
+  }
+  if (!isPlainObject(lock.packages)) return { findings, warnings };
+
+  const show = (v) => (v === undefined ? 'absent' : JSON.stringify(v));
+  const drift = (manifest, locked, label) => {
+    for (const field of LOCK_DEP_FIELDS) {
+      const want = isPlainObject(manifest[field]) ? manifest[field] : {};
+      const have = isPlainObject(locked[field]) ? locked[field] : {};
+      for (const name of new Set([...Object.keys(want), ...Object.keys(have)])) {
+        if (want[name] === have[name]) continue;
+        findings.push(mk('lockfile', lockPath, null, 'lock-drift', `has ${field}.${name} as ${show(have[name])} for ${label}, but ${label} says ${show(want[name])}. \`npm ci\` and \`npm ls --all\` accept this while the installed version satisfies both, and a later \`npm install\` rewrites it. Fix: ${LOCK_FIX}.`));
+      }
+    }
+  };
+  for (const key of Object.keys(lock.packages)) {
+    if (key.startsWith('node_modules/') || key.includes('/node_modules/')) continue;
+    const label = key === '' ? 'package.json' : `${key}/package.json`;
+    const manifest = readJson(label);
+    if (!manifest) {
+      findings.push(mk('lockfile', lockPath, null, 'lock-workspace-missing', `has a workspace entry \`${key}\`, but ${label} is missing or not a JSON object. Remove the workspace from the lock or restore the manifest: ${LOCK_FIX}.`));
+      continue;
+    }
+    drift(manifest, isPlainObject(lock.packages[key]) ? lock.packages[key] : {}, label);
+  }
+
+  for (const spec of Object.keys(isPlainObject(root.allowScripts) ? root.allowScripts : {})) {
+    const at = spec.lastIndexOf('@');
+    const name = spec.slice(0, at);
+    const version = spec.slice(at + 1);
+    if (at < 1 || !version) {
+      findings.push(mk('lockfile', 'package.json', null, 'allow-scripts', `has an allowScripts key \`${spec}\` that is not of the form name@version, so it cannot be compared with the lock. Write it as \`<name>@<exact version>\`.`));
+      continue;
+    }
+    const entry = lock.packages[`node_modules/${name}`];
+    const installed = isPlainObject(entry) ? entry.version : undefined;
+    if (installed !== version) {
+      findings.push(mk('lockfile', 'package.json', null, 'allow-scripts', `has allowScripts approving ${spec}, but ${lockPath} installs ${name}@${installed === undefined ? '(nothing)' : installed}, so npm skips that package's build script without failing. Fix: edit the allowScripts version to ${installed === undefined ? 'the one the lock installs, or drop the entry' : installed}.`));
+    }
   }
   return { findings, warnings };
 }
@@ -4172,6 +4267,7 @@ function main() {
       case 'guard': r = checkGuard(ctx); break;
       case 'workflows': r = checkWorkflows(ctx); break;
       case 'agent-config': r = checkAgentConfig(ctx); break;
+      case 'lockfile': r = checkLockfile(ctx); break;
       default: r = { findings: [], warnings: [] };
     }
     results[fam] = r;
