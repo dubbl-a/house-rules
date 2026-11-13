@@ -1112,9 +1112,11 @@ sandboxed `git checkout`, `git stash` or autostash pull cannot update protected 
 those in `.claude`", and "Changed the sandbox to refuse sandboxed writes to `.claude` settings,
 skills, agents, commands and hooks in added directories, as it does in the launch folder"
 (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-13).
-A `git switch -c` that reuses the worktree can therefore leave those files at the old branch's
-content when the two bases differ under `.claude`, so the rule treats that note like a refusal and
-sends the next branch to a fresh worktree from the harness tool.
+The changelog names checkout, stash, and autostash pull, not `git switch`. A sandboxed
+`git switch -c` that reuses the worktree writes the same files, though, so by inference it can fail
+to update them and leave them at the old branch's content when the two bases differ under
+`.claude`, with or without the note. The rule therefore keys on the failed update, not on the
+note, and treats it like a refusal: the next branch goes to a fresh worktree from the harness tool.
 
 ## Keep the committed settings narrow and the local settings local
 
