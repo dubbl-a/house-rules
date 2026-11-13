@@ -36,6 +36,7 @@ jobs:
           prompt: Review the diff.
           context: \${{ github.event.pull_request.body }}
       - run: npm ci
+      - run: npm ls --all
 `;
 
 function repo(overrides = {}) {
@@ -176,7 +177,7 @@ test('#232 event-in-run: an expression split across lines is read, and warns at 
 test('#232 pr-credential: an expression split across lines is read, and warns at the line where it opens', () => {
   const ws = warns(exprEnv('${{\n            secrets.FOO }}'));
   assert.deepEqual(kinds(ws), ['pr-credential']);
-  assert.equal(ws[0].line, 26);
+  assert.equal(ws[0].line, 27);
   assert.deepEqual(warns(exprEnv('${{\n            github.sha }}')), []);
 });
 
@@ -296,6 +297,7 @@ jobs:
         with:
           fetch-depth: 1
       - run: echo ok
+      - run: npm ls --all
 `;
 
 test('pr-target-checkout: pull_request_target checking out the base is warning-free', () => {
@@ -690,7 +692,7 @@ const PROMOTED = {
   'unpinned-uses': CLEAN_WORKFLOW.replace(`actions/checkout@${SHA} # v4.2.2`, 'actions/checkout@v4'),
   'no-permissions': CLEAN_WORKFLOW.replace('permissions:\n  contents: read\n', ''),
   'event-in-run': CLEAN_WORKFLOW.replace('run: npm ci', 'run: echo "${{ github.event.pull_request.title }}"'),
-  'pr-target-checkout': `name: t\non:\n  pull_request_target:\npermissions:\n  contents: read\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${SHA}\n        with:\n          ref: \${{ github.event.pull_request.head.sha }}\n`,
+  'pr-target-checkout': `name: t\non:\n  pull_request_target:\npermissions:\n  contents: read\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${SHA}\n        with:\n          ref: \${{ github.event.pull_request.head.sha }}\n      - run: npm ls --all\n`,
 };
 for (const [check, body] of Object.entries(PROMOTED)) {
   test(`${check}: a planted violation exits 1 as a finding, and a recorded reason exits 0`, () => {
@@ -810,4 +812,48 @@ test('#446 pr-template-section: warns in a repo with no workflow files, and a wa
   const waiver = houseJson({ modules: { github: { enabled: true, config: { waivers: [{ check: 'pr-template-section', why: 'testing section lives in CONTRIBUTING instead' }] } }, testing: { enabled: true } } });
   assert.deepEqual(templateWarns(repo({ ...files, 'house.json': waiver })), []);
   assert.deepEqual(warns(repo({ ...files, 'house.json': waiver })), []);
+});
+
+// Write-once scaffolds never update, so a step added to the pr-checks template
+// after an adopter was scaffolded never reaches it. TEMPLATE_STEPS names the
+// steps whose absence is worth a warning.
+const NO_LS = CLEAN_WORKFLOW.replace('      - run: npm ls --all\n', '');
+const lsWaiver = (extra = {}) => houseJson({ modules: { github: { enabled: true, config: { waivers: [{ check: 'template-step-npm-ls', why: 'the verify script runs npm ls --all', ...extra }] } } } });
+
+test('template-step-npm-ls: a tracked lockfile and no workflow running npm ls --all warns, naming the step and why', () => {
+  const ws = warns(withWorkflow(NO_LS));
+  assert.deepEqual(kinds(ws), ['template-step-npm-ls']);
+  assert.match(ws[0].message, /npm ls --all/);
+  assert.match(ws[0].message, /pr-checks\.yml/);
+  assert.match(ws[0].message, /npm ci/);
+  assert.match(ws[0].message, /waivers/);
+});
+
+test('template-step-npm-ls: a shrinkwrap alone holds the predicate too', () => {
+  assert.deepEqual(kinds(warns(repo({ 'package-lock.json': null, 'npm-shrinkwrap.json': '{}\n', '.github/workflows/ci.yml': NO_LS }))), ['template-step-npm-ls']);
+});
+
+test('template-step-npm-ls: no lockfile, a nested lockfile only, or no workflow files is silent', () => {
+  assert.deepEqual(warns(repo({ 'package-lock.json': null, '.github/workflows/ci.yml': NO_LS })), []);
+  assert.deepEqual(warns(repo({ 'package-lock.json': null, 'site/package-lock.json': '{}\n', '.github/workflows/ci.yml': NO_LS })), []);
+  assert.deepEqual(warns(repo({ '.github/workflows/ci.yml': null, '.github/CODEOWNERS': null, 'SECURITY.md': null, '.github/dependabot.yml': null })), []);
+});
+
+test('template-step-npm-ls: the step in any workflow file, in a gated or chained form, is silent', () => {
+  assert.deepEqual(warns(repo({ '.github/workflows/ci.yml': NO_LS, '.github/workflows/lint.yml': CLEAN_WORKFLOW })), []);
+  const gated = NO_LS.replace('      - run: npm ci\n', "      - run: npm ci\n      - if: hashFiles('package-lock.json') != ''\n        run: npm ls --all\n");
+  assert.deepEqual(warns(withWorkflow(gated)), []);
+  assert.deepEqual(warns(withWorkflow(NO_LS.replace('run: npm ci', 'run: npm ci && npm ls --all'))), []);
+  assert.deepEqual(warns(withWorkflow(NO_LS.replace('run: npm ci', 'run: npm ci && npm ls -a'))), []);
+});
+
+test('template-step-npm-ls: npm ls without --all, or only named in a comment or another command, still warns', () => {
+  assert.deepEqual(kinds(warns(withWorkflow(NO_LS.replace('run: npm ci', 'run: npm ci && npm ls')))), ['template-step-npm-ls']);
+  assert.deepEqual(kinds(warns(withWorkflow(NO_LS.replace('run: npm ci', 'run: npm ci # then npm ls --all')))), ['template-step-npm-ls']);
+  assert.deepEqual(kinds(warns(withWorkflow(NO_LS.replace('run: npm ci', 'run: npm ci && echo npm lsx --all')))), ['template-step-npm-ls']);
+});
+
+test('template-step-npm-ls: a recorded reason clears it, a malformed waiver does not', () => {
+  assert.deepEqual(warns(repo({ '.github/workflows/ci.yml': NO_LS, 'house.json': lsWaiver() })), []);
+  assert.deepEqual(kinds(warns(repo({ '.github/workflows/ci.yml': NO_LS, 'house.json': lsWaiver({ why: '' }) }))), ['template-step-npm-ls', 'waiver']);
 });

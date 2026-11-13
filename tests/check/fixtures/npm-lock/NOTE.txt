@@ -1,0 +1,1 @@
+package-lock.json was written by npm 11.20.0 with `npm install --package-lock-only --ignore-scripts --offline` over this directory (local file: and workspace packages only, no registry); do not edit it by hand.
