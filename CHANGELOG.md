@@ -12,7 +12,7 @@ A patch release under ADR 0012: rule prose only, with no heading renamed and no 
 
 ### Changed
 
-- "Treat git state as shared across sessions" (claude-code module) sends the session's next branch to a fresh worktree from the harness tool when a sandboxed `git switch -c` in a reused worktree fails to update protected files such as those under `.claude`, as it already did when the switch is refused. Claude Code 2.1.325 added a note for a sandboxed `git checkout` that hits those files and extended the sandbox's `.claude` protection to added directories.
+- "Treat git state as shared across sessions" (claude-code module) sends the session's next branch to a fresh worktree from the harness tool when a sandboxed `git switch -c` in a reused worktree fails to update protected files such as those under `.claude`, as it already did when the switch is refused. Claude Code 2.1.325 added a note for a sandboxed `git checkout`, `git stash`, or autostash pull that hits those files and extended the sandbox's `.claude` protection to added directories.
 - "Give an agent, a key, and a token only what one task needs" (security module) says a hosted cloud session, which has no command sandbox, starts even when the sandbox is set to fail when unavailable, as Claude Code 2.1.325 changed it to.
 
 ## [0.23.10] - 2026-11-13
