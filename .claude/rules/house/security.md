@@ -6,7 +6,7 @@ paths:
   - "plugins/house/scripts/**"
   - "research/*/scripts/**"
 ---
-<!-- house-managed v0.23.10 module=security source=modules/security/rules/security.md body-sha256=e8e63200df40cfb6365998efdcde77f510e357304ce6ce2bc1dcce9ebe47c050 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.11 module=security source=modules/security/rules/security.md body-sha256=bcc511f971920e42020805f7f7987b1ca08b98824d344bb75ff2ba3337e810d8 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: agents and the supply chain
 
@@ -24,7 +24,7 @@ Receipts: `docs/handbook/security.md#treat-every-input-to-the-model-as-data-neve
 ## Give an agent, a key, and a token only what one task needs
 
 Scope every grant to the job in front of it (the tools, the paths and hosts, what a key may write, how long a token lives) so a leaked credential has a blast radius statable in one sentence; prefer an identity issued per run, and remove a grant when its task ends.
-Do not count on the harness's sandbox to protect credentials, since it covers shell commands only (file tools, MCP servers and hooks run outside it), lets those commands read most of the home directory unless told otherwise, and runs a command unsandboxed when it cannot start or when a failed command retries with the sandbox disabled: deny the key and cloud-credential paths to the file tools with Read deny rules and to shell commands with the sandbox's read-deny or credentials setting, scrub the subprocess environment, keep the egress allowlist to the hosts the work needs with unlisted hosts refused rather than prompted, make a missing sandbox fail the start, turn off the unsandboxed retry, and confirm where the harness honors each setting. A Bash deny rule matches the command as written, not the program, so treat it as a guard on habit, not a boundary.
+Do not count on the harness's sandbox to protect credentials, since it covers shell commands only (file tools, MCP servers and hooks run outside it), lets those commands read most of the home directory unless told otherwise, and runs a command unsandboxed when it cannot start or when a failed command retries with the sandbox disabled: deny the key and cloud-credential paths to the file tools with Read deny rules and to shell commands with the sandbox's read-deny or credentials setting, scrub the subprocess environment, keep the egress allowlist to the hosts the work needs with unlisted hosts refused rather than prompted, make a missing sandbox fail the start (a hosted cloud session, which has no command sandbox, starts anyway), turn off the unsandboxed retry, and confirm where the harness honors each setting. A Bash deny rule matches the command as written, not the program, so treat it as a guard on habit, not a boundary.
 Anchor: claude-code.md's narrow committed allowlist and github.md's one-writable-scope probe; the native floor is Read deny rules on key paths, the sandbox's credentials setting in deny mode, the subprocess environment scrub, the sandbox network allowlist, and its fail-if-unavailable setting, and the machine-local half has no checker, since user settings are state a repo cannot see.
 Receipts: `docs/handbook/security.md#give-an-agent-a-key-and-a-token-only-what-one-task-needs`
 
