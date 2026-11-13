@@ -6,6 +6,16 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.9] - 2026-11-13
+
+A patch release under ADR 0012: rule prose and a vendored script's baseline, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.322 and 2.1.323 survey. Upgrading from 0.23.8: update the plugin as before, then run `/house-rules:sync`. If you use the pinned `/deep-research`, rebuild it once with `check-deep-research-upstream.mjs --install`; `house doctor` reports it stale until you do.
+
+### Changed
+
+- The claude-code rule and the orchestration defaults say a manual `git worktree add` fails read-only inside the Bash sandbox on macOS and Linux, as Claude Code 2.1.323 made it, so the harness's worktree tool is the path there. Reusing the session's worktree for its next branch is unaffected.
+- The claude-code rule gives a second reason to keep `settings.local.json` gitignored: since Claude Code 2.1.323, a "don't ask again" approval is not saved to a `settings.local.json` that git tracks, and lasts only for the session.
+- The `/deep-research` fork's baseline moves from Claude Code 2.1.288 to 2.1.323, whose native script changed how it deduplicates URLs (it keeps the query string, minus tracking parameters). Every model, effort, prompt, and budget pin still applies.
+
 ## [0.23.8] - 2026-11-11
 
 A patch release under ADR 0012: rule prose, an optional `house.json` key, a stricter length check and a test bound, with no heading renamed and no change to what the guard denies. Upgrading from 0.23.7: update the plugin as before, then run `/house-rules:sync`. One thing can turn a passing repo red: a `ratchetRaises` entry that clears a file's byte overrun now needs a `bytes` value at or above the file's size.

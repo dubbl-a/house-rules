@@ -14,10 +14,11 @@ fix, one grep or read, a question it can answer, and final judgment on every imp
 
 - Enter a worktree before the first edit or branch through the harness's worktree tool. A manual
   `git worktree add -b <branch> <path> origin/<default>` skips its base-branch setting and its copy
-  of gitignored files; use it only when the tool cannot reach the branch. Once pushed and clean,
-  `git fetch`, then `git switch -c <branch> origin/<default>` in the same worktree: a new path
-  reloads scoped rules. If refused, use the tool; never retry another way. The main checkout is for
-  reading, merging, and cleanup. Never `git checkout -b` or `git switch -c` there, even for one commit.
+  of gitignored files, and fails read-only inside the Bash sandbox on macOS and Linux; use it only
+  when the tool cannot reach the branch. Once pushed and clean, `git fetch`, then
+  `git switch -c <branch> origin/<default>` in the same worktree: a new path reloads scoped rules.
+  If refused, use the tool; never retry another way. The main checkout is for reading, merging, and
+  cleanup. Never `git checkout -b` or `git switch -c` there, even for one commit.
 - Before handing the user a command, put the session where it must run (leave the worktree) and
   name the directory; one that writes shared state names its expected output. Anything to copy
   sits alone in a fenced block, so `/copy` lifts it whole; terminal selection breaks wraps.
