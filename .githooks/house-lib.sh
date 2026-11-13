@@ -223,7 +223,8 @@ house_refuse() {
     shift
   done
   printf '\n' >&2
-  printf 'This branch needs a PR. Work in a worktree:\n' >&2
+  printf 'This branch needs a PR. Work in a worktree: enter one through the harness'"'"'s worktree tool\n' >&2
+  printf '(inside the Bash sandbox a manual `git worktree add` fails read-only), or run:\n' >&2
   printf '  git worktree add -b kind/short-name ../%s-kind-short-name\n' "$repo"  >&2
   printf 'then commit there and open a PR.\n' >&2
   return 1

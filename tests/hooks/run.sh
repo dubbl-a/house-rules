@@ -590,6 +590,8 @@ expect_deny "#152 after uninstall: a commit on master is still refused (house.js
   "$(mk_payload "git commit -m x" "$r")" "needs a PR"
 expect_deny "#152 after uninstall: the refusal advises arming the floor" \
   "$(mk_payload "git commit -m x" "$r")" "floor is not armed in this checkout"
+expect_deny "#548 commit refusal leads with the harness worktree tool and the sandbox caveat" \
+  "$(mk_payload "git commit -m x" "$r")" "through the harness's worktree tool" "fails read-only" "or run: git worktree add -b kind/short-name"
 expect_deny "#152 after uninstall: a merge on a protected branch is refused" \
   "$(mk_payload "git merge feat/u" "$r")" "protected branch"
 git -C "$r" checkout -q feat/u
@@ -1345,6 +1347,8 @@ expect_deny "unarmed main checkout: git checkout -b is refused" \
   "$(mk_payload "git checkout -b feat/x" "$d")" "worktree add"
 expect_deny "unarmed main checkout: git switch -c is refused" \
   "$(mk_payload "git switch -c feat/x" "$d")" "worktree add"
+expect_deny "#548 branch-create refusal leads with the harness worktree tool and the sandbox caveat" \
+  "$(mk_payload "git checkout -b feat/x" "$d")" "through the harness's worktree tool" "fails read-only" "or run: git worktree add -b <branch>"
 expect_allow "checking out an existing branch is untouched" \
   "$(mk_payload "git checkout main" "$d")"
 expect_allow "checking out a path is untouched" \
