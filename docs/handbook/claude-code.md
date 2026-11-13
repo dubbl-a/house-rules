@@ -413,6 +413,12 @@ lists it as `deep-research-pinned`), the session-start text says to run it by `s
 state the depth, and the harness-triage routine runs the checker and reinstalls on drift. The
 baseline is 2.1.288.
 
+The baseline moved to 2.1.323, 2026-11-13: the native body changed for the first time since
+2.1.288 (sha256 `9182a5e7634c`). Its URL dedup key now keeps the query string, minus `utm_*`,
+`gclid`, `fbclid`, and `msclkid`, so two pages that differ only by query no longer merge. Every
+model, effort, prompt, and budget pin still matched exactly once, so `--rebuild` succeeded and the
+fork's own changes are unchanged.
+
 The fork could not run from its stable path, 2026-10-04 (#139): the Workflow tool refused
 `scriptPath` at `~/.claude/workflows/deep-research-tiered.js` ("scriptPath must be a script path
 this tool returned, or a file you can already read (the working directory or a directory you have
@@ -1091,6 +1097,16 @@ Conductor's `CONDUCTOR_PORT` do, so two dev servers do not collide.
 The one cost with no lever is the prompt cache, which is per directory. Parallel sessions in one
 directory share a cache, and each worktree starts cold.
 
+The sandbox and a manual worktree, 2026-11-13: Claude Code 2.1.323 changed the Bash sandbox on
+macOS and Linux so that "`git worktree add`, `move` and `remove` now fail read-only, as do commits
+in a worktree the session wasn't started in or given, even one inside the project"
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-13).
+The rule's manual `git worktree add` fallback, step 1 of `/house-rules:sync`, and
+`cleanup-worktree.sh`'s `git worktree remove` therefore need the harness's worktree tool when the
+sandbox is on. Running only the add outside the sandbox leaves later sandboxed commits there
+failing unless the session is given that worktree. Reusing the session's own worktree for its next
+branch is unaffected.
+
 ## Keep the committed settings narrow and the local settings local
 
 repo-a's `.claude/settings.json` (1,062 bytes, 24 entries) allows only read-only or
@@ -1179,6 +1195,13 @@ wildcard asymmetry on MCP tool names
 (https://code.claude.com/docs/en/permissions#tool-name-wildcards), and a print-mode run loading
 project-scoped servers with no approval prompt
 (https://code.claude.com/docs/en/mcp#project-server-approvals-and-workspace-trust).
+
+A tracked local file keeps no approval, 2026-11-13: Claude Code 2.1.323 changed "don't ask again"
+so that "an allow rule that looks like it holds a secret, or would be saved to a
+`settings.local.json` that git tracks, lasts for the session only and isn't saved"
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-13).
+That is a second reason the rule keeps the file gitignored: a tracked one stops collecting the
+approvals it exists to hold, and nothing says so beyond the next prompt.
 
 ## Read a resume file as a harness artifact, not a handoff
 

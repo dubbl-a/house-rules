@@ -6,7 +6,7 @@ paths:
   - "plugins/house/scripts/**"
   - "research/*/scripts/**"
 ---
-<!-- house-managed v0.23.8 module=security source=modules/security/rules/security.md body-sha256=e8e63200df40cfb6365998efdcde77f510e357304ce6ce2bc1dcce9ebe47c050 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.9 module=security source=modules/security/rules/security.md body-sha256=e8e63200df40cfb6365998efdcde77f510e357304ce6ce2bc1dcce9ebe47c050 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Security: agents and the supply chain
 
