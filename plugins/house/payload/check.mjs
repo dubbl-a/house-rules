@@ -3704,7 +3704,8 @@ function checkAgentConfig(ctx) {
 // lock no longer installs (npm then skips that package's build script without
 // failing). Runs only where the root package.json declares `workspaces` or
 // `allowScripts` and the root lockfile npm reads (npm-shrinkwrap.json first) is
-// tracked; a lockfileVersion 1 file, which has no `packages` map, is skipped.
+// tracked; a lock with no `packages` map (lockfileVersion 1) warns
+// `lock-unevaluable` rather than passing, since it cannot be evaluated.
 // The workspaces are the lock's own non-node_modules keys, so a glob in
 // `workspaces` needs no expanding here. Offline; reads the manifests and the lock.
 const LOCK_DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
