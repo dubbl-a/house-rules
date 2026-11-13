@@ -70,7 +70,7 @@ git fetch origin
 git worktree add .claude/worktrees/house-sync-vNEW -b house-sync-vNEW origin/<defaultBranch>
 ```
 
-Step 0 has already passed, so nothing was written before this point. With any other `branchPolicy`, work in the repo as it stands.
+Inside the Bash sandbox on macOS and Linux, `git worktree add` and `git worktree remove` fail read-only, and so does a commit in a worktree the session was not started in or given; there, enter the worktree through the harness's worktree tool instead, with the name `house-sync-vNEW` (under the default `worktree.baseRef` it branches from `origin/<defaultBranch>`), remove it through the same tool at cleanup, and do not retry the command another way. Step 0 has already passed, so nothing was written before this point. With any other `branchPolicy`, work in the repo as it stands.
 
 ### 2. Plan (dry run)
 

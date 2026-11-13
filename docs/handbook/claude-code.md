@@ -1101,9 +1101,11 @@ The sandbox and a manual worktree, 2026-11-13: Claude Code 2.1.323 changed the B
 macOS and Linux so that "`git worktree add`, `move` and `remove` now fail read-only, as do commits
 in a worktree the session wasn't started in or given, even one inside the project"
 (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-13).
-The rule's manual `git worktree add` fallback, and `cleanup-worktree.sh`'s `git worktree remove`,
-therefore need the harness's worktree tool or a command run outside the sandbox when the sandbox is
-on. Reusing the session's own worktree for its next branch is unaffected.
+The rule's manual `git worktree add` fallback, step 1 of `/house-rules:sync`, and
+`cleanup-worktree.sh`'s `git worktree remove` therefore need the harness's worktree tool when the
+sandbox is on. Running only the add outside the sandbox leaves later sandboxed commits there
+failing unless the session is given that worktree. Reusing the session's own worktree for its next
+branch is unaffected.
 
 ## Keep the committed settings narrow and the local settings local
 

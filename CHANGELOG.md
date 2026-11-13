@@ -12,7 +12,7 @@ A patch release under ADR 0012: rule prose and a vendored script's baseline, wit
 
 ### Changed
 
-- The claude-code rule and the orchestration defaults say a manual `git worktree add` fails read-only inside the Bash sandbox on macOS and Linux, as Claude Code 2.1.323 made it, so the harness's worktree tool is the path there. Reusing the session's worktree for its next branch is unaffected.
+- The claude-code rule and the orchestration defaults say a manual `git worktree add` fails read-only inside the Bash sandbox on macOS and Linux, as Claude Code 2.1.323 made it, so the harness's worktree tool is the path there; `/house-rules:sync` says the same at its worktree step. Reusing the session's worktree for its next branch is unaffected.
 - The claude-code rule gives a second reason to keep `settings.local.json` gitignored: since Claude Code 2.1.323, a "don't ask again" approval is not saved to a `settings.local.json` that git tracks, and lasts only for the session.
 - The `/deep-research` fork's baseline moves from Claude Code 2.1.288 to 2.1.323, whose native script changed how it deduplicates URLs (it keeps the query string, minus tracking parameters). Every model, effort, prompt, and budget pin still applies.
 
