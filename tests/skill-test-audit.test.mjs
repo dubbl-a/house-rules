@@ -204,6 +204,8 @@ test('the builder branches from the surveyed head, stops on an existing branch, 
   assert.ok(build.prompt.includes('worktree add -b tests-audit-2026-10-22 /work/repo/.claude/worktrees/tests-audit-2026-10-22 abc123'))
   assert.ok(!build.prompt.includes('origin/main'), 'the build does not branch from a fresh fetch')
   assert.ok(/stop, create nothing/.test(build.prompt))
+  assert.ok(/fails read-only \(the Bash sandbox\), stop, create nothing/.test(build.prompt), 'a read-only worktree add stops the build')
+  assert.ok(/never fall back to an unpinned base/.test(build.prompt))
   const [rereview] = byLabel(calls, /^re-review/)
   assert.ok(rereview.prompt.includes('merge-base --is-ancestor sha0 sha1'))
 })

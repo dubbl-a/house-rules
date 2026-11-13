@@ -1358,7 +1358,7 @@ commit_decision() {
   if [[ -n "$BRANCH_CREATED_AT" && "$BRANCH_CREATED_AT" -lt "$CLAUSE_IDX" ]]; then return 0; fi
   staged=$(trap - ERR; git "${git_dir_arg[@]}" diff --cached --name-only 2>/dev/null || true)
   if carve_out_satisfied "$staged"; then return 0; fi
-  deny "Refusing to commit on '$branch': this branch needs a PR. house.json at $toplevel requires a feature branch and a PR for this repo. Work in a worktree: git worktree add -b kind/short-name ../${toplevel##*/}-kind-short-name, in a separate call, then commit there and open a PR.${carve_out_reason_suffix}${arm_suffix}"
+  deny "Refusing to commit on '$branch': this branch needs a PR. house.json at $toplevel requires a feature branch and a PR for this repo. Work in a worktree: enter one through the harness's worktree tool (inside the Bash sandbox a manual \`git worktree add\` fails read-only), or run: git worktree add -b kind/short-name ../${toplevel##*/}-kind-short-name, in a separate call, then commit there and open a PR.${carve_out_reason_suffix}${arm_suffix}"
 }
 # Everything below runs ONLY while the floor is not intact and armed here.
 # Armed, git itself reads the refs it is about to move and these scans could
@@ -1490,7 +1490,7 @@ push_decision() {
 # branches in a linked worktree from the main checkout is let through only in
 # the exact shapes e_worktree_shape reads (#112).
 worktree_create_deny() {
-  deny "Refusing '$1': the main checkout is the one every peer session and the user hold. Branch in a worktree: git worktree add -b <branch> <path> origin/<default>, or the harness's worktree tool. (house rule: treat git state as shared across sessions)"
+  deny "Refusing '$1': the main checkout is the one every peer session and the user hold. Branch in a worktree: enter one through the harness's worktree tool (inside the Bash sandbox a manual \`git worktree add\` fails read-only), or run: git worktree add -b <branch> <path> origin/<default>. (house rule: treat git state as shared across sessions)"
 }
 worktree_branch_create_scan() {
   local verb="$1" tok flag='' seen_dashdash=0
