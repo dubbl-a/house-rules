@@ -14,7 +14,7 @@ A patch release under ADR 0012: rule prose and refusal text only, with no headin
 
 - "Treat git state as shared across sessions" (claude-code module) sends the session's next branch to a fresh worktree from the harness tool when a sandboxed `git switch -c` in a reused worktree fails to update protected files such as those under `.claude`, as it already did when the switch is refused. Claude Code 2.1.325 added a note for a sandboxed `git checkout`, `git stash`, or autostash pull that hits those files and extended the sandbox's `.claude` protection to added directories.
 - "Give an agent, a key, and a token only what one task needs" (security module) says a hosted cloud session, which has no command sandbox, starts even when the sandbox is set to fail when unavailable, as Claude Code 2.1.325 changed it to.
-- When the git-hook floor (github module) finds neither `jq` nor `node` on `PATH`, its refusal now prints the `PATH` it saw and says that Claude Code 2.1.326 and later create worktrees under a narrower one. Before, a worktree that the harness tool failed to create for this reason gave no hint why, because `jq` or `node` worked in your own shell. The floor still refuses in that case.
+- When the git-hook floor (github module) finds neither `jq` nor `node` on `PATH`, its refusal now prints the `PATH` it saw and says that Claude Code 2.1.326 and later create worktrees under a narrower one. Before, a worktree the harness tool fails to create for this reason would give no hint why, because `jq` or `node` works in your own shell. The floor still refuses in that case.
 
 ## [0.23.10] - 2026-11-13
 

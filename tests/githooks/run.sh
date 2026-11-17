@@ -647,7 +647,7 @@ else
   fail "neither jq nor node: the floor refuses and names the fix" "exit $RUN_CODE: $RUN_OUT"
 fi
 # A narrower PATH than the user's shell (Claude Code's worktree creation runs
-# git that way from 2.1.326) is the usual way to land here with jq installed,
+# git that way from 2.1.326) is a likely way to land here with jq installed,
 # so the refusal prints the PATH it saw.
 if [[ "$RUN_CODE" -ne 0 && "$RUN_OUT" == *"ran with PATH="*"$TMP_ROOT/bin-bare;"* ]]; then
   pass "neither jq nor node: the refusal prints the PATH the hook saw"
