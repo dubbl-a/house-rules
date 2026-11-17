@@ -646,6 +646,31 @@ if [[ "$RUN_CODE" -ne 0 && "$RUN_OUT" == *"neither jq nor node"* ]]; then
 else
   fail "neither jq nor node: the floor refuses and names the fix" "exit $RUN_CODE: $RUN_OUT"
 fi
+# A narrower PATH than the user's shell (Claude Code's worktree creation runs
+# git that way from 2.1.326) is a likely way to land here with jq installed,
+# so the refusal prints the PATH it saw.
+if [[ "$RUN_CODE" -ne 0 && "$RUN_OUT" == *"ran with PATH="*"$TMP_ROOT/bin-bare;"* ]]; then
+  pass "neither jq nor node: the refusal prints the PATH the hook saw"
+else
+  fail "neither jq nor node: the refusal prints the PATH the hook saw" "exit $RUN_CODE: $RUN_OUT"
+fi
+
+# The same refusal from the reference-transaction half, which is the one a
+# new worktree branch reaches: a worktree add under a PATH with no reader
+# fails and leaves no branch behind.
+if [[ "$RT_SUPPORTED" -eq 1 ]]; then
+  r="$TMP_ROOT/c12b"; new_adopted_repo "$r"
+  RUN_OUT=$(cd "$r" && env PATH="$TMP_ROOT/bin-bare" git worktree add -b feat-no-reader "$TMP_ROOT/c12b-wt" 2>&1)
+  RUN_CODE=$?
+  if [[ "$RUN_CODE" -ne 0 && "$RUN_OUT" == *"ran with PATH="* ]] &&
+    ! git -C "$r" rev-parse --verify --quiet refs/heads/feat-no-reader >/dev/null; then
+    pass "neither jq nor node: a worktree add on a new branch is refused, naming the PATH"
+  else
+    fail "neither jq nor node: a worktree add on a new branch is refused, naming the PATH" "exit $RUN_CODE: $RUN_OUT"
+  fi
+else
+  skip "neither jq nor node: a worktree add on a new branch is refused, naming the PATH" "git is older than 2.28"
+fi
 
 fi
 if part_on 2; then

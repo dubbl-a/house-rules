@@ -118,6 +118,9 @@ house_manifest_read() {
   else
     printf 'house: neither jq nor node is on PATH, so %s cannot be read.\n' "$HOUSE_MANIFEST_SOURCE" >&2
     printf 'house: refusing rather than guessing the branch policy; install jq (brew install jq) or node.\n' >&2
+    printf 'house: this hook ran with PATH=%s; if jq or node is installed but not there, git was likely\n' "${PATH:-}" >&2
+    printf 'house: started with a narrower PATH (Claude Code 2.1.326 and later create worktrees that way),\n' >&2
+    printf 'house: so put jq or node in one of those folders, or run the git command from your own shell.\n' >&2
     return 2
   fi
 
