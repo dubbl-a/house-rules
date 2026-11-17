@@ -6,14 +6,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
-## [0.23.11] - 2026-11-13
+## [0.23.11] - 2026-11-17
 
-A patch release under ADR 0012: rule prose only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.325 survey. Upgrading from 0.23.10: update the plugin as before, then run `/house-rules:sync`.
+A patch release under ADR 0012: rule prose and refusal text only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.325 and 2.1.326 survey. Upgrading from 0.23.10: update the plugin as before, then run `/house-rules:sync`.
 
 ### Changed
 
 - "Treat git state as shared across sessions" (claude-code module) sends the session's next branch to a fresh worktree from the harness tool when a sandboxed `git switch -c` in a reused worktree fails to update protected files such as those under `.claude`, as it already did when the switch is refused. Claude Code 2.1.325 added a note for a sandboxed `git checkout`, `git stash`, or autostash pull that hits those files and extended the sandbox's `.claude` protection to added directories.
 - "Give an agent, a key, and a token only what one task needs" (security module) says a hosted cloud session, which has no command sandbox, starts even when the sandbox is set to fail when unavailable, as Claude Code 2.1.325 changed it to.
+- When the git-hook floor (github module) finds neither `jq` nor `node` on `PATH`, its refusal now prints the `PATH` it saw and says that Claude Code 2.1.326 and later create worktrees under a narrower one. Before, a worktree that the harness tool failed to create for this reason gave no hint why, because `jq` or `node` worked in your own shell. The floor still refuses in that case.
 
 ## [0.23.10] - 2026-11-13
 
