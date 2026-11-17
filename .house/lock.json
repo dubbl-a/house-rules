@@ -82,7 +82,7 @@
       "path": ".githooks/house-lib.sh",
       "module": "github",
       "source": "modules/github/files/githooks/house-lib.sh",
-      "bodySha256": "24f3139780b13b232b4132a99360b1e76265cea7e27779a485fb05ec4ad00342"
+      "bodySha256": "1705bb40dd6867284c731c31a0783b70fa93add11b33c35b4f491f9b143e553f"
     },
     {
       "path": ".githooks/pre-commit.d/10-house-branch",
