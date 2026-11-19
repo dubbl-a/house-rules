@@ -804,6 +804,14 @@ did a hook that exited 1 and one whose command did not exist. The branch guard's
 hand-written denials stay: they name a reason, and they hold on a CLI older than 2.1.295. The
 setting applies in every repo, one that never adopted house included, which ADR 0018 records.
 
+Claude Code 2.1.328 "Added `"onFailure": "block"` for `mcp_tool` hooks, as for command and HTTP
+hooks: a hook whose call fails blocks the action" (changelog, fetched 2026-11-19), so the rule's
+`onFailure` floor names no hook type. The hooks page (https://code.claude.com/docs/en/hooks,
+fetched 2026-11-19) still says to set the key "on a `command` or `http` hook". Observed under
+`claude --version` 2.1.328: `claude plugin validate` accepts an `mcp_tool` PreToolUse hook with
+`"onFailure": "block"`, and also one with an invalid value, so the validator does not check the
+key on that hook type and a typo there passes silently.
+
 The Monitor tool runs a shell command in the background, and "when Monitor runs a command, it
 uses the same permission rules as Bash" (https://code.claude.com/docs/en/tools-reference, fetched
 2026-10-30). Claude Code 2.1.314 "fixed hooks matching Bash not running on shell commands started
@@ -870,6 +878,14 @@ them" (https://code.claude.com/docs/en/code-review-local, fetched 2026-10-22). C
 fixed the `/rewind` list showing "No code changes" for a turn that changed checkpointed files
 through `/code-review --fix`, a subagent or a shell command (changelog, fetched 2026-10-22), so
 that partial restore is now offered, and the rule says which files it covers.
+
+Claude Code 2.1.328 "Changed `/code-review` on most models to report only bugs and CLAUDE.md
+violations; run `/simplify` for reuse, simplification and efficiency cleanups" (changelog,
+fetched 2026-11-19), so on most models the native review already keeps to correctness, and the
+rule names what it still lacks: a named lens, requirement gaps beyond CLAUDE.md, and the same
+focus on the models the change leaves out, which the changelog does not name. The local review
+page (https://code.claude.com/docs/en/code-review-local, fetched 2026-11-19) still says the review
+covers cleanups "depending on your model and effort level"; the changelog is the later source.
 
 On 2026-09-21 the owner decided review should be proportionate. The evidence for keeping
 review at all: in the fourteen days before the decision, the refuter ran four times and returned

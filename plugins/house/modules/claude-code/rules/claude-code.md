@@ -94,7 +94,7 @@ Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-clo
 
 ## Run adversarial review in a fresh subagent with a named lens
 
-The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
+The harness ships a review that already runs in its own subagent over the branch diff and, on most models, reports only bugs and CLAUDE.md violations; start there and add what it lacks: a named lens, and, on every model, a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
 Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard or hook, facts or numbers someone will act on, or text many repos follow; a prompted reviewer usually reports something even when the work is sound, so match the review to the risk rather than to a category.
 For a small text or mechanical change a gate covers, reading the diff and rerunning the tests yourself is usually enough.
 Call a finding a must-fix only when it names a concrete failure: something unsafe, irreversible, or that makes the work wrong or impossible to follow. Added machinery is a cost its fix must justify, so have the refuter name the simplest fix that closes the failure.
