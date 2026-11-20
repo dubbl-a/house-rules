@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.23.12] - 2026-11-20
+
+A patch release under ADR 0012: rule prose only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.327, 2.1.328, and 2.1.329 survey; 2.1.329 needed receipts only, since the guard's `onFailure: block` already covers the Code Mode change to failing hooks. Upgrading from 0.23.11: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- "Run adversarial review in a fresh subagent with a named lens" (claude-code module) says the harness's own `/code-review` now reports only bugs and CLAUDE.md violations on most models, as Claude Code 2.1.328 changed it to, and still asks you to add a named lens and, on every model, a reviewer that flags only correctness and requirement gaps.
+
 ## [0.23.11] - 2026-11-17
 
 A patch release under ADR 0012: rule prose and refusal text only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.325 and 2.1.326 survey. Upgrading from 0.23.10: update the plugin as before, then run `/house-rules:sync`.
