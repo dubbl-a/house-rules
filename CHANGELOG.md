@@ -6,9 +6,9 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
-## [0.23.12] - 2026-11-20
+## [0.23.12] - 2026-11-21
 
-A patch release under ADR 0012: rule prose only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.327, 2.1.328, and 2.1.329 survey; 2.1.329 needed receipts only, since the guard's `onFailure: block` already covers the Code Mode change to failing hooks. Upgrading from 0.23.11: update the plugin as before, then run `/house-rules:sync`.
+A patch release under ADR 0012: rule prose only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.327 to 2.1.330 survey; 2.1.329 needed receipts only, since the guard's `onFailure: block` already covers the Code Mode change to failing hooks, and so did 2.1.330, whose skill-model and subagent-fallback changes each give one more reason to name the model on every agent call, as the claude-code module already asks. Upgrading from 0.23.11: update the plugin as before, then run `/house-rules:sync`.
 
 ### Changed
 

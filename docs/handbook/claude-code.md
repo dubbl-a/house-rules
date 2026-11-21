@@ -524,6 +524,20 @@ re-read 2026-10-21, narrows the step-down: only a blocked family alias goes to t
 model in its family, any other blocked value falls back to the inherited model, and the warning
 shows in interactive sessions only (https://code.claude.com/docs/en/sub-agents).
 
+Two Claude Code 2.1.330 changes bear on what an omitted model resolves to (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-21).
+It "Changed skills that Claude runs with a `model` setting, other than `context: fork` skills, to
+leave subagents, forks, compaction and `/recap` on the session's model", so the resolution order
+above, which ends at the session model, now also holds for an unnamed call made during a turn a
+skill moved to another model. The skills page (https://code.claude.com/docs/en/skills, fetched
+2026-11-21) says a skill's `model` "applies for the rest of the current turn" and does not say
+which model a subagent started in that turn gets. The line names only the model, so the rule's
+effort order, which puts a skill's turn effort first, is left as it was. The same release
+"Changed a subagent's model fallback to carry over: agents with no model and forks it then starts
+run on the fallback", so below a subagent that fell back, an unnamed call runs on the fallback
+model, not the one the order above names. Both are reasons to name the model on every call, which
+the rule already asks; neither was observed in a run here.
+
 The ladder after Opus 5.5, 2026-09-22: Claude Code 2.1.280 made Claude Opus 5.5 the default Opus
 model ($4/$20 per Mtok, 5 percent cache reads, "Moderate" latency, API default effort medium,
 always-on adaptive thinking), and the docs now say to start with Opus 5.5 for most workloads and
