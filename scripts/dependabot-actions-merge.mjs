@@ -11,7 +11,8 @@
 //
 // Prints one line: `merge <headRefOid>` or `skip: <reason>`. Every rule below
 // must hold, and any failed rule or unreadable field is a skip (fail closed).
-// The line never echoes pull request text, so it is safe to log. Exit 0 for
+// The line never echoes pull request text, so it is safe to log; the one
+// field it quotes, the merge state, is printed only when it is an enum name. Exit 0 for
 // either answer; exit 1, printing `skip: unreadable input` and the cause on
 // stderr, when an input file cannot be read at all.
 
@@ -126,9 +127,13 @@ function checkBump(pr) {
   return null;
 }
 
+// GitHub's enum strings only (CLEAN, BEHIND, HAS_HOOKS, ...). Anything else is
+// printed as `unreadable`, so PR-controlled text never reaches the log.
+const enumName = (v) => (typeof v === 'string' && /^[A-Z_]{1,32}$/.test(v) ? v : 'unreadable');
+
 function checkMergeState(pr) {
-  if (pr.mergeStateStatus !== 'CLEAN') return 'merge state is not CLEAN';
-  if (pr.mergeable !== 'MERGEABLE') return 'pull request is not MERGEABLE';
+  if (pr.mergeStateStatus !== 'CLEAN') return `merge state is ${enumName(pr.mergeStateStatus)}, not CLEAN`;
+  if (pr.mergeable !== 'MERGEABLE') return `mergeable is ${enumName(pr.mergeable)}, not MERGEABLE`;
   return null;
 }
 

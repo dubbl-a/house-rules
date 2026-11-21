@@ -232,18 +232,26 @@ test('a non-string title or body is skipped', () => {
 });
 
 // merge state
-test('a merge state other than CLEAN is skipped', () => {
+test('a merge state other than CLEAN is skipped, and the reason names it', () => {
   for (const s of ['BEHIND', 'BLOCKED', 'DIRTY', 'UNSTABLE', 'UNKNOWN', 'HAS_HOOKS']) {
-    skipped(withPr({ mergeStateStatus: s }), 'merge-state', /not CLEAN/);
+    skipped(withPr({ mergeStateStatus: s }), 'merge-state', new RegExp(`merge state is ${s}, not CLEAN$`));
   }
 });
-test('a mergeable value other than MERGEABLE is skipped', () => {
-  for (const m of ['UNKNOWN', 'CONFLICTING']) skipped(withPr({ mergeable: m }), 'merge-state', /not MERGEABLE/);
+test('a mergeable value other than MERGEABLE is skipped, and the reason names it', () => {
+  for (const m of ['UNKNOWN', 'CONFLICTING']) skipped(withPr({ mergeable: m }), 'merge-state', new RegExp(`mergeable is ${m}, not MERGEABLE$`));
 });
-test('a missing merge state is skipped', () => {
+test('a missing merge state is skipped as unreadable', () => {
   const pr = basePr();
   delete pr.mergeStateStatus;
-  skipped(decide(pr, baseRuns()), 'merge-state', /not CLEAN/);
+  skipped(decide(pr, baseRuns()), 'merge-state', /merge state is unreadable, not CLEAN$/);
+});
+test('a malformed or non-string merge state is never echoed', () => {
+  for (const v of ['clean\nmerge ' + SHA, '::error::x', 'BEHIND ', '', 'A'.repeat(40), 42, null, { a: 1 }]) {
+    const r = withPr({ mergeStateStatus: v });
+    skipped(r, 'merge-state', /merge state is unreadable, not CLEAN$/);
+    assert.equal(r.out.split('\n').length, 1, 'the answer must stay one line');
+  }
+  skipped(withPr({ mergeable: '::error::x' }), 'merge-state', /mergeable is unreadable, not MERGEABLE$/);
 });
 
 // runs

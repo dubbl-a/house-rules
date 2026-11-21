@@ -8,6 +8,11 @@
 # every changed file is under .github/workflows/, every commit is Dependabot's,
 # every bump is minor or patch, GitHub reports the PR CLEAN and MERGEABLE, and
 # every workflow run at the head commit is green. Anything unreadable skips.
+# GitHub computes the merge state lazily and can answer UNKNOWN on a first read,
+# so the PR is re-read (up to four reads, 10 seconds apart) while either field
+# is UNKNOWN; a PR still UNKNOWN skips, and every merge-state skip names the
+# value seen, such as `merge state is BEHIND, not CLEAN`. The retry only waits
+# for GitHub to finish computing; it does not loosen CLEAN plus MERGEABLE.
 #
 # Report-only by default. Set the repository variable DEPENDABOT_MERGE_LIVE to
 # true to merge (gh variable set DEPENDABOT_MERGE_LIVE --body true -R
@@ -110,7 +115,24 @@ jobs:
             URL="https://github.com/${REPO}/pull/${N}"
             PR_FILE="$RUNNER_TEMP/pr-${N}.json"
             RUNS_FILE="$RUNNER_TEMP/runs-${N}.json"
-            if ! gh pr view "$N" --repo "$REPO" --json author,files,commits,title,body,mergeStateStatus,mergeable,headRefOid > "$PR_FILE"; then
+            # GitHub computes the merge state lazily and may answer UNKNOWN on a
+            # first read, so a PR is re-read up to four times, 10 seconds apart,
+            # while either field is UNKNOWN. Still UNKNOWN after that, the script
+            # skips it, naming the value it saw; only CLEAN and MERGEABLE merge.
+            READ_OK=0
+            for TRY in 1 2 3 4; do
+              if ! gh pr view "$N" --repo "$REPO" --json author,files,commits,title,body,mergeStateStatus,mergeable,headRefOid > "$PR_FILE"; then
+                READ_OK=0
+                break
+              fi
+              READ_OK=1
+              if [ "$TRY" -lt 4 ] && jq -e '.mergeStateStatus == "UNKNOWN" or .mergeable == "UNKNOWN"' "$PR_FILE" > /dev/null; then
+                sleep 10
+              else
+                break
+              fi
+            done
+            if [ "$READ_OK" -ne 1 ]; then
               echo "#${N}: could not read the pull request"
               echo "- ${URL}: could not read the pull request" >> "$GITHUB_STEP_SUMMARY"
               FAILED=1
