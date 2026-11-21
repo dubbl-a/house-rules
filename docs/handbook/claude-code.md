@@ -532,7 +532,8 @@ above, which ends at the session model, now also holds for an unnamed call made 
 skill moved to another model. The skills page (https://code.claude.com/docs/en/skills, fetched
 2026-11-21) says a skill's `model` "applies for the rest of the current turn" and does not say
 which model a subagent started in that turn gets. The line names only the model, so the rule's
-effort order, which puts a skill's turn effort first, is left as it was. The same release
+effort order, which counts a skill's turn effort among those that win over the fallbacks, is left
+as it was. The same release
 "Changed a subagent's model fallback to carry over: agents with no model and forks it then starts
 run on the fallback", so below a subagent that fell back, an unnamed call runs on the fallback
 model, not the one the order above names. Both are reasons to name the model on every call, which
