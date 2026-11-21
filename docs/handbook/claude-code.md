@@ -533,11 +533,10 @@ skill moved to another model. The skills page (https://code.claude.com/docs/en/s
 2026-11-21) says a skill's `model` "applies for the rest of the current turn" and does not say
 which model a subagent started in that turn gets. The line names only the model, so the rule's
 effort order, which counts a skill's turn effort among those that win over the fallbacks, is left
-as it was. The same release
-"Changed a subagent's model fallback to carry over: agents with no model and forks it then starts
-run on the fallback", so below a subagent that fell back, an unnamed call runs on the fallback
-model, not the one the order above names. Both are reasons to name the model on every call, which
-the rule already asks; neither was observed in a run here.
+as it was. The same release "Changed a subagent's model fallback to carry over: agents with no
+model and forks it then starts run on the fallback", so below a subagent that fell back, an
+unnamed call runs on the fallback model, not the one the order above names. Both are reasons to
+name the model on every call, which the rule already asks; neither was observed in a run here.
 
 The ladder after Opus 5.5, 2026-09-22: Claude Code 2.1.280 made Claude Opus 5.5 the default Opus
 model ($4/$20 per Mtok, 5 percent cache reads, "Moderate" latency, API default effort medium,
