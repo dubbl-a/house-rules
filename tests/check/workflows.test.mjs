@@ -722,6 +722,15 @@ test('agent-settings: a base URL override, all project servers, and bypass mode 
   assert.doesNotMatch(ws[0].message, /later release/);
 });
 
+test('agent-settings: sandbox.autoAllowBashIfSandboxed true fails at its line, false and an absent key pass', () => {
+  const ws = warns(settingsRepo({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true } }), 'agent-config');
+  assert.deepEqual(kinds(ws), ['agent-settings']);
+  assert.deepEqual(ws.map((w) => w.line), [4]);
+  assert.match(ws[0].message, /sandbox\.autoAllowBashIfSandboxed: true/);
+  assert.deepEqual(warns(settingsRepo({ sandbox: { enabled: true, autoAllowBashIfSandboxed: false } }), 'agent-config'), []);
+  assert.deepEqual(warns(settingsRepo({ sandbox: { enabled: true } }), 'agent-config'), []);
+});
+
 test('agent-settings: a planted violation exits 1 as a finding, never a warning', () => {
   const r = run(settingsRepo({ enableAllProjectMcpServers: true }), ['--only=agent-config', '--json']);
   assert.equal(r.code, 1, r.out);

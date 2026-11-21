@@ -1246,7 +1246,7 @@ against the template. Render and sync do write one thing into the committed sett
 github module's `SessionStart` entry running `scripts/house/arm-git-hooks.sh` (ADR 0019;
 `cloudArming: false` removes it), known by its exact command, leaving every other key and hook as
 they are. `node .house/check.mjs --only=agent-config` fails on a committed API base URL override,
-approval of every project server, or a bypass permission mode.
+approval of every project server, a bypass permission mode, or `sandbox.autoAllowBashIfSandboxed: true`.
 
 Native floor, as of 2026-09-02: permission lists merging across scopes rather than overriding
 (https://code.claude.com/docs/en/settings#combine-settings-across-scopes), the allow and deny
@@ -1261,6 +1261,14 @@ so that "an allow rule that looks like it holds a secret, or would be saved to a
 (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-13).
 That is a second reason the rule keeps the file gitignored: a tracked one stops collecting the
 approvals it exists to hold, and nothing says so beyond the next prompt.
+
+A committed sandbox auto-allow is a committed prompt-off, 2026-11-20: Claude Code 2.1.325 "Changed
+sandboxed Bash commands to follow the normal permission flow by default; set
+`sandbox.autoAllowBashIfSandboxed: true` to keep running them without prompts"
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-20;
+sandbox settings at https://code.claude.com/docs/en/sandboxing). Committed in
+`.claude/settings.json`, the `true` turns the prompt off for every sandboxed command for everyone
+who opens the repo, so the `agent-config` check fails on it; `false` and an absent key pass.
 
 ## Read a resume file as a harness artifact, not a handoff
 
