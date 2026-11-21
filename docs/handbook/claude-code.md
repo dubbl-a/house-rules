@@ -1267,7 +1267,7 @@ sandboxed Bash commands to follow the normal permission flow by default; set
 `sandbox.autoAllowBashIfSandboxed: true` to keep running them without prompts"
 (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-20;
 sandbox settings at https://code.claude.com/docs/en/sandboxing). Committed in
-`.claude/settings.json`, the `true` turns the prompt off for every sandboxed command for everyone
+`.claude/settings.json`, the `true` turns the prompt off for sandboxed commands for everyone
 who opens the repo, so the `agent-config` check fails on it; `false` and an absent key pass.
 
 ## Read a resume file as a harness artifact, not a handoff
