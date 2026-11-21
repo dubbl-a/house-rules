@@ -152,7 +152,7 @@ Say in the file that this is not a boundary, since a heredoc and a pipe still ru
 Leave the allow half to the operator; an agent can tighten a settings file but cannot grant itself a permission in one.
 Expect a path deny to miss a search that names no path, and a search tool the client treats as read-only to run with no allow naming it; keep a path out of a built-in search with a hook and out of a shell search with a sandbox read deny, and read tool results for it as the fallback.
 A tested reference allowlist with a deny list of each tool's escape flags lives at `plugins/house/templates/settings.json`; render never writes it, so copy it by hand rather than writing the deny list from scratch.
-Anchor: `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, or a bypass permission mode.
+Anchor: `node .house/check.mjs --only=agent-config` fails on a committed API base URL override, approval of every project server, a bypass permission mode, or `sandbox.autoAllowBashIfSandboxed: true`.
 Receipts: `docs/handbook/claude-code.md#keep-the-committed-settings-narrow-and-the-local-settings-local`
 
 ## Read a resume file as a harness artifact, not a handoff

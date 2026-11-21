@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-21
+
+A minor release under ADR 0012: a checker family tightens, which is the breaking class (ADR 0011), since a repo that commits the setting below now fails `npm run check:house`. It also carries the 0.23.12 survey to adopters, whose 0.23.12 sync was cancelled so they take one sync. Upgrading from 0.23.11: update the plugin as before, run `/house-rules:sync`, then `npm run check:house`.
+
+### Changed
+
+- **The `agent-config` check fails on a committed `sandbox.autoAllowBashIfSandboxed: true`.** Since Claude Code 2.1.325, sandboxed Bash commands follow the normal permission flow by default, and this key in `.claude/settings.json` turns the prompt off for sandboxed commands for everyone who opens the repo. `false` or an absent key passes. To keep it, remove it from the committed file and set it in `.claude/settings.local.json`, or clear the finding with a reason under `modules.claude-code.config.waivers` (`agent-settings`). The rule "Keep the committed settings narrow and the local settings local" names the case in its Anchor line.
+
 ## [0.23.12] - 2026-11-21
 
 A patch release under ADR 0012: rule prose only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.327 to 2.1.330 survey; 2.1.329 needed receipts only, since the guard's `onFailure: block` already covers the Code Mode change to failing hooks, and so did 2.1.330, whose skill-model and subagent-fallback changes each give one more reason to name the model on every agent call, as the claude-code module already asks. Upgrading from 0.23.11: update the plugin as before, then run `/house-rules:sync`.
