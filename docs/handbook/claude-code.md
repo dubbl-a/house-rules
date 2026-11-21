@@ -524,6 +524,20 @@ re-read 2026-10-21, narrows the step-down: only a blocked family alias goes to t
 model in its family, any other blocked value falls back to the inherited model, and the warning
 shows in interactive sessions only (https://code.claude.com/docs/en/sub-agents).
 
+Two Claude Code 2.1.330 changes bear on what an omitted model resolves to (changelog at
+https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched 2026-11-21).
+It "Changed skills that Claude runs with a `model` setting, other than `context: fork` skills, to
+leave subagents, forks, compaction and `/recap` on the session's model", so the resolution order
+above, which ends at the session model, now also holds for an unnamed call made during a turn a
+skill moved to another model. The skills page (https://code.claude.com/docs/en/skills, fetched
+2026-11-21) says a skill's `model` "applies for the rest of the current turn" and does not say
+which model a subagent started in that turn gets. The line names only the model, so the rule's
+effort order, which counts a skill's turn effort among those that win over the fallbacks, is left
+as it was. The same release "Changed a subagent's model fallback to carry over: agents with no
+model and forks it then starts run on the fallback", so below a subagent that fell back, an
+unnamed call runs on the fallback model, not the one the order above names. Both are reasons to
+name the model on every call, which the rule already asks; neither was observed in a run here.
+
 The ladder after Opus 5.5, 2026-09-22: Claude Code 2.1.280 made Claude Opus 5.5 the default Opus
 model ($4/$20 per Mtok, 5 percent cache reads, "Moderate" latency, API default effort medium,
 always-on adaptive thinking), and the docs now say to start with Opus 5.5 for most workloads and
@@ -804,6 +818,26 @@ did a hook that exited 1 and one whose command did not exist. The branch guard's
 hand-written denials stay: they name a reason, and they hold on a CLI older than 2.1.295. The
 setting applies in every repo, one that never adopted house included, which ADR 0018 records.
 
+Claude Code 2.1.328 "Added `"onFailure": "block"` for `mcp_tool` hooks, as for command and HTTP
+hooks: a hook whose call fails blocks the action" (changelog, fetched 2026-11-19), so the rule's
+`onFailure` floor names no hook type. The hooks page (https://code.claude.com/docs/en/hooks,
+fetched 2026-11-20) now says to set it "on a `command`, `http`, or `mcp_tool` hook" and that "On
+`mcp_tool` hooks, `onFailure` requires v2.1.328 or later". Observed under `claude --version`
+2.1.328 and again under 2.1.329: `claude plugin validate` accepts an `mcp_tool` PreToolUse hook
+with `"onFailure": "block"`, and also one with the invalid value `"blok"`, while it fails a
+`command` hook with that value, so a typo on an `mcp_tool` hook passes silently.
+
+Claude Code 2.1.329 "Changed Code Mode so a PreToolUse hook that errors no longer refuses a
+script's tool call, as outside Code Mode; set `"onFailure": "block"` on a command, HTTP or MCP
+tool hook that must refuse" (changelog, fetched 2026-11-20), so a Code Mode tool call now needs
+the rule's `onFailure` floor to refuse when the hook errors, as outside Code Mode, and the rule's
+default-pass clause holds there too. Each tool call a script makes "goes through your `deny` and
+`ask` permission rules and `PreToolUse` hooks under the tool's usual name"
+(https://code.claude.com/docs/en/code-mode, fetched 2026-11-20). That page's "Tool call refused
+by a hook" section still says a failed hook "refuses the call even when `onFailure` is unset";
+the changelog is the later source. The branch guard's entry sets the key, so it refuses there
+either way.
+
 The Monitor tool runs a shell command in the background, and "when Monitor runs a command, it
 uses the same permission rules as Bash" (https://code.claude.com/docs/en/tools-reference, fetched
 2026-10-30). Claude Code 2.1.314 "fixed hooks matching Bash not running on shell commands started
@@ -870,6 +904,20 @@ them" (https://code.claude.com/docs/en/code-review-local, fetched 2026-10-22). C
 fixed the `/rewind` list showing "No code changes" for a turn that changed checkpointed files
 through `/code-review --fix`, a subagent or a shell command (changelog, fetched 2026-10-22), so
 that partial restore is now offered, and the rule says which files it covers.
+
+Claude Code 2.1.328 "Changed `/code-review` on most models to report only bugs and CLAUDE.md
+violations; run `/simplify` for reuse, simplification and efficiency cleanups" (changelog,
+fetched 2026-11-19), so on most models the native review already keeps to correctness, and the
+rule names what it still lacks: a named lens, requirement gaps beyond CLAUDE.md, and the same
+focus on the models the change leaves out, which the changelog does not name. The local review
+page (https://code.claude.com/docs/en/code-review-local, fetched 2026-11-19) still says the review
+covers cleanups "depending on your model and effort level"; the changelog is the later source.
+Claude Code 2.1.329 "Changed `/code-review` with no target on most models to review the whole
+branch against the default branch, and fixed it losing the diff on multi-commit branches", and
+fixed `/code-review <pr number>` "sometimes reviewing the checked-out branch instead of the pull
+request without saying so" (changelog, fetched 2026-11-20), so the rule's "over the branch diff"
+now holds for a review with no target on most models. The same page (fetched 2026-11-20) still
+says a review with no target covers commits "ahead of its upstream branch".
 
 On 2026-09-21 the owner decided review should be proportionate. The evidence for keeping
 review at all: in the fourteen days before the decision, the refuter ran four times and returned

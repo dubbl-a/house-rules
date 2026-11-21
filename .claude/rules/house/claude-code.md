@@ -3,7 +3,7 @@ paths:
   - ".claude/**"
   - "CLAUDE.md"
 ---
-<!-- house-managed v0.23.11 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=94ab96e55ef6029d22a68bb56485a01e57be1125e94bcb52bde22e17fd855fea DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.23.12 module=claude-code source=modules/claude-code/rules/claude-code.md body-sha256=570b6d2e7a0d1eb9067778dadb858f89cf7be73690eefe2f7c0494ea5e98347f DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Claude Code conventions
 
@@ -100,7 +100,7 @@ Receipts: `docs/handbook/claude-code.md#make-a-must-hold-rule-a-hook-fail-it-clo
 
 ## Run adversarial review in a fresh subagent with a named lens
 
-The harness ships a review that already runs in its own subagent over the branch diff; start there and add what it lacks: a named lens, and a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
+The harness ships a review that already runs in its own subagent over the branch diff and, on most models, reports only bugs and CLAUDE.md violations; start there and add what it lacks: a named lens, and, on every model, a reviewer told to flag only correctness and requirement gaps. Send any other reviewer as an ordinary subagent, never a fork, since a fork inherits the whole conversation the reviewer is meant not to see.
 Send a refuter when a wrong change would cost something the gates cannot catch: logic, a guard or hook, facts or numbers someone will act on, or text many repos follow; a prompted reviewer usually reports something even when the work is sound, so match the review to the risk rather than to a category.
 For a small text or mechanical change a gate covers, reading the diff and rerunning the tests yourself is usually enough.
 Call a finding a must-fix only when it names a concrete failure: something unsafe, irreversible, or that makes the work wrong or impossible to follow. Added machinery is a cost its fix must justify, so have the refuter name the simplest fix that closes the failure.
