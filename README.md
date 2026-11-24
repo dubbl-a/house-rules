@@ -88,7 +88,7 @@ first), re-adds the marketplace at the tag, and updates the plugin; an unpinned 
 and a lower tag `--allow-downgrade`. Restart, then run `house changes <from> <to>` to read what changed.
 By hand: remove the marketplace (which uninstalls its plugins), then run the one command with the new tag.
 If a settings file declares the marketplace with a `ref`, update that `ref` and re-add the marketplace in the same step, never just one: a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the marketplace, so new sessions start with no house plugin.
-Whether auto-update respects a pin is undocumented, so leave it off (its third-party default).
+Whether auto-update respects a pin is undocumented, so leave it off (its third-party default). An organization that declares the marketplace in managed `extraKnownMarketplaces` sets `"autoUpdate": false` on that entry too, since Claude Code 2.1.331 says managed entries auto-update by default from a release on or after November 30, 2026.
 
 In the target repo:
 
