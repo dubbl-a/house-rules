@@ -215,6 +215,25 @@ mk_monitor_payload() {
     '{tool_name: "Monitor", tool_input: {command: $cmd, description: "watch", timeout_ms: 20000}, cwd: $cwd, hook_event_name: "PreToolUse"}'
 }
 
+# mk_skill_payload <command> <cwd> -> real PreSkillShellCommand JSON on stdout,
+# in the shape Claude Code 2.1.332 sends for a skill's inline `!` command (#572)
+mk_skill_payload() {
+  jq -n --arg cmd "$1" --arg cwd "$2" \
+    '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: $cwd, hook_event_name: "PreSkillShellCommand"}'
+}
+
+# expect_event <label> <event> -> asserts the last run_hook's deny names <event>
+# as its hookEventName.
+expect_event() {
+  local got
+  got=$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.hookEventName // ""' 2>/dev/null)
+  if [[ "$got" == "$2" ]]; then
+    pass "$1"
+  else
+    fail "$1" "expected hookEventName [$2], got [$got] out=[$HOOK_OUT]"
+  fi
+}
+
 # mk_file_payload <tool> <file_path> <cwd> -> real PreToolUse JSON on stdout
 mk_file_payload() {
   jq -n --arg tool "$1" --arg fp "$2" --arg cwd "$3" \
@@ -1113,6 +1132,62 @@ echo '{"hooks":{"PreToolUse":[{"matcher":"Bash|Monitor","hooks":[{"type":"comman
 expect_allow "an entry that names Monitor defers for a Monitor call" \
   "$(mk_monitor_payload "$_gc -m x" "$repo_d")"
 rm -f "$repo_d/.claude/settings.json"
+
+# ── a skill's inline command: PreSkillShellCommand gets the Bash decisions (#572)
+# A skill's `!` command runs before any tool call, so no PreToolUse hook sees
+# it. The deny names the event it answers; a PreToolUse payload's still says
+# PreToolUse.
+expect_deny "a skill's inline commit on a protected branch is denied" \
+  "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+expect_event "a skill's inline commit deny names PreSkillShellCommand" PreSkillShellCommand
+expect_deny "a skill's inline command that unarms the floor is denied" \
+  "$(mk_skill_payload "git config core.$_ph /dev/null" "$repo_d")"
+expect_event "a skill's inline unarm deny names PreSkillShellCommand" PreSkillShellCommand
+expect_allow "a skill's inline benign command passes" \
+  "$(mk_skill_payload "echo hello" "$repo_d")"
+expect_allow "a skill's inline git read passes" \
+  "$(mk_skill_payload "git status --short" "$repo_d")"
+expect_deny "a PreToolUse commit on a protected branch is still denied" \
+  "$(mk_payload "$_gc -m x" "$repo_d" | jq -c '. + {hook_event_name: "PreToolUse"}')"
+expect_event "a PreToolUse deny still names PreToolUse" PreToolUse
+expect_deny "a payload naming another event is denied as before" \
+  "$(mk_payload "$_gc -m x" "$repo_d" | jq -c '. + {hook_event_name: "PreSkillShellCommandX"}')"
+expect_event "a payload naming another event gets PreToolUse" PreToolUse
+# A repo-local guard wired on PreToolUse never sees a skill's inline command,
+# so it is not deferred to for one; only a PreSkillShellCommand entry is.
+echo '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}]}}' >"$repo_d/.claude/settings.json"
+expect_deny "a PreToolUse-only settings.json entry does not disarm the guard for a skill's command" \
+  "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+expect_allow "the same PreToolUse entry still defers for a Bash call" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+for _m in 'PowerShell' 'Edit|Write' '('; do
+  printf '{"hooks":{"PreSkillShellCommand":[{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" >"$repo_d/.claude/settings.json"
+  expect_deny "a PreSkillShellCommand entry with matcher '$_m' cannot see Bash and does not disarm the guard" \
+    "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+done
+echo '{"hooks":{"PreSkillShellCommand":[{"matcher":"Bash","hooks":[]}]}}' >"$repo_d/.claude/settings.json"
+expect_deny "a PreSkillShellCommand entry with an empty hooks array does not disarm the guard" \
+  "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+for _m in 'Bash' 'Bash|PowerShell' '' '*'; do
+  printf '{"hooks":{"PreSkillShellCommand":[{"matcher":"%s","hooks":[{"type":"command","command":"x"}]}]}}' "$_m" >"$repo_d/.claude/settings.json"
+  expect_allow "a PreSkillShellCommand entry with matcher '$_m' defers for a skill's command" \
+    "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+done
+echo '{"hooks":{"PreSkillShellCommand":[{"hooks":[{"type":"command","command":"x"}]}]}}' >"$repo_d/.claude/settings.json"
+expect_allow "a PreSkillShellCommand entry with no matcher defers for a skill's command" \
+  "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+expect_deny "a PreSkillShellCommand-only entry does not disarm the guard for a Bash call" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+expect_deny "a PreSkillShellCommand entry does not license unarming the floor" \
+  "$(mk_skill_payload "git config core.$_ph /dev/null" "$repo_d")"
+rm -f "$repo_d/.claude/settings.json"
+mkdir -p "$repo_d/.claude/hooks"
+printf '#!/usr/bin/env bash\n# a real guard\nexit 2\n' >"$repo_d/.claude/hooks/no-direct-master.sh"
+expect_deny "a substantive repo-local hooks/no-direct-master.sh does not disarm the guard for a skill's command" \
+  "$(mk_skill_payload "$_gc -m x" "$repo_d")"
+expect_allow "the same repo-local hook still defers for a Bash call" \
+  "$(mk_payload "$_gc -m x" "$repo_d")"
+rm -rf "$repo_d/.claude/hooks"
 
 # ADR 0009: house.json's guard record is a CHECKER signal only; the hook never
 # reads it.
@@ -2676,7 +2751,17 @@ done
 # the key, so the script's own fail-closed paths above still carry it there).
 # The budget stays under the timeout, so a deny with a reason comes first.
 HOOKS_JSON="$REPO_ROOT/plugins/house/hooks/hooks.json"
-_entry=$(jq -c '[.hooks.PreToolUse[].hooks[] | select((.command // "") | contains("no-direct-master.sh"))]' "$HOOKS_JSON")
+_entry=$(jq -c '[(.hooks.PreToolUse[], .hooks.PreSkillShellCommand[]?).hooks[] | select((.command // "") | contains("no-direct-master.sh"))]' "$HOOKS_JSON")
+# A skill's inline command reaches the guard only through PreSkillShellCommand
+# (#572), and with no matcher, since the guard decides by tool_name.
+_skill=$(jq -c '[.hooks.PreSkillShellCommand[]? | select(has("matcher") | not) | .hooks[]
+  | select((.command // "") | contains("no-direct-master.sh"))]' "$HOOKS_JSON")
+_pre_cmd=$(jq -r '[.hooks.PreToolUse[].hooks[] | select((.command // "") | contains("no-direct-master.sh")) | .command][0] // ""' "$HOOKS_JSON")
+if [[ "$(jq -r 'length' <<<"$_skill")" -ge 1 && "$(jq -r --arg c "$_pre_cmd" 'all(.command == $c)' <<<"$_skill")" == true ]]; then
+  pass "hooks.json: the guard runs on PreSkillShellCommand, unmatched, with the PreToolUse entry's command"
+else
+  fail "hooks.json: the guard runs on PreSkillShellCommand" "entries=[$_skill]"
+fi
 if [[ "$(jq -r 'length' <<<"$_entry")" -ge 1 && "$(jq -r 'all(.onFailure == "block")' <<<"$_entry")" == true ]]; then
   pass "hooks.json: every guard entry blocks when the hook cannot start, times out, or exits unexpectedly"
 else
