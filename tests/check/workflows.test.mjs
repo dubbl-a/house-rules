@@ -469,6 +469,24 @@ test('unfrozen-install: a condition that is not only lockfile-absent clauses, or
   }
 });
 
+// #564: a one-level flow mapping holding a quoted scalar closed on its own line
+// is plain enough for the line reader, so it must not hide every if: in the file.
+function gatedInstallAfter(line) {
+  return withWorkflow(CLEAN_WORKFLOW.replace('      - run: npm ci\n', `      - uses: ./.github/actions/setup\n        ${line}\n      - if: hashFiles('package-lock.json') == '' && hashFiles('npm-shrinkwrap.json') == ''\n        run: npm install --ignore-scripts\n`));
+}
+
+test('unfrozen-install: a flow mapping with a quoted scalar elsewhere in the file does not hide the lockfile-absent gate', () => {
+  for (const line of ['with: { python-version: "3.14" }', 'with: { version: "0.13.1", enable-cache: false }', "with: { a: 'it''s [x]', b: \"{y}\" } # note"]) {
+    assert.deepEqual(warns(gatedInstallAfter(line)), [], line);
+  }
+});
+
+test('unfrozen-install: a nested, unterminated, or comment-bearing quoted flow value is still not plain, so the gate is ignored and the install warns', () => {
+  for (const line of ['with: { a: { b: "x" } }', 'with: { a: "x }', 'with: { a: "x"', 'with: { a: "x" # y }', 'with: { a: ["x", "y"] }']) {
+    assert.deepEqual(kinds(warns(gatedInstallAfter(line))), ['unfrozen-install'], line);
+  }
+});
+
 test('unfrozen-install: an if: that continues onto a second line never skips, and neither does the same condition on one line', () => {
   const multi = CLEAN_WORKFLOW.replace('      - run: npm ci\n', "      - if: hashFiles('package-lock.json') == ''\n          || true\n        run: npm install\n");
   assert.deepEqual(kinds(warns(withWorkflow(multi))), ['unfrozen-install']);

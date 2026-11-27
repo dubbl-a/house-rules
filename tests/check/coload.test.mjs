@@ -144,3 +144,50 @@ test('#19: each distinct over-budget rule set is one finding with its path count
   assert.ok(json.coloadWorst.sum >= 600, `sum ${json.coloadWorst.sum}`);
   assert.ok(Array.isArray(json.coloadWorst.rules));
 });
+
+// #566: --coload-floor lists every set at or above the floor, so the second
+// worst is visible while the worst sits at or under the ceiling.
+function twoSets() {
+  return sandbox({
+    'src/a.ts': 'export const x = 1;\n',
+    'docs/b.md': '# B\n',
+    // rule() adds one blank line, so these sum to exactly 300 and 200
+    '.claude/rules/house/one.md': rule(['src/**'], 149),
+    '.claude/rules/house/two.md': rule(['src/**'], 149),
+    '.claude/rules/house/three.md': rule(['docs/**'], 99),
+    '.claude/rules/house/four.md': rule(['docs/**'], 99),
+    'house.json': houseJson(),
+  });
+}
+
+test('coload: --coload-floor lists a set below the worst, in --json and in text', () => {
+  const dir = twoSets();
+  const { code, json } = run(dir, ['--only=coload', '--json', '--coload-floor=150']);
+  assert.equal(code, 0); // both sets are under the 400 ceiling
+  assert.deepEqual(json.coloadSets.map((s) => s.sum), [300, 200]);
+  assert.equal(json.coloadSets[1].path, 'docs/b.md');
+  assert.equal(json.coloadSets[1].paths, 1);
+  assert.deepEqual(json.coloadSets[1].rules.map((r) => r.file).sort(), ['.claude/rules/house/four.md', '.claude/rules/house/three.md']);
+  assert.equal(json.coloadWorst.sum, 300);
+  const text = run(dir, ['--only=coload', '--coload-floor=150']);
+  assert.match(text.out, /200 lines on 1 path\(s\), e\.g\. docs\/b\.md/);
+});
+
+test('coload: --coload-floor is inclusive and drops sets under it', () => {
+  const dir = twoSets();
+  assert.deepEqual(run(dir, ['--only=coload', '--json', '--coload-floor=200']).json.coloadSets.map((s) => s.sum), [300, 200]);
+  assert.deepEqual(run(dir, ['--only=coload', '--json', '--coload-floor=201']).json.coloadSets.map((s) => s.sum), [300]);
+});
+
+test('coload: without the flag coloadSets holds only the sets over the ceiling and the text is unchanged', () => {
+  const dir = twoSets();
+  assert.deepEqual(run(dir, ['--only=coload', '--json']).json.coloadSets, []);
+  assert.doesNotMatch(run(dir, ['--only=coload']).out, /e\.g\. docs\/b\.md/);
+  const over = sandbox({
+    'src/a.ts': 'export const x = 1;\n',
+    '.claude/rules/house/one.md': rule(['src/**'], 249),
+    '.claude/rules/house/two.md': rule(['src/**'], 249),
+    'house.json': houseJson(),
+  });
+  assert.deepEqual(run(over, ['--only=coload', '--json']).json.coloadSets.map((s) => s.sum), [500]);
+});
