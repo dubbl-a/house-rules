@@ -79,16 +79,16 @@ of `plugins/house/payload/check.mjs` says, the docs gate checks `npm run` tokens
 
 Install the plugin once per machine, pinned to a release tag:
 
-    claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.24.0 --scope user
+    claude plugin install house-rules --marketplace dubbl-a/house-rules#v0.24.1 --scope user
 
-The plugin resolves from the marketplace's checkout, so the `#v0.24.0` tag is the pin. Without it
+The plugin resolves from the marketplace's checkout, so the `#v0.24.1` tag is the pin. Without it
 you follow the default branch. To move a pin, run `house upgrade [<tag>]` (default: the latest release)
 to print the plan, then add `--apply`. It sets the `ref` of the `extraKnownMarketplaces` entry (backed up
 first), re-adds the marketplace at the tag, and updates the plugin; an unpinned entry also needs `--pin`,
 and a lower tag `--allow-downgrade`. Restart, then run `house changes <from> <to>` to read what changed.
 By hand: remove the marketplace (which uninstalls its plugins), then run the one command with the new tag.
 If a settings file declares the marketplace with a `ref`, update that `ref` and re-add the marketplace in the same step, never just one: a bumped `ref` alone leaves `known_marketplaces.json` on the old one and Claude Code ignores the marketplace, so new sessions start with no house plugin.
-Whether auto-update respects a pin is undocumented, so leave it off (its third-party default).
+Whether auto-update respects a pin is undocumented, so leave it off (its third-party default). An organization that declares the marketplace in managed `extraKnownMarketplaces` sets `"autoUpdate": false` on that entry too, since Claude Code 2.1.331 says managed entries auto-update by default from a release on or after November 30, 2026.
 
 In the target repo:
 

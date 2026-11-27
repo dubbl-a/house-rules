@@ -49,8 +49,8 @@ import { fileURLToPath } from 'node:url';
 // through the closing brace of its final return) as shipped in the version named.
 // Update both fields together when re-deriving the fork after a drift report.
 export const BASELINE = {
-  version: '2.1.323',
-  sha256: '9182a5e7634c849b9ba20c8652f11d7eb108d35285e78e106ea21742275e35a3',
+  version: '2.1.332',
+  sha256: '55490054eb8e95157eff127b37b9fb1f3523670c0c514cc5436b441d42fc22e1',
 };
 
 const BODY_START = '// deep-research:';
