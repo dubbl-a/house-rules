@@ -40,7 +40,7 @@
       "path": ".claude/rules/house/github.md",
       "module": "github",
       "source": "modules/github/rules/github.md",
-      "bodySha256": "b04c44984b2c677f3193b2aa280ee9189c6943f6e90d5c63500882311e8c2e28"
+      "bodySha256": "d7cca4e59dda164c347c099d08bb41aea39fd7380b16e2c68029f8f46f06b76d"
     },
     {
       "path": "scripts/house/scan-dist-secrets.mjs",
