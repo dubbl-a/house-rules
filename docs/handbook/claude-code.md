@@ -722,6 +722,20 @@ The launch post is https://www.anthropic.com/claude-fable-and-mythos-5-2. The la
 user asks, and no roster pin moves; no house role runs on Fable, so no departure note went stale.
 Benchmarks, which decide nothing here, are in `research/model-tier/2026-11-09-fable-5-2.md`.
 
+Third-party aliases, 2026-11-25: Claude Code 2.1.332 changed "the `sonnet` model alias on Google
+Cloud's Agent Platform and Microsoft Foundry to Sonnet 5.5, and Foundry's `opus` alias to Opus
+5.5; `sonnet` on Amazon Bedrock stays at Sonnet 4.5", made Sonnet 5.5 Foundry's default model,
+and fixed "the `sonnet` alias on Bedrock Mantle resolving to Haiku 4.5: it now means Sonnet 5, not
+Sonnet 5.5" (changelog at https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md,
+fetched 2026-11-25). The model-config page fetched the same day still gives the older table
+(Foundry `opus` Opus 4.6, `sonnet` Sonnet 4.5), so it trails the changelog. The roster pins
+aliases, so the researcher and builder now run on Sonnet 5.5 on Agent Platform and Foundry, on
+Sonnet 5 on Mantle, and on Sonnet 4.5 on Bedrock, and the refuter and debugger on Opus 5.5 on
+Foundry. No role moves: Anthropic's guidance is unchanged and no model is new, so the ladder
+stands. Where an adopter's provider resolves `sonnet` below Sonnet 5.5, the lever is the
+provider's model variable in user settings, not the roster. The role table is
+`research/model-tier/2026-11-25-third-party-aliases.md`.
+
 The workflow model variable, 2026-10-09: Claude Code 2.1.296 added
 `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` "to run every workflow agent on one model while other
 subagents keep theirs" (changelog at
@@ -1007,7 +1021,11 @@ Not verified on a live API-billed or Bedrock/Vertex session.
 The resume hook misses the commoner case. The same research's addendum found that at least 60 of
 one adopter's idle rebuilds happened in sessions left open and returned to, not resumed, and
 native idle compaction (2.1.299), which covers only 200k-plus conversations on the one-hour cache,
-prevented none of the 12 it was eligible for in the following six days (issue #321). A status
+prevented none of the 12 it was eligible for in the following six days (issue #321). Claude Code
+2.1.332 "Fixed idle compaction being skipped for subscribers still well under their weekly limit"
+(https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, fetched
+2026-11-25), which may explain some of those misses but is not measured here; #332 holds the
+retest, and the hook stays until one shows the native floor firing. A status
 line cache display helps only someone watching it, so `idle-cache-hold.mjs` acts on submit
 instead. `HOUSE_IDLE_CACHE_HOLD=off` or `=warn` and `HOUSE_IDLE_CACHE_HOLD_USD` retune it, and it
 holds only in the terminal client, never on a scheduled or background turn.
@@ -1115,6 +1133,14 @@ default. Gitignored files carry over too, so a stale `.env` or build output from
 still there. Merge cleanup keeps the worktree while the next branch lives in it and pulls the
 default branch only after the session leaves it, because a git call redirected into the main
 checkout is blocked from an isolated session. The reuse is conditional (#539): in auto mode the `git switch -c` in a worktree was denied with no reason given, observed 2026-11-11 and 2026-10-02. Branch creation is not among auto mode's documented default blocks (code.claude.com/docs/en/permission-modes), and the documented allow routes (`autoMode.allow`, the /permissions "Recently blocked" tab) are untested for this. Where the switch is refused, the rule opens the next worktree through the harness tool, accepts the reload, and does not retry the switch another way.
+
+Claude Code 2.1.332 "Fixed CLAUDE.md and rules files being sent to the model a second time, in
+most cases, after a session moves into a worktree under `.claude/worktrees` with EnterWorktree or
+is resumed there" (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md,
+fetched 2026-11-25). That looks like the re-injection measured above, so the counts above describe
+older CLIs. The fix covers only the harness tool's own worktrees, says "in most cases", and is not
+measured here (#544), and a new worktree still starts on a cold prompt cache (below), so the rule
+keeps reuse and now gives the cold cache first and a possible rule reload second as its reason.
 
 ### What a worktree costs, and the levers that cut it
 

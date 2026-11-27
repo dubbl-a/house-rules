@@ -19,6 +19,15 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 - **Rule text: a matrix behind a required check, a CPU-bound gated suite, and local scheduled jobs.** These are new sentences in existing rules; no heading changed. github.md: when a required check's job becomes a matrix, the required name goes to one `if: always()` aggregator, since a plain `needs:` job is skipped when a leg fails and a skipped job reports success (#570). testing.md: find out whether a suite is CPU-bound before speeding it up, and shard it before raising its timeout (#569). engineering.md and github.md: a local scheduled job names its interpreter by a version-stable path, and where a silent miss would cost you, it gets a watcher outside itself (#563).
 - **`/house-rules:test-audit` recommends findings only first on a large suite, and takes a branch name.** Past `maxAuditors` x 10000 test lines it now recommends `apply: false`, since on a suite that size the build half returned little for its cost and the confirmed list was the product. An optional `branch` arg replaces the default `tests-audit-<date>` for a repo whose branch names need a tracker ID (#571).
 
+## [0.24.1] - 2026-11-25
+
+A patch release under ADR 0012: rule prose and a vendored script's baseline only, with no heading renamed and no change to what the guard denies. It records the Claude Code 2.1.331 and 2.1.332 survey. Upgrading from 0.24.0: update the plugin as before, then run `/house-rules:sync`.
+
+### Changed
+
+- "Treat git state as shared across sessions" (claude-code module) still has a session start its next branch in the same worktree, but now gives the reason as a new worktree's cold prompt cache and a possible rule reload, since Claude Code 2.1.332 stops most repeat sends of CLAUDE.md and rules after a move through the harness's worktree tool. The orchestration defaults now say a new path may reload rules, not that it does.
+- `scripts/house/check-deep-research-upstream.mjs` takes Claude Code 2.1.332's bundled `/deep-research` script as its baseline, so the check stops reporting drift. The only change in the native script was one comment line, so the fork it builds is otherwise the same.
+
 ## [0.24.0] - 2026-11-21
 
 A minor release under ADR 0012: a checker family tightens, which is the breaking class (ADR 0011), since a repo that commits the setting below now fails `npm run check:house`. It also carries the 0.23.12 survey to adopters, whose 0.23.12 sync was cancelled so they take one sync. Upgrading from 0.23.11: update the plugin as before, run `/house-rules:sync`, then `npm run check:house`.

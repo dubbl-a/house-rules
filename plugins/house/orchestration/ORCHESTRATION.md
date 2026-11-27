@@ -16,7 +16,7 @@ fix, one grep or read, a question it can answer, and final judgment on every imp
   `git worktree add -b <branch> <path> origin/<default>` skips the tool's defaults and fails
   read-only in the Bash sandbox on macOS and Linux; use it only when the tool cannot reach the
   branch. Once pushed and clean, `git fetch`, then `git switch -c <branch> origin/<default>` in the
-  same worktree: a new path reloads scoped rules. If refused, use the tool; never retry another way.
+  same worktree: a new path may reload rules. If refused, use the tool; never retry another way.
   Keep the main checkout for reading, merging, and cleanup, with no branch made there, ever.
 - Before handing the user a command, put the session where it must run (leave the worktree) and
   name the directory; one that writes shared state names its expected output. Anything to copy
