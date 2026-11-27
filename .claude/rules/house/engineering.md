@@ -4,7 +4,7 @@ paths:
   - "plugins/house/scripts/**"
   - "research/*/scripts/**"
 ---
-<!-- house-managed v0.24.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=ebab79324a90c769f203b31ad676ade59747066d33c62322aa21161da0aa4277 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.24.0 module=engineering source=modules/engineering/rules/engineering.md body-sha256=ffdcf37cd708b8ddcfdd4966c9d814eb26763b1709119b43cd769a1661a69e01 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Engineering
 
@@ -100,7 +100,7 @@ Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-
 ## Pin a framework default your output depends on, with the reason beside it
 
 Pin any framework or adapter default your output depends on and put the reason in the config file itself, or in a sibling note where the format cannot hold a comment, because an unexplained value is unexplained to the agent too.
-Justify a threshold constant with the range that makes it right, record a vendor quirk with its mitigation and removal cost, explain a non-obvious ignore rule in a comment, and give a temporary flag an expiry and removal condition.
+Justify a threshold constant with the range that makes it right, record a vendor quirk with its mitigation and removal cost, explain a non-obvious ignore rule in a comment, and give a temporary flag an expiry and removal condition. Name a local scheduled job's interpreter and tools by a version-stable path (the package manager's stable prefix, or a pinned versioned formula), never a versioned install path an upgrade removes.
 Anchor: the reason sits beside the pinned value, or in a sibling note where the format is strict JSON such as Claude Code settings, and a `postbuild` check proves the pin's protected behavior still holds; the harness advises pinning a model alias to a full ID but asks for no reason, so the reason is this repo's addition
 Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depends-on-with-the-reason-beside-it`
 

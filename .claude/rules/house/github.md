@@ -4,7 +4,7 @@ paths:
   - ".githooks/**"
   - ".env.example"
 ---
-<!-- house-managed v0.24.0 module=github source=modules/github/rules/github.md body-sha256=5e61af68d7b19a14be7b3f6dbc6eeae21d88fb62189f693a195a47df18f0129b DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.24.0 module=github source=modules/github/rules/github.md body-sha256=3dc9617a5e18d5ccba535f88d0d6c0060f8e6d897296c287fdd53c40ff82c1db DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 
 # GitHub, CI, and credentials
@@ -44,6 +44,7 @@ Receipts: `docs/handbook/github.md#budget-actions-minutes-as-account-wide-money`
 Have a scheduled audit open or update an issue rather than turn the run red, since a recurring red X trains you to ignore it.
 Keep a read-only data-quality report non-failing on purpose, and say so in a comment, so a finding never reads as a broken build.
 Comment a cron out with its reason instead of deleting it, so restoring the cadence is two lines. Verify a stale issue's premise against current code and live data first.
+A local scheduled job (launchd, cron) cannot report its own failure to start, so give one whose silent miss would cost you a watcher outside itself: a missed-run check that reads the expected output or the scheduler's last exit status.
 Anchor: none (because a failure policy is a per-workflow editorial choice no checker can read). A scheduled agent run writes only to its run log unless its prompt directs it to post and its `--allowedTools` names the issue command, since a print-mode run denies any call that needs approval and ignores the committed allow rules in a folder never trusted, so grant it on the command line before counting on the issue.
 Receipts: `docs/handbook/github.md#open-an-issue-instead-of-failing-a-scheduled-run-and-comment-out-a-cron-with-its-reason`
 
@@ -57,6 +58,7 @@ Receipts: `docs/handbook/github.md#turn-on-push-protection-head-branch-deletion-
 ## Protect the default branch at the remote, and name an owner for what runs with privilege
 
 Require a pull request and passing required checks before the default branch moves, since the local hook floor binds only a machine that armed it, auto mode allows a push to the default branch by default, and a cloud run's `claude/` branch prefix is a default, not a restriction.
+When a required check's job becomes a matrix, each leg reports under its own name and the required name never reports, and a plain `needs: [matrix]` job is skipped when a leg fails, which GitHub reports as success; so give the required name to one aggregator job with `if: always()` that tests every `needs.<job>.result` equals `success`, routed through `env:`, and set `fail-fast: false` on the matrix.
 After merging a PR whose checks ran against an older base, re-run the gate on the merged default branch, or require branches to be up to date, since two PRs that each pass can together break it.
 Once the repo has a second maintainer, require a review from someone other than the author and name code owners for workflow, release, and agent config files, so a change to what runs with privilege reaches a named reviewer; a solo repo has nobody to route to, and its required checks are the gate.
 Turn on multi-factor sign-in for every account with write access, enforced by the organization where there is one, and give each collaborator the least role that works.
