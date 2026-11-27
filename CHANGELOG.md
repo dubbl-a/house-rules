@@ -16,6 +16,7 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ### Changed
 
+- **Rule text: a matrix behind a required check, a CPU-bound gated suite, and local scheduled jobs.** These are new sentences in existing rules; no heading changed. github.md: when a required check's job becomes a matrix, the required name goes to one `if: always()` aggregator, since a plain `needs:` job is skipped when a leg fails and a skipped job reports success (#570). testing.md: find out whether a suite is CPU-bound before speeding it up, and shard it before raising its timeout (#569). engineering.md and github.md: a local scheduled job names its interpreter by a version-stable path, and where a silent miss would cost you, it gets a watcher outside itself (#563).
 - **`/house-rules:test-audit` recommends findings only first on a large suite, and takes a branch name.** Past `maxAuditors` x 10000 test lines it now recommends `apply: false`, since on a suite that size the build half returned little for its cost and the confirmed list was the product. An optional `branch` arg replaces the default `tests-audit-<date>` for a repo whose branch names need a tracker ID (#571).
 
 ## [0.24.0] - 2026-11-21

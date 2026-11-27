@@ -93,7 +93,7 @@ Receipts: `docs/handbook/engineering.md#search-public-prior-art-before-building-
 ## Pin a framework default your output depends on, with the reason beside it
 
 Pin any framework or adapter default your output depends on and put the reason in the config file itself, or in a sibling note where the format cannot hold a comment, because an unexplained value is unexplained to the agent too.
-Justify a threshold constant with the range that makes it right, record a vendor quirk with its mitigation and removal cost, explain a non-obvious ignore rule in a comment, and give a temporary flag an expiry and removal condition.
+Justify a threshold constant with the range that makes it right, record a vendor quirk with its mitigation and removal cost, explain a non-obvious ignore rule in a comment, and give a temporary flag an expiry and removal condition. Name a local scheduled job's interpreter and tools by a version-stable path (the package manager's stable prefix, or a pinned versioned formula), never a versioned install path an upgrade removes.
 Anchor: the reason sits beside the pinned value, or in a sibling note where the format is strict JSON such as Claude Code settings, and a `postbuild` check proves the pin's protected behavior still holds; the harness advises pinning a model alias to a full ID but asks for no reason, so the reason is this repo's addition
 Receipts: `docs/handbook/engineering.md#pin-a-framework-default-your-output-depends-on-with-the-reason-beside-it`
 

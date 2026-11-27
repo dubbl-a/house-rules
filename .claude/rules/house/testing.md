@@ -5,7 +5,7 @@ paths:
   - "tests/**"
   - ".github/workflows/**"
 ---
-<!-- house-managed v0.24.0 module=testing source=modules/testing/rules/testing.md body-sha256=2d9fbdbdb908f27dfa6bea5fd44ec088880285d9844b94372ee5a5a6cf28e611 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
+<!-- house-managed v0.24.0 module=testing source=modules/testing/rules/testing.md body-sha256=e0a2a4bdcfe29c37cfa04eec972b4b722f75cdd4e1c6dba2769454876e778a86 DO NOT EDIT: propose upstream (see docs in dubbl-a/house-rules), record a deviation, or house render --force-managed <path> -->
 <!-- house source rule file; vendored into consuming repos by /house-rules:sync -->
 # Testing
 
@@ -22,6 +22,7 @@ Receipts: `docs/handbook/testing.md#give-the-agent-a-check-it-can-run-before-you
 Keep many fast unit tests, fewer integration tests, and very few end-to-end tests, because the slow tier is where a suite quietly stops being run at all.
 Route what the gate cannot afford, the tests wanting a database, a network, or a secret, to a scheduled run or to a pipeline retro, so the slow tier still runs somewhere on a stated cadence. What the gate itself may hold, and what it must name as ungated, is github.md's rule.
 Keep the pre-commit hook faster still and push everything else to CI, because a slow hook gets bypassed and then disabled.
+Before speeding up a slow suite, compare summed test time with wall time at two concurrency levels, since more concurrency helps only a suite that waits; shard a CPU-bound gated suite across jobs before raising its timeout, and state the minutes trade-off. Where database tests sit in the gate by deviation, build the migrated schema once per run or per process, never per test.
 Anchor: the pr-checks template at `plugins/house/templates/pr-checks.yml`, whose steps need no credential and whose header names what is deliberately left ungated; `house render --apply` writes it only where it is absent, and either not offered before or run with --scaffold, and nothing checks the tiering or the routing afterwards.
 Receipts: `docs/handbook/testing.md#scale-the-pyramid-to-the-repo-you-have-and-route-what-the-pr-gate-cannot-afford`
 
