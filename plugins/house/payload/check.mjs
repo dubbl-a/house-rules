@@ -3372,7 +3372,10 @@ const PLAIN_VALUE_FORMS = [
   /^[^"'{[&*!|>%@`]/,
   /^"(?:[^"\\]|\\.)*"[ \t]*(?:#.*)?$/,
   /^'(?:[^']|'')*'[ \t]*(?:#.*)?$/,
-  /^[[{](?:[^"'[\]{}#]|"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')*[\]}][ \t]*(?:#.*)?$/,
+  // Single-quoted text is matched as '...' segments: a '' escape is two adjacent
+  // segments, so the accepted strings are the same and no run of quotes can be
+  // split two ways (the nested '' alternative backtracked exponentially).
+  /^[[{](?:[^"'[\]{}#]|"(?:[^"\\]|\\.)*"|'[^']*')*[\]}][ \t]*(?:#.*)?$/,
 ];
 // Every line it inspects must be printable ASCII, space, and tab outside its
 // comment: anything else may be whitespace to JavaScript and content to
