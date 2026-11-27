@@ -6,6 +6,10 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Changed
+
+- **`/house-rules:test-audit` recommends findings only first on a large suite, and takes a branch name.** Past `maxAuditors` x 10000 test lines it now recommends `apply: false`, since on a suite that size the build half returned little for its cost and the confirmed list was the product. An optional `branch` arg replaces the default `tests-audit-<date>` for a repo whose branch names need a tracker ID (#571).
+
 ## [0.24.0] - 2026-11-21
 
 A minor release under ADR 0012: a checker family tightens, which is the breaking class (ADR 0011), since a repo that commits the setting below now fails `npm run check:house`. It also carries the 0.23.12 survey to adopters, whose 0.23.12 sync was cancelled so they take one sync. Upgrading from 0.23.11: update the plugin as before, run `/house-rules:sync`, then `npm run check:house`.
