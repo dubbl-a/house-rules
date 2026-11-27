@@ -6,6 +6,14 @@ Issue and PR numbers in sections below 0.5.0 refer to this package's predecessor
 
 ## [Unreleased]
 
+### Added
+
+- **`node .house/check.mjs --coload-floor=<n>` lists every co-load set of `n` lines or more.** With it, the second-worst set shows while the worst sits at the ceiling, so a session can choose which lever to pull. `--json` now carries the sets as `coloadSets`. Without the flag, output and exit codes are unchanged (#566).
+
+### Fixed
+
+- **`unfrozen-install` no longer warns on a lockfile-gated install in a workflow that quotes a value in a flow mapping.** A line such as `with: { python-version: "3.14" }` made the checker stop reading the file's plain values, so every `if:` gate was ignored, including the scaffold's lockfile-absent gate. Same-line quoted scalars in a one-level flow collection now read as plain (#564).
+
 ### Changed
 
 - **`/house-rules:test-audit` recommends findings only first on a large suite, and takes a branch name.** Past `maxAuditors` x 10000 test lines it now recommends `apply: false`, since on a suite that size the build half returned little for its cost and the confirmed list was the product. An optional `branch` arg replaces the default `tests-audit-<date>` for a repo whose branch names need a tracker ID (#571).

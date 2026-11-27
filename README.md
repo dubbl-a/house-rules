@@ -134,9 +134,9 @@ These run with your own access, outside any sandbox, and change when the plugin 
 
 `node .house/check.mjs` runs thirteen families: `drift`, `todo`, `tamper`, `behind`, `shape`,
 `lengths`, `coload`, `manifest`, `minutes`, `guard`, `workflows`, `agent-config`, and `lockfile`. Scope a run
-with `--only=fam,fam`. Exit 0 is clean (warnings printed), 1 is findings, and 2 is an unusable
-`house.json` reaching a family that needs one. Each family's config vocabulary heads
-`plugins/house/payload/check.mjs`.
+with `--only=fam,fam`; `--coload-floor=<n>` lists every co-load set of `n` lines or more (`coloadSets` in `--json`).
+Exit 0 is clean (warnings printed), 1 is findings, and 2 is an unusable `house.json` reaching a family
+that needs one. Each family's config vocabulary heads `plugins/house/payload/check.mjs`.
 
 ## Versioning and breaking changes
 

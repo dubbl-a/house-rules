@@ -9,6 +9,7 @@
 //
 // Usage:
 //   node check.mjs [--only=fam,fam,...] [--json] [--repo <path>]
+//   node check.mjs --coload-floor=<n> [--only=coload] [--json]   (also list every co-load set of n lines or more; --json adds coloadSets)
 //   node check.mjs --floor-status [--json] [--repo <path>]   (is this machine's git-hook floor armed; always exits 0)
 //   (--accept-lengths is still accepted and does nothing; see ratchetRaises)
 //
@@ -2232,7 +2233,15 @@ function checkCoload(ctx) {
   for (const g of [...groups.values()].filter((g) => g.sum > maxLines).sort((a, b) => b.sum - a.sum)) {
     findings.push(mk('coload', g.paths[0], null, 'coload', `co-load ${g.sum} lines > ${maxLines} on ${g.paths.length} path(s), e.g. ${g.paths[0]}, from: ${g.rules.map((r) => `${r.file} (${r.lines})`).join(', ')}. Narrow the colliding module's path slot in house.json, tighten this repo's own rule paths, or trim; raise maxCoLoadLines only with a deviations entry (kind "coload-ceiling", \`ceiling\` set to the new value)`));
   }
-  return { findings, warnings: [], worst };
+  // #566: the sets themselves, for --coload-floor and --json. With a floor,
+  // every set at or above it (so the second worst shows while the worst sits
+  // at the ceiling); without one, the sets over the ceiling, as above.
+  const floor = Number.isFinite(ctx.coloadFloor) ? ctx.coloadFloor : null;
+  const sets = [...groups.values()]
+    .filter((g) => (floor === null ? g.sum > maxLines : g.sum >= floor))
+    .sort((a, b) => b.sum - a.sum || (a.paths[0] < b.paths[0] ? -1 : 1))
+    .map((g) => ({ sum: g.sum, paths: g.paths.length, path: g.paths[0], rules: g.rules }));
+  return { findings, warnings: [], worst, sets, floor };
 }
 
 // ── manifest ─────────────────────────────────────────────────────────────
@@ -3363,7 +3372,10 @@ const PLAIN_VALUE_FORMS = [
   /^[^"'{[&*!|>%@`]/,
   /^"(?:[^"\\]|\\.)*"[ \t]*(?:#.*)?$/,
   /^'(?:[^']|'')*'[ \t]*(?:#.*)?$/,
-  /^[[{][^"'[\]{}#]*[\]}][ \t]*(?:#.*)?$/,
+  // Single-quoted text is matched as '...' segments: a '' escape is two adjacent
+  // segments, so the accepted strings are the same and no run of quotes can be
+  // split two ways (the nested '' alternative backtracked exponentially).
+  /^[[{](?:[^"'[\]{}#]|"(?:[^"\\]|\\.)*"|'[^']*')*[\]}][ \t]*(?:#.*)?$/,
 ];
 // Every line it inspects must be printable ASCII, space, and tab outside its
 // comment: anything else may be whitespace to JavaScript and content to
@@ -4132,8 +4144,14 @@ function checkGuard(ctx) {
 
 // ── CLI / orchestration ──────────────────────────────────────────────────
 
+function parseColoadFloor(v) {
+  if (/^\d+$/.test(v || '')) return Number(v);
+  process.stderr.write(`house check: --coload-floor needs a non-negative integer (got ${JSON.stringify(v ?? '')}); ignoring it\n`);
+  return null;
+}
+
 function parseArgs(argv) {
-  const out = { only: null, json: false, acceptLengths: false, repo: null, floorStatus: false };
+  const out = { only: null, json: false, acceptLengths: false, repo: null, floorStatus: false, coloadFloor: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') out.json = true;
@@ -4141,6 +4159,8 @@ function parseArgs(argv) {
     else if (a === '--floor-status') out.floorStatus = true;
     else if (a === '--repo') out.repo = argv[++i];
     else if (a.startsWith('--repo=')) out.repo = a.slice('--repo='.length);
+    else if (a.startsWith('--coload-floor=')) out.coloadFloor = parseColoadFloor(a.slice('--coload-floor='.length));
+    else if (a === '--coload-floor') out.coloadFloor = parseColoadFloor(argv[++i]);
     else if (a === '--only') out.only = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (a.startsWith('--only=')) out.only = a.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);
   }
@@ -4152,9 +4172,9 @@ function formatLine(f) {
   return `${loc} [${f.kind}] ${f.message}`;
 }
 
-function report({ families, results, findings, warnings, info, scannedDocs, coloadWorst, json }) {
+function report({ families, results, findings, warnings, info, scannedDocs, coloadWorst, coloadSets, coloadFloor, json }) {
   if (json) {
-    console.log(JSON.stringify({ findings, warnings, info, scannedDocs, coloadWorst }, null, 2));
+    console.log(JSON.stringify({ findings, warnings, info, scannedDocs, coloadWorst, coloadSets }, null, 2));
     return;
   }
   for (const fam of families) {
@@ -4169,6 +4189,11 @@ function report({ families, results, findings, warnings, info, scannedDocs, colo
     for (const f of r.findings) console.log(formatLine(f));
     for (const w of r.warnings) console.log(`${formatLine(w)}  (warning)`);
     for (const i of famInfo) console.log(`${formatLine(i)}  (info)`);
+  }
+  if (coloadFloor !== null && results.coload && !results.coload.skipped) {
+    console.log(`== coload sets >= ${coloadFloor} lines ==`);
+    if (coloadSets.length === 0) console.log('(none)');
+    for (const s of coloadSets) console.log(`co-load ${s.sum} lines on ${s.paths} path(s), e.g. ${s.path}, from: ${s.rules.map((r) => `${r.file} (${r.lines})`).join(', ')}`);
   }
   const famSummaries = families
     .map((f) => {
@@ -4243,7 +4268,7 @@ function main() {
   const ctx = {
     repoRoot, house, houseUnusable, allTracked, untracked, json: args.json,
     acceptLengths: args.acceptLengths, familiesRun: new Set(families),
-    pendingRatchetTighten: [],
+    pendingRatchetTighten: [], coloadFloor: args.coloadFloor,
   };
 
   if (args.acceptLengths && !args.json) console.log('note: --accept-lengths is no longer needed; a ratchetRaises entry applies on its own. The flag is accepted and does nothing.');
@@ -4254,6 +4279,7 @@ function main() {
   const allInfo = [];
   let scannedDocs = [];
   let coloadWorst = null;
+  let coloadSets = [];
 
   for (const fam of families) {
     if (NEEDS_HOUSE_JSON.has(fam) && houseUnusable) {
@@ -4272,7 +4298,7 @@ function main() {
       case 'behind': r = checkBehind(ctx); break;
       case 'shape': r = checkShape(ctx); break;
       case 'lengths': r = checkLengths(ctx); break;
-      case 'coload': r = checkCoload(ctx); coloadWorst = r.worst || null; break;
+      case 'coload': r = checkCoload(ctx); coloadWorst = r.worst || null; coloadSets = r.sets || []; break;
       case 'manifest': r = checkManifest(ctx); break;
       case 'minutes': r = checkMinutes(ctx); break;
       case 'guard': r = checkGuard(ctx); break;
@@ -4289,7 +4315,7 @@ function main() {
 
   maybeWriteRatchet(ctx, allFindings.length);
 
-  report({ families, results, findings: allFindings, warnings: allWarnings, info: allInfo, scannedDocs, coloadWorst, json: args.json });
+  report({ families, results, findings: allFindings, warnings: allWarnings, info: allInfo, scannedDocs, coloadWorst, coloadSets, coloadFloor: args.coloadFloor, json: args.json });
 
   let exitCode = 0;
   if (houseUnusable && needsHouse) exitCode = 2;
