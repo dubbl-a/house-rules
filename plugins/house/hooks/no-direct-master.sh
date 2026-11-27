@@ -4,7 +4,9 @@
 # for repos that have adopted house and opted a policy in via house.json. ADR 0013
 # carries the reasoning; this header states the contract. MultiEdit stays in the matcher
 # for older CLIs that still offer it: a tool name the harness never sends
-# costs nothing.
+# costs nothing. Also a PreSkillShellCommand hook, so a skill's inline Bash
+# command gets a Bash call's decisions (Claude Code 2.1.332; older CLIs ignore
+# the entry, #572).
 #
 # Since #58 this hook is NOT the branch guard. The guard is the git-hook floor
 # the github module vendors (.githooks/pre-commit, pre-push,
@@ -117,7 +119,8 @@
 # .claude/hooks/no-direct-master.sh or a .claude/settings.json PreToolUse entry
 # whose matcher can see Bash (the repo-local guard wins during migration onto
 # house; an entry scoped to other tools, or carrying only other events, is not
-# a branch guard and does not defer this one). Deference is a deliberate choice
+# a branch guard and does not defer this one; for a skill's inline command only
+# a PreSkillShellCommand entry does, since neither of the others sees one). Deference is a deliberate choice
 # here, not something the harness requires: every matching PreToolUse hook runs
 # and the most restrictive decision wins. It also fails open silently wherever
 # it never runs at all, which a bare, safe or restricted session, Cowork, and
@@ -429,6 +432,11 @@ GIT_VERBS="${GIT_VERBS//$'\n'/ }"
 # call with no `command` key is a WebSocket watch (a `ws` input), which runs
 # nothing in a shell; one whose `command` is present but not a string, or
 # whose tool_input is not an object, is flagged like Bash's.
+# hook_event_name is read only to name the event a deny answers and to pick
+# what deference counts: a skill's inline `!` command arrives as
+# PreSkillShellCommand (Claude Code 2.1.332, #572) with the Bash payload
+# fields, and is decided as a Bash call. jq reduces it to one of two words, so
+# no value of it can hold a newline that would shift the command's line.
 payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
   | ((.tool_input | objects) // {}) as $in
   | "t" + $t, "w" + ((.cwd | strings) // ""),
@@ -437,6 +445,8 @@ payload_fields=$(jq -r '((.tool_name | strings) // "") as $t
   "k" + (if ($t == "Bash" or ($t == "Monitor"
               and (((.tool_input | type) != "object") or ($in | has("command")))))
             and ($in.command | type) != "string" then "1" else "" end),
+  "e" + (if .hook_event_name == "PreSkillShellCommand" then "PreSkillShellCommand"
+         else "PreToolUse" end),
   "c" + (($in.command | strings) // "")' \
   <<<"$payload" 2>/dev/null) || payload_fields=''
 # A payload that does not parse names neither the tool nor its cwd. Valid JSON
@@ -454,9 +464,13 @@ fi
 tool_name="${payload_fields%%$'\n'*}"; _rest="${payload_fields#*$'\n'}"
 payload_cwd="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
 file_path="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
-cmd_unreadable="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
+cmd_unreadable="${_rest%%$'\n'*}"; _rest="${_rest#*$'\n'}"
+hook_event="${_rest%%$'\n'*}"; cmd="${_rest#*$'\n'}"
 tool_name="${tool_name#t}"; payload_cwd="${payload_cwd#w}"
-file_path="${file_path#f}"; cmd_unreadable="${cmd_unreadable#k}"; cmd="${cmd#c}"
+file_path="${file_path#f}"; cmd_unreadable="${cmd_unreadable#k}"
+hook_event="${hook_event#e}"; cmd="${cmd#c}"
+# Unreadable payloads carry no fields at all.
+[[ -n "$hook_event" ]] || hook_event='PreToolUse'
 if [[ "$payload_unreadable" -eq 1 ]]; then
   MODE='unreadable'; payload_cwd="$PWD"; file_path=''; cmd=''
 elif [[ "$cmd_unreadable" == 1 ]]; then
@@ -487,9 +501,11 @@ fi
 # The reason goes to jq on stdin, never as an argument: it can quote a
 # payload-derived path, and Linux refuses to exec a program with any one
 # argument over 128 KB (MAX_ARG_STRLEN), which would turn a refusal into a
-# crash.
+# crash. The event it names is the payload's when that is PreSkillShellCommand,
+# else PreToolUse; the hand-written denies say PreToolUse, which blocks a
+# skill's command too (probed on 2.1.332, #572).
 deny() {
-  printf '%s' "$1" | jq -Rs '{hookSpecificOutput: {hookEventName: "PreToolUse",
+  printf '%s' "$1" | jq -Rs --arg ev "$hook_event" '{hookSpecificOutput: {hookEventName: $ev,
     permissionDecision: "deny", permissionDecisionReason: .}}'
   exit 0
 }
@@ -1864,7 +1880,8 @@ decide_file_mode() {
   fi
   run_file_scan
 }
-# The jq call below finds a deferring entry only under the key PreToolUse, and
+# The jq call below finds a deferring entry only under the key $2 (PreToolUse,
+# or PreSkillShellCommand for a skill's command), and
 # a JSON key is either spelled out or written with a unicode escape (a
 # backslash, u and four hex digits; no other escape yields a letter), so a file
 # with neither the word nor a backslash-u cannot hold one and jq is not started
@@ -1875,7 +1892,7 @@ settings_may_defer() {
   local LC_ALL=C s
   [[ -r "$1" ]] || return 1
   s=$(<"$1")
-  case "$s" in *PreToolUse*|*\\u*) return 0 ;; esac
+  case "$s" in *"$2"*|*\\u*) return 0 ;; esac
   return 1
 }
 decide_for_target() {
@@ -2050,11 +2067,16 @@ decide_for_target() {
   # speak to.
   [[ "$branch_policy" == "direct" ]] && return 0
 
-  # Repo-local guard present: defer to it during migration onto house.
+  # Repo-local guard present: defer to it during migration onto house. A
+  # skill's inline command fires PreSkillShellCommand only, so a guard wired
+  # on PreToolUse (the vendored script or a settings entry) never sees it and
+  # is not deferred to for one; only a PreSkillShellCommand entry is.
   local local_hook="$toplevel/.claude/hooks/no-direct-master.sh"
-  if [[ -f "$local_hook" ]] && local_hook_is_substantive "$local_hook"; then return 0; fi
-  if [[ -f "$toplevel/.claude/settings.json" ]] && settings_may_defer "$toplevel/.claude/settings.json"; then
-    # Defer only to a PreToolUse entry that can SEE the call: a settings.json
+  if [[ "$hook_event" == PreToolUse && -f "$local_hook" ]] \
+     && local_hook_is_substantive "$local_hook"; then return 0; fi
+  if [[ -f "$toplevel/.claude/settings.json" ]] && settings_may_defer "$toplevel/.claude/settings.json" "$hook_event"; then
+    # Defer only to an entry under this payload's event that can SEE the
+    # call: a settings.json
     # carrying only PostToolUse is not a branch guard, `length > 0` alone is
     # satisfied by any non-empty value (a malformed file Claude Code itself
     # ignores), and an entry whose matcher names other tools guards something
@@ -2064,7 +2086,7 @@ decide_for_target() {
     # for a Monitor command, so an entry matched on Bash alone may never see
     # it. A matcher jq cannot read fails the test, leaving THIS hook armed:
     # the safe way.
-    if jq -e --arg tn "$tool_name" '[.hooks.PreToolUse[]? | objects
+    if jq -e --arg tn "$tool_name" --arg ev "$hook_event" '[.hooks[$ev][]? | objects
                | select((.hooks | type) == "array" and (.hooks | length) > 0)
                | . as $e | select(($e.matcher // "") == "" or $e.matcher == "*" or ($tn | test($e.matcher)))]
               | length > 0' "$toplevel/.claude/settings.json" >/dev/null 2>&1; then
