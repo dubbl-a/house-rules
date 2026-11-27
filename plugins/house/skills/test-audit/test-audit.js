@@ -1,7 +1,7 @@
 export const meta = {
   name: 'test-audit',
   description: 'Audit one repo\'s tests (prune, smells, silent skips, speed) with the house-rules test-audit method, build the confirmed changes as one commit, and review and rework it',
-  whenToUse: 'Run by the /house-rules:test-audit skill. args: {root, rules, scratch, date, apply?, maxAuditors?, maxReworks?}. One repo per run; the session pushes and opens the PR.',
+  whenToUse: 'Run by the /house-rules:test-audit skill. args: {root, rules, scratch, date, apply?, branch?, maxAuditors?, maxReworks?}. One repo per run; the session pushes and opens the PR.',
   phases: [
     { title: 'Survey', detail: 'test suites, files and sizes, CI critical path' },
     { title: 'Audit', detail: 'one auditor per batch of test files, sent back for unread ranges' },
@@ -35,6 +35,8 @@ export const meta = {
 //   date         YYYY-MM-DD, names the branch and worktree (required: scripts
 //                cannot read the clock)
 //   apply        false stops after Refute and returns the confirmed list (default true)
+//   branch       name of the branch the build creates (default tests-audit-<date>); a git
+//                branch name of letters, digits, . _ - and /, or the run throws
 //   maxReworks   cap on rework rounds, a non-negative integer (default 2; anything else is
 //                ignored with a log line)
 //   maxAuditors  cap on audit batches (default 4; a run is then about 12 agents:
@@ -57,8 +59,9 @@ const REWORKS_GIVEN = args.maxReworks !== undefined && args.maxReworks !== null
 const REWORKS_OK = Number.isInteger(args.maxReworks) && args.maxReworks >= 0
 const MAX_REWORKS = REWORKS_OK ? args.maxReworks : 2
 if (REWORKS_GIVEN && !REWORKS_OK) log(`args.maxReworks ${JSON.stringify(args.maxReworks)} ignored: not a non-negative integer; using 2`)
-const BRANCH = `tests-audit-${args.date}`
-const WORKTREE = `${ROOT}/.claude/worktrees/${BRANCH}`
+need('branch', args.branch === undefined || args.branch === null || (typeof args.branch === 'string' && /^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(args.branch) && !/\.\.|\/\/|\/$|\.$|\.lock(\/|$)|\/\./.test(args.branch)), 'a git branch name of letters, digits, . _ - and /, when given')
+const BRANCH = typeof args.branch === 'string' ? args.branch : `tests-audit-${args.date}`
+const WORKTREE = `${ROOT}/.claude/worktrees/${BRANCH.replace(/\//g, '-')}`
 
 const COMMON_DONT = `Do not spawn subagents. Do not push, open a PR, merge, or edit anything outside what this stage names; a read-only stage edits nothing at all. Read the testing rules at ${RULES} before judging anything; the repo's vendored copy under .claude/rules/house/ may be older.`
 
