@@ -34,7 +34,10 @@ can lag until the next sync.
    re-reviewer in each rework round. The survey, auditors, and builders run on Sonnet. Give no
    dollar figure. Offer a lighter path beside the full run: for a small suite, `apply: false`
    (stops after the refuters, so no builder, review, or rework agents) with a smaller
-   `maxAuditors`. Ask for a go-ahead if the user has not already given one.
+   `maxAuditors`. When the suite is large, recommend `apply: false` first: large means more than
+   `maxAuditors` x 10000 test lines (40000 at the default), so each auditor reads over 10k lines.
+   The build half returns little for its cost on a suite that size; the confirmed list is the
+   product. The user can still choose the full run. Ask for a go-ahead if the user has not already given one.
 3. Copy the script into the session scratchpad, because the Workflow tool only runs a script it
    can already read:
 
@@ -51,6 +54,7 @@ can lag until the next sync.
    | `scratch` | a directory under the session scratchpad, such as `<scratchpad>/test-audit` |
    | `date` | today's date as YYYY-MM-DD (the script cannot read the clock) |
    | `apply` | optional, default true |
+   | `branch` | optional, default `tests-audit-<date>`; a git branch name of letters, digits, `.`, `_`, `-` and `/`, for a repo whose branch names need a tracker ID. Anything else throws |
    | `maxAuditors` | optional, default 4 |
    | `maxReworks` | optional, default 2; a non-negative integer, anything else is ignored with a log line. A round past the second still requires telling the user what each round found and why the next converges, per the orchestration rule |
 
@@ -60,7 +64,7 @@ can lag until the next sync.
    ignored: `git -C <root> check-ignore -q <dir>/` must exit 0. If it does not, stop and ask the
    user rather than editing their `.gitignore`.
 
-   `root` and `scratch` must hold no spaces. The script creates branch `tests-audit-<date>` and a
+   `root` and `scratch` must hold no spaces. The script creates branch `branch` (default `tests-audit-<date>`) and a
    worktree under `<root>/.claude/worktrees/`.
 5. When it returns, summarize for the user: how many findings were confirmed, refuted, and
    dropped (and why), the unread ranges if any, test counts and durations before and after, the

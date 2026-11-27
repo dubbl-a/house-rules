@@ -246,3 +246,18 @@ test('maxReworks caps the rework rounds; a bad value falls back to 2 with a log 
   }
   assert.ok(!(await run(ARGS)).logs.some(l => /ignored/.test(l)))
 })
+
+test('branch names the build branch and rejects an invalid name', async () => {
+  const { calls } = await run({ ...ARGS, branch: 'ENG-12/tests-audit' })
+  const [build] = byLabel(calls, /^build$/)
+  assert.ok(build.prompt.includes('worktree add -b ENG-12/tests-audit /work/repo/.claude/worktrees/ENG-12-tests-audit abc123'), build.prompt)
+  for (const bad of ['bad name', '-x', 'a..b', 'a/', 'x.lock', 5]) {
+    await assert.rejects(run({ ...ARGS, branch: bad }), /args\.branch/)
+  }
+})
+
+test('SKILL.md recommends apply:false first for a large suite and documents the branch arg', () => {
+  const skill = readFileSync(fileURLToPath(new URL('../plugins/house/skills/test-audit/SKILL.md', import.meta.url)), 'utf8')
+  assert.match(skill, /large, recommend `apply: false` first/)
+  assert.match(skill, /\| `branch` \|/)
+})
